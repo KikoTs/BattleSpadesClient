@@ -21,7 +21,10 @@
     },
     "nlohmann-json",
     "libsodium",
-    "openal-soft",
+    {
+      "name": "openal-soft",
+      "platform": "!osx"
+    },
     "sdl3"
   ]
 }

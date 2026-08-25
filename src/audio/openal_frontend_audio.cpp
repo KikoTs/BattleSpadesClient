@@ -3,9 +3,14 @@
 #include "battlespades/audio/sound_groups.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 
+#if defined(__APPLE__)
+#include <OpenAL/al.h>
+#include <OpenAL/alc.h>
+#else
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/efx.h>
+#endif
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)
@@ -657,6 +662,12 @@ struct OpenAlFrontendAudio::Impl final {
      * instead of making audio startup (or the game) fail.
      */
     void initialise_world_reverb() noexcept {
+#if defined(__APPLE__)
+        // Apple's native OpenAL framework does not expose OpenAL Soft's EFX
+        // header or extension entry points. Reverb is optional; dry positional
+        // audio remains fully operational on macOS.
+        return;
+#else
         if (device == nullptr || alcIsExtensionPresent(device, "ALC_EXT_EFX") == ALC_FALSE) {
             return;
         }
@@ -701,6 +712,7 @@ struct OpenAlFrontendAudio::Impl final {
             world_reverb_effect = 0U;
             clear_openal_error();
         }
+#endif
     }
 
     /**
@@ -711,6 +723,7 @@ struct OpenAlFrontendAudio::Impl final {
      * deleting the reverb bus used by every positional retail sound.
      */
     void release_world_reverb() noexcept {
+#if !defined(__APPLE__)
         if (world_reverb_slot != 0U && delete_effect_slots != nullptr) {
             delete_effect_slots(1, &world_reverb_slot);
             world_reverb_slot = 0U;
@@ -719,10 +732,15 @@ struct OpenAlFrontendAudio::Impl final {
             delete_effects(1, &world_reverb_effect);
             world_reverb_effect = 0U;
         }
+#endif
     }
 
     /** Attach only positional gameplay sources to the retail reverb bus. */
     void apply_world_reverb(ALuint source, bool relative) const noexcept {
+#if defined(__APPLE__)
+        static_cast<void>(source);
+        static_cast<void>(relative);
+#else
         if (source == 0U || world_reverb_slot == 0U) {
             return;
         }
@@ -731,6 +749,7 @@ struct OpenAlFrontendAudio::Impl final {
                    relative ? AL_EFFECTSLOT_NULL : static_cast<ALint>(world_reverb_slot),
                    0,
                    AL_FILTER_NULL);
+#endif
     }
 
     [[nodiscard]] bool play_music(SoundHandle track, float start_offset = 0.0F) {
@@ -1072,6 +1091,7 @@ struct OpenAlFrontendAudio::Impl final {
     ALuint music_source{};
     ALuint fade_source{};
     ALuint ambience_source{};
+#if !defined(__APPLE__)
     ALuint world_reverb_effect{};
     ALuint world_reverb_slot{};
     LPALGENEFFECTS gen_effects{};
@@ -1081,6 +1101,7 @@ struct OpenAlFrontendAudio::Impl final {
     LPALGENAUXILIARYEFFECTSLOTS gen_effect_slots{};
     LPALDELETEAUXILIARYEFFECTSLOTS delete_effect_slots{};
     LPALAUXILIARYEFFECTSLOTI effect_slot_i{};
+#endif
     float fade_gain{};
     bool fade_active{};
     float ambience_gain{};
