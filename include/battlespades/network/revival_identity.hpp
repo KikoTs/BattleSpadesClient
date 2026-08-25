@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <stop_token>
+#include <utility>
 
 namespace battlespades::network {
 
@@ -30,6 +31,10 @@ struct RevivalAuthResult final {
     std::string error_code;
     std::string error;
     long http_status{};
+
+    RevivalAuthResult() = default;
+    explicit RevivalAuthResult(std::optional<RevivalAccount> selected_account)
+        : account{std::move(selected_account)} {}
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return account.has_value() && error.empty();

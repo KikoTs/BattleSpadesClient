@@ -272,8 +272,16 @@ private:
         const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
             deadline - std::chrono::steady_clock::now());
         timeval wait{};
-        wait.tv_sec = static_cast<long>(remaining.count() / 1'000'000);
-        wait.tv_usec = static_cast<long>(remaining.count() % 1'000'000);
+        const auto remaining_microseconds = std::max<std::int64_t>(0, remaining.count());
+        const auto remaining_seconds = remaining_microseconds / 1'000'000;
+        using TimevalSeconds = decltype(wait.tv_sec);
+        wait.tv_sec = static_cast<TimevalSeconds>(std::min<std::int64_t>(
+            remaining_seconds,
+            static_cast<std::int64_t>(std::numeric_limits<TimevalSeconds>::max())));
+        // The modulo is always in [0, 999999], including on platforms where
+        // suseconds_t is a 32-bit integer rather than a long.
+        wait.tv_usec = static_cast<decltype(wait.tv_usec)>(
+            remaining_microseconds % 1'000'000);
         fd_set readable;
         FD_ZERO(&readable);
         FD_SET(socket.get(), &readable);

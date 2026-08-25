@@ -12,12 +12,21 @@ permissions:
 
 jobs:
   native-release:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Select the C++20-capable Apple toolchain
+        # libc++ bundled with Xcode 16 still hides jthread/stop_token behind
+        # its experimental library. Xcode 26 ships libc++ 20, where these
+        # standard C++20 facilities are supported normally.
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+          c++ --version
 
       - name: Install build tools
         # vcpkg's libsodium port uses autotools on macOS.
@@ -28,9 +37,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: macos-14-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
+          key: macos-15-xcode26-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            macos-14-arm64-vcpkg-
+            macos-15-xcode26-arm64-vcpkg-
 
       - name: Bootstrap pinned vcpkg
         shell: bash
@@ -49,7 +58,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: macos-14-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
+          key: macos-15-xcode26-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
 
       - name: Build and install
         run: |
