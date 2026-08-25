@@ -581,7 +581,9 @@ public:
                 {}, "invalid_join_code",
                 "AoSPlay returned an incompatible join code."};
         }
-        return RevivalTicketResult{std::move(ticket)};
+        RevivalTicketResult result;
+        result.join_code = std::move(ticket);
+        return result;
     }
 
     [[nodiscard]] AosPlayProfileResult own_profile() {
