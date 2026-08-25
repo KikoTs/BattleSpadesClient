@@ -190,17 +190,17 @@ int run_client(int argc, char* argv[]) {
             return 1;
         }
 
-        auto frontend_config = battlespades::frontend::NativeFrontendConfig{
-                resources.paths->assets.root,
-                resources.paths->shaders.root,
-                "Player",
-                true,
-                false,
-                executable_path->parent_path() / "settings.toml",
-                std::filesystem::path{"../BattleSpades/maps/Training.vxl"},
-                options.tutorial_debug_tool,
-                options.tutorial_debug_aim,
-            };
+        battlespades::frontend::NativeFrontendConfig frontend_config;
+        frontend_config.asset_root = resources.paths->assets.root;
+        frontend_config.shader_root = resources.paths->shaders.root;
+        frontend_config.player_name = "Player";
+        frontend_config.enable_audio = true;
+        frontend_config.renderer_debug = false;
+        frontend_config.settings_path = executable_path->parent_path() / "settings.toml";
+        frontend_config.tutorial_map_path =
+            std::filesystem::path{"../BattleSpades/maps/Training.vxl"};
+        frontend_config.tutorial_debug_tool = options.tutorial_debug_tool;
+        frontend_config.tutorial_debug_aim = options.tutorial_debug_aim;
         frontend_config.startup_endpoint = options.startup_endpoint;
         frontend_config.debug_vfx = options.debug_vfx;
         frontend_config.debug_vfx_age = options.debug_vfx_age;
