@@ -74,7 +74,7 @@ struct CreateMatchRuleDefinition final {
     std::span<const std::string_view> enabling_class_rules{};
 };
 
-/** Immutable retail data recovered from playlists/*.txt and constants_matchmaking.py. */
+/** Immutable retail data recovered from playlist text files and constants_matchmaking.py. */
 [[nodiscard]] std::span<const CreateMatchModeDefinition> retail_create_match_modes() noexcept;
 [[nodiscard]] std::span<const CreateMatchRuleDefinition> retail_create_match_rules() noexcept;
 

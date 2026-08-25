@@ -513,9 +513,10 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
     };
     auto team_x = static_cast<double>(snapshot.player_count_bar.x) + 14.0;
     for (const auto& [key, team_color] : teams) {
+        const auto team_key = key;
         const auto count = static_cast<std::size_t>(std::count_if(
             snapshot.players.begin(), snapshot.players.end(),
-            [&](const auto& player) { return player.team_key == key; }));
+            [team_key](const auto& player) { return player.team_key == team_key; }));
         list.push(sprite(create_match_presentation_assets::head_icon,
                          {team_x, static_cast<double>(snapshot.player_count_bar.y) + 3.0, 14.0, 14.0},
                          DrawSpace::design_pixels,
