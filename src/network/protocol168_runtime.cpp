@@ -156,7 +156,8 @@ template <typename Packet>
 
 [[nodiscard]] bool safe_skybox_name(std::string_view value) noexcept {
     if (value.empty() || value.size() > 63U || !value.ends_with(".txt")) return false;
-    for (const unsigned char character : value) {
+    for (const char raw_character : value) {
+        const auto character = static_cast<unsigned char>(raw_character);
         if (!std::isalnum(character) && character != ' ' && character != '_' &&
             character != '-' && character != '.') {
             return false;
