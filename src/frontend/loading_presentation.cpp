@@ -28,7 +28,6 @@ using ui::VerticalTextAlignment;
 constexpr ColorRgba8 white{255U, 255U, 255U, 255U};
 constexpr ColorRgba8 cream{244U, 236U, 187U, 255U};
 constexpr ColorRgba8 gold{232U, 207U, 78U, 255U};
-constexpr ColorRgba8 progress_green{157U, 230U, 0U, 255U};
 
 [[nodiscard]] ColorModulation color(ColorRgba8 value = white,
                                     std::uint16_t opacity = 1'000U) noexcept {
