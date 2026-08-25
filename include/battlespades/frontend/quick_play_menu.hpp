@@ -38,7 +38,7 @@ struct QuickPlayRule final {
                                                    const QuickPlayRule&) = default;
 };
 
-/** Immutable data reconstructed from the shipped `playlists/*.txt` files. */
+/** Immutable data reconstructed from the shipped playlist text files. */
 struct QuickPlayPlaylistDefinition final {
     std::uint32_t id{};
     std::string_view name_key;
