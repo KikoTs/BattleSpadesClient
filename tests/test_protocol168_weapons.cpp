@@ -161,7 +161,7 @@ void inbound_feedback_reload_and_restock_round_trip() {
     expect(encode_packet(outbound_response) == response_bytes,
            "ShootResponse outbound fixed conversion must match shared.packet.pyd");
 
-    for (const auto packet_bytes : {bytes("4c073e01"), bytes("450703")}) {
+    for (const auto& packet_bytes : {bytes("4c073e01"), bytes("450703")}) {
         decoded = decode_weapon_packet(packet_bytes);
         expect(static_cast<bool>(decoded), decoded.error.c_str());
     }
