@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
                     const auto minimum =
                         std::min({color->red, color->green, color->blue});
                     const auto spread = maximum - minimum;
-                    if (maximum <= 0x38U && spread <= 0x18U) {
+                    if (maximum <= 0x38U && spread <= 0x18) {
                         std::cout << 'w';
                     } else if (color->blue > color->red + 8U &&
                                color->blue > color->green + 4U &&
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
                     } else if (color->red > color->green + 12U &&
                                color->green >= color->blue) {
                         std::cout << 'b';
-                    } else if (spread <= 10U && maximum <= 0x80U) {
+                    } else if (spread <= 10 && maximum <= 0x80U) {
                         std::cout << 'm';
                     } else {
                         std::cout << '#';
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
                     const auto minimum =
                         std::min({color->red, color->green, color->blue});
                     const auto spread = maximum - minimum;
-                    if (maximum <= 0x38U && spread <= 0x18U) {
+                    if (maximum <= 0x38U && spread <= 0x18) {
                         std::cout << 'w';
                     } else if (color->blue > color->red + 8U &&
                                color->blue > color->green + 4U &&
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
                     } else if (color->red > color->green + 12U &&
                                color->green >= color->blue) {
                         std::cout << 'b';
-                    } else if (spread <= 10U && maximum <= 0x80U) {
+                    } else if (spread <= 10 && maximum <= 0x80U) {
                         std::cout << 'm';
                     } else {
                         std::cout << '#';

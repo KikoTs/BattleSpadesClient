@@ -5208,7 +5208,9 @@ struct NativeFrontendModule::Impl final {
                                                                      launch.map_name,
                                                                      mode_key,
                                                                      skin,
-                                                                     classic},
+                                                                     classic,
+                                                                     {},
+                                                                     false},
                                                 {}};
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds{100});
@@ -9762,8 +9764,15 @@ struct NativeFrontendModule::Impl final {
             play_confirm();
             return;
         }
-        begin_match_loading(ServerConnectRequest{
-            endpoint.identifier(), endpoint.host, endpoint.port, {}, {}, {}, false});
+        begin_match_loading(ServerConnectRequest{endpoint.identifier(),
+                                                 endpoint.host,
+                                                 endpoint.port,
+                                                 {},
+                                                 {},
+                                                 {},
+                                                 false,
+                                                 {},
+                                                 false});
     }
 
     void handle_server_browser_click(ui::Point point, std::uint8_t click_count) {
@@ -10266,6 +10275,9 @@ struct NativeFrontendModule::Impl final {
             break;
         case FrontendScreen::ugc_editor_lobby:
             consume_ugc_editor_lobby_intent(ugc_editor_lobby.pointer_release(point));
+            break;
+        case FrontendScreen::tutorial_world:
+            // World input is handled by the gameplay event path, not frontend widgets.
             break;
         case FrontendScreen::parity_debug:
             consume_parity_debug_activation(
@@ -11864,7 +11876,9 @@ struct NativeFrontendModule::Impl final {
                                              {},
                                              {},
                                              server_browser.first_visible_row(),
-                                             server_browser.visible_row_capacity()}));
+                                             server_browser.visible_row_capacity(),
+                                             {},
+                                             false}));
         collect(quick_play_presentation.build(quick_play_menu,
                                               QuickPlayPresentationContext{pixels, 1'000U}));
         for (const auto& asset : quick_play_assets::required()) {
@@ -12040,7 +12054,8 @@ struct NativeFrontendModule::Impl final {
     void send_client_in_menu(bool in_menu) {
         if (!network_match || match_connection == nullptr)
             return;
-        const std::array<std::byte, 2U> packet{std::byte{110U}, std::byte{in_menu ? 1U : 0U}};
+        const std::array<std::byte, 2U> packet{
+            std::byte{110U}, static_cast<std::byte>(in_menu ? 1U : 0U)};
         if (!match_connection->send(packet)) {
             settings_warning = "failed to queue ClientInMenu(110)";
         }
@@ -17848,8 +17863,15 @@ bool NativeFrontendModule::start() {
                 stop();
                 return false;
             }
-            impl_->pending_startup_connection = ServerConnectRequest{
-                endpoint.identifier(), endpoint.host, endpoint.port, {}, {}, {}, false};
+            impl_->pending_startup_connection = ServerConnectRequest{endpoint.identifier(),
+                                                                      endpoint.host,
+                                                                      endpoint.port,
+                                                                      {},
+                                                                      {},
+                                                                      {},
+                                                                      false,
+                                                                      {},
+                                                                      false};
         }
         return true;
     } catch (const std::exception& error) {
