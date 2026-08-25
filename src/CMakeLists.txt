@@ -596,6 +596,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             OpenAL::OpenAL
     )
     aos_enable_strict_warnings(aos_audio_openal)
+    if(APPLE)
+        # Apple's supported compatibility framework is intentionally used for
+        # this first native port, but all OpenAL declarations are annotated as
+        # deprecated in current SDKs. Keep every other strict diagnostic on.
+        target_compile_options(aos_audio_openal PRIVATE -Wno-deprecated-declarations)
+    endif()
 
     add_library(
         aos_frontend_native

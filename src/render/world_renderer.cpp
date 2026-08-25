@@ -365,48 +365,48 @@ struct WorldRenderer::Impl final {
     std::string last_error;
     std::filesystem::path asset_root;
     bgfx::VertexLayout layout{};
-    bgfx::ProgramHandle program{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle camera_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle fog_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle light_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle sun_direction_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle sun_color_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle sky_ambient_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle ground_ambient_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle fog_horizon_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle fog_curve_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle model_opacity_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle point_light_position_radius_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle point_light_color_intensity_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_light0_direction_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_light1_direction_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_light0_color_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_light1_color_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_ambient_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_view_direction_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle retail_ao_sampler{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle retail_ao_texture{BGFX_INVALID_HANDLE};
+    bgfx::ProgramHandle program = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle camera_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle fog_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle light_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle sun_direction_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle sun_color_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle sky_ambient_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle ground_ambient_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle fog_horizon_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle fog_curve_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle model_opacity_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle point_light_position_radius_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle point_light_color_intensity_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_light0_direction_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_light1_direction_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_light0_color_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_light1_color_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_ambient_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_view_direction_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle retail_ao_sampler = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle retail_ao_texture = BGFX_INVALID_HANDLE;
     RetailTerrainLighting retail_lighting{};
     world::MapAtmosphere atmosphere;
 
-    bgfx::ProgramHandle shadow_program{BGFX_INVALID_HANDLE};
-    bgfx::FrameBufferHandle shadow_target{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle shadow_texture{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle shadow_matrix_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle shadow_params_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle shadow_sampler{BGFX_INVALID_HANDLE};
+    bgfx::ProgramHandle shadow_program = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle shadow_target = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle shadow_texture = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle shadow_matrix_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle shadow_params_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle shadow_sampler = BGFX_INVALID_HANDLE;
     std::uint16_t shadow_resolution{};
     bool shadow_supported{};
 
-    bgfx::TextureHandle skylight_texture{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle skylight_sampler{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle skylight_params_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle emissive_params_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle indirect_params_uniform{BGFX_INVALID_HANDLE};
+    bgfx::TextureHandle skylight_texture = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle skylight_sampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle skylight_params_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle emissive_params_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle indirect_params_uniform = BGFX_INVALID_HANDLE;
     /** Which way the hemispheric ambient calls "up", in the normal's own space. */
-    bgfx::UniformHandle up_axis_uniform{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle emissive_volume_sampler{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle emissive_volume_texture{BGFX_INVALID_HANDLE};
+    bgfx::UniformHandle up_axis_uniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle emissive_volume_sampler = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle emissive_volume_texture = BGFX_INVALID_HANDLE;
     bool emissive_volume_resident{};
     /** Per-map amplification after the coarse volume's distance falloff. */
     float emissive_cast_gain{2.2F};
@@ -475,9 +475,9 @@ struct WorldRenderer::Impl final {
     // default-constructed all-off profile would silently downgrade it to Legacy.
     QualityProfile profile{default_quality_profile()};
     bgfx::VertexLayout skydome_layout{};
-    bgfx::ProgramHandle skydome_program{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle skydome_sampler{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle skydome_uv_time{BGFX_INVALID_HANDLE};
+    bgfx::ProgramHandle skydome_program = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle skydome_sampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle skydome_uv_time = BGFX_INVALID_HANDLE;
     std::array<std::uint8_t, 3U> fog_bytes{default_fog_color};
     std::array<float, 4U> fog_color{default_fog_color[0U] / 255.0F,
                                     default_fog_color[1U] / 255.0F,
@@ -502,16 +502,16 @@ struct WorldRenderer::Impl final {
     std::array<ModelSlot, WorldRenderer::view_model_slot_count> view_model_slots{};
     std::array<ModelSlot, WorldRenderer::world_model_slot_count> world_model_slots{};
 
-    bgfx::ProgramHandle particle_program{BGFX_INVALID_HANDLE};
+    bgfx::ProgramHandle particle_program = BGFX_INVALID_HANDLE;
     bgfx::VertexLayout particle_layout{};
-    bgfx::VertexBufferHandle particle_quad{BGFX_INVALID_HANDLE};
-    bgfx::IndexBufferHandle particle_quad_indices{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle particle_sampler{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle particle_lut_sampler{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle particle_grid{BGFX_INVALID_HANDLE};
-    bgfx::UniformHandle particle_mode{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle particle_glow_lut_texture{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle particle_smoke_lut_texture{BGFX_INVALID_HANDLE};
+    bgfx::VertexBufferHandle particle_quad = BGFX_INVALID_HANDLE;
+    bgfx::IndexBufferHandle particle_quad_indices = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle particle_sampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle particle_lut_sampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle particle_grid = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle particle_mode = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle particle_glow_lut_texture = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle particle_smoke_lut_texture = BGFX_INVALID_HANDLE;
     std::array<bgfx::TextureHandle, world::particle_atlas_count> particle_textures{
         {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
     /** Neutral, Blue and Green retail LaserAttachment textures, in enum order. */
@@ -519,9 +519,9 @@ struct WorldRenderer::Impl final {
         {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
     std::array<bgfx::TextureHandle, 3U> laser_spot_textures{
         {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
-    bgfx::TextureHandle spot_shadow_texture{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle zone_texture{BGFX_INVALID_HANDLE};
-    bgfx::TextureHandle solid_zone_texture{BGFX_INVALID_HANDLE};
+    bgfx::TextureHandle spot_shadow_texture = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle zone_texture = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle solid_zone_texture = BGFX_INVALID_HANDLE;
 
     void release_particles() noexcept {
         for (auto& texture : particle_textures) {
