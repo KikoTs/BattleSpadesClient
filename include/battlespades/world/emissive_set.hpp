@@ -27,6 +27,15 @@ namespace battlespades::world {
  * An allowlist cannot misfire on a map it does not name.
  */
 struct EmissiveSwatch final {
+    constexpr EmissiveSwatch(
+        std::array<std::uint8_t, 3U> source_rgb,
+        std::uint8_t match_tolerance,
+        std::uint8_t self_illumination,
+        std::optional<std::array<std::uint8_t, 3U>> surface = std::nullopt,
+        std::optional<std::array<std::uint8_t, 3U>> light = std::nullopt) noexcept
+        : rgb(source_rgb), tolerance(match_tolerance),
+          intensity(self_illumination), surface_rgb(surface), light_rgb(light) {}
+
     std::array<std::uint8_t, 3U> rgb{};
     /**
      * Per-channel match tolerance.

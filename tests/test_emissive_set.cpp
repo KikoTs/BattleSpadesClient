@@ -76,7 +76,8 @@ void ordinary_bright_blocks_never_glow() {
         const char* what;
         std::array<std::uint8_t, 3U> colour;
     };
-    constexpr std::array<Case, 6U> cases{{
+    constexpr std::array<Case, 7U> cases{{
+        {"an unlit black surface", {0x00U, 0x00U, 0x00U}},
         {"a white wall", {0xE1U, 0xE1U, 0xE1U}},
         {"a bright red flag", {0xE1U, 0x20U, 0x12U}},
         {"Egypt's ocean", {0x12U, 0x84U, 0xC5U}},

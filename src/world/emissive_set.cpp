@@ -521,7 +521,7 @@ namespace {
  * markers found in maps with no neon at all and sit barely over a degree
  * outside the neon hue windows. There is a cliff there; do not widen these.
  */
-constexpr std::array<EmissiveSwatch, 19U> tokyo_swatches{{
+constexpr std::array<EmissiveSwatch, 18U> tokyo_swatches{{
     // Tube glass: brightest. 3315 voxels.
     {{0xF7U, 0xFFU, 0xDFU}, 4U, 255U},
     {{0xF6U, 0xFFU, 0xDAU}, 4U, 255U},
