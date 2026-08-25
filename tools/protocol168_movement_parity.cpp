@@ -146,8 +146,14 @@ supported_build_cell(const TutorialWorldSession& session) noexcept {
                 map.surface_z(static_cast<std::uint32_t>(x),
                               static_cast<std::uint32_t>(y)));
             const auto z = surface - 1;
-            if (z <= 0 || z >= 238 || map.solid(x, y, z) ||
-                !map.solid(x, y, z + 1)) {
+            if (z <= 0 || z >= 238) {
+                continue;
+            }
+            const auto cell_x = static_cast<std::uint32_t>(x);
+            const auto cell_y = static_cast<std::uint32_t>(y);
+            const auto cell_z = static_cast<std::uint32_t>(z);
+            if (map.solid(cell_x, cell_y, cell_z) ||
+                !map.solid(cell_x, cell_y, cell_z + 1U)) {
                 continue;
             }
             return std::array<std::int16_t, 3U>{
@@ -342,7 +348,6 @@ int main(int argc, char** argv) {
     std::uint8_t initial_state_flags = local->state_flags;
     std::uint8_t initial_pickup_id = local->pickup_id;
     std::int32_t initial_ack_loop{-1};
-    std::int32_t initial_world_loop{-1};
     bool received_initial_owner_row{};
     std::array<std::size_t, 256U> packet_counts{};
     std::size_t matched_acknowledgements{};
@@ -418,7 +423,6 @@ int main(int argc, char** argv) {
                 initial_state_flags = row.state_flags;
                 initial_pickup_id = row.pickup_id;
                 initial_ack_loop = row.acknowledged_client_loop;
-                initial_world_loop = update.loop_count;
                 received_initial_owner_row = true;
             }
         }
