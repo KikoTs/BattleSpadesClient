@@ -37,8 +37,6 @@ constexpr double melee_world_range{4.0};
 // comfortably covers the two-block climb gate.
 constexpr int climb_block_grant{50};
 constexpr std::uint8_t retail_block_tool_id{5U};
-/** FLAREBLOCK: an ordinary voxel that also registers a static point light. */
-constexpr std::uint8_t retail_flare_block_tool_id{22U};
 constexpr std::uint8_t retail_spade_tool_id{2U};
 constexpr std::uint8_t retail_pistol_tool_id{17U};
 
