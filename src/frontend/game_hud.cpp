@@ -59,13 +59,7 @@ constexpr double palette_ugc_padding{30.0};
 // in our top-origin draw list. Ammo remains lower-right. The ammo portrait
 // deliberately reuses Tool.ammo_image (normally Tool.image), scaled to the
 // normal strip size.
-constexpr double ammo_frame_width{115.0};
 constexpr double ammo_frame_height{40.0};
-constexpr double score_frame_width{200.0};
-constexpr double score_frame_height{40.0};
-constexpr double hud_right_inset{8.0};
-constexpr double hud_bottom_inset{8.0};
-constexpr double ammo_portrait_size{330.0 * 0.40};
 // draw_ammo_hud defaults image_scale to 0.1. TOOL_IMAGES are authored 330px
 // textures loaded at scale 1.0, so the lower-right weapon and block portraits
 // occupy a 33px square before the authored transparent margins.
@@ -245,10 +239,6 @@ constexpr ui::ColorRgba8 menu_font_color{244U, 236U, 187U, 255U};
 // (W*0.5 - 119.5, H - 47) in window pixels. The fill scales horizontally by
 // hp/100 about the retail 35px anchor (glScalef, not clip) tinted with the
 // team color; the Tutorial player is Blue team 1 and pins 100.
-constexpr double health_bar_width{239.0};
-constexpr double health_bar_height{34.0};
-constexpr ui::ColorRgba8 team1_color{44U, 117U, 179U, 255U};
-
 [[nodiscard]] ui::SpriteDrawCommand window_sprite(std::string_view asset, double left,
                                                   double top, double width, double height,
                                                   ui::ColorModulation modulation = {},
