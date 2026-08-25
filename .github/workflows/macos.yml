@@ -20,7 +20,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install build tools
-        run: brew install cmake ninja
+        # vcpkg's libsodium port uses autotools on macOS.
+        run: brew install cmake ninja autoconf automake libtool
 
       - name: Bootstrap pinned vcpkg
         shell: bash
