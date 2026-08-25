@@ -286,7 +286,7 @@ void append_server_scrollbar(ui::DrawList& list,
     const auto maximum = maximum_first_visible_row(browser, context);
     const auto first = std::min(context.first_visible_row, maximum);
     const auto append_scroll_button =
-        [&list, button_x, button_size](double y, std::string_view arrow, bool enabled) {
+        [&list](double y, std::string_view arrow, bool enabled) {
             const auto intensity = enabled ? std::uint16_t{1'000U} : std::uint16_t{700U};
             const DrawRect bounds{button_x, y, button_size, button_size};
             list.push(sprite("png/ui/common_elements/buttons/button_square.png",

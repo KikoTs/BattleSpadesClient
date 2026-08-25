@@ -2,11 +2,11 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
+#include <cerrno>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <string_view>
-#include <system_error>
 
 namespace battlespades::frontend {
 namespace {
@@ -143,9 +143,13 @@ const std::array definitions{
         return 0.0;
     }
     const auto& value = row.values[column - 2U];
-    double result{};
-    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result);
-    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+    if (value.empty()) {
+        return 0.0;
+    }
+    char* parsed_end{};
+    errno = 0;
+    const double result = std::strtod(value.c_str(), &parsed_end);
+    if (errno == ERANGE || parsed_end != value.c_str() + value.size() ||
         !std::isfinite(result)) {
         return 0.0;
     }
