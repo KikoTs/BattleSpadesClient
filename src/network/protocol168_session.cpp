@@ -459,8 +459,9 @@ decode_state_info(std::span<const std::byte> packet, std::string& error) {
         error = "invalid StateData prefab count";
         return std::nullopt;
     }
-    result.prefabs.reserve(*prefab_count);
-    for (std::size_t index{}; index < *prefab_count; ++index) {
+    const auto prefab_total = static_cast<std::size_t>(*prefab_count);
+    result.prefabs.reserve(prefab_total);
+    for (std::size_t index{}; index < prefab_total; ++index) {
         auto name = reader.string(255U);
         if (!name.has_value()) {
             error = "malformed StateData prefab name";
