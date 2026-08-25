@@ -212,7 +212,9 @@ std::optional<VxlColor> VxlMap::color(std::uint32_t x, std::uint32_t y,
     return VxlColor{static_cast<std::uint8_t>(value >> 16U),
                     static_cast<std::uint8_t>(value >> 8U),
                     static_cast<std::uint8_t>(value),
-                    alpha_byte == 0U ? 0U : static_cast<std::uint8_t>(alpha_byte * 2U - 1U)};
+                    alpha_byte == 0U
+                        ? static_cast<std::uint8_t>(0U)
+                        : static_cast<std::uint8_t>(alpha_byte * 2U - 1U)};
 }
 
 std::uint16_t VxlMap::surface_z(std::uint32_t x, std::uint32_t y) const noexcept {

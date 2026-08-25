@@ -23,6 +23,14 @@ jobs:
         # vcpkg's libsodium port uses autotools on macOS.
         run: brew install cmake ninja autoconf automake libtool
 
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: macos-14-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            macos-14-arm64-vcpkg-
+
       - name: Bootstrap pinned vcpkg
         shell: bash
         run: |
