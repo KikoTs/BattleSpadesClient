@@ -51,7 +51,8 @@ void initialization_is_scoped_to_the_asset_root_and_fails_closed() {
     expect(invalid.initialization_error().find("outside") != std::string_view::npos,
            "initialization failure must explain the containment violation");
 
-    const auto result = invalid.rasterize(TextRasterRequest{"QUIT"});
+    const auto result = invalid.rasterize(
+        TextRasterRequest{"QUIT", TextCase::preserve, std::nullopt, false});
     expect(!result && result.error_code == TextErrorCode::not_ready,
            "an unready rasterizer must not emit partial output");
     expect(!result.error.empty(), "failed rendering must retain useful initialization text");
@@ -267,8 +268,8 @@ void executable_assets_can_live_below_a_unicode_directory() {
     expect(rasterizer.ready(),
            std::string{"Unicode font path failed: "} +
                std::string{rasterizer.initialization_error()});
-    const auto output =
-        rasterizer.rasterize(TextRasterRequest{"PLAYER IDENTITY"});
+    const auto output = rasterizer.rasterize(
+        TextRasterRequest{"PLAYER IDENTITY", TextCase::preserve, std::nullopt, false});
     expect(output && output.output->metrics.glyph_count > 0U,
            "font loaded from a Unicode path must shape and rasterize");
 
