@@ -124,7 +124,7 @@ void append_stroked_text(ui::DrawList& list, std::string_view value,
             ui::TextFit::none,
             ui::ColorModulation{tint, 1'000U, 1'000U}};
     };
-    for (const auto [x_offset, y_offset] : offsets) {
+    for (const auto& [x_offset, y_offset] : offsets) {
         auto shadow_bounds = bounds;
         shadow_bounds.x += x_offset;
         shadow_bounds.y += y_offset;

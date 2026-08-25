@@ -296,7 +296,7 @@ constexpr std::array<std::uint8_t, 4U> retail_noise_corner{{0U, 1U, 3U, 2U}};
 
     float total{};
     std::uint32_t count{};
-    for (const auto [du, dv] :
+    for (const auto& [du, dv] :
          std::array<std::array<std::int32_t, 2U>, 4U>{{
              {{0, 0}}, {{uv[0U], 0}}, {{0, uv[1U]}}, {{uv[0U], uv[1U]}}}}) {
         if (const auto value = sample(du, dv); value.has_value()) {

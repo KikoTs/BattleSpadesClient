@@ -107,7 +107,7 @@ int main() {
         {std::uint8_t{51U}, std::uint8_t{90U}},
         {std::uint8_t{56U}, std::uint8_t{91U}},
         {std::uint8_t{59U}, std::uint8_t{92U}}};
-    for (const auto [tool, expected_id] : deployables) {
+    for (const auto& [tool, expected_id] : deployables) {
         expect(packet_id(encode_weapon_action(
                    action(WeaponActionKind::deployable_place, tool), context)) ==
                    expected_id,
