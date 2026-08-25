@@ -355,6 +355,12 @@ add_test(NAME aos_gameplay_debug_lab_tests COMMAND aos_gameplay_debug_lab_tests)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 set(AOS_SIBLING_SERVER_ROOT "${PROJECT_SOURCE_DIR}/../BattleSpades")
 set(AOS_RETAIL_SOURCE_ROOT "${PROJECT_SOURCE_DIR}/../aceofspades_source")
+if(Python3_Interpreter_FOUND)
+    add_test(
+        NAME aos_asset_catalog_policy_tests
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_assets_tool.py"
+    )
+endif()
 if(Python3_Interpreter_FOUND AND
    EXISTS "${AOS_SIBLING_SERVER_ROOT}/server/game_constants.py" AND
    EXISTS "${AOS_RETAIL_SOURCE_ROOT}/aoslib/weapons/list.py")

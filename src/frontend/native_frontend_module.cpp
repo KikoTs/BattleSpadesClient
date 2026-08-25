@@ -17739,16 +17739,28 @@ bool NativeFrontendModule::start() {
             12U,
             {},
         });
+        const auto optional_font = [this](std::string_view preferred) {
+            std::error_code code;
+            const auto candidate = impl_->config.asset_root /
+                                   std::filesystem::path{preferred};
+            return std::filesystem::is_regular_file(candidate, code) && !code
+                       ? std::filesystem::path{preferred}
+                       : std::filesystem::path{tuffy_font_asset};
+        };
+        // These CJK helper faces were added to some development copies of the
+        // retail tree, but are absent from a clean Steam installation.  They
+        // remain usable when the player has them; a missing optional face must
+        // never make a genuine owned installation fail to boot.
         impl_->mplus_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
-            std::filesystem::path{mplus_font_asset},
+            optional_font(mplus_font_asset),
             16U,
             {},
         });
         impl_->noto_japanese_font =
             std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
                 impl_->config.asset_root,
-                std::filesystem::path{noto_japanese_font_asset},
+                optional_font(noto_japanese_font_asset),
                 16U,
                 {},
         });

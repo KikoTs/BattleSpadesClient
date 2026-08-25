@@ -60,6 +60,11 @@ struct FolderDialogResult final {
     return std::filesystem::path{encoded};
 }
 
+[[nodiscard]] std::string path_to_utf8(const std::filesystem::path& value) {
+    const auto encoded = value.u8string();
+    return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+}
+
 [[nodiscard]] std::string usage() {
     return
         "BattleSpadesAssetInstaller\n"
@@ -128,7 +133,16 @@ void SDLCALL folder_dialog_callback(void* userdata,
 [[nodiscard]] std::optional<std::filesystem::path>
 choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
     FolderDialogResult result;
-    SDL_ShowOpenFolderDialog(folder_dialog_callback, &result, window, nullptr, false);
+    const auto suggested = battlespades::assets::default_asset_source_directory();
+    const auto suggested_utf8 = suggested.has_value()
+                                    ? path_to_utf8(*suggested)
+                                    : std::string{};
+    SDL_ShowOpenFolderDialog(folder_dialog_callback,
+                             &result,
+                             window,
+                             suggested_utf8.empty() ? nullptr
+                                                    : suggested_utf8.c_str(),
+                             false);
 
     while (!result.complete.load(std::memory_order_acquire)) {
         SDL_Event event{};

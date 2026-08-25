@@ -23,24 +23,27 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DESTINATION = PROJECT_ROOT / "assets" / "original"
 DEFAULT_MANIFEST = PROJECT_ROOT / "assets" / "catalog" / "original-assets.json"
 
-# Preserve these trees byte-for-byte.  Some legacy metadata intentionally uses
-# extensions such as .pyc, .txtc, .pdn, and .pnq; filtering by extension would
-# silently discard information needed while reconstructing the loaders.
-ASSET_DIRECTORIES = (
-    "ambients",
-    "fonts",
-    "kv6",
-    "maps",
-    "mesh",
-    "music",
-    "playlists",
-    "png",
-    "prefabs",
-    "skins",
-    "sounds",
-    "tga",
-    "ugc",
-)
+# The packaged importer verifies the files consumed by the native client, not
+# every implementation artifact that happened to sit below a retail content
+# directory.  In particular, some recovered installations contain Python 2
+# bytecode in ``playlists`` and editable Paint.NET/MagicaVoxel sources.  Stock
+# Steam installations need not contain those files, so they must never become
+# ownership requirements.
+ASSET_DIRECTORY_EXTENSIONS: dict[str, frozenset[str]] = {
+    "ambients": frozenset({".ogg"}),
+    "fonts": frozenset({".ttf"}),
+    "kv6": frozenset({".kv6", ".txt"}),
+    "maps": frozenset({".png", ".txtc", ".vxl"}),
+    "mesh": frozenset({".aos", ".txt"}),
+    "music": frozenset({".ogg"}),
+    "playlists": frozenset({".txt"}),
+    "png": frozenset({".png"}),
+    "prefabs": frozenset({".png"}),
+    "skins": frozenset({".png"}),
+    "sounds": frozenset({".ogg"}),
+    "tga": frozenset({".tga"}),
+    "ugc": frozenset({".kv6", ".png", ".txt", ".ugc", ".vxl"}),
+}
 ROOT_ASSETS = ("list.pnq",)
 
 
@@ -72,7 +75,7 @@ def discover_source_assets(source_root: Path) -> list[SourceAsset]:
         raise FileNotFoundError(f"Asset source root does not exist: {source_root}")
 
     candidates: list[tuple[Path, Path]] = []
-    for directory_name in ASSET_DIRECTORIES:
+    for directory_name, allowed_extensions in ASSET_DIRECTORY_EXTENSIONS.items():
         source_directory = source_root / directory_name
         if not source_directory.is_dir():
             raise FileNotFoundError(
@@ -81,7 +84,7 @@ def discover_source_assets(source_root: Path) -> list[SourceAsset]:
         for source in sorted(source_directory.rglob("*")):
             if source.is_symlink():
                 raise ValueError(f"Asset source cannot contain symlinks: {source}")
-            if source.is_file():
+            if source.is_file() and source.suffix.casefold() in allowed_extensions:
                 candidates.append(
                     (source, Path(directory_name) / source.relative_to(source_directory))
                 )
@@ -94,7 +97,11 @@ def discover_source_assets(source_root: Path) -> list[SourceAsset]:
 
     casefolded: dict[str, Path] = {}
     assets: list[SourceAsset] = []
-    for source, relative in sorted(candidates, key=lambda pair: pair[1].as_posix()):
+    # Case-folded ordering makes the checked-in catalog byte-stable across
+    # Windows, macOS, and Linux generators.
+    for source, relative in sorted(
+        candidates, key=lambda pair: pair[1].as_posix().casefold()
+    ):
         relative_text = normalized_relative(relative)
         collision_key = relative_text.casefold()
         previous = casefolded.get(collision_key)
@@ -209,7 +216,7 @@ def build_manifest(assets: Iterable[SourceAsset]) -> dict[str, object]:
     ]
     return {
         "schema": 1,
-        "description": "Preserved Ace of Spades Battle Builder client assets",
+        "description": "Required Ace of Spades Battle Builder runtime assets",
         "file_count": len(entries),
         "total_bytes": sum(entry["size"] for entry in entries),
         "files": entries,

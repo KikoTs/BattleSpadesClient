@@ -109,6 +109,40 @@ void source_discovery_accepts_a_parent_of_src() {
     expect(error.empty(), "successful source discovery should clear its error");
 }
 
+void source_discovery_accepts_a_steam_library_root() {
+    TemporaryTree tree;
+    const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
+    expect(static_cast<bool>(loaded), "fixture manifest should load");
+    const auto steam = tree.root() / "Steam";
+    const auto source = steam / "steamapps" / "common" / "aceofspades";
+    write_text(source / "sounds" / "alpha.ogg", "alpha");
+    write_text(source / "game.ico", "beta");
+
+    std::string error;
+    const auto resolved = battlespades::assets::find_asset_source(
+        steam, *loaded.manifest, error);
+    expect(resolved.has_value(), "selecting a Steam root should discover aceofspades");
+    expect(*resolved == std::filesystem::weakly_canonical(source),
+           "Steam source discovery should return the retail content root");
+}
+
+void source_discovery_accepts_a_parent_of_a_macos_bundle() {
+    TemporaryTree tree;
+    const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
+    expect(static_cast<bool>(loaded), "fixture manifest should load");
+    const auto selected = tree.root() / "Applications";
+    const auto source = selected / "Ace of Spades.app" / "Contents" / "Resources";
+    write_text(source / "sounds" / "alpha.ogg", "alpha");
+    write_text(source / "game.ico", "beta");
+
+    std::string error;
+    const auto resolved = battlespades::assets::find_asset_source(
+        selected, *loaded.manifest, error);
+    expect(resolved.has_value(), "selecting a Finder parent should discover its app bundle");
+    expect(*resolved == std::filesystem::weakly_canonical(source),
+           "bundle discovery should return Contents/Resources");
+}
+
 void install_is_verified_and_atomic() {
     TemporaryTree tree;
     const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
@@ -156,6 +190,10 @@ int main() {
     const std::vector<TestCase> tests{
         {"manifest_rejects_unsafe_paths", manifest_rejects_unsafe_paths},
         {"source_discovery_accepts_a_parent_of_src", source_discovery_accepts_a_parent_of_src},
+        {"source_discovery_accepts_a_steam_library_root",
+         source_discovery_accepts_a_steam_library_root},
+        {"source_discovery_accepts_a_parent_of_a_macos_bundle",
+         source_discovery_accepts_a_parent_of_a_macos_bundle},
         {"install_is_verified_and_atomic", install_is_verified_and_atomic},
     };
 

@@ -88,6 +88,10 @@ load_asset_manifest(const std::filesystem::path& manifest_path) noexcept;
     const AssetManifest& manifest,
     std::string& error) noexcept;
 
+/** Returns the first conventional Steam installation folder present locally. */
+[[nodiscard]] std::optional<std::filesystem::path>
+default_asset_source_directory() noexcept;
+
 /**
  * Copies and hashes every required asset into a sibling staging directory,
  * then atomically swaps the verified tree into place. A failed or cancelled

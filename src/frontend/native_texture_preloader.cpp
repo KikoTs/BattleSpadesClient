@@ -33,6 +33,7 @@ using TokenKey = std::pair<std::uint64_t, std::uint32_t>;
 struct NativeTexturePreloader::Impl final {
     assets::PreloadService service{{4'096U, 4U, 64U}};
     std::filesystem::path root;
+    std::filesystem::path client_root;
     std::vector<render::TextureFilter> filters;
     std::map<TokenKey, render::DecodedUiTexture> decoded;
     mutable std::mutex decoded_mutex;
@@ -62,6 +63,12 @@ struct NativeTexturePreloader::Impl final {
                 result.error = "preload manifest contains an unsafe texture path";
             } else {
                 result = render::decode_png_rgba8(root / relative);
+                // Project-owned UI artwork is an overlay beside the imported
+                // retail tree. Asset repair atomically replaces `original`, so
+                // custom files must never be hidden inside that directory.
+                if (!result && !client_root.empty()) {
+                    result = render::decode_png_rgba8(client_root / relative);
+                }
             }
             if (result) {
                 {
@@ -125,6 +132,7 @@ bool NativeTexturePreloader::start(const std::filesystem::path& asset_root,
     }
 
     impl_->root = asset_root.lexically_normal();
+    impl_->client_root = (asset_root.parent_path() / "client").lexically_normal();
     impl_->stopping.store(false, std::memory_order_release);
     impl_->workers.reserve(worker_count);
     for (std::size_t index{}; index < worker_count; ++index) {
@@ -200,6 +208,7 @@ void NativeTexturePreloader::stop() noexcept {
     }
     impl_->filters.clear();
     impl_->root.clear();
+    impl_->client_root.clear();
 }
 
 } // namespace battlespades::frontend

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "description": "Required Ace of Spades Battle Builder runtime assets",
-  "file_count": 3695,
-  "total_bytes": 457093079,
+  "file_count": 3689,
+  "total_bytes": 446306497,
   "files": [
     {
       "path": "ambients/amb_alcatraz.ogg",
@@ -123,16 +123,6 @@
       "path": "fonts/Edo.ttf",
       "size": 111608,
       "sha256": "2274afca74d243b6485fad13b9a530fcc69c853bc96949db8f8a2f4c80e23c09"
-    },
-    {
-      "path": "fonts/Gen_Shin_Gothic_Monospace_Bold.ttf",
-      "size": 4952384,
-      "sha256": "6c2e1490357ab477c7e9663244689dd365b2aaaffb9ef88a01c6bdaa99cc9250"
-    },
-    {
-      "path": "fonts/NotoSansJP-SemiBold.ttf",
-      "size": 5726852,
-      "sha256": "4881d1b63b7300452b9385f69a70d00c3607ff0728c35a0c5ce99705b97c2b2a"
     },
     {
       "path": "fonts/Spades.ttf",
@@ -1633,11 +1623,6 @@
       "path": "kv6/snowblower.kv6",
       "size": 14070,
       "sha256": "a7470c2c972c5b402ba3da8af9c319d811b7379e36fc50edbf7cd54b799539e3"
-    },
-    {
-      "path": "kv6/snowblower.vox",
-      "size": 8000,
-      "sha256": "459ba6cd6e9f9675f55861f2daba645e6e0ca51959556ea80a3decd6e6b260b2"
     },
     {
       "path": "kv6/spade.kv6",
@@ -3470,11 +3455,6 @@
       "sha256": "69a7c982c99f55a485d5ade35a9a7c8b1c2c94dfb37563a36d466986c6ce451c"
     },
     {
-      "path": "playlists/__init__.pyc",
-      "size": 4363,
-      "sha256": "21163595c11602d89182207f0d4899bda6199862ef44c26999016cea20ac5784"
-    },
-    {
       "path": "playlists/AllStandard.txt",
       "size": 461,
       "sha256": "5188b76cbc8714b6f821ffa423fc0bcdb6b4c325a97f180c8a4df02a51cddd5d"
@@ -3498,11 +3478,6 @@
       "path": "playlists/diamond.txt",
       "size": 421,
       "sha256": "63b7d898c48cb2a4fc493d263dce43301f9cfa92834c71445d8a1ff7313dc9df"
-    },
-    {
-      "path": "playlists/mapinfo.pyc",
-      "size": 3444,
-      "sha256": "85b3173b1a82441b711dd152b18b83411312e70afce23cd09b246dbcf4237378"
     },
     {
       "path": "playlists/multihill.txt",
@@ -12703,11 +12678,6 @@
       "path": "sounds/zoom_out.ogg",
       "size": 12854,
       "sha256": "fd4cc0114b6b3471a87e35cca5666b8bf4f2c337f3a48e74191b40ba4704ba0b"
-    },
-    {
-      "path": "tga/ao_cube512.pdn",
-      "size": 91539,
-      "sha256": "d5e02f8e43f991d3b0a3a6ec6bc1511b8daf90af54cecdbe14e617eae67007f8"
     },
     {
       "path": "tga/ao_cube512.tga",

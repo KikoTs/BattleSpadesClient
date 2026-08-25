@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cctype>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -35,6 +36,8 @@ namespace {
 constexpr std::size_t maximum_manifest_files{100'000U};
 constexpr std::size_t hash_buffer_size{1U << 20U};
 constexpr int installer_cancel_exit_code{2};
+constexpr std::size_t maximum_discovery_children{64U};
+constexpr std::size_t maximum_reported_candidates{8U};
 
 [[nodiscard]] std::string path_text(const std::filesystem::path& path) {
     return path.string();
@@ -45,6 +48,55 @@ constexpr int installer_cancel_exit_code{2};
         return static_cast<char>(std::tolower(character));
     });
     return value;
+}
+
+[[nodiscard]] std::optional<std::filesystem::path>
+environment_path(const char* name) {
+#if defined(_WIN32)
+    char* value{};
+    std::size_t size{};
+    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr ||
+        *value == '\0') {
+        std::free(value);
+        return std::nullopt;
+    }
+    std::filesystem::path result{value};
+    std::free(value);
+    return result;
+#else
+    const auto* value = std::getenv(name);
+    if (value == nullptr || *value == '\0') {
+        return std::nullopt;
+    }
+    return std::filesystem::path{value};
+#endif
+}
+
+void append_standard_layouts(std::vector<std::filesystem::path>& candidates,
+                             const std::filesystem::path& root) {
+    candidates.push_back(root);
+    candidates.push_back(root / "src");
+    candidates.push_back(root / "client" / "src");
+    candidates.push_back(root / "Contents" / "Resources");
+    candidates.push_back(root / "Contents" / "Resources" / "src");
+    candidates.push_back(root / "Resources");
+}
+
+void append_steam_layouts(std::vector<std::filesystem::path>& candidates,
+                          const std::filesystem::path& root) {
+    constexpr std::array install_names{
+        std::string_view{"aceofspades"},
+        std::string_view{"Ace of Spades"},
+        std::string_view{"Ace of Spades Battle Builder"},
+    };
+    for (const auto name : install_names) {
+        const auto install = std::filesystem::path{name};
+        append_standard_layouts(candidates, root / install);
+        append_standard_layouts(
+            candidates, root / "steamapps" / "common" / install);
+        append_standard_layouts(
+            candidates, root / "Steam" / "steamapps" / "common" / install);
+    }
 }
 
 [[nodiscard]] bool valid_hash(std::string_view value) noexcept {
@@ -378,16 +430,42 @@ std::optional<std::filesystem::path> find_asset_source(
     const AssetManifest& manifest,
     std::string& error) noexcept {
     try {
-        const std::array candidates{
+        std::vector<std::filesystem::path> candidates;
+        candidates.reserve(64U);
+        append_standard_layouts(candidates, selected_directory);
+        append_steam_layouts(candidates, selected_directory);
+
+        // Finder commonly returns the folder containing an application bundle.
+        // Probe only one bounded directory level and never follow symlinks.
+        std::error_code iteration_code;
+        std::size_t visited{};
+        std::filesystem::directory_iterator iterator{
             selected_directory,
-            selected_directory / "src",
-            selected_directory / "client" / "src",
-            selected_directory / "Contents" / "Resources",
-            selected_directory / "Contents" / "Resources" / "src",
-            selected_directory / "Resources",
-        };
+            std::filesystem::directory_options::skip_permission_denied,
+            iteration_code};
+        const std::filesystem::directory_iterator end;
+        while (!iteration_code && iterator != end &&
+               visited < maximum_discovery_children) {
+            const auto entry = *iterator;
+            iterator.increment(iteration_code);
+            ++visited;
+            std::error_code status_code;
+            const auto status = entry.symlink_status(status_code);
+            if (status_code || std::filesystem::is_symlink(status) ||
+                !std::filesystem::is_directory(status)) {
+                continue;
+            }
+            const auto name = lowercase_ascii(entry.path().filename().string());
+            if (entry.path().extension() == ".app" || name == "aceofspades" ||
+                name == "ace of spades" ||
+                name == "ace of spades battle builder") {
+                append_standard_layouts(candidates, entry.path());
+            }
+        }
+
         std::set<std::filesystem::path> attempted;
         std::ostringstream details;
+        std::size_t failures{};
         for (const auto& candidate : candidates) {
             std::error_code code;
             const auto normalized = std::filesystem::weakly_canonical(candidate, code);
@@ -400,10 +478,17 @@ std::optional<std::filesystem::path> find_asset_source(
                 error.clear();
                 return normalized;
             }
-            if (!details.str().empty()) {
-                details << "; ";
+            if (failures < maximum_reported_candidates) {
+                if (failures != 0U) {
+                    details << "; ";
+                }
+                details << path_text(candidate) << ": " << check.error;
             }
-            details << path_text(candidate) << ": " << check.error;
+            ++failures;
+        }
+        if (failures > maximum_reported_candidates) {
+            details << "; " << (failures - maximum_reported_candidates)
+                    << " additional layouts checked";
         }
         error = "the selected folder is not a matching Ace of Spades Battle Builder "
                 "installation (" +
@@ -416,6 +501,47 @@ std::optional<std::filesystem::path> find_asset_source(
         error = "asset source discovery failed with an unknown exception";
         return std::nullopt;
     }
+}
+
+std::optional<std::filesystem::path>
+default_asset_source_directory() noexcept {
+    try {
+        std::vector<std::filesystem::path> candidates;
+#if defined(_WIN32)
+        for (const auto variable : {"ProgramFiles(x86)", "ProgramFiles"}) {
+            if (const auto root = environment_path(variable); root.has_value()) {
+                candidates.push_back(*root / "Steam" / "steamapps" / "common" /
+                                     "aceofspades");
+                candidates.push_back(*root / "Steam" / "steamapps" / "common" /
+                                     "Ace of Spades");
+            }
+        }
+#else
+        if (const auto home = environment_path("HOME"); home.has_value()) {
+#if defined(__APPLE__)
+            candidates.push_back(*home / "Library" / "Application Support" /
+                                 "Steam" / "steamapps" / "common" /
+                                 "Ace of Spades");
+            candidates.push_back(*home / "Library" / "Application Support" /
+                                 "Steam" / "steamapps" / "common" /
+                                 "aceofspades");
+#else
+            candidates.push_back(*home / ".local" / "share" / "Steam" /
+                                 "steamapps" / "common" / "Ace of Spades");
+            candidates.push_back(*home / ".steam" / "steam" / "steamapps" /
+                                 "common" / "Ace of Spades");
+#endif
+        }
+#endif
+        for (const auto& candidate : candidates) {
+            std::error_code code;
+            if (std::filesystem::is_directory(candidate, code) && !code) {
+                return candidate;
+            }
+        }
+    } catch (...) {
+    }
+    return std::nullopt;
 }
 
 AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source_root,

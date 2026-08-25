@@ -255,6 +255,13 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         RENAME "asset-manifest.json"
         COMPONENT Runtime
     )
+    # Project-owned additions remain separate because an asset repair replaces
+    # assets/original atomically with the verified retail content.
+    install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/client/"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}/assets/client"
+        COMPONENT Runtime
+    )
     install(
         DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/bin/"
         DESTINATION "${CMAKE_INSTALL_BINDIR}/shaders"

@@ -353,12 +353,16 @@ void every_required_main_menu_asset_exists() {
     throw std::runtime_error{"AOS_TEST_ASSET_ROOT is not defined"};
 #else
     const std::filesystem::path root{AOS_TEST_ASSET_ROOT};
+    const auto client_root = root.parent_path() / "client";
     const auto assets = battlespades::frontend::main_menu_assets::required();
     expect(assets.size() == 26U, "interactive English Select Menu needs 26 assets");
     for (const auto& asset : assets) {
         const auto path = root / std::filesystem::path{asset.path};
-        expect(std::filesystem::is_regular_file(path),
-               std::string{"missing required frontend asset: "} + path.string());
+        const auto client_path = client_root / std::filesystem::path{asset.path};
+        expect(std::filesystem::is_regular_file(path) ||
+                   std::filesystem::is_regular_file(client_path),
+               std::string{"missing required frontend asset: "} + path.string() +
+                   " (also checked " + client_path.string() + ")");
     }
 #endif
 }

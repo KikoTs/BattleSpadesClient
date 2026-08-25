@@ -371,6 +371,21 @@ missing or damaged retail content invokes the adjacent importer. A missing
 shader root still fails closed with every attempted path. Headless mode does
 not require graphical resources.
 
+The importer accepts either the game directory itself or a Steam library/root.
+On Windows it detects the conventional
+`C:\Program Files (x86)\Steam\steamapps\common\aceofspades` installation; on
+macOS it also accepts the enclosing folder or the original `.app` bundle. The
+catalog contains runtime content only: Python bytecode (`.pyc`), editable
+Paint.NET/MagicaVoxel sources, and locally added fonts are not ownership
+requirements. BattleSpades-owned additions are packaged under `assets/client`
+and survive an atomic repair of `assets/original`.
+
+Do not copy the retail `steam_api.dll` or `steamclient.dll` into this build.
+The preserved Windows DLL is 32-bit while BattleSpadesClient is 64-bit, and
+`steamclient.dll` is not a Steamworks redistributable. Steam identity and
+achievements require an owned Steamworks AppID plus its matching platform SDK
+runtime; AoSPlay browser identity must use its server-side Steam OpenID flow.
+
 The preserved content under `assets/original` is immutable at runtime.
 Generated caches belong under `assets/generated`; authored maps and UGC belong
 under `assets/user`.

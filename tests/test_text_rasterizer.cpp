@@ -171,14 +171,12 @@ void valid_utf8_is_preserved_for_player_names_and_invalid_utf8_is_rejected() {
 }
 
 void every_retail_ui_font_face_initializes_and_rasterizes() {
-    constexpr std::array<std::string_view, 7U> font_assets{
+    constexpr std::array<std::string_view, 5U> font_assets{
         "fonts/Spades.ttf",
         "fonts/Edo.ttf",
         "fonts/A750-Sans-Medium.ttf",
         "fonts/A750-Sans-Bold.ttf",
         "fonts/Tuffy_Bold.ttf",
-        "fonts/Gen_Shin_Gothic_Monospace_Bold.ttf",
-        "fonts/NotoSansJP-SemiBold.ttf",
     };
 
     for (const auto font_asset : font_assets) {
