@@ -596,7 +596,8 @@ bool UgcEditorLobbyModel::append_title_text(std::string_view ascii_text) {
         return false;
     }
     bool changed{};
-    for (const unsigned char character : ascii_text) {
+    for (const char raw_character : ascii_text) {
+        const auto character = static_cast<unsigned char>(raw_character);
         if (configuration_.map_title.size() >= maximum_title_code_units) {
             break;
         }
