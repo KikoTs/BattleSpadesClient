@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -189,7 +190,11 @@ void a_successful_leave_clears_the_cached_lobby() {
     join.action = "join";
     RevivalSocialResult initial;
     initial.request = join;
-    initial.snapshot.lobby = RevivalSocialLobby{"9", "7", "Lobby"};
+    RevivalSocialLobby lobby;
+    lobby.id = "9";
+    lobby.owner_id = "7";
+    lobby.name = "Lobby";
+    initial.snapshot.lobby = std::move(lobby);
 
     RevivalSocialClient seeded{[initial](const RevivalSocialRequest& request, std::stop_token) {
         auto result = initial;
