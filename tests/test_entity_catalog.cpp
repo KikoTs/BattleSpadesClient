@@ -353,7 +353,7 @@ void the_grave_resolves_its_exact_black_team_panel() {
     constexpr VxlColor team{17U, 91U, 204U, 255U};
     apply_entity_team_material(*grave, 11U, team);
     const auto has_team = std::ranges::any_of(
-        grave->voxels(), [](const Kv6Model::Voxel& voxel) { return voxel.color == team; });
+        grave->voxels(), [team](const Kv6Model::Voxel& voxel) { return voxel.color == team; });
     expect(has_team, "grave panel did not resolve to the CreateEntity RGB");
 }
 

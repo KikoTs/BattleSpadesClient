@@ -123,7 +123,7 @@ int main() {
                            "late class fixture must contain its exact-black team marker");
                     model->apply_default_color(test_team);
                     const bool resolved = std::ranges::any_of(
-                        model->voxels(), [](const Kv6Model::Voxel& voxel) {
+                        model->voxels(), [test_team](const Kv6Model::Voxel& voxel) {
                             return voxel.color == test_team;
                         });
                     expect(resolved,
@@ -140,7 +140,7 @@ int main() {
             expect(generic.has_value(), error.c_str());
             generic->apply_default_color(test_team);
             expect(std::ranges::any_of(
-                       generic->voxels(), [](const Kv6Model::Voxel& voxel) {
+                       generic->voxels(), [test_team](const Kv6Model::Voxel& voxel) {
                            return voxel.color == test_team;
                        }),
                    "retail global black material must tint the generic crouch mesh");
@@ -153,7 +153,7 @@ int main() {
                 expect(model.has_value(), error.c_str());
                 model->apply_default_color(test_team);
                 expect(std::ranges::any_of(
-                           model->voxels(), [](const Kv6Model::Voxel& voxel) {
+                           model->voxels(), [test_team](const Kv6Model::Voxel& voxel) {
                                return voxel.color == test_team;
                            }),
                        "every black-authored retail class must resolve team RGB");
