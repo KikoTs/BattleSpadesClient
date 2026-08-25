@@ -1,0 +1,261 @@
+#include "battlespades/frontend/player_profile_menu.hpp"
+#include "battlespades/frontend/player_profile_presentation.hpp"
+
+#include <algorithm>
+#include <exception>
+#include <functional>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+namespace {
+
+using namespace battlespades::frontend;
+
+void expect(bool condition, std::string_view message) {
+    if (!condition) {
+        throw std::runtime_error{std::string{message}};
+    }
+}
+
+PlayerProfileData fixture() {
+    PlayerProfileData result;
+    result.player_name = "KikoTs";
+    result.kill_death_ratio = 1.25;
+    constexpr std::string_view summary_labels[]{
+        "SOLDIER",
+        "SCOUT",
+        "ENGINEER2",
+        "MINER",
+        "GANGSTER",
+        "SPECIALIST",
+        "MEDIC",
+        "TDM_TITLE",
+        "CTF_TITLE",
+        "DIAMOND_MINE_TITLE",
+        "DEMOLITION_TITLE",
+        "MULTIHILL_TITLE",
+        "OCCUPATION_MODE_TITLE",
+        "TC_TITLE",
+        "VIP_MODE_TITLE",
+        "ZOMBIE_MODE_TITLE",
+        "CLASSIC",
+    };
+    for (const auto label : summary_labels) {
+        result.rows[0].push_back(
+            {PlayerProfileRowKind::summary_rank, "", std::string{label}, "Advanced", {}, {}});
+    }
+    result.rows[1] = {
+        {PlayerProfileRowKind::category, "GENERAL", "GENERAL", "", {}, {}},
+        {PlayerProfileRowKind::statistic,
+         "GENERAL",
+         "LEADERBOARD_KILLS",
+         "20",
+         0.5,
+         PlayerProfileLevelDetails{3U, 20.0, 10.0, 30.0}},
+        {PlayerProfileRowKind::category, "CTF_TITLE", "CTF_TITLE", "", {}, {}},
+        {PlayerProfileRowKind::statistic, "CTF_TITLE", "LEADERBOARD_CAPTURE", "4", {}, {}},
+    };
+    result.rows[2] = {
+        {PlayerProfileRowKind::category, "SOLDIER", "SOLDIER", "", {}, {}},
+        {PlayerProfileRowKind::statistic, "SOLDIER", "LEADERBOARD_KILLS", "9", {}, {}},
+    };
+    result.rows[3] = {
+        {PlayerProfileRowKind::category, "WEAPON_ACCURACY", "WEAPON_ACCURACY", "", {}, {}},
+    };
+    return result;
+}
+
+[[nodiscard]] const battlespades::ui::TextDrawCommand*
+find_text(const battlespades::ui::DrawList& draw, std::string_view key) {
+    const auto found = std::ranges::find_if(draw.commands(), [key](const auto& command) {
+        const auto* text = std::get_if<battlespades::ui::TextDrawCommand>(&command);
+        return text != nullptr && text->localization_key == key;
+    });
+    return found == draw.commands().end() ? nullptr
+                                          : std::get_if<battlespades::ui::TextDrawCommand>(&*found);
+}
+
+[[nodiscard]] const battlespades::ui::SpriteDrawCommand*
+find_sprite(const battlespades::ui::DrawList& draw, std::string_view asset) {
+    const auto found = std::ranges::find_if(draw.commands(), [asset](const auto& command) {
+        const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command);
+        return sprite != nullptr && sprite->asset_id == asset;
+    });
+    return found == draw.commands().end()
+               ? nullptr
+               : std::get_if<battlespades::ui::SpriteDrawCommand>(&*found);
+}
+
+[[nodiscard]] std::size_t count_text(const battlespades::ui::DrawList& draw, std::string_view key) {
+    return static_cast<std::size_t>(
+        std::ranges::count_if(draw.commands(), [key](const auto& command) {
+            const auto* text = std::get_if<battlespades::ui::TextDrawCommand>(&command);
+            return text != nullptr && text->localization_key == key;
+        }));
+}
+
+void recovered_tabs_and_filters_keep_retail_order() {
+    const auto tabs = player_profile_tab_definitions();
+    expect(tabs.size() == 4U && tabs[0].label_key == "PLAYER_STATS" &&
+               tabs[1].label_key == "GAME_MODES" && tabs[2].label_key == "CLASSES" &&
+               tabs[3].label_key == "EQUIPMENT",
+           "profile tabs must retain Player Stats, Game Modes, Classes, Equipment order");
+    expect(tabs[1].filter_keys.size() == 11U && tabs[1].filter_keys[6] == "CTF_TITLE" &&
+               tabs[1].filter_keys.back() == "HOURS_PLAYED",
+           "Game Modes must retain every recovered retail filter in order");
+    expect(tabs[2].filter_keys.size() == 9U && tabs[2].filter_keys[4] == "SPECIALIST" &&
+               tabs[2].filter_keys.back() == "ZOMBIE",
+           "Classes must retain all nine recovered class filters");
+    expect(tabs[3].filter_keys.size() == 2U && tabs[3].filter_keys[0] == "WEAPON_ACCURACY" &&
+               tabs[3].filter_keys[1] == "WEAPON_POINTS",
+           "Equipment must retain accuracy and points filters");
+}
+
+void request_filter_reset_dropdown_and_effects_match_retail() {
+    PlayerProfileMenuModel model{42U};
+    const auto request = model.take_request();
+    expect(request.has_value() && request->account_id == 42U, "profile request must carry account");
+    expect(!model.take_request().has_value(), "a profile request may only be taken once");
+    expect(model.complete(*request, fixture()), "valid profile must load");
+    expect(model.selected_tab() == PlayerProfileTab::player_stats &&
+               model.visible_row_capacity() == 12U,
+           "retail callback must return to the 12-row summary tab");
+
+    expect(model.select_tab(PlayerProfileTab::game_modes), "Game Modes tab should activate");
+    expect(model.visible_row_capacity() == 13U && model.filter_visible(),
+           "non-summary tabs use thirteen data rows and expose filters");
+    expect(model.toggle_filter() && model.filter_open(), "filter title button must open its list");
+    expect(model.select_filter(7U) && !model.filter_open(), "CTF selection must close the list");
+    expect(model.displayed_rows().size() == 2U &&
+               model.displayed_rows().front().category_key == "CTF_TITLE",
+           "selected filter must retain only its category rows");
+
+    expect(model.select_tab(PlayerProfileTab::classes), "Classes tab should activate");
+    expect(model.select_filter(1U), "a class filter should activate");
+    expect(model.select_tab(PlayerProfileTab::game_modes) && model.selected_filter() == 0U,
+           "retail reconstructs each drop-down at All when a tab is entered");
+    expect(model.displayed_rows().size() == fixture().rows[1].size(),
+           "returning to Game Modes must restore the unfiltered list");
+
+    model.activate_achievements();
+    const auto effects = model.take_effects();
+    expect(effects.size() == 1U &&
+               effects.front().kind == PlayerProfileEffectKind::show_achievements_overlay,
+           "Achievements must request the platform overlay instead of inventing a profile page");
+    expect(model.take_effects().empty(), "profile effects must be consumed exactly once");
+
+    model.reload(99U);
+    expect(model.selected_tab() == PlayerProfileTab::player_stats && !model.filter_open(),
+           "opening/reloading the screen must restore its initial retail state");
+    expect(!model.complete(*request, fixture()), "old-account callback must be rejected");
+    const auto replacement = model.take_request();
+    expect(replacement.has_value() && replacement->generation != request->generation,
+           "reload must issue a new generation");
+    expect(model.fail(*replacement) && model.state() == PlayerProfileLoadState::not_found,
+           "endpoint failure must expose Profile Not Found state");
+}
+
+void presentation_uses_recovered_coordinates_fonts_and_rows() {
+    const auto layout = player_profile_classic_layout();
+    expect(layout.outer_frame == battlespades::ui::DrawRect{130.0, 28.0, 540.0, 543.0},
+           "small frame must use truncated 0.6 retail geometry");
+    expect(layout.content_frame == battlespades::ui::DrawRect{166.0, 146.0, 464.0, 308.0},
+           "profile content texture must use its recovered integer center anchor");
+    expect(layout.tab_strip == battlespades::ui::DrawRect{152.0, 100.0, 496.0, 33.0},
+           "tab hit strip must match playerProfileMenu.on_mouse_press");
+    expect(layout.cancel_button == battlespades::ui::DrawRect{152.0, 492.0, 240.0, 60.0} &&
+               layout.achievements_button == battlespades::ui::DrawRect{405.0, 492.0, 240.0, 60.0},
+           "TextButton.y=108 is the upper retail edge, placing controls at top-left y=492");
+
+    PlayerProfileMenuModel model{1U};
+    auto draw = PlayerProfilePresentation{}.build(model);
+    const auto* loading = find_text(draw, "CONNECTING_PLEASE_WAIT");
+    const auto* title = find_text(draw, "PLAYER_PROFILE");
+    expect(loading != nullptr && title != nullptr && title->requested_font_size_pixels == 46.0,
+           "loading state must draw retail copy and 46-pixel Spades title");
+    const auto* frame = find_sprite(draw, player_profile_presentation_assets::outer_frame);
+    expect(frame != nullptr && frame->destination == layout.outer_frame,
+           "small frame command must preserve recovered bounds");
+
+    const auto request = *model.take_request();
+    expect(model.complete(request, fixture()), "fixture must load");
+    draw = PlayerProfilePresentation{}.build(model);
+    const auto* player_name = find_text(draw, "KikoTs");
+    const auto* ratio = find_text(draw, "KILL_DEATH_RATIO: 1.250");
+    const auto* summary_header = find_text(draw, "CLASS / MODE");
+    const auto* first_rank = find_text(draw, "SOLDIER");
+    expect(player_name != nullptr && player_name->requested_font_size_pixels == 26.0 &&
+               player_name->destination == layout.player_name,
+           "player name must use the recovered ammo/Spades font and position");
+    expect(ratio != nullptr && ratio->requested_font_size_pixels == 11.0 &&
+               ratio->destination == layout.kill_death_ratio,
+           "summary K/D must be right aligned and formatted to three decimals");
+    expect(summary_header != nullptr && first_rank != nullptr &&
+               summary_header->destination.y == 185.0 && first_rank->destination.y == 208.0,
+           "summary must synthesize its sticky red header and preserve the three-pixel gap");
+    expect(find_sprite(draw, player_profile_presentation_assets::red_header_left) != nullptr,
+           "category bars must use the recovered bevel-cap texture instead of a flat rectangle");
+    expect(find_sprite(draw, player_profile_presentation_assets::arrow_up) != nullptr &&
+               find_sprite(draw, player_profile_presentation_assets::scrollbar_mid) != nullptr,
+           "retail list panel must retain its textured vertical scrollbar");
+}
+
+void dropdown_and_progress_states_are_explicit() {
+    PlayerProfileMenuModel model{5U};
+    const auto request = *model.take_request();
+    expect(model.complete(request, fixture()), "fixture must load");
+    expect(model.select_tab(PlayerProfileTab::game_modes), "Game Modes tab should activate");
+    expect(model.toggle_filter(), "drop-down should open");
+
+    const auto draw = PlayerProfilePresentation{}.build(
+        model,
+        PlayerProfilePresentationContext{{800, 600},
+                                         1'000U,
+                                         PlayerProfilePresentationContext::ControlState::hovered,
+                                         PlayerProfilePresentationContext::ControlState::pressed,
+                                         PlayerProfilePresentationContext::ControlState::hovered});
+    expect(count_text(draw, "ALL") == 2U,
+           "open filter must draw All in both its title and option list");
+    expect(find_text(draw, "HOURS_PLAYED") != nullptr,
+           "open Game Modes filter must expose its final retail option");
+    expect(find_sprite(draw, "png/ui/common_elements/buttons/button_large_press_left.png") !=
+               nullptr,
+           "pressed Achievements state must use the retail pressed button texture");
+    expect(find_sprite(draw, player_profile_presentation_assets::square_button_hover) != nullptr,
+           "hovered drop-down arrow must use the square-button hover texture");
+    expect(find_text(draw, "LEVEL 3") != nullptr && find_text(draw, "20 / 30") != nullptr,
+           "rank progress must show retail level and current/next values over the bar");
+}
+
+struct TestCase final {
+    std::string_view name;
+    std::function<void()> body;
+};
+} // namespace
+
+int main() {
+    const std::vector<TestCase> tests{
+        {"recovered_tabs_and_filters_keep_retail_order",
+         recovered_tabs_and_filters_keep_retail_order},
+        {"request_filter_reset_dropdown_and_effects_match_retail",
+         request_filter_reset_dropdown_and_effects_match_retail},
+        {"presentation_uses_recovered_coordinates_fonts_and_rows",
+         presentation_uses_recovered_coordinates_fonts_and_rows},
+        {"dropdown_and_progress_states_are_explicit", dropdown_and_progress_states_are_explicit},
+    };
+    std::size_t failures{};
+    for (const auto& test : tests) {
+        try {
+            test.body();
+            std::cout << "[PASS] " << test.name << '\n';
+        } catch (const std::exception& error) {
+            ++failures;
+            std::cerr << "[FAIL] " << test.name << ": " << error.what() << '\n';
+        }
+    }
+    return failures == 0U ? 0 : 1;
+}

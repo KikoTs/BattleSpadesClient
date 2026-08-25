@@ -1,0 +1,2 @@
+// Keep the executable icon byte-identical to the preserved retail resource.
+1 ICON "game.ico"

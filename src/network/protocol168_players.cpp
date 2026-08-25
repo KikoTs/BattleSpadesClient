@@ -1,0 +1,601 @@
+#include "battlespades/network/protocol168_players.hpp"
+
+#include "battlespades/world/class_catalog.hpp"
+#include "battlespades/world/weapon_catalog.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numbers>
+#include <type_traits>
+#include <utility>
+
+namespace battlespades::network {
+namespace {
+
+class Reader final {
+public:
+    explicit Reader(std::span<const std::byte> bytes) : bytes_{bytes} {}
+    [[nodiscard]] std::size_t remaining() const noexcept {
+        return bytes_.size() - offset_;
+    }
+    [[nodiscard]] bool done() const noexcept { return remaining() == 0U; }
+    [[nodiscard]] std::optional<std::uint8_t> u8() noexcept {
+        if (remaining() < 1U) return std::nullopt;
+        return std::to_integer<std::uint8_t>(bytes_[offset_++]);
+    }
+    template <typename Integer>
+    [[nodiscard]] std::optional<Integer> integer() noexcept {
+        static_assert(std::is_integral_v<Integer>);
+        if (remaining() < sizeof(Integer)) return std::nullopt;
+        using Unsigned = std::make_unsigned_t<Integer>;
+        Unsigned value{};
+        for (std::size_t index{}; index < sizeof(Integer); ++index) {
+            value |= static_cast<Unsigned>(
+                         std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
+                     << (index * 8U);
+        }
+        offset_ += sizeof(Integer);
+        return static_cast<Integer>(value);
+    }
+    [[nodiscard]] std::optional<std::string> string(std::size_t maximum) {
+        const auto begin = offset_;
+        while (offset_ < bytes_.size() && bytes_[offset_] != std::byte{0U}) {
+            if (offset_ - begin >= maximum) return std::nullopt;
+            ++offset_;
+        }
+        if (offset_ == bytes_.size()) return std::nullopt;
+        std::string result;
+        result.reserve(offset_ - begin);
+        for (auto index = begin; index < offset_; ++index) {
+            result.push_back(static_cast<char>(
+                std::to_integer<std::uint8_t>(bytes_[index])));
+        }
+        ++offset_;
+        return result;
+    }
+
+private:
+    std::span<const std::byte> bytes_;
+    std::size_t offset_{};
+};
+
+class Writer final {
+public:
+    void u8(std::uint8_t value) { bytes_.push_back(static_cast<std::byte>(value)); }
+    template <typename Integer>
+    void integer(Integer value) {
+        static_assert(std::is_integral_v<Integer>);
+        using Unsigned = std::make_unsigned_t<Integer>;
+        const auto raw = static_cast<Unsigned>(value);
+        for (std::size_t index{}; index < sizeof(Integer); ++index) {
+            u8(static_cast<std::uint8_t>(raw >> (index * 8U)));
+        }
+    }
+    void string(std::string_view value) {
+        for (const char character : value) {
+            u8(static_cast<std::uint8_t>(character));
+        }
+        u8(0U);
+    }
+    [[nodiscard]] std::vector<std::byte> take() && { return std::move(bytes_); }
+
+private:
+    std::vector<std::byte> bytes_;
+};
+
+template <typename Value>
+[[nodiscard]] bool required(std::optional<Value> value, Value& output) {
+    if (!value.has_value()) return false;
+    output = std::move(*value);
+    return true;
+}
+
+[[nodiscard]] float from_fixed(std::int16_t raw) noexcept {
+    const auto bits = static_cast<std::uint16_t>(raw);
+    const float magnitude = static_cast<float>(bits & 0x7FFFU) / 64.0F;
+    return (bits & 0x8000U) != 0U ? -magnitude : magnitude;
+}
+
+[[nodiscard]] std::int16_t to_fixed(float value) noexcept {
+    if (!std::isfinite(value)) return 0;
+    const auto magnitude = static_cast<std::uint16_t>(std::min(
+        std::lround(std::abs(value) * 64.0F), 0x7FFFL));
+    return static_cast<std::int16_t>(
+        magnitude | (value < 0.0F ? 0x8000U : 0U));
+}
+
+[[nodiscard]] bool finite_vector(const std::array<float, 3U>& value) noexcept {
+    return std::ranges::all_of(value, [](float element) {
+        return std::isfinite(element);
+    });
+}
+
+[[nodiscard]] bool valid_packet(const CreatePlayerPacket& packet,
+                                std::string& error) {
+    if (packet.player_id >= 128U) {
+        error = "CreatePlayer player id uses the palette/reserved high bit";
+        return false;
+    }
+    if (world::find_class_definition(packet.class_id) == nullptr) {
+        error = "CreatePlayer class id is outside the retail catalog";
+        return false;
+    }
+    if (packet.team > 3U) {
+        error = "CreatePlayer team is outside spectator/neutral/Blue/Green";
+        return false;
+    }
+    if (packet.name.empty() || packet.name.size() > 31U ||
+        !finite_vector(packet.position) || !finite_vector(packet.orientation)) {
+        error = "CreatePlayer has an invalid name or non-finite transform";
+        return false;
+    }
+    const double length_squared =
+        static_cast<double>(packet.orientation[0U]) * packet.orientation[0U] +
+        static_cast<double>(packet.orientation[1U]) * packet.orientation[1U] +
+        static_cast<double>(packet.orientation[2U]) * packet.orientation[2U];
+    if (length_squared < 0.25 || length_squared > 2.25) {
+        error = "CreatePlayer orientation is degenerate or non-unit";
+        return false;
+    }
+    if (packet.loadout.size() > 65U || packet.prefabs.size() > 16U) {
+        error = "CreatePlayer loadout or prefab collection exceeds its bound";
+        return false;
+    }
+    // CreatePlayer.loadout is an equipment list, not only the 0..64 weapon
+    // catalog. Retail appends jetpack/glider inventory ids (for example 68)
+    // to the same byte array. Preserve unknown equipment for class replication;
+    // selection/render code still gates concrete weapon ids independently.
+    if (std::ranges::any_of(packet.prefabs, [](const std::string& prefab) {
+            return prefab.size() > 127U;
+        })) {
+        // Empty prefab slots are legal in retail class selections and must be
+        // preserved as positional carousel entries.
+        error = "CreatePlayer contains an oversized prefab name";
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+CreatePlayerDecodeResult decode_create_player(std::span<const std::byte> payload) {
+    Reader reader{payload};
+    std::uint8_t id{};
+    CreatePlayerPacket packet;
+    std::uint8_t demo{};
+    std::uint8_t dead{};
+    std::array<std::int16_t, 6U> transform{};
+    if (!required(reader.u8(), id) || id != CreatePlayerPacket::id ||
+        !required(reader.u8(), packet.player_id) || !required(reader.u8(), demo) ||
+        !required(reader.u8(), packet.class_id) || !required(reader.u8(), packet.team) ||
+        !required(reader.u8(), dead) || !required(reader.u8(), packet.local_language)) {
+        return {std::nullopt, "malformed CreatePlayer(28) header"};
+    }
+    for (auto& value : transform) {
+        if (!required(reader.integer<std::int16_t>(), value)) {
+            return {std::nullopt, "malformed CreatePlayer(28) transform"};
+        }
+    }
+    for (std::size_t axis{}; axis < 3U; ++axis) {
+        packet.position[axis] = from_fixed(transform[axis]);
+        packet.orientation[axis] = from_fixed(transform[axis + 3U]);
+    }
+    if (!required(reader.string(31U), packet.name)) {
+        return {std::nullopt, "malformed CreatePlayer(28) name"};
+    }
+    std::uint8_t count{};
+    if (!required(reader.u8(), count) || count > 65U) {
+        return {std::nullopt, "malformed CreatePlayer(28) loadout count"};
+    }
+    packet.loadout.reserve(count);
+    for (std::uint16_t index{}; index < count; ++index) {
+        std::uint8_t tool{};
+        if (!required(reader.u8(), tool)) {
+            return {std::nullopt, "malformed CreatePlayer(28) loadout"};
+        }
+        packet.loadout.push_back(tool);
+    }
+    if (!required(reader.u8(), count) || count > 16U) {
+        return {std::nullopt, "malformed CreatePlayer(28) prefab count"};
+    }
+    packet.prefabs.reserve(count);
+    for (std::uint16_t index{}; index < count; ++index) {
+        std::string prefab;
+        if (!required(reader.string(127U), prefab)) {
+            return {std::nullopt, "malformed CreatePlayer(28) prefab"};
+        }
+        packet.prefabs.push_back(std::move(prefab));
+    }
+    if (!reader.done()) {
+        return {std::nullopt, "CreatePlayer(28) has trailing bytes"};
+    }
+    packet.demo_player = demo != 0U;
+    packet.dead = dead != 0U;
+    std::string error;
+    if (!valid_packet(packet, error)) return {std::nullopt, std::move(error)};
+    return {std::move(packet), {}};
+}
+
+std::vector<std::byte> encode_packet(const CreatePlayerPacket& packet) {
+    std::string error;
+    if (!valid_packet(packet, error)) return {};
+    Writer writer;
+    writer.u8(CreatePlayerPacket::id);
+    writer.u8(packet.player_id);
+    writer.u8(packet.demo_player ? 1U : 0U);
+    writer.u8(packet.class_id);
+    writer.u8(packet.team);
+    writer.u8(packet.dead ? 1U : 0U);
+    writer.u8(packet.local_language);
+    for (const float value : packet.position) writer.integer(to_fixed(value));
+    for (const float value : packet.orientation) writer.integer(to_fixed(value));
+    writer.string(packet.name);
+    writer.u8(static_cast<std::uint8_t>(packet.loadout.size()));
+    for (const auto tool : packet.loadout) writer.u8(tool);
+    writer.u8(static_cast<std::uint8_t>(packet.prefabs.size()));
+    for (const auto& prefab : packet.prefabs) writer.string(prefab);
+    return std::move(writer).take();
+}
+
+bool Protocol168Roster::apply(const CreatePlayerPacket& packet,
+                              std::string* error) {
+    std::string detail;
+    if (!valid_packet(packet, detail)) {
+        if (error != nullptr) *error = std::move(detail);
+        return false;
+    }
+    const auto id = packet.player_id;
+    std::vector<std::uint8_t> retained_ugc_tools;
+    bool retained_dominating_local_player{};
+    bool retained_dominated_by_local_player{};
+    // CreatePlayer has no UGC suffix. A respawn replaces the life generation
+    // but not the already-acknowledged selection; preserve it only for the
+    // same named player/team so an unexpected id reuse cannot inherit tools.
+    if (players_[id].has_value() && players_[id]->name == packet.name &&
+        players_[id]->team == packet.team) {
+        retained_ugc_tools = players_[id]->ugc_tools;
+        // Neither relationship bit is carried by CreatePlayer. The retail
+        // GameScene stores them on the persistent player object, so an
+        // ordinary respawn must not silently erase the scoreboard markers.
+        retained_dominating_local_player =
+            players_[id]->dominating_local_player;
+        retained_dominated_by_local_player =
+            players_[id]->dominated_by_local_player;
+    }
+    auto& generation = generations_[id];
+    ++generation;
+    if (generation == 0U) ++generation;
+    RemotePlayerReplica replica;
+    replica.player_id = id;
+    replica.generation = generation;
+    replica.class_id = packet.class_id;
+    replica.team = packet.team;
+    replica.dead = packet.dead;
+    replica.demo_player = packet.demo_player;
+    replica.local_language = packet.local_language;
+    replica.position = {packet.position[0U], packet.position[1U],
+                        packet.position[2U]};
+    replica.orientation = {packet.orientation[0U], packet.orientation[1U],
+                           packet.orientation[2U]};
+    replica.name = packet.name;
+    replica.loadout = packet.loadout;
+    replica.prefabs = packet.prefabs;
+    replica.ugc_tools = std::move(retained_ugc_tools);
+    replica.dominating_local_player = retained_dominating_local_player;
+    replica.dominated_by_local_player = retained_dominated_by_local_player;
+    if (!replica.loadout.empty()) replica.tool_id = replica.loadout.front();
+    players_[id] = std::move(replica);
+    if (error != nullptr) error->clear();
+    return true;
+}
+
+bool Protocol168Roster::apply(std::span<const std::byte> payload,
+                              std::string* error) {
+    const auto decoded = decode_create_player(payload);
+    if (!decoded) {
+        if (error != nullptr) *error = decoded.error;
+        return false;
+    }
+    return apply(*decoded.packet, error);
+}
+
+void Protocol168Roster::remove(std::uint8_t player_id) noexcept {
+    if (player_id < players_.size()) players_[player_id].reset();
+}
+
+bool Protocol168Roster::update_transform(std::uint8_t player_id,
+                                         world::Vec3 position,
+                                         world::Vec3 orientation) noexcept {
+    if (player_id >= players_.size() || !players_[player_id].has_value()) {
+        return false;
+    }
+    players_[player_id]->position = position;
+    players_[player_id]->orientation = orientation;
+    return true;
+}
+
+bool Protocol168Roster::update_world_state(
+    const WorldPlayerWeaponRow& row) noexcept {
+    if (row.player_id >= players_.size() || !players_[row.player_id].has_value()) {
+        return false;
+    }
+    auto& player = *players_[row.player_id];
+    player.position = {row.position[0U], row.position[1U], row.position[2U]};
+    player.orientation = {row.orientation[0U], row.orientation[1U],
+                          row.orientation[2U]};
+    player.velocity = {row.velocity[0U], row.velocity[1U], row.velocity[2U]};
+    player.health = row.health;
+    player.ping = row.ping;
+    player.dead = row.health <= 0;
+    player.acknowledged_client_loop = row.acknowledged_client_loop;
+    player.input_flags = row.input_flags;
+    player.action_flags = row.action_flags;
+    player.state_flags = row.state_flags;
+    player.tool_id = row.tool_id;
+    player.pickup_id = row.pickup_id;
+    player.jetpack_fuel = row.jetpack_fuel;
+    player.spawn_protection = row.spawn_protection;
+    player.weapon_deployment_yaw = row.weapon_deployment_yaw;
+    return true;
+}
+
+bool Protocol168Roster::update_health(std::uint8_t player_id,
+                                      std::int16_t health) noexcept {
+    if (player_id >= players_.size() || !players_[player_id].has_value()) {
+        return false;
+    }
+    auto& player = *players_[player_id];
+    player.health = health;
+    player.dead = health <= 0;
+    return true;
+}
+
+bool Protocol168Roster::update_jetpack_fuel(std::uint8_t player_id,
+                                            float fuel) noexcept {
+    if (player_id >= players_.size() || !players_[player_id].has_value() ||
+        !std::isfinite(fuel)) {
+        return false;
+    }
+    players_[player_id]->jetpack_fuel = fuel;
+    return true;
+}
+
+bool Protocol168Roster::update_mode_visibility(
+    std::uint16_t player_id,
+    std::optional<bool> high_minimap_visibility,
+    std::optional<bool> chase_cam) noexcept {
+    if (player_id >= players_.size() ||
+        !players_[player_id].has_value()) {
+        return false;
+    }
+    auto& player = *players_[player_id];
+    if (high_minimap_visibility.has_value()) {
+        player.high_minimap_visibility = *high_minimap_visibility;
+    }
+    if (chase_cam.has_value()) {
+        player.chase_cam = *chase_cam;
+    }
+    return true;
+}
+
+bool Protocol168Roster::update_pickup(std::uint8_t player_id,
+                                      std::uint8_t pickup_id) noexcept {
+    if (player_id >= players_.size() || !players_[player_id].has_value()) {
+        return false;
+    }
+    players_[player_id]->pickup_id = pickup_id;
+    return true;
+}
+
+bool Protocol168Roster::apply_kill_relationships(
+    std::uint8_t victim_id, std::uint8_t killer_id,
+    std::uint8_t local_player_id, bool domination, bool revenge,
+    bool team_change_kill) noexcept {
+    auto mutable_player = [this](std::uint8_t player_id)
+        -> RemotePlayerReplica* {
+        return player_id < players_.size() && players_[player_id].has_value()
+                   ? &*players_[player_id]
+                   : nullptr;
+    };
+
+    auto* victim = mutable_player(victim_id);
+    auto* killer = mutable_player(killer_id);
+    bool changed = false;
+
+    // Retail lines 3672-3673 use a separate forced/team-change branch: only
+    // the changing player's two local relationship markers are reset.
+    if (team_change_kill) {
+        if (killer != nullptr) {
+            killer->dominating_local_player = false;
+            killer->dominated_by_local_player = false;
+            changed = true;
+        }
+        return changed;
+    }
+
+    // Every ordinary death first clears stale relationships on the victim.
+    if (victim != nullptr) {
+        victim->dominating_local_player = false;
+        victim->dominated_by_local_player = false;
+        changed = true;
+    }
+
+    if (killer_id == local_player_id && victim != nullptr) {
+        if (revenge) victim->dominating_local_player = false;
+        if (domination) victim->dominated_by_local_player = true;
+    }
+    if (victim_id == local_player_id && killer != nullptr) {
+        if (revenge) killer->dominated_by_local_player = false;
+        if (domination) killer->dominating_local_player = true;
+    }
+    return changed;
+}
+
+bool Protocol168Roster::update_loadout(
+    std::uint8_t player_id, std::uint8_t class_id,
+    std::span<const std::uint8_t> loadout,
+    std::span<const std::string> prefabs,
+    std::span<const std::uint8_t> ugc_tools) noexcept {
+    if (player_id >= players_.size() || !players_[player_id].has_value()) {
+        return false;
+    }
+    auto& player = *players_[player_id];
+    player.class_id = class_id;
+    player.loadout.assign(loadout.begin(), loadout.end());
+    player.prefabs.assign(prefabs.begin(), prefabs.end());
+    player.ugc_tools.assign(ugc_tools.begin(), ugc_tools.end());
+    return true;
+}
+
+void Protocol168Roster::clear() noexcept {
+    for (auto& player : players_) player.reset();
+}
+
+const RemotePlayerReplica*
+Protocol168Roster::player(std::uint8_t player_id) const noexcept {
+    return player_id < players_.size() && players_[player_id].has_value()
+               ? &*players_[player_id]
+               : nullptr;
+}
+
+std::vector<RemotePlayerReplica> Protocol168Roster::players() const {
+    std::vector<RemotePlayerReplica> result;
+    for (const auto& player : players_) {
+        if (player.has_value()) result.push_back(*player);
+    }
+    return result;
+}
+
+void RemoteMotionInterpolator::reset(RemoteMotionSample sample) noexcept {
+    const auto orientation_length =
+        std::hypot(sample.orientation.x, sample.orientation.y,
+                   sample.orientation.z);
+    if (orientation_length > 1.0e-9) {
+        sample.orientation.x /= orientation_length;
+        sample.orientation.y /= orientation_length;
+        sample.orientation.z /= orientation_length;
+    } else {
+        sample.orientation = {1.0, 0.0, 0.0};
+    }
+    current_ = sample;
+    start_ = sample;
+    target_ = sample;
+    elapsed_ = 0.0;
+    duration_ = 1.0 / 30.0;
+    initialized_ = true;
+}
+
+void RemoteMotionInterpolator::push(RemoteMotionSample sample,
+                                    double snapshot_interval) noexcept {
+    const auto finite = [](const world::Vec3& value) {
+        return std::isfinite(value.x) && std::isfinite(value.y) &&
+               std::isfinite(value.z);
+    };
+    if (!finite(sample.position) || !finite(sample.orientation) ||
+        !finite(sample.velocity)) {
+        return;
+    }
+    if (!initialized_) {
+        reset(sample);
+        return;
+    }
+    const auto dx = sample.position.x - current_.position.x;
+    const auto dy = sample.position.y - current_.position.y;
+    const auto dz = sample.position.z - current_.position.z;
+    // Spawn/teleport/respawn changes are semantic discontinuities. Smoothing
+    // them would visibly drag a player through walls or across the map.
+    if (dx * dx + dy * dy + dz * dz > 64.0) {
+        reset(sample);
+        return;
+    }
+    start_ = current_;
+    target_ = sample;
+    elapsed_ = 0.0;
+    duration_ = std::clamp(snapshot_interval, 1.0 / 120.0, 0.1);
+}
+
+void RemoteMotionInterpolator::tick(double dt) noexcept {
+    if (!initialized_ || !std::isfinite(dt) || dt <= 0.0) return;
+    elapsed_ = std::min(duration_, elapsed_ + dt);
+    const auto alpha = duration_ > 0.0 ? elapsed_ / duration_ : 1.0;
+    const auto lerp = [alpha](double from, double to) {
+        return from + (to - from) * alpha;
+    };
+    current_.position = {
+        lerp(start_.position.x, target_.position.x),
+        lerp(start_.position.y, target_.position.y),
+        lerp(start_.position.z, target_.position.z)};
+    current_.velocity = {
+        lerp(start_.velocity.x, target_.velocity.x),
+        lerp(start_.velocity.y, target_.velocity.y),
+        lerp(start_.velocity.z, target_.velocity.z)};
+
+    // A look vector is an angle, not a Cartesian position. Component-wise
+    // interpolation crosses through zero when a peer turns across +/-180
+    // degrees, which makes normalization pick an arbitrary direction and the
+    // rendered character snap through a full half-turn. Interpolate yaw over
+    // its shortest wrapped arc and pitch independently, then reconstruct a
+    // unit vector. This is presentation-only; authority still lives in the
+    // decoded WorldUpdate row.
+    const auto normalized = [](world::Vec3 value,
+                               world::Vec3 fallback) noexcept {
+        const auto length = std::hypot(value.x, value.y, value.z);
+        if (length <= 1.0e-9) return fallback;
+        value.x /= length;
+        value.y /= length;
+        value.z /= length;
+        return value;
+    };
+    const auto from = normalized(start_.orientation, {1.0, 0.0, 0.0});
+    const auto to = normalized(target_.orientation, from);
+    const double from_yaw = std::atan2(from.y, from.x);
+    const double to_yaw = std::atan2(to.y, to.x);
+    const double yaw =
+        from_yaw + std::remainder(to_yaw - from_yaw, 2.0 * std::numbers::pi) *
+                       alpha;
+    const double pitch =
+        lerp(std::asin(std::clamp(from.z, -1.0, 1.0)),
+             std::asin(std::clamp(to.z, -1.0, 1.0)));
+    const double horizontal = std::cos(pitch);
+    current_.orientation = {horizontal * std::cos(yaw),
+                            horizontal * std::sin(yaw), std::sin(pitch)};
+}
+
+const RemoteMotionSample& RemoteMotionInterpolator::sample() const noexcept {
+    return current_;
+}
+
+std::vector<CreatePlayerPacket> tutorial_create_player_fixtures() {
+    return {
+        {100U, false, 1U, 2U, false, 0U, {134.5F, 73.5F, 230.0F},
+         {1.0F, 0.0F, 0.0F}, "Blue Soldier", {2U, 7U, 11U}, {}},
+        {101U, false, 3U, 3U, false, 0U, {134.5F, 76.5F, 230.0F},
+         {1.0F, 0.0F, 0.0F}, "Green Rocketeer", {2U, 9U, 12U}, {}},
+        {102U, false, 4U, 2U, false, 0U, {134.5F, 79.5F, 230.0F},
+         {1.0F, 0.0F, 0.0F}, "Blue Miner", {3U, 14U, 21U}, {}},
+    };
+}
+
+std::vector<world::PlayerCollisionBody>
+protocol168_collision_bodies(const Protocol168Roster& roster,
+                             std::uint8_t local_player_id,
+                             bool same_team_collision) {
+    std::vector<world::PlayerCollisionBody> result;
+    const auto* local = roster.player(local_player_id);
+    if (local == nullptr || local->dead) return result;
+    for (const auto& player : roster.players()) {
+        if (player.player_id == local_player_id || player.dead ||
+            (!same_team_collision && player.team == local->team)) {
+            continue;
+        }
+        const bool crouch = (player.input_flags & 0x20U) != 0U;
+        const bool wade = (player.state_flags & 0x08U) != 0U;
+        result.push_back({player.position,
+                          world::player_body_height(crouch, wade),
+                          player.player_id});
+    }
+    return result;
+}
+
+} // namespace battlespades::network

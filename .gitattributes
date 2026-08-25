@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.aos binary
+*.ico binary
+*.jpg binary
+*.kv6 binary
+*.ogg binary
+*.png binary
+*.tga binary
+*.vox binary
+*.vxl binary

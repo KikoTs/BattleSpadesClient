@@ -1,0 +1,54 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-release:
+    runs-on: macos-14
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Bootstrap pinned vcpkg
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Configure, build, and install
+        run: ./scripts/build.sh release --skip-tests
+
+      - name: Test the asset importer without retail content
+        run: >-
+          ctest --test-dir out/build/native-macos-release -C Release
+          -R aos_asset_install_tests --output-on-failure
+
+      - name: Verify installed client payload
+        shell: bash
+        run: |
+          test -x out/install/native-macos-release/bin/BattleSpadesClient
+          test -x out/install/native-macos-release/bin/BattleSpadesAssetInstaller
+          test -f out/install/native-macos-release/bin/asset-manifest.json
+          test ! -e out/install/native-macos-release/bin/assets/original
+          test -d out/install/native-macos-release/bin/shaders
+
+      - name: Upload unsigned macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BattleSpadesClient-macOS-unsigned
+          path: out/install/native-macos-release/
+          if-no-files-found: error

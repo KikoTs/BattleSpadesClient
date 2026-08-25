@@ -1,0 +1,19 @@
+Checks: >-
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(?!.*[\\/]out[\\/]).*$'
+CheckOptions:
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnorePowersOf2IntegerValues
+    value: '1'
+  - key: modernize-use-trailing-return-type.IgnoreLambdas
+    value: '1'
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case

@@ -1,0 +1,296 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "AOS_BUILD_TESTS": "ON",
+        "AOS_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "native-windows-base",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "AOS_BUILD_TESTS": "ON",
+        "AOS_ENABLE_NATIVE_BACKENDS": "ON",
+        "AOS_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "native-linux-base",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "AOS_BUILD_TESTS": "ON",
+        "AOS_ENABLE_NATIVE_BACKENDS": "ON",
+        "AOS_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed"
+      }
+    },
+    {
+      "name": "native-macos-base",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "AOS_BUILD_TESTS": "ON",
+        "AOS_ENABLE_NATIVE_BACKENDS": "ON",
+        "AOS_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "description": "Unoptimized build with full debug information and assertions",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "debug"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "description": "Optimized developer build with symbols and assertions",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "dev"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Optimized distribution build",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "release"
+      }
+    },
+    {
+      "name": "native-debug",
+      "displayName": "Native Debug",
+      "description": "Graphical Debug build using pinned vcpkg dependencies",
+      "inherits": "native-windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "debug"
+      }
+    },
+    {
+      "name": "native-dev",
+      "displayName": "Native Development",
+      "description": "Graphical optimized developer build with symbols",
+      "inherits": "native-windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "dev"
+      }
+    },
+    {
+      "name": "native-release",
+      "displayName": "Native Release",
+      "description": "Graphical optimized distribution build",
+      "inherits": "native-windows-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "release"
+      }
+    },
+    {
+      "name": "native-linux-dev",
+      "displayName": "Linux Native Development",
+      "description": "Graphical Linux build using SDL3, bgfx, Vulkan/OpenGL and OpenAL",
+      "inherits": "native-linux-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "dev"
+      }
+    },
+    {
+      "name": "native-linux-release",
+      "displayName": "Linux Native Release",
+      "description": "Graphical Linux distribution build",
+      "inherits": "native-linux-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "release"
+      }
+    },
+    {
+      "name": "native-macos-dev",
+      "displayName": "macOS Native Development",
+      "description": "Graphical macOS build using SDL3, bgfx Metal and OpenAL",
+      "inherits": "native-macos-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "dev"
+      }
+    },
+    {
+      "name": "native-macos-release",
+      "displayName": "macOS Native Release",
+      "description": "Graphical macOS distribution build",
+      "inherits": "native-macos-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release"
+    },
+    {
+      "name": "native-debug",
+      "configurePreset": "native-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "native-dev",
+      "configurePreset": "native-dev",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "native-release",
+      "configurePreset": "native-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "native-linux-dev",
+      "configurePreset": "native-linux-dev",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "native-linux-release",
+      "configurePreset": "native-linux-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "native-macos-dev",
+      "configurePreset": "native-macos-dev",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "native-macos-release",
+      "configurePreset": "native-macos-release",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-debug",
+      "configurePreset": "native-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-dev",
+      "configurePreset": "native-dev",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-release",
+      "configurePreset": "native-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-linux-dev",
+      "configurePreset": "native-linux-dev",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-linux-release",
+      "configurePreset": "native-linux-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-macos-dev",
+      "configurePreset": "native-macos-dev",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-macos-release",
+      "configurePreset": "native-macos-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

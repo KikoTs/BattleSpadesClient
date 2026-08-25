@@ -1,0 +1,52 @@
+# CMake and IDE output
+/out/
+/build/
+/dist/
+/tmp/
+/Testing/
+/_CPack_Packages/
+/*.zip
+/*.zip.sha256
+/.transactions/
+/.ida-mcp/
+/.claude/
+/.vs/
+/CMakeUserPresets.json
+/.cache/
+/compile_commands.json
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
+
+# Retail content is imported from the player's existing Ace of Spades install.
+# It must never enter normal Git history or release source archives.
+/assets/original/
+
+# Generated and writable runtime data
+/assets/generated/*
+!/assets/generated/.gitkeep
+/assets/user/*
+!/assets/user/.gitkeep
+/settings.toml
+/server_favorites.txt
+
+# Runtime diagnostics
+*.dmp
+*.log
+*.trace
+*.id0
+*.id1
+*.id2
+*.id3
+*.id4
+*.i64
+*.nam
+*.til
+
+# Platform/editor noise
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+*.VC.db

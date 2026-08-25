@@ -1,0 +1,134 @@
+#include "battlespades/world/weapon_models.hpp"
+
+#include "battlespades/world/kv6_model.hpp"
+#include "battlespades/world/weapon_catalog.hpp"
+
+#include <span>
+#include <string_view>
+#include <utility>
+
+namespace battlespades::world {
+namespace {
+
+[[nodiscard]] std::optional<ChunkMesh> load_part(
+    const std::filesystem::path& asset_root, const WeaponModelPartDefinition& part,
+    std::array<float, 3U> tint, std::optional<VxlColor> team_color,
+    std::uint8_t inverse_scale, std::string& error) {
+    std::string detail;
+    auto model = Kv6Model::load_file(asset_root / part.asset, &detail);
+    if (!model.has_value()) {
+        error = "failed to load " + std::string{part.asset} + ": " + detail;
+        return std::nullopt;
+    }
+    *model = model->inverse_scaled(inverse_scale);
+    if (team_color.has_value()) {
+        model->apply_default_color(*team_color);
+    }
+    auto mesh = model->mesh({}, tint);
+    if (mesh.vertices.empty() || mesh.indices.empty()) {
+        error = "weapon model produced an empty mesh: " + std::string{part.asset};
+        return std::nullopt;
+    }
+    // KV6.offset_pivots adds the load_model offset to the authored pivot.
+    // kv6.pyd then emits authored XYZ as render-space (X, -Z, Y), so the
+    // resulting geometry delta is (-offset.x, +offset.z, -offset.y).
+    const std::array<float, 3U> render_offset{
+        -part.authored_offset[0U], part.authored_offset[2U],
+        -part.authored_offset[1U]};
+    for (auto& vertex : mesh.vertices) {
+        vertex.x += render_offset[0U];
+        vertex.y += render_offset[1U];
+        vertex.z += render_offset[2U];
+    }
+    for (std::size_t axis{}; axis < render_offset.size(); ++axis) {
+        mesh.minimum[axis] += render_offset[axis];
+        mesh.maximum[axis] += render_offset[axis];
+    }
+    return mesh;
+}
+
+[[nodiscard]] bool load_parts(const std::filesystem::path& asset_root,
+                              std::span<const WeaponModelPartDefinition> parts,
+                              std::array<float, 3U> tint,
+                              std::optional<VxlColor> team_color,
+                              std::uint8_t inverse_scale,
+                              std::vector<ChunkMesh>& output,
+                              std::string& error,
+                              std::optional<std::size_t> tint_only_part = std::nullopt) {
+    output.reserve(parts.size());
+    for (std::size_t index{}; index < parts.size(); ++index) {
+        // ZombiePrefabTool is the only retail composite mixing character art
+        // with a colourable block. Character.draw changes the KV6 default
+        // colour for the block marker; it does not wash both Zombie hands in
+        // the palette colour. Keep tinting scoped to the middle BLOCK_MODEL.
+        const auto part_tint = tint_only_part.has_value() && index != *tint_only_part
+                                   ? std::array<float, 3U>{1.0F, 1.0F, 1.0F}
+                                   : tint;
+        auto mesh = load_part(asset_root, parts[index], part_tint, team_color,
+                              inverse_scale, error);
+        if (!mesh.has_value()) {
+            return false;
+        }
+        output.push_back(std::move(*mesh));
+    }
+    return true;
+}
+
+[[nodiscard]] bool load_optional(const std::filesystem::path& asset_root,
+                                 const WeaponModelPartDefinition& part,
+                                 std::array<float, 3U> tint,
+                                 std::optional<ChunkMesh>& output,
+                                 std::uint8_t inverse_scale,
+                                 std::string& error) {
+    if (part.asset.empty()) {
+        return true;
+    }
+    output = load_part(asset_root, part, tint, std::nullopt, inverse_scale, error);
+    return output.has_value();
+}
+
+} // namespace
+
+WeaponModelLoadResult load_weapon_models(
+    const std::filesystem::path& asset_root, std::uint8_t tool_id,
+    std::array<float, 3U> tint, std::optional<VxlColor> team_color,
+    std::uint8_t inverse_scale) {
+    const auto* definition = find_weapon_definition(tool_id);
+    if (definition == nullptr) {
+        return {std::nullopt, "tool id is outside the selectable catalog"};
+    }
+    WeaponModelSet result;
+    result.tool_id = tool_id;
+    std::string error;
+    const auto model_team_color = definition->retail.use.use_team_color
+                                      ? team_color
+                                      : std::nullopt;
+    constexpr std::uint8_t zombie_prefab_tool_id{28U};
+    const auto tint_only_part = tool_id == zombie_prefab_tool_id
+                                    ? std::optional<std::size_t>{1U}
+                                    : std::nullopt;
+    if (!load_parts(asset_root, definition->third_person_models, tint,
+                    model_team_color, inverse_scale,
+                    result.third_person_parts, error, tint_only_part) ||
+        !load_parts(asset_root, definition->first_person_models, tint,
+                    model_team_color, inverse_scale,
+                    result.first_person_parts, error, tint_only_part) ||
+        // models.py passes min_model_detail=2 for sight and pin so aiming
+        // geometry never loses alignment at low global model quality.
+        !load_optional(asset_root, {definition->sight_model_asset, {}}, tint,
+                       result.sight, 1U, error) ||
+        // The pin keeps its authored (0, 0, -0.5) load offset, so it goes
+        // through the same part path as any other model rather than the
+        // zero-offset shorthand the sight/casing/tracer can afford.
+        !load_optional(asset_root, definition->pin_model, tint, result.pin, 1U,
+                       error) ||
+        !load_optional(asset_root, {definition->casing_model_asset, {}}, tint,
+                       result.casing, inverse_scale, error) ||
+        !load_optional(asset_root, {definition->tracer_model_asset, {}}, tint,
+                       result.tracer, inverse_scale, error)) {
+        return {std::nullopt, std::move(error)};
+    }
+    return {std::move(result), {}};
+}
+
+} // namespace battlespades::world
