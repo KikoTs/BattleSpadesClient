@@ -24,7 +24,8 @@ jobs:
         run: brew install cmake ninja autoconf automake libtool
 
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
           key: macos-14-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
@@ -38,8 +39,24 @@ jobs:
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
 
-      - name: Configure, build, and install
-        run: ./scripts/build.sh release --skip-tests
+      - name: Configure and restore dependencies
+        run: cmake --fresh --preset native-macos-release
+
+      # Save compiled dependency archives before compiling our sources. A new
+      # AppleClang diagnostic must not force the next run to rebuild vcpkg.
+      - name: Save vcpkg binary cache
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: macos-14-arm64-vcpkg-${{ hashFiles('vcpkg.json') }}
+
+      - name: Build and install
+        run: |
+          cmake --build --preset native-macos-release --parallel
+          cmake --install out/build/native-macos-release \
+            --config Release \
+            --prefix out/install/native-macos-release
 
       - name: Test the asset importer without retail content
         run: >-

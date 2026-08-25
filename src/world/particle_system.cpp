@@ -17,10 +17,6 @@ namespace {
     return value ^ (value >> 16U);
 }
 
-[[nodiscard]] float random_unit(std::uint32_t seed) noexcept {
-    return static_cast<float>(mix(seed) & 0xFFFFU) / 65535.0F;
-}
-
 /** Deterministic copy of the MSVCRT rand() step used by the 32-bit client. */
 class RetailRand final {
 public:

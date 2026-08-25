@@ -1,2 +1,6 @@
 // Keep the executable icon byte-identical to the preserved retail resource.
 1 ICON "game.ico"
+
+// The importer stages verified assets beside the final directory. Deep unzip
+// locations can exceed MAX_PATH even when the activated asset tree does not.
+1 24 "battlespades_client.manifest"

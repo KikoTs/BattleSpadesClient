@@ -47,6 +47,36 @@ enum class TerrainImpactKind : std::uint8_t {
 
 /** A committed terrain hit, consumed by the client-only feedback simulation. */
 struct TerrainImpactEvent final {
+    constexpr TerrainImpactEvent() noexcept = default;
+
+    /**
+     * Builds a terrain event while making the presentation-only tail explicit.
+     *
+     * AppleClang diagnoses omitted aggregate members even when they have safe
+     * default member initializers. Keeping this small value constructor also
+     * prevents packet adapters from accidentally inheriting indeterminate
+     * projectile position or velocity state on a new platform.
+     */
+    constexpr TerrainImpactEvent(
+        TerrainImpactKind event_kind,
+        VoxelCell event_cell,
+        VxlColor event_color,
+        std::array<std::int32_t, 3U> event_normal,
+        bool event_destroyed,
+        float event_radius = 1.0F,
+        std::uint8_t event_source_tool = 0U,
+        std::optional<std::array<float, 3U>> event_position = std::nullopt,
+        std::array<float, 3U> event_source_velocity = {}) noexcept
+        : kind{event_kind},
+          cell{event_cell},
+          color{event_color},
+          normal{event_normal},
+          destroyed{event_destroyed},
+          radius{event_radius},
+          source_tool{event_source_tool},
+          position{event_position},
+          source_velocity{event_source_velocity} {}
+
     TerrainImpactKind kind{TerrainImpactKind::bullet};
     VoxelCell cell{};
     VxlColor color{};

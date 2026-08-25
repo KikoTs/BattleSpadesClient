@@ -311,12 +311,19 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpadesAssetInstaller
             PRIVATE
                 platform/windows/battlespades_client.rc
+                platform/windows/battlespades_client.manifest
                 platform/windows/game.ico
         )
         set_source_files_properties(
+            platform/windows/battlespades_client.manifest
             platform/windows/game.ico
             PROPERTIES HEADER_FILE_ONLY TRUE
         )
+        if(MSVC)
+            # The resource script embeds our DPI/long-path-aware manifest.
+            # Disable the linker's second generated RT_MANIFEST resource.
+            target_link_options(BattleSpadesAssetInstaller PRIVATE /MANIFEST:NO)
+        endif()
         if(MSVC AND AOS_WINDOWS_RELEASE_GUI)
             set_property(
                 TARGET BattleSpadesAssetInstaller
@@ -647,12 +654,18 @@ if(WIN32)
         BattleSpadesClient
         PRIVATE
             platform/windows/battlespades_client.rc
+            platform/windows/battlespades_client.manifest
             platform/windows/game.ico
     )
     set_source_files_properties(
+        platform/windows/battlespades_client.manifest
         platform/windows/game.ico
         PROPERTIES HEADER_FILE_ONLY TRUE
     )
+
+    if(MSVC)
+        target_link_options(BattleSpadesClient PRIVATE /MANIFEST:NO)
+    endif()
 
     if(MSVC AND AOS_ENABLE_NATIVE_BACKENDS AND AOS_WINDOWS_RELEASE_GUI)
         # Only the shipped native Release configuration is a GUI-subsystem
