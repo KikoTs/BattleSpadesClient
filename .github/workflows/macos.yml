@@ -80,10 +80,35 @@ jobs:
           test -f out/install/native-macos-release/bin/asset-manifest.json
           test ! -e out/install/native-macos-release/bin/assets/original
           test -d out/install/native-macos-release/bin/shaders
+          out/install/native-macos-release/bin/BattleSpadesClient --version
+          out/install/native-macos-release/bin/BattleSpadesClient --headless --ticks 1
+          out/install/native-macos-release/bin/BattleSpadesAssetInstaller --help
+
+      - name: Package launchable macOS application
+        shell: bash
+        run: |
+          app="out/package/BattleSpadesClient.app"
+          macos="$app/Contents/MacOS"
+          mkdir -p "$macos"
+          cp -R out/install/native-macos-release/bin/. "$macos/"
+          cp packaging/macos/Info.plist "$app/Contents/Info.plist"
+          chmod 755 "$macos/BattleSpadesClient" "$macos/BattleSpadesAssetInstaller"
+
+          # upload-artifact normalizes raw file modes. A tar archive retains
+          # the executable bits Finder needs after the user downloads it.
+          tar -C out/package -czf out/BattleSpadesClient-macOS-arm64.tar.gz \
+            BattleSpadesClient.app
+
+          mkdir -p out/package-smoke
+          tar -C out/package-smoke -xzf out/BattleSpadesClient-macOS-arm64.tar.gz
+          extracted="out/package-smoke/BattleSpadesClient.app/Contents/MacOS"
+          test -x "$extracted/BattleSpadesClient"
+          test -x "$extracted/BattleSpadesAssetInstaller"
+          "$extracted/BattleSpadesClient" --headless --ticks 1
 
       - name: Upload unsigned macOS build
         uses: actions/upload-artifact@v4
         with:
           name: BattleSpadesClient-macOS-unsigned
-          path: out/install/native-macos-release/
+          path: out/BattleSpadesClient-macOS-arm64.tar.gz
           if-no-files-found: error

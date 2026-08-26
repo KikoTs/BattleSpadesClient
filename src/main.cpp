@@ -11,10 +11,17 @@
 #endif
 
 #include <filesystem>
+#include <cstdio>
+#include <exception>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
+
+#if defined(__APPLE__) && defined(AOS_HAS_NATIVE_BACKENDS)
+#include <SDL3/SDL.h>
+#endif
 
 #if defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)
 #define WIN32_LEAN_AND_MEAN
@@ -255,6 +262,7 @@ int run_client(int argc, char* argv[]) {
         else if (frontend_observer != nullptr && !frontend_observer->last_error().empty()) {
             std::cerr << "BattleSpadesClient: frontend stopped: "
                       << frontend_observer->last_error() << '\n';
+            return 1;
         }
 #endif
         return exit_code_for(result);
@@ -338,6 +346,43 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 }
 #else
 int main(int argc, char* argv[]) {
+#if defined(__APPLE__) && defined(AOS_HAS_NATIVE_BACKENDS)
+    std::filesystem::path diagnostic_path{"BattleSpadesClient.log"};
+    if (argc == 1) {
+        std::string executable_error;
+        const auto executable_path =
+            battlespades::core::current_executable_path(executable_error);
+        if (executable_path.has_value()) {
+            diagnostic_path = executable_path->parent_path() / diagnostic_path;
+        }
+        if (FILE* const log = std::freopen(diagnostic_path.c_str(), "a", stderr);
+            log != nullptr) {
+            std::cerr << "\nBattleSpadesClient startup\n";
+        }
+    }
+
+    int result{1};
+    try {
+        result = run_client(argc, argv);
+    } catch (const std::exception& exception) {
+        std::cerr << "BattleSpadesClient: unhandled startup exception: "
+                  << exception.what() << '\n';
+    } catch (...) {
+        std::cerr << "BattleSpadesClient: unhandled unknown startup exception\n";
+    }
+
+    if (result != 0 && argc == 1) {
+        const std::string message =
+            "BattleSpadesClient could not start. Diagnostics were written to:\n" +
+            diagnostic_path.string();
+        static_cast<void>(SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                                   "BattleSpadesClient",
+                                                   message.c_str(),
+                                                   nullptr));
+    }
+    return result;
+#else
     return run_client(argc, argv);
+#endif
 }
 #endif
