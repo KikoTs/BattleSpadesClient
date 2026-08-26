@@ -4,6 +4,7 @@
 #include "battlespades/ui/design_canvas.hpp"
 
 #include <bgfx/bgfx.h>
+#include <bgfx/platform.h>
 #include <bimg/decode.h>
 #include <bx/allocator.h>
 #include <bx/math.h>
