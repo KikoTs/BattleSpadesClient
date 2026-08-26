@@ -307,11 +307,14 @@ int main(int argc, char** argv) {
 
     using namespace battlespades::network;
     LiveProtocol168Connection connection;
+    Protocol168SessionConfig session_config;
+    session_config.player_name = "NativeMovementParity";
+    session_config.team = requested_team;
+    session_config.class_id = requested_class;
     if (!connection.start(
             EnetProtocol168Config{argv[1], static_cast<std::uint16_t>(parsed_port),
                                   30'000U},
-            Protocol168SessionConfig{"NativeMovementParity", requested_team,
-                                     requested_class})) {
+            session_config)) {
         std::cerr << connection.status().error << '\n';
         return 1;
     }

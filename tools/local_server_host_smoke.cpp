@@ -36,8 +36,9 @@ int main(int argc, char** argv) {
             std::cout << "local host ready: " << server.name << " "
                       << server.game.identifier() << " mode=" << server.mode_code
                       << " map=" << server.map << '\n';
-            battlespades::network::Protocol168Session session{
-                battlespades::network::Protocol168SessionConfig{"LocalHostSmoke"}};
+            battlespades::network::Protocol168SessionConfig session_config;
+            session_config.player_name = "LocalHostSmoke";
+            battlespades::network::Protocol168Session session{session_config};
             const auto connected =
                 battlespades::network::run_enet_protocol168_session(
                     {"127.0.0.1", process.port(), 30'000U}, session);

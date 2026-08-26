@@ -32,9 +32,11 @@ int main(int argc, char** argv) {
 
     using namespace battlespades::network;
     LiveProtocol168Connection connection;
+    Protocol168SessionConfig primary_config;
+    primary_config.player_name = "NativeLiveSmoke";
     if (!connection.start(
             EnetProtocol168Config{argv[1], static_cast<std::uint16_t>(parsed_port), 30'000U},
-            Protocol168SessionConfig{"NativeLiveSmoke"})) {
+            primary_config)) {
         std::cerr << connection.status().error << '\n';
         return 1;
     }
@@ -58,10 +60,12 @@ int main(int argc, char** argv) {
     }
 
     LiveProtocol168Connection observer;
+    Protocol168SessionConfig observer_config;
+    observer_config.player_name = "NativeObserver";
     if (!observer.start(
             EnetProtocol168Config{argv[1], static_cast<std::uint16_t>(parsed_port),
                                   30'000U},
-            Protocol168SessionConfig{"NativeObserver"})) {
+            observer_config)) {
         std::cerr << observer.status().error << '\n';
         return 1;
     }

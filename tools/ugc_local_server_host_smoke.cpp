@@ -53,8 +53,9 @@ int main(int argc, char** argv) {
             {"127.0.0.1", process.port()}, std::chrono::milliseconds{350});
         if (result && !result.servers.empty()) {
             const auto& server = result.servers.front();
-            battlespades::network::Protocol168Session session{
-                battlespades::network::Protocol168SessionConfig{"UgcHostSmoke"}};
+            battlespades::network::Protocol168SessionConfig session_config;
+            session_config.player_name = "UgcHostSmoke";
+            battlespades::network::Protocol168Session session{session_config};
             const auto connected = battlespades::network::run_enet_protocol168_session(
                 {"127.0.0.1", process.port(), 30'000U}, session);
             const auto* info = session.initial_info();
