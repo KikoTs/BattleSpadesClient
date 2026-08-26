@@ -191,6 +191,7 @@ int run_client(int argc, char* argv[]) {
         }
 
         battlespades::frontend::NativeFrontendConfig frontend_config;
+        frontend_config.executable_directory = executable_path->parent_path();
         frontend_config.asset_root = resources.paths->assets.root;
         frontend_config.shader_root = resources.paths->shaders.root;
         frontend_config.player_name = "Player";

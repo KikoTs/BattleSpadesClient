@@ -236,14 +236,14 @@ ui::DrawList IdentityPresentation::build(
         const auto message = !model.error().empty() ? model.error() : model.status();
         if (!message.empty()) {
             list.push(text(std::string{message},
-                           DrawRect{255.0, 516.0, 290.0, 48.0},
+                           DrawRect{255.0, 542.0, 290.0, 36.0},
                            14.0,
                            model.error().empty() ? warm_text : error_text,
                            HorizontalTextAlignment::center,
                            2U));
         } else {
             list.push(text("SIGN IN, REGISTER, OR PLAY AS GUEST",
-                           DrawRect{255.0, 522.0, 290.0, 26.0},
+                           DrawRect{255.0, 548.0, 290.0, 24.0},
                            14.0,
                            warm_text));
         }

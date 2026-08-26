@@ -362,6 +362,16 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_local_host)
 
     add_library(
+        aos_native_steam
+        STATIC
+            platform/native_steam_client.cpp
+    )
+    add_library(BattleSpades::NativeSteam ALIAS aos_native_steam)
+    target_include_directories(aos_native_steam PUBLIC "${PROJECT_SOURCE_DIR}/include")
+    target_link_libraries(aos_native_steam PUBLIC BattleSpades::BuildOptions)
+    aos_enable_strict_warnings(aos_native_steam)
+
+    add_library(
         aos_network_enet
         STATIC
             network/protocol168_session.cpp
@@ -481,6 +491,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_local_server_host_smoke
         PRIVATE
             BattleSpades::LocalHost
+            BattleSpades::NativeSteam
             BattleSpades::NetworkEnet
     )
     aos_enable_strict_warnings(aos_local_server_host_smoke)
@@ -704,6 +715,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::AudioOpenAl
             BattleSpades::FrontendNative
             BattleSpades::AssetInstall
+            BattleSpades::NativeSteam
     )
     if(AOS_BUILD_PROFILE STREQUAL "release")
         set(_aos_developer_asset_root "")
@@ -736,9 +748,27 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             "${CMAKE_COMMAND}" -E copy_directory
             "${AOS_SHADER_OUTPUT_ROOT}"
             "$<TARGET_FILE_DIR:BattleSpadesClient>/shaders"
+        # Developer builds run directly from the target directory. Keep the
+        # project-owned UI overlay beside the imported retail tree just as the
+        # install/package rules do; otherwise mandatory additions such as the
+        # Friends button fail the bounded preload and close the client.
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_directory
+            "${PROJECT_SOURCE_DIR}/assets/client"
+            "$<TARGET_FILE_DIR:BattleSpadesClient>/assets/client"
         VERBATIM
     )
     if(WIN32)
+        set(
+            AOS_STEAM_BRIDGE_EXECUTABLE
+            "${PROJECT_SOURCE_DIR}/out/steam-bridge/BattleSpadesSteamBridge32.exe"
+            CACHE FILEPATH "Prebuilt x86 helper for the retail Steamworks runtime"
+        )
+        if(NOT EXISTS "${AOS_STEAM_BRIDGE_EXECUTABLE}")
+            message(FATAL_ERROR
+                "The x86 Steam bridge is missing. Run scripts/build-steam-bridge.ps1 first.")
+        endif()
+
         # TARGET_RUNTIME_DLLS is empty on non-DLL platforms. Keeping this
         # command Windows-only avoids issuing copy_if_different with no source
         # arguments on Linux and macOS native builds.
@@ -763,6 +793,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         add_custom_command(
             TARGET BattleSpadesClient
             POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${AOS_STEAM_BRIDGE_EXECUTABLE}"
+                "$<TARGET_FILE_DIR:BattleSpadesClient>/BattleSpadesSteamBridge32.exe"
             COMMAND
                 "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_FILE:BattleSpadesClient>"

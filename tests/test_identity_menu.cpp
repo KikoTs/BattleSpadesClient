@@ -42,18 +42,26 @@ void form_never_exposes_clear_password_to_rendering() {
     }
 }
 
-void pointer_routes_login_register_guest_and_recovery() {
+void pointer_routes_login_register_steam_guest_and_recovery() {
     IdentityMenuModel model;
-    model.pointer_press(Point{332 * 8, 429 * 8});
-    expect(model.pointer_release(Point{332 * 8, 429 * 8}) ==
+    model.pointer_press(Point{332 * 8, 420 * 8});
+    expect(model.pointer_release(Point{332 * 8, 420 * 8}) ==
                IdentityAction::login,
            "left primary button should submit login");
-    model.pointer_press(Point{468 * 8, 429 * 8});
-    expect(model.pointer_release(Point{468 * 8, 429 * 8}) ==
+    model.pointer_press(Point{468 * 8, 420 * 8});
+    expect(model.pointer_release(Point{468 * 8, 420 * 8}) ==
                IdentityAction::register_account,
            "right primary button should submit registration");
-    model.pointer_press(Point{400 * 8, 485 * 8});
-    expect(model.pointer_release(Point{400 * 8, 485 * 8}) ==
+    model.pointer_press(Point{400 * 8, 468 * 8});
+    expect(!model.pointer_release(Point{400 * 8, 468 * 8}).has_value(),
+           "Steam must remain hidden until the native runtime is ready");
+    model.set_steam_available(true);
+    model.pointer_press(Point{400 * 8, 468 * 8});
+    expect(model.pointer_release(Point{400 * 8, 468 * 8}) ==
+               IdentityAction::steam,
+           "Steam button should select the native Steam identity when available");
+    model.pointer_press(Point{400 * 8, 516 * 8});
+    expect(model.pointer_release(Point{400 * 8, 516 * 8}) ==
                IdentityAction::guest,
            "wide secondary button should submit signed guest");
 
@@ -124,7 +132,7 @@ void presentation_uses_original_menu_assets() {
 int main() {
     try {
         form_never_exposes_clear_password_to_rendering();
-        pointer_routes_login_register_guest_and_recovery();
+        pointer_routes_login_register_steam_guest_and_recovery();
         field_focus_limits_and_busy_state_fail_closed();
         presentation_uses_original_menu_assets();
         presentation_reserves_non_overlapping_text_bands();

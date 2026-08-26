@@ -10,6 +10,15 @@ $ErrorActionPreference = "Stop"
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $preset = $Profile.ToLowerInvariant()
 if ($Native) {
+    # The owned retail steam_api.dll is 32-bit. Build its architecture-matched
+    # hidden bridge before entering the x64 client compiler environment.
+    $bridgeConfiguration = if ($Profile -eq "Release") { "Release" } else { "RelWithDebInfo" }
+    & (Join-Path $PSScriptRoot "build-steam-bridge.ps1") `
+        -Configuration $bridgeConfiguration
+    if ($LASTEXITCODE -ne 0) {
+        throw "Steam bridge build failed for $Profile."
+    }
+
     # Activate one compiler environment before both vcpkg and CMake run. This
     # prevents libraries from being built by a newer Visual Studio than the
     # client executable when several installations coexist.

@@ -64,6 +64,14 @@ struct AssetInstallResult final {
     }
 };
 
+struct NativeSteamImportResult final {
+    bool imported{};
+    std::string error{};
+
+    /** A missing optional runtime is not an installation failure. */
+    [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
+};
+
 /** Loads and structurally validates the immutable retail-asset catalog. */
 [[nodiscard]] AssetManifestLoadResult
 load_asset_manifest(const std::filesystem::path& manifest_path) noexcept;
@@ -80,8 +88,10 @@ load_asset_manifest(const std::filesystem::path& manifest_path) noexcept;
 
 /**
  * Resolves a folder selected by the player to the actual retail content root.
- * Selecting either the content directory itself or a parent containing `src`
- * is supported. Candidates are accepted only when the complete manifest fits.
+ * Selecting either the Windows content directory itself or a parent containing
+ * it is supported. Legacy macOS `.app` resources are rejected because that old
+ * build does not share the recovered Windows asset contract. Candidates are
+ * accepted only when the complete manifest fits.
  */
 [[nodiscard]] std::optional<std::filesystem::path> find_asset_source(
     const std::filesystem::path& selected_directory,
@@ -102,6 +112,16 @@ default_asset_source_directory() noexcept;
     const std::filesystem::path& destination_root,
     const AssetManifest& manifest,
     AssetProgressCallback progress = {}) noexcept;
+
+/**
+ * Imports the user's owned x86 Steamworks runtime without redistributing it.
+ *
+ * Windows accepts only an ordinary 32-bit PE `steam_api.dll`; redirected files
+ * and `steamclient.dll` are never copied. Absence is a valid offline install.
+ */
+[[nodiscard]] NativeSteamImportResult import_native_steam_runtime(
+    const std::filesystem::path& selected_directory,
+    const std::filesystem::path& executable_directory) noexcept;
 
 enum class AssetInstallerExit : std::uint8_t {
     installed,

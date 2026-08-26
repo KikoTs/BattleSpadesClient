@@ -276,6 +276,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
 
     if(WIN32)
+        install(
+            PROGRAMS "${AOS_STEAM_BRIDGE_EXECUTABLE}"
+            DESTINATION "${CMAKE_INSTALL_BINDIR}"
+            COMPONENT Runtime
+        )
         # The executable's post-build step has already materialized the full
         # transitive DLL set here. Installing from that verified directory is
         # more reliable than re-evaluating TARGET_RUNTIME_DLLS during install;

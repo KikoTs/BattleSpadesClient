@@ -43,6 +43,8 @@ struct LiveProtocol168Connection::State final {
     std::unique_ptr<Protocol168WorldBootstrap> bootstrap;
     std::deque<std::vector<std::byte>> inbound;
     std::deque<std::vector<std::byte>> outbound;
+    /** Exact packet-105 payload; all later client packets use it as XOR key. */
+    std::vector<std::byte> steam_ticket;
 };
 
 LiveProtocol168Connection::LiveProtocol168Connection()
@@ -68,6 +70,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
         state_->bootstrap.reset();
         state_->inbound.clear();
         state_->outbound.clear();
+        state_->steam_ticket = session_config.steam_ticket;
     }
     state_->stop_requested.store(false);
     auto* state = state_.get();
@@ -137,7 +140,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                         }
                         const auto ticket = session.connected();
                         if (!send_datagram(peer, ticket)) {
-                            fail("cannot send offline Steam ticket");
+                            fail("cannot send Steam session ticket");
                         } else {
                             const std::lock_guard lock{state->mutex};
                             ++state->status.sent_datagrams;
@@ -238,8 +241,10 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                 }
 
                 std::deque<std::vector<std::byte>> outgoing;
+                std::vector<std::byte> ticket_key;
                 {
                     const std::lock_guard lock{state->mutex};
+                    ticket_key = state->steam_ticket;
                     const auto count = outbound_batch < state->outbound.size()
                                            ? outbound_batch
                                            : state->outbound.size();
@@ -251,7 +256,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                 }
                 for (const auto& packet : outgoing) {
                     const auto datagram =
-                        encode_protocol168_client_datagram(packet);
+                        encode_protocol168_client_datagram(packet, ticket_key);
                     if (!send_datagram(peer, datagram)) {
                         fail("cannot send live Protocol 168 packet");
                         break;

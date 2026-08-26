@@ -35,8 +35,11 @@ The native build is now a real graphical executable. It currently provides:
   Quick Play contains all 11 recovered playlists; Custom Match has bounded
   lobby discovery and typed join/host boundaries;
 - a native player-identity gate before the Select Menu with AoSPlay sign-in,
-  registration, recovery-code acknowledgement, signed guest identity and an
-  offline guest fallback. Session secrets use the launcher's version-one
+  registration, recovery-code acknowledgement, signed guest identity, an
+  offline guest fallback, and native Steam identity through the user's owned
+  retail `steam_api.dll`. The 64-bit client supervises a hidden 32-bit bridge,
+  uses the real Steam persona, and never logs or persists authentication tickets.
+  Session secrets use the launcher's version-one
   state format and Windows DPAPI protection; authenticated, ticket-capable
   servers receive a fresh one-use game ticket instead of the visible nickname.
   Logout is available below the player name at the same height as Quit and
@@ -169,6 +172,14 @@ persistent unranked offline identity otherwise. Servers must advertise
 `identity=ticket-v1` and provide their AoSPlay identifier before the client
 replaces the normal Protocol 168 player name with a one-use ticket; LAN,
 direct-connect and older servers retain the legacy nickname handshake.
+
+When the installer finds the original Windows `steam_api.dll`, the gate offers
+**Sign in through Steam** without opening a browser. The architecture-matched
+helper initializes retail AppID 224540, reads the Steam persona, pumps callbacks,
+and obtains the legacy auth-session ticket. Packet 105 carries ASCII-hex
+`SteamID || ticket`; those exact bytes key every following client packet, matching
+the recovered retail wrapper. Rich presence uses the same legacy SteamFriends
+interface. Password and guest AoSPlay identities remain separate fallbacks.
 
 See the [UI parity browser](docs/UI_PARITY_BROWSER.md) for the F12 inspector,
 catalog regeneration, and retail animation/cursor contracts.
@@ -371,20 +382,25 @@ missing or damaged retail content invokes the adjacent importer. A missing
 shader root still fails closed with every attempted path. Headless mode does
 not require graphical resources.
 
-The importer accepts either the game directory itself or a Steam library/root.
-On Windows it detects the conventional
-`C:\Program Files (x86)\Steam\steamapps\common\aceofspades` installation; on
-macOS it also accepts the enclosing folder or the original `.app` bundle. The
+The importer accepts either the Windows game directory itself or a Windows
+Steam library/root. On Windows it detects the conventional
+`C:\Program Files (x86)\Steam\steamapps\common\aceofspades` installation. On
+macOS, copy that Windows installation to the Mac and select the copied game
+folder, its parent, or a copied Windows-style Steam library. The obsolete macOS
+`.app` is intentionally rejected because its asset revision differs from the
+recovered Battle Builder contract. The
 catalog contains runtime content only: Python bytecode (`.pyc`), editable
 Paint.NET/MagicaVoxel sources, and locally added fonts are not ownership
 requirements. BattleSpades-owned additions are packaged under `assets/client`
 and survive an atomic repair of `assets/original`.
 
-Do not copy the retail `steam_api.dll` or `steamclient.dll` into this build.
-The preserved Windows DLL is 32-bit while BattleSpadesClient is 64-bit, and
-`steamclient.dll` is not a Steamworks redistributable. Steam identity and
-achievements require an owned Steamworks AppID plus its matching platform SDK
-runtime; AoSPlay browser identity must use its server-side Steam OpenID flow.
+The installer optionally imports the owned retail `steam_api.dll` into
+`steam/win32`; it is never stored in this repository or release archive. The DLL
+is validated as a regular 32-bit PE and loaded only by the hidden x86 helper,
+because a 64-bit process cannot load it directly. `steamclient.dll` is neither
+required nor copied—the installed Steam client owns that private runtime.
+Native Steam identity is intentionally Windows-only; macOS retains AoSPlay and
+guest identity paths and does not import a Steamworks dylib.
 
 The preserved content under `assets/original` is immutable at runtime.
 Generated caches belong under `assets/generated`; authored maps and UGC belong

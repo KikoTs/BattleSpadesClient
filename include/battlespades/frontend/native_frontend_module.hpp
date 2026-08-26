@@ -22,6 +22,8 @@ enum class MainMenuAction : std::uint8_t;
 
 /** Filesystem and user data needed by the first native frontend screen. */
 struct NativeFrontendConfig final {
+    /** Directory containing this executable and its optional Steam bridge. */
+    std::filesystem::path executable_directory{"."};
     std::filesystem::path asset_root{"assets/original"};
     std::filesystem::path shader_root{"assets/generated/shaders"};
     std::string player_name{"Player"};

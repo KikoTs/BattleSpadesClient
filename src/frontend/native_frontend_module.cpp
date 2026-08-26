@@ -72,6 +72,7 @@
 #include "battlespades/network/revival_identity.hpp"
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/platform/native_steam_client.hpp"
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
@@ -1507,6 +1508,8 @@ struct NativeFrontendModule::Impl final {
         logout,
     };
     std::shared_ptr<network::RevivalIdentityService> identity_service;
+    std::unique_ptr<platform::NativeSteamClient> native_steam;
+    std::uint32_t active_steam_ticket{};
     std::unique_ptr<network::RevivalSocialClient> social_client;
     struct SocialJoinOutcome final {
         std::uint64_t generation{};
@@ -2109,7 +2112,9 @@ struct NativeFrontendModule::Impl final {
           localization{config.localization_path},
           ui_layout_store{config.ui_layout_path},
           ui_layout_editor{ui_layout_store},
-          identity_service{std::make_shared<network::RevivalIdentityService>()} {
+          identity_service{std::make_shared<network::RevivalIdentityService>()},
+          native_steam{std::make_unique<platform::NativeSteamClient>(
+              platform::default_native_steam_config(config.executable_directory))} {
         initialize_social_client();
         resolved_player_account_id = config.player_account_id;
         terrain_effects.set_particle_sink(&particles);
@@ -2568,6 +2573,7 @@ struct NativeFrontendModule::Impl final {
 
     void begin_identity_bootstrap() {
         identity_menu.reset_form();
+        identity_menu.set_steam_available(native_steam != nullptr && native_steam->ready());
         authenticated_identity = false;
         enter_main_menu_pending = false;
         if (const auto cached = identity_service->cached_account(); cached.has_value()) {
@@ -2592,6 +2598,36 @@ struct NativeFrontendModule::Impl final {
         case IdentityAction::register_account:
             launch_identity_operation(IdentityOperation::register_account);
             break;
+        case IdentityAction::steam:
+            if (native_steam == nullptr || !native_steam->ready() ||
+                native_steam->identity() == nullptr) {
+                identity_menu.set_error(
+                    native_steam == nullptr || native_steam->last_error().empty()
+                        ? "Native Steam is unavailable. Import the retail game and start Steam."
+                        : std::string{native_steam->last_error()});
+                break;
+            }
+            {
+                const auto& steam = *native_steam->identity();
+                auto nickname = core::utf8_code_point_prefix(steam.persona_name, 15U);
+                while (nickname.size() > 31U) {
+                    const auto count = std::max<std::size_t>(1U, nickname.size() / 4U);
+                    nickname = core::utf8_code_point_prefix(nickname, count - 1U);
+                }
+                if (nickname.empty()) nickname = "SteamPlayer";
+                network::RevivalAccount account;
+                account.public_id = "steam:" + std::to_string(steam.steam_id);
+                account.legacy_id = std::to_string(steam.steam_id);
+                account.nickname = std::move(nickname);
+                account.account_type = "steam";
+                account.identity_type = "steam";
+                account.ranked_eligible = true;
+                account.offline = false;
+                apply_identity(account);
+                identity_menu.reset_form();
+                request_main_menu_after_identity();
+            }
+            break;
         case IdentityAction::guest:
             launch_identity_operation(IdentityOperation::guest);
             break;
@@ -2603,13 +2639,27 @@ struct NativeFrontendModule::Impl final {
     }
 
     void pump_identity_operation() {
-        if (identity_operation == IdentityOperation::none || !identity_worker.valid() ||
-            identity_worker.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) {
+        if (identity_operation == IdentityOperation::none ||
+            !identity_worker.valid() ||
+            identity_worker.wait_for(std::chrono::milliseconds{0}) !=
+                std::future_status::ready) {
             return;
         }
         const auto operation = identity_operation;
         identity_operation = IdentityOperation::none;
-        auto outcome = identity_worker.get();
+        network::RevivalAuthResult outcome;
+        try {
+            outcome = identity_worker.get();
+        } catch (const std::exception& exception) {
+            identity_menu.set_error(
+                std::string{"Authentication failed safely: "} + exception.what());
+            static_cast<void>(window.set_text_input_enabled(true));
+            return;
+        } catch (...) {
+            identity_menu.set_error("Authentication failed safely.");
+            static_cast<void>(window.set_text_input_enabled(true));
+            return;
+        }
         if (operation == IdentityOperation::logout) {
             authenticated_identity = false;
             social_client->shutdown(std::chrono::milliseconds{0});
@@ -5955,6 +6005,10 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] bool start_match_transport(const ServerConnectRequest& request,
                                              std::uint32_t timeout_ms,
                                              std::string wire_name) {
+        if (native_steam != nullptr && active_steam_ticket != 0U) {
+            static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
+            active_steam_ticket = 0U;
+        }
         active_join_wire_name = wire_name;
         match_connection = std::make_unique<network::LiveProtocol168Connection>();
         // Revoke local grants before any Protocol 168 packet can be queued.
@@ -5964,9 +6018,26 @@ struct NativeFrontendModule::Impl final {
         // Interactive retail flow is Map/State -> SelectTeam -> SelectClass ->
         // NewPlayerConnection. Sending packet 15 here silently joined Blue.
         session.auto_join = false;
-        return match_connection->start(
+        if (native_steam != nullptr && native_steam->ready()) {
+            if (auto ticket = native_steam->session_ticket(); ticket.has_value()) {
+                active_steam_ticket = ticket->handle;
+                session.steam_ticket = std::move(ticket->wire_bytes);
+            } else {
+                settings_warning = "Steam ticket unavailable; connecting in offline mode.";
+            }
+        }
+        const bool transport_started = match_connection->start(
             network::EnetProtocol168Config{request.host, request.port, timeout_ms},
             std::move(session));
+        if (!transport_started && native_steam != nullptr && active_steam_ticket != 0U) {
+            static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
+            active_steam_ticket = 0U;
+        }
+        if (transport_started && native_steam != nullptr && native_steam->ready()) {
+            static_cast<void>(native_steam->set_server_presence(
+                request.host + ":" + std::to_string(request.port)));
+        }
+        return transport_started;
     }
 
     [[nodiscard]] bool begin_match_identity(const ServerConnectRequest& request,
@@ -17613,6 +17684,12 @@ bool NativeFrontendModule::start() {
     }
 
     try {
+        if (impl_->native_steam != nullptr && !impl_->native_steam->start()) {
+            // Native Steam is optional for offline/AoSPlay accounts. Preserve
+            // its precise diagnostic for the identity screen without making
+            // the renderer fail to boot.
+            impl_->settings_warning = std::string{impl_->native_steam->last_error()};
+        }
         if (impl_->social_client == nullptr ||
             impl_->social_client->status(std::chrono::steady_clock::now()).closing) {
             impl_->initialize_social_client();
@@ -19464,6 +19541,14 @@ void NativeFrontendModule::stop() noexcept {
     }
     if (impl_->social_join_worker.joinable()) {
         impl_->social_join_worker.request_stop();
+    }
+    if (impl_->native_steam != nullptr) {
+        if (impl_->active_steam_ticket != 0U) {
+            static_cast<void>(
+                impl_->native_steam->cancel_ticket(impl_->active_steam_ticket));
+            impl_->active_steam_ticket = 0U;
+        }
+        impl_->native_steam->stop();
     }
     impl_->teardown_tutorial();
     if (impl_->owned_local_server != nullptr) {

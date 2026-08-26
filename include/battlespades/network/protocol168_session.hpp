@@ -40,6 +40,16 @@ struct Protocol168SessionConfig final {
      * until SelectTeam and SelectClass have both been confirmed.
      */
     bool auto_join{true};
+    /**
+     * Opaque bytes returned by the retail Steam runtime.
+     *
+     * The original wrapper places its ASCII-hex ``SteamID || auth ticket``
+     * value in packet 105 and then uses those exact bytes as the repeating XOR
+     * key for every later client packet. Empty retains the explicit offline
+     * compatibility path. Kept last so existing diagnostic aggregate fixtures
+     * retain their field ordering.
+     */
+    std::vector<std::byte> steam_ticket;
 };
 
 struct Protocol168InitialInfo final {
@@ -195,8 +205,9 @@ encode_protocol168_new_player_connection(
 
 /**
  * Strict Protocol 168 join state machine shared by the future match scene and
- * the live integration smoke. It uses an empty (offline/fake) Steam ticket and
- * forces full MapSync. Interactive sessions publish the map/state at the
+ * the live integration smoke. It uses the caller's real Steam ticket when one
+ * is available, otherwise the explicit offline path, and forces full MapSync.
+ * Interactive sessions publish the map/state at the
  * SelectTeam boundary; diagnostic sessions may continue through packet 15 and
  * first ClientData automatically.
  *

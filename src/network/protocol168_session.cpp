@@ -645,13 +645,14 @@ decode_full_map_records(std::span<const std::byte> records, std::string& error) 
     return std::move(*loaded.map);
 }
 
-[[nodiscard]] std::vector<std::byte> steam_ticket_packet() {
+[[nodiscard]] std::vector<std::byte>
+steam_ticket_packet(std::span<const std::byte> ticket) {
     Writer writer;
     writer.u8(105U);
-    // The revival server explicitly accepts a zero-length ticket as offline
-    // compatibility. A fabricated non-empty ticket would also become the XOR
-    // key and is therefore less truthful and less interoperable.
-    writer.integer<std::int32_t>(0);
+    writer.integer<std::int32_t>(static_cast<std::int32_t>(ticket.size()));
+    for (const auto value : ticket) {
+        writer.u8(std::to_integer<std::uint8_t>(value));
+    }
     return std::move(writer).take();
 }
 
@@ -806,7 +807,8 @@ std::vector<std::byte> encode_protocol168_new_player_connection(
 Protocol168Session::Protocol168Session(Protocol168SessionConfig config)
     : config_{std::move(config)} {
     if (config_.player_name.empty() || config_.player_name.size() > 31U ||
-        config_.team > 3U || config_.class_id > 17U) {
+        config_.team > 3U || config_.class_id > 17U ||
+        config_.steam_ticket.size() > 2048U) {
         phase_ = Protocol168SessionPhase::failed;
         last_error_ = "invalid Protocol 168 session configuration";
     }
@@ -815,7 +817,10 @@ Protocol168Session::Protocol168Session(Protocol168SessionConfig config)
 std::vector<std::byte> Protocol168Session::connected() {
     if (phase_ != Protocol168SessionPhase::disconnected) return {};
     phase_ = Protocol168SessionPhase::awaiting_initial_info;
-    return encode_protocol168_client_datagram(steam_ticket_packet());
+    // Packet 105 itself is plain. Its payload becomes the key only after the
+    // server has consumed it, matching retail's SteamSendSessionTicket order.
+    return encode_protocol168_client_datagram(
+        steam_ticket_packet(config_.steam_ticket));
 }
 
 Protocol168IngestResult Protocol168Session::ingest(
@@ -857,7 +862,7 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         initial_info_ = std::move(info);
         phase_ = Protocol168SessionPhase::awaiting_map_validation;
         result.outbound_datagrams.push_back(encode_protocol168_client_datagram(
-            validation_packet(config_.local_map_crc)));
+            validation_packet(config_.local_map_crc), config_.steam_ticket));
         phase_ = Protocol168SessionPhase::awaiting_map_start;
         result.accepted = true;
         return result;
@@ -1031,7 +1036,8 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         // both team and class are explicitly confirmed.
         if (config_.auto_join) {
             result.outbound_datagrams.push_back(
-                encode_protocol168_client_datagram(new_player_packet(config_)));
+                encode_protocol168_client_datagram(new_player_packet(config_),
+                                                   config_.steam_ticket));
         }
         result.accepted = true;
         return result;
@@ -1073,7 +1079,8 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
                                   ? std::uint8_t{2U}
                                   : decoded.packet->loadout.front();
             result.outbound_datagrams.push_back(encode_protocol168_client_datagram(
-                first_client_data(*local_player_id_, tool, client_loop_count_++)));
+                first_client_data(*local_player_id_, tool, client_loop_count_++),
+                config_.steam_ticket));
             phase_ = Protocol168SessionPhase::ready;
         }
         result.accepted = true;

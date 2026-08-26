@@ -43,27 +43,33 @@ constexpr std::int32_t scale{IdentityMenuModel::subpixels_per_pixel};
 IdentityMenuModel::IdentityMenuModel()
     : controls_{
           IdentityControl{
-              widget(1U, design_rect(269, 406, 126, 46)),
+              widget(1U, design_rect(269, 400, 126, 40)),
               IdentityAction::login,
               "SIGN IN",
           },
           IdentityControl{
-              widget(2U, design_rect(405, 406, 126, 46)),
+              widget(2U, design_rect(405, 400, 126, 40)),
               IdentityAction::register_account,
               "REGISTER",
           },
           IdentityControl{
-              widget(3U, design_rect(269, 462, 262, 46)),
+              widget(3U, design_rect(269, 448, 262, 40)),
+              IdentityAction::steam,
+              "SIGN IN THROUGH STEAM",
+          },
+          IdentityControl{
+              widget(4U, design_rect(269, 496, 262, 40)),
               IdentityAction::guest,
               "PLAY AS GUEST",
           },
           IdentityControl{
-              widget(4U, design_rect(319, 450, 162, 46)),
+              widget(5U, design_rect(319, 450, 162, 46)),
               IdentityAction::acknowledge_recovery,
               "CONTINUE",
           },
       } {
-    controls_[3].widget.state.visible = false;
+    controls_[2].widget.state.visible = false;
+    controls_[4].widget.state.visible = false;
 }
 
 std::span<const IdentityControl> IdentityMenuModel::controls() const noexcept {
@@ -117,6 +123,10 @@ std::string_view IdentityMenuModel::recovery_code() const noexcept {
 
 bool IdentityMenuModel::busy() const noexcept {
     return busy_;
+}
+
+bool IdentityMenuModel::steam_available() const noexcept {
+    return steam_available_;
 }
 
 WidgetVisualState IdentityMenuModel::visual_state(ui::WidgetId id) const noexcept {
@@ -227,6 +237,17 @@ void IdentityMenuModel::set_busy(bool busy, std::string status) {
     for (auto& control : controls_) control.widget.state.enabled = !busy;
 }
 
+void IdentityMenuModel::set_steam_available(bool available) noexcept {
+    steam_available_ = available;
+    if (phase_ == IdentityMenuPhase::form) {
+        controls_[2].widget.state.visible = available;
+    }
+    if (!available && (hovered_ == 2U || pressed_ == 2U)) {
+        hovered_.reset();
+        pressed_.reset();
+    }
+}
+
 void IdentityMenuModel::set_error(std::string error) {
     busy_ = false;
     status_.clear();
@@ -242,7 +263,7 @@ void IdentityMenuModel::show_recovery_code(std::string code) {
     recovery_code_ = std::move(code);
     phase_ = IdentityMenuPhase::recovery_code;
     for (std::size_t index = 0U; index < controls_.size(); ++index) {
-        controls_[index].widget.state.visible = index == 3U;
+        controls_[index].widget.state.visible = index == 4U;
         controls_[index].widget.state.enabled = true;
     }
     hovered_.reset();
@@ -257,7 +278,8 @@ void IdentityMenuModel::reset_form() noexcept {
     phase_ = IdentityMenuPhase::form;
     focused_field_ = IdentityField::username;
     for (std::size_t index = 0U; index < controls_.size(); ++index) {
-        controls_[index].widget.state.visible = index != 3U;
+        controls_[index].widget.state.visible =
+            index == 2U ? steam_available_ : index != 4U;
         controls_[index].widget.state.enabled = true;
     }
     busy_ = false;

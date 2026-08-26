@@ -197,6 +197,12 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
         error = result.error;
         return failure_exit_code;
     }
+    const auto steam = battlespades::assets::import_native_steam_runtime(
+        *source, executable_directory());
+    if (!steam) {
+        error = steam.error;
+        return failure_exit_code;
+    }
     error.clear();
     return success_exit_code;
 }
@@ -266,7 +272,9 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
         SDL_MESSAGEBOX_INFORMATION,
         "BattleSpades needs the original game assets",
         "BattleSpades does not redistribute Ace of Spades content.\n\n"
-        "Select your existing Ace of Spades: Battle Builder installation folder. "
+        "Select a Windows Ace of Spades: Battle Builder installation folder "
+        "or Windows Steam library. On macOS, copy that Windows installation "
+        "to the Mac first; the obsolete macOS .app is not compatible. "
         "The required files will be verified and copied beside this client.",
         window);
 

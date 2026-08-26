@@ -21,6 +21,7 @@ enum class IdentityField : std::uint8_t {
 enum class IdentityAction : std::uint8_t {
     login,
     register_account,
+    steam,
     guest,
     acknowledge_recovery,
 };
@@ -50,7 +51,7 @@ public:
         MainMenuModel::subpixels_per_pixel};
     static constexpr std::size_t maximum_username_bytes{24U};
     static constexpr std::size_t maximum_password_bytes{256U};
-    static constexpr std::size_t control_count{4U};
+    static constexpr std::size_t control_count{5U};
 
     IdentityMenuModel();
 
@@ -64,6 +65,7 @@ public:
     [[nodiscard]] std::string_view error() const noexcept;
     [[nodiscard]] std::string_view recovery_code() const noexcept;
     [[nodiscard]] bool busy() const noexcept;
+    [[nodiscard]] bool steam_available() const noexcept;
     [[nodiscard]] WidgetVisualState visual_state(ui::WidgetId id) const noexcept;
     [[nodiscard]] ui::Rect username_bounds() const noexcept;
     [[nodiscard]] ui::Rect password_bounds() const noexcept;
@@ -79,6 +81,8 @@ public:
     [[nodiscard]] bool erase_code_point() noexcept;
     void clear_password() noexcept;
     void set_busy(bool busy, std::string status = {});
+    /** Show Steam only after the owned native retail runtime is ready. */
+    void set_steam_available(bool available) noexcept;
     void set_error(std::string error);
     void show_recovery_code(std::string code);
     void reset_form() noexcept;
@@ -98,6 +102,7 @@ private:
     std::optional<std::size_t> hovered_;
     std::optional<std::size_t> pressed_;
     bool busy_{};
+    bool steam_available_{};
 };
 
 } // namespace battlespades::frontend

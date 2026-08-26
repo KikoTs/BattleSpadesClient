@@ -77,9 +77,26 @@ void append_standard_layouts(std::vector<std::filesystem::path>& candidates,
     candidates.push_back(root);
     candidates.push_back(root / "src");
     candidates.push_back(root / "client" / "src");
-    candidates.push_back(root / "Contents" / "Resources");
-    candidates.push_back(root / "Contents" / "Resources" / "src");
-    candidates.push_back(root / "Resources");
+}
+
+[[nodiscard]] bool contains_legacy_macos_bundle(
+    const std::filesystem::path& path) {
+    return std::ranges::any_of(path, [](const std::filesystem::path& component) {
+        return lowercase_ascii(component.extension().string()) == ".app";
+    });
+}
+
+[[nodiscard]] bool resembles_windows_install_name(std::string_view value) {
+    std::string compact;
+    compact.reserve(value.size());
+    for (const auto character : value) {
+        const auto byte = static_cast<unsigned char>(character);
+        if (std::isalnum(byte) != 0) {
+            compact.push_back(static_cast<char>(std::tolower(byte)));
+        }
+    }
+    return compact.find("aceofspades") != std::string::npos ||
+           compact.starts_with("aos");
 }
 
 void append_steam_layouts(std::vector<std::filesystem::path>& candidates,
@@ -430,13 +447,19 @@ std::optional<std::filesystem::path> find_asset_source(
     const AssetManifest& manifest,
     std::string& error) noexcept {
     try {
+        if (contains_legacy_macos_bundle(selected_directory)) {
+            error = "legacy macOS .app assets are intentionally unsupported; select a "
+                    "Windows Ace of Spades Battle Builder installation copied to this Mac";
+            return std::nullopt;
+        }
         std::vector<std::filesystem::path> candidates;
         candidates.reserve(64U);
         append_standard_layouts(candidates, selected_directory);
         append_steam_layouts(candidates, selected_directory);
 
-        // Finder commonly returns the folder containing an application bundle.
-        // Probe only one bounded directory level and never follow symlinks.
+        // A Windows installation is commonly copied to macOS under a custom
+        // folder such as AceOfSpades_no_steam_new. Probe only likely install
+        // names at one bounded level; never inspect legacy .app bundles.
         std::error_code iteration_code;
         std::size_t visited{};
         std::filesystem::directory_iterator iterator{
@@ -455,10 +478,8 @@ std::optional<std::filesystem::path> find_asset_source(
                 !std::filesystem::is_directory(status)) {
                 continue;
             }
-            const auto name = lowercase_ascii(entry.path().filename().string());
-            if (entry.path().extension() == ".app" || name == "aceofspades" ||
-                name == "ace of spades" ||
-                name == "ace of spades battle builder") {
+            if (!contains_legacy_macos_bundle(entry.path()) &&
+                resembles_windows_install_name(entry.path().filename().string())) {
                 append_standard_layouts(candidates, entry.path());
             }
         }
@@ -651,6 +672,93 @@ AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source
         }
         return {false, "asset installation failed with an unknown exception"};
     }
+}
+
+NativeSteamImportResult import_native_steam_runtime(
+    const std::filesystem::path& selected_directory,
+    const std::filesystem::path& executable_directory) noexcept {
+#if !defined(_WIN32)
+    static_cast<void>(selected_directory);
+    static_cast<void>(executable_directory);
+    return {};
+#else
+    try {
+        std::vector<std::filesystem::path> roots;
+        append_standard_layouts(roots, selected_directory);
+        roots.push_back(selected_directory.parent_path());
+        std::filesystem::path source;
+        std::error_code code;
+        for (const auto& root : roots) {
+            const auto candidate = root / "steam_api.dll";
+            const auto status = std::filesystem::symlink_status(candidate, code);
+            if (!code && std::filesystem::is_regular_file(status) &&
+                !std::filesystem::is_symlink(status)) {
+                source = std::filesystem::weakly_canonical(candidate, code);
+                if (!code) break;
+            }
+            code.clear();
+        }
+        if (source.empty()) return {};
+
+        const auto size = std::filesystem::file_size(source, code);
+        if (code || size < 256U || size > 16U * 1'024U * 1'024U) {
+            return {false, "the selected steam_api.dll has an invalid size"};
+        }
+        std::ifstream stream(source, std::ios::binary);
+        std::array<unsigned char, 64U> dos{};
+        stream.read(reinterpret_cast<char*>(dos.data()),
+                    static_cast<std::streamsize>(dos.size()));
+        if (!stream || dos[0U] != 'M' || dos[1U] != 'Z') {
+            return {false, "the selected steam_api.dll is not a PE image"};
+        }
+        const auto pe_offset = static_cast<std::uint32_t>(dos[0x3CU]) |
+                               (static_cast<std::uint32_t>(dos[0x3DU]) << 8U) |
+                               (static_cast<std::uint32_t>(dos[0x3EU]) << 16U) |
+                               (static_cast<std::uint32_t>(dos[0x3FU]) << 24U);
+        if (pe_offset > size - 6U) {
+            return {false, "the selected steam_api.dll has an invalid PE header"};
+        }
+        stream.seekg(static_cast<std::streamoff>(pe_offset));
+        std::array<unsigned char, 6U> pe{};
+        stream.read(reinterpret_cast<char*>(pe.data()),
+                    static_cast<std::streamsize>(pe.size()));
+        const auto machine = static_cast<std::uint16_t>(pe[4U]) |
+                             static_cast<std::uint16_t>(pe[5U] << 8U);
+        if (!stream || pe[0U] != 'P' || pe[1U] != 'E' || pe[2U] != 0U ||
+            pe[3U] != 0U || machine != 0x014CU) {
+            return {false, "steam_api.dll must be the original 32-bit retail runtime"};
+        }
+
+        const auto destination = executable_directory / "steam" / "win32";
+        std::filesystem::create_directories(destination, code);
+        if (code) return {false, "cannot create the Steam runtime directory: " + code.message()};
+        const auto staging = destination / "steam_api.dll.installing";
+        std::filesystem::copy_file(source, staging,
+                                   std::filesystem::copy_options::overwrite_existing, code);
+        if (code) return {false, "cannot copy steam_api.dll: " + code.message()};
+        std::filesystem::rename(staging, destination / "steam_api.dll", code);
+        if (code) {
+            std::filesystem::remove(destination / "steam_api.dll", code);
+            code.clear();
+            std::filesystem::rename(staging, destination / "steam_api.dll", code);
+        }
+        if (code) return {false, "cannot activate steam_api.dll: " + code.message()};
+
+        // The helper passes AppID explicitly, but preserving this tiny retail
+        // marker keeps Steam launches and developer diagnostics conventional.
+        const auto app_id_source = source.parent_path() / "steam_appid.txt";
+        if (std::filesystem::is_regular_file(app_id_source, code) && !code) {
+            std::filesystem::copy_file(app_id_source, destination / "steam_appid.txt",
+                                       std::filesystem::copy_options::overwrite_existing, code);
+            if (code) return {false, "cannot copy steam_appid.txt: " + code.message()};
+        }
+        return {true, {}};
+    } catch (const std::exception& exception) {
+        return {false, std::string{"Steam runtime import failed: "} + exception.what()};
+    } catch (...) {
+        return {false, "Steam runtime import failed"};
+    }
+#endif
 }
 
 AssetInstallerExit run_asset_installer(const std::filesystem::path& installer_executable,

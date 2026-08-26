@@ -53,6 +53,15 @@ void write_text(const std::filesystem::path& path, std::string_view contents) {
     }
 }
 
+void write_bytes(const std::filesystem::path& path,
+                 const std::vector<unsigned char>& contents) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    stream.write(reinterpret_cast<const char*>(contents.data()),
+                 static_cast<std::streamsize>(contents.size()));
+    if (!stream) throw std::runtime_error{"could not create binary fixture"};
+}
+
 [[nodiscard]] std::string read_text(const std::filesystem::path& path) {
     std::ifstream stream(path, std::ios::binary);
     return {std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
@@ -126,21 +135,39 @@ void source_discovery_accepts_a_steam_library_root() {
            "Steam source discovery should return the retail content root");
 }
 
-void source_discovery_accepts_a_parent_of_a_macos_bundle() {
+void source_discovery_accepts_a_copied_windows_install_parent() {
     TemporaryTree tree;
     const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
     expect(static_cast<bool>(loaded), "fixture manifest should load");
-    const auto selected = tree.root() / "Applications";
-    const auto source = selected / "Ace of Spades.app" / "Contents" / "Resources";
+    const auto selected = tree.root() / "Downloads";
+    const auto source = selected / "AceOfSpades_no_steam_new" / "src";
     write_text(source / "sounds" / "alpha.ogg", "alpha");
     write_text(source / "game.ico", "beta");
 
     std::string error;
     const auto resolved = battlespades::assets::find_asset_source(
         selected, *loaded.manifest, error);
-    expect(resolved.has_value(), "selecting a Finder parent should discover its app bundle");
+    expect(resolved.has_value(),
+           "selecting a Finder parent should discover a copied Windows installation");
     expect(*resolved == std::filesystem::weakly_canonical(source),
-           "bundle discovery should return Contents/Resources");
+           "copied Windows discovery should return its runtime src root");
+}
+
+void source_discovery_rejects_a_legacy_macos_bundle() {
+    TemporaryTree tree;
+    const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
+    expect(static_cast<bool>(loaded), "fixture manifest should load");
+    const auto source = tree.root() / "Ace of Spades.app" / "Contents" / "Resources";
+    write_text(source / "sounds" / "alpha.ogg", "alpha");
+    write_text(source / "game.ico", "beta");
+
+    std::string error;
+    const auto resolved = battlespades::assets::find_asset_source(
+        source, *loaded.manifest, error);
+    expect(!resolved.has_value(), "obsolete macOS bundle assets must fail closed");
+    expect(error.find("legacy macOS .app assets are intentionally unsupported") !=
+               std::string::npos,
+           "legacy bundle rejection should direct the player to Windows assets");
 }
 
 void install_is_verified_and_atomic() {
@@ -179,6 +206,35 @@ void install_is_verified_and_atomic() {
            "failed reinstall must preserve the previous verified tree");
 }
 
+void native_steam_runtime_import_is_optional_and_x86_only() {
+    TemporaryTree tree;
+    const auto absent = battlespades::assets::import_native_steam_runtime(
+        tree.root() / "missing", tree.root() / "client");
+    expect(static_cast<bool>(absent) && !absent.imported,
+           "a missing optional Steam runtime must preserve offline installation");
+#if defined(_WIN32)
+    const auto source = tree.root() / "retail";
+    std::vector<unsigned char> pe(256U, 0U);
+    pe[0U] = 'M';
+    pe[1U] = 'Z';
+    pe[0x3CU] = 0x80U;
+    pe[0x80U] = 'P';
+    pe[0x81U] = 'E';
+    pe[0x84U] = 0x4CU;
+    pe[0x85U] = 0x01U;
+    write_bytes(source / "steam_api.dll", pe);
+    write_text(source / "steam_appid.txt", "224540\n");
+    const auto imported = battlespades::assets::import_native_steam_runtime(
+        source, tree.root() / "client");
+    expect(static_cast<bool>(imported) && imported.imported,
+           "a regular x86 retail runtime must import");
+    expect(std::filesystem::file_size(
+               tree.root() / "client" / "steam" / "win32" / "steam_api.dll") ==
+               pe.size(),
+           "Steam runtime import must retain the selected DLL bytes");
+#endif
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -192,9 +248,13 @@ int main() {
         {"source_discovery_accepts_a_parent_of_src", source_discovery_accepts_a_parent_of_src},
         {"source_discovery_accepts_a_steam_library_root",
          source_discovery_accepts_a_steam_library_root},
-        {"source_discovery_accepts_a_parent_of_a_macos_bundle",
-         source_discovery_accepts_a_parent_of_a_macos_bundle},
+        {"source_discovery_accepts_a_copied_windows_install_parent",
+         source_discovery_accepts_a_copied_windows_install_parent},
+        {"source_discovery_rejects_a_legacy_macos_bundle",
+         source_discovery_rejects_a_legacy_macos_bundle},
         {"install_is_verified_and_atomic", install_is_verified_and_atomic},
+        {"native_steam_runtime_import_is_optional_and_x86_only",
+         native_steam_runtime_import_is_optional_and_x86_only},
     };
 
     std::size_t failures{};

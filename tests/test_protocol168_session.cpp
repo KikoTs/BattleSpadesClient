@@ -193,6 +193,29 @@ void offline_ticket_and_initial_sequence_are_exact() {
            "the full-sync request must use packet 60 with local CRC zero");
 }
 
+void native_steam_ticket_and_xor_sequence_are_exact() {
+    using namespace battlespades::network;
+    Protocol168SessionConfig config;
+    config.steam_ticket = {std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
+    Protocol168Session session{config};
+    const auto ticket = session.connected();
+    const std::vector<std::byte> expected_ticket{
+        std::byte{0x30U}, std::byte{105U}, std::byte{3U}, std::byte{0U},
+        std::byte{0U}, std::byte{0U}, std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
+    expect(ticket == expected_ticket,
+           "packet 105 must carry the native Steam ASCII-hex ticket unencrypted");
+
+    const auto info_result = session.ingest(server_datagram(initial_info()));
+    expect(info_result.accepted && info_result.outbound_datagrams.size() == 1U,
+           "native Steam handshake must proceed to map validation");
+    const std::array<std::byte, 5U> validation{
+        std::byte{60U}, std::byte{}, std::byte{}, std::byte{}, std::byte{}};
+    const auto expected_validation =
+        encode_protocol168_client_datagram(validation, config.steam_ticket);
+    expect(info_result.outbound_datagrams.front() == expected_validation,
+           "every post-ticket client packet must use the retail repeating XOR key");
+}
+
 void initial_info_retains_disabled_hud_presentation_flags() {
     using namespace battlespades::network;
     std::string error;
@@ -391,6 +414,7 @@ void audio_arriving_during_join_is_deferred_in_order() {
 int main() {
     try {
         offline_ticket_and_initial_sequence_are_exact();
+        native_steam_ticket_and_xor_sequence_are_exact();
         initial_info_retains_disabled_hud_presentation_flags();
         initial_info_preserves_host_and_client_ugc_roles();
         new_player_announcement_is_explicit_and_exact();
