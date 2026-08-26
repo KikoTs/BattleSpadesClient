@@ -499,6 +499,10 @@ NativeSteamClientConfig default_native_steam_config(
 #if defined(_WIN32)
     result.bridge_executable = executable_directory / "BattleSpadesSteamBridge32.exe";
     result.steam_api_library = executable_directory / "steam" / "win32" / "steam_api.dll";
+#else
+    // Native Steam is deliberately Windows-only. Keep the cross-platform
+    // façade constructible without weakening strict AppleClang diagnostics.
+    static_cast<void>(executable_directory);
 #endif
     return result;
 }
