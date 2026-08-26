@@ -22,6 +22,8 @@
 namespace battlespades::platform {
 namespace {
 
+#if defined(_WIN32)
+
 constexpr std::size_t maximum_bridge_line{8'192U};
 constexpr std::size_t maximum_ticket_bytes{2'048U};
 
@@ -90,8 +92,6 @@ constexpr std::size_t maximum_ticket_bytes{2'048U};
     }
     return result;
 }
-
-#if defined(_WIN32)
 
 [[nodiscard]] std::wstring quote_windows_argument(const std::filesystem::path& value) {
     const auto source = value.wstring();
