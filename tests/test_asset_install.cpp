@@ -53,6 +53,7 @@ void write_text(const std::filesystem::path& path, std::string_view contents) {
     }
 }
 
+#if defined(_WIN32)
 void write_bytes(const std::filesystem::path& path,
                  const std::vector<unsigned char>& contents) {
     std::filesystem::create_directories(path.parent_path());
@@ -61,6 +62,7 @@ void write_bytes(const std::filesystem::path& path,
                  static_cast<std::streamsize>(contents.size()));
     if (!stream) throw std::runtime_error{"could not create binary fixture"};
 }
+#endif
 
 [[nodiscard]] std::string read_text(const std::filesystem::path& path) {
     std::ifstream stream(path, std::ios::binary);
