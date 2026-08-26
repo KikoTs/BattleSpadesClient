@@ -717,6 +717,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::AssetInstall
             BattleSpades::NativeSteam
     )
+    if(APPLE)
+        # main.cpp owns the macOS startup-error dialog, so it consumes the SDL
+        # public API directly rather than relying on a private transitive include.
+        target_link_libraries(BattleSpadesClient PRIVATE SDL3::SDL3)
+    endif()
     if(AOS_BUILD_PROFILE STREQUAL "release")
         set(_aos_developer_asset_root "")
         set(_aos_developer_asset_manifest "")
