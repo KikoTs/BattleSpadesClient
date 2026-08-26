@@ -653,6 +653,15 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     init.resolution.reset = reset_flags(config);
 
     impl_->owner_thread = std::this_thread::get_id();
+#if defined(__APPLE__)
+    // Metal creates and attaches its CAMetalLayer through AppKit. In bgfx's
+    // default multithreaded mode the main thread waits for renderer startup,
+    // while SwapChainMtl dispatches back to that blocked main thread: a hard
+    // semaphore deadlock before the first frame. Calling renderFrame before
+    // init is bgfx's documented opt-in to single-threaded rendering, keeping
+    // Metal swap-chain creation and all later submissions on the AppKit thread.
+    static_cast<void>(bgfx::renderFrame());
+#endif
     if (!bgfx::init(init)) {
         impl_->owner_thread = {};
         return impl_->fail("bgfx failed to initialize the requested graphics backend");
