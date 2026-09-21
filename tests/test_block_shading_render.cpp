@@ -182,8 +182,8 @@ int main(int argc, char** argv) {
         scene.set_retail_lighting(retail);
         profile = render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
         camera.yaw_degrees = 0; camera.pitch_degrees = 0;
-        const double atlas_red = std::array{226.5,223.5,222.0}[texture_tier] / 255.0;
-        const double atlas_blue = std::array{229.0,219.0,220.0}[texture_tier] / 255.0;
+        const double atlas_red = std::array{226.5,223.5,222.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
+        const double atlas_blue = std::array{229.0,219.0,220.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
         const std::array draws{render::WorldModelDraw{0}};
         const auto center = (static_cast<std::size_t>(size)/2*size+size/2)*4;
         for (std::uint8_t face = 0; face < 6; ++face) {

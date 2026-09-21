@@ -365,7 +365,7 @@ int main(int argc, char** argv) {
                     auto& actor=f.actors[i];
                     require(actor.game->status().phase==net::LiveProtocol168Phase::ready,"Game disconnected during activity");
                     net::ClientDataPacket input;
-                    input.loop_count=actor.input_loop++;
+                    input.loop_count=static_cast<std::int32_t>(actor.input_loop++);
                     input.player_id=actor.player_id; input.tool_id=actor.tool_id;
                     input.opaque_state=net::protocol168_client_data_opaque_state(input.loop_count);
                     const float angle=static_cast<float>(actor.input_loop)*0.03F;

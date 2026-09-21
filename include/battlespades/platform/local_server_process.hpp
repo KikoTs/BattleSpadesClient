@@ -32,7 +32,7 @@ struct LocalMapCreatorLaunchConfig final {
     std::filesystem::path publish_root;
     /** Directory containing the recovered `ugc/maps` and `ugc/kv6` trees. */
     std::filesystem::path retail_root;
-    std::optional<std::uint8_t> prefab_set;
+    std::optional<std::uint8_t> prefab_set{};
 };
 
 /**
@@ -57,7 +57,7 @@ struct LocalServerLaunchConfig final {
     std::string bot_difficulty{"mixed"};
     /** Allowlisted child-only environment used for public relay registration. */
     std::map<std::string, std::string, std::less<>> environment_overrides;
-    std::optional<LocalMapCreatorLaunchConfig> map_creator;
+    std::optional<LocalMapCreatorLaunchConfig> map_creator{};
 };
 
 /** Resolve an explicit bundle or the newest complete staged release by executable age. */

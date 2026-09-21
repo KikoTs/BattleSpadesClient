@@ -563,10 +563,11 @@ int main(int argc, char** argv) {
             maximum[1U] = std::max(maximum[1U], voxel.y);
             maximum[2U] = std::max(maximum[2U], voxel.z);
         }
-        const auto size = cluster.voxels.size();
-        const auto centre_x = static_cast<double>(total_x) / size;
-        const auto centre_y = static_cast<double>(total_y) / size;
-        const auto centre_z = static_cast<double>(total_z) / size;
+        const auto size = cluster.voxels.size();  // printed below as a count
+        const auto voxels = static_cast<double>(size);
+        const auto centre_x = static_cast<double>(total_x) / voxels;
+        const auto centre_y = static_cast<double>(total_y) / voxels;
+        const auto centre_z = static_cast<double>(total_z) / voxels;
         const auto vantage =
             find_vantage(*loaded.map, centre_x, centre_y, centre_z);
         std::cout << (probe.has_value() ? "MATCH "

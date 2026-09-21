@@ -22,7 +22,7 @@ struct OpenAlFrontendAudioConfig final {
     float cue_gain{1.0F};
     bool play_music_on_start{true};
     /** Empty tries the system default, then available outputs; an explicit device never falls back. */
-    std::string playback_device;
+    std::string playback_device{};
 };
 
 /** Pure validation helper; does not touch the filesystem or an audio device. */

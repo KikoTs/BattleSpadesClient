@@ -51,31 +51,31 @@ enum class FriendsLobbyActionKind : std::uint8_t {
 };
 
 struct FriendsLobbyFriend final {
-    std::string id;
-    std::string name;
+    std::string id{};
+    std::string name{};
     std::string presence{"offline"};
     std::string relationship{"accepted"};
-    std::string direction;
-    std::string current_lobby_id;
-    std::string current_server_id;
+    std::string direction{};
+    std::string current_lobby_id{};
+    std::string current_server_id{};
 
     [[nodiscard]] friend bool operator==(const FriendsLobbyFriend&,
                                          const FriendsLobbyFriend&) = default;
 };
 
 struct FriendsLobbyInvitation final {
-    std::string id;
-    std::string lobby_id;
-    std::string lobby_name;
-    std::string inviter_name;
+    std::string id{};
+    std::string lobby_id{};
+    std::string lobby_name{};
+    std::string inviter_name{};
 
     [[nodiscard]] friend bool operator==(const FriendsLobbyInvitation&,
                                          const FriendsLobbyInvitation&) = default;
 };
 
 struct FriendsLobbyMember final {
-    std::string id;
-    std::string name;
+    std::string id{};
+    std::string name{};
     std::string presence{"online"};
     bool in_game{};
 
@@ -84,13 +84,13 @@ struct FriendsLobbyMember final {
 };
 
 struct FriendsLobby final {
-    std::string id;
-    std::string owner_id;
-    std::string name;
+    std::string id{};
+    std::string owner_id{};
+    std::string name{};
     std::string state{"idle"};
-    std::string server_id;
+    std::string server_id{};
     std::size_t maximum_members{24U};
-    std::vector<FriendsLobbyMember> members;
+    std::vector<FriendsLobbyMember> members{};
 
     [[nodiscard]] friend bool operator==(const FriendsLobby&,
                                          const FriendsLobby&) = default;
@@ -98,15 +98,15 @@ struct FriendsLobby final {
 
 struct FriendsLobbySnapshot final {
     std::string cursor{"0"};
-    std::vector<FriendsLobbyFriend> friends;
-    std::vector<FriendsLobbyInvitation> invitations;
-    std::optional<FriendsLobby> lobby;
+    std::vector<FriendsLobbyFriend> friends{};
+    std::vector<FriendsLobbyInvitation> invitations{};
+    std::optional<FriendsLobby> lobby{};
 };
 
 struct FriendsLobbyIntent final {
     FriendsLobbyActionKind kind{FriendsLobbyActionKind::back};
-    std::string target_id;
-    std::string text;
+    std::string target_id{};
+    std::string text{};
 
     [[nodiscard]] friend bool operator==(const FriendsLobbyIntent&,
                                          const FriendsLobbyIntent&) = default;
@@ -114,7 +114,7 @@ struct FriendsLobbyIntent final {
 
 struct FriendsLobbyButton final {
     std::string_view label;
-    std::optional<FriendsLobbyIntent> intent;
+    std::optional<FriendsLobbyIntent> intent{};
 };
 
 struct FriendsLobbyOperation final {
@@ -122,7 +122,7 @@ struct FriendsLobbyOperation final {
     FriendsLobbyIntent intent;
     std::chrono::steady_clock::time_point deadline{};
     /** Membership this operation must affect, captured before snapshots change. */
-    std::string expected_lobby_id;
+    std::string expected_lobby_id{};
 };
 
 struct FriendsLobbyLayout final {
@@ -259,23 +259,23 @@ private:
     timeout_for(FriendsLobbyActionKind kind) noexcept;
 
     FriendsLobbySnapshot snapshot_;
-    std::vector<FriendsLobbyFriend> authoritative_friends_;
-    std::vector<FriendsLobbyFriend> search_results_;
+    std::vector<FriendsLobbyFriend> authoritative_friends_{};
+    std::vector<FriendsLobbyFriend> search_results_{};
     FriendsLobbyLayout layout_;
-    std::vector<std::size_t> visible_friends_;
-    std::vector<std::size_t> visible_invitations_;
-    std::string local_account_id_;
-    std::string search_;
-    std::string selected_friend_id_;
-    std::string selected_invitation_id_;
-    std::string error_;
-    std::string service_status_;
+    std::vector<std::size_t> visible_friends_{};
+    std::vector<std::size_t> visible_invitations_{};
+    std::string local_account_id_{};
+    std::string search_{};
+    std::string selected_friend_id_{};
+    std::string selected_invitation_id_{};
+    std::string error_{};
+    std::string service_status_{};
     FriendsLobbyTab tab_{FriendsLobbyTab::friends};
     FriendsLobbyPhase phase_{FriendsLobbyPhase::idle};
-    std::optional<FriendsLobbyOperation> operation_;
-    std::optional<Hit> hovered_;
-    std::optional<Hit> pressed_;
-    std::optional<FriendsLobbyIntent> pressed_intent_;
+    std::optional<FriendsLobbyOperation> operation_{};
+    std::optional<Hit> hovered_{};
+    std::optional<Hit> pressed_{};
+    std::optional<FriendsLobbyIntent> pressed_intent_{};
     std::uint64_t next_generation_{1U};
     std::size_t first_visible_friend_row_{};
     std::size_t first_visible_invitation_row_{};

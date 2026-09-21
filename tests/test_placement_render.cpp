@@ -47,13 +47,14 @@ double deviation(const std::vector<std::uint8_t>& pixels, int radius) {
     std::size_t count{};
     for (int y = size / 2 - radius; y < size / 2 + radius; ++y) {
         for (int x = size / 2 - radius; x < size / 2 + radius; ++x) {
-            const double value = pixels[(static_cast<std::size_t>(y) * size + x) * 4U];
+            const double value = pixels[(static_cast<std::size_t>(y) * size + static_cast<std::size_t>(x)) * 4U];
             sum += value;
             square += value * value;
             ++count;
         }
     }
-    return std::sqrt(std::max(0.0, square / count - (sum / count) * (sum / count)));
+    const auto samples = static_cast<double>(count);
+    return std::sqrt(std::max(0.0, square / samples - (sum / samples) * (sum / samples)));
 }
 }
 

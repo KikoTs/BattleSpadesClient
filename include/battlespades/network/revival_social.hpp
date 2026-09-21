@@ -46,46 +46,46 @@ struct RevivalSocialRequest final {
     std::uint64_t submission_sequence{};
     RevivalSocialRequestKind kind{RevivalSocialRequestKind::sync};
     bool priority{};
-    std::string coalesce_key;
+    std::string coalesce_key{};
     std::string cursor{"0"};
-    std::string client_instance_id;
+    std::string client_instance_id{};
     std::string presence{"online"};
-    std::string query;
-    std::string lobby_id;
-    std::string action;
-    std::string target;
+    std::string query{};
+    std::string lobby_id{};
+    std::string action{};
+    std::string target{};
     nlohmann::json payload{nlohmann::json::object()};
 };
 
 struct RevivalSocialFriend final {
-    std::string legacy_id;
-    std::string public_id;
-    std::string nickname;
-    std::string username;
+    std::string legacy_id{};
+    std::string public_id{};
+    std::string nickname{};
+    std::string username{};
     std::string presence{"offline"};
-    std::string friendship_status;
-    std::string direction;
-    std::string current_lobby_id;
-    std::string current_server_id;
+    std::string friendship_status{};
+    std::string direction{};
+    std::string current_lobby_id{};
+    std::string current_server_id{};
 
     [[nodiscard]] friend bool operator==(const RevivalSocialFriend&,
                                          const RevivalSocialFriend&) = default;
 };
 
 struct RevivalSocialInvitation final {
-    std::string id;
-    std::string lobby_id;
-    std::string lobby_name;
-    std::string inviter_id;
-    std::string inviter_name;
+    std::string id{};
+    std::string lobby_id{};
+    std::string lobby_name{};
+    std::string inviter_id{};
+    std::string inviter_name{};
 
     [[nodiscard]] friend bool operator==(const RevivalSocialInvitation&,
                                          const RevivalSocialInvitation&) = default;
 };
 
 struct RevivalSocialLobbyMember final {
-    std::string legacy_id;
-    std::string nickname;
+    std::string legacy_id{};
+    std::string nickname{};
     std::string presence{"online"};
     bool in_game{};
     nlohmann::json member_data{nlohmann::json::object()};
@@ -95,29 +95,29 @@ struct RevivalSocialLobbyMember final {
 };
 
 struct RevivalSocialLobby final {
-    std::string id;
-    std::string owner_id;
-    std::string name;
+    std::string id{};
+    std::string owner_id{};
+    std::string name{};
     std::string privacy{"invite"};
     std::string lobby_type{"normal"};
     std::size_t member_count{};
     std::string state{"idle"};
-    std::string revision;
-    std::string server_id;
-    std::string start_id;
+    std::string revision{};
+    std::string server_id{};
+    std::string start_id{};
     std::size_t maximum_members{24U};
     nlohmann::json settings{nlohmann::json::object()};
-    std::vector<RevivalSocialLobbyMember> members;
+    std::vector<RevivalSocialLobbyMember> members{};
 
     [[nodiscard]] friend bool operator==(const RevivalSocialLobby&,
                                          const RevivalSocialLobby&) = default;
 };
 
 struct RevivalSocialEvent final {
-    std::string id;
-    std::string type;
-    std::string lobby_id;
-    std::string actor_id;
+    std::string id{};
+    std::string type{};
+    std::string lobby_id{};
+    std::string actor_id{};
     nlohmann::json payload{nlohmann::json::object()};
 
     [[nodiscard]] friend bool operator==(const RevivalSocialEvent&,
@@ -126,21 +126,21 @@ struct RevivalSocialEvent final {
 
 struct RevivalSocialSnapshot final {
     std::string cursor{"0"};
-    std::vector<RevivalSocialFriend> friends;
-    std::vector<RevivalSocialInvitation> invitations;
-    std::vector<RevivalSocialLobby> lobbies;
-    std::optional<RevivalSocialLobby> lobby;
-    std::vector<RevivalSocialEvent> events;
+    std::vector<RevivalSocialFriend> friends{};
+    std::vector<RevivalSocialInvitation> invitations{};
+    std::vector<RevivalSocialLobby> lobbies{};
+    std::optional<RevivalSocialLobby> lobby{};
+    std::vector<RevivalSocialEvent> events{};
 };
 
 struct RevivalSocialResult final {
     RevivalSocialRequest request;
     RevivalSocialSnapshot snapshot;
-    std::vector<RevivalSocialFriend> found_players;
+    std::vector<RevivalSocialFriend> found_players{};
     /** Compatibility alias for callers built around the former exact lookup. */
-    std::optional<RevivalSocialFriend> found_player;
-    std::string error_code;
-    std::string error;
+    std::optional<RevivalSocialFriend> found_player{};
+    std::string error_code{};
+    std::string error{};
     long http_status{};
     /** Distinguish an authoritative empty collection/lobby from an omitted field. */
     bool has_friends{};
@@ -181,7 +181,7 @@ struct RevivalSocialClientStatus final {
     std::size_t normal_queued{};
     std::size_t priority_queued{};
     std::chrono::milliseconds retry_after{};
-    std::string last_error;
+    std::string last_error{};
 };
 
 /**

@@ -18,20 +18,20 @@
 namespace battlespades::network {
 
 struct RevivalAccount final {
-    std::string public_id;
-    std::string legacy_id;
-    std::string nickname;
-    std::string account_type;
-    std::string identity_type;
+    std::string public_id{};
+    std::string legacy_id{};
+    std::string nickname{};
+    std::string account_type{};
+    std::string identity_type{};
     bool ranked_eligible{};
     bool offline{};
 };
 
 struct RevivalAuthResult final {
-    std::optional<RevivalAccount> account;
-    std::string recovery_code;
-    std::string error_code;
-    std::string error;
+    std::optional<RevivalAccount> account{};
+    std::string recovery_code{};
+    std::string error_code{};
+    std::string error{};
     long http_status{};
 
     RevivalAuthResult() = default;
@@ -44,9 +44,9 @@ struct RevivalAuthResult final {
 };
 
 struct RevivalTicketResult final {
-    std::string join_code;
-    std::string error_code;
-    std::string error;
+    std::string join_code{};
+    std::string error_code{};
+    std::string error{};
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return join_code.size() == 15U && join_code.front() == '~' &&
@@ -56,26 +56,26 @@ struct RevivalTicketResult final {
 
 struct HostedResultsUpload final {
     std::size_t uploaded{};
-    std::string error;
+    std::string error{};
 };
 
 /** Authenticated AoSPlay allocation used by one client-owned public match. */
 struct RevivalRelayLobby final {
-    std::string lobby_id;
-    std::string server_id;
-    std::string server_token;
-    std::string master_url;
-    std::string allocation_id;
-    std::string relay_host;
+    std::string lobby_id{};
+    std::string server_id{};
+    std::string server_token{};
+    std::string master_url{};
+    std::string allocation_id{};
+    std::string relay_host{};
     std::uint16_t relay_port{};
-    std::string host_key;
+    std::string host_key{};
     std::uint16_t keepalive_seconds{10U};
 };
 
 struct RevivalRelayLobbyResult final {
-    std::optional<RevivalRelayLobby> lobby;
-    std::string error_code;
-    std::string error;
+    std::optional<RevivalRelayLobby> lobby{};
+    std::string error_code{};
+    std::string error{};
     long http_status{};
 
     [[nodiscard]] explicit operator bool() const noexcept {
@@ -84,13 +84,13 @@ struct RevivalRelayLobbyResult final {
 };
 
 struct RevivalRelayLobbyRequest final {
-    std::string name;
-    std::string map;
-    std::string game_mode;
-    std::string mode_tla;
+    std::string name{};
+    std::string map{};
+    std::string game_mode{};
+    std::string mode_tla{};
     std::uint16_t max_players{12U};
     std::uint16_t playlist_id{};
-    std::string texture_skin;
+    std::string texture_skin{};
     bool classic{};
 };
 
@@ -102,19 +102,19 @@ struct RevivalIdentityConfig final {
 };
 
 struct RevivalWorkshopFile final {
-    std::string filename;
-    std::string content_type;
-    std::string kind;
-    std::string sha256;
-    std::string modified_ticks;
-    std::vector<unsigned char> bytes;
+    std::string filename{};
+    std::string content_type{};
+    std::string kind{};
+    std::string sha256{};
+    std::string modified_ticks{};
+    std::vector<unsigned char> bytes{};
 };
 
 struct RevivalWorkshopProject final {
-    std::vector<RevivalWorkshopFile> files;
-    std::string description;
-    std::string author;
-    std::vector<std::string> tags;
+    std::vector<RevivalWorkshopFile> files{};
+    std::string description{};
+    std::string author{};
+    std::vector<std::string> tags{};
 };
 
 /** Freeze bounded project siblings; reject traversal, links and partial reads. */
@@ -122,8 +122,8 @@ struct RevivalWorkshopProject final {
     const std::filesystem::path& maps_root, std::string_view uid);
 
 struct RevivalWorkshopResult final {
-    std::string item_url;
-    std::string error;
+    std::string item_url{};
+    std::string error{};
     std::string warning{};
     [[nodiscard]] explicit operator bool() const noexcept { return !item_url.empty() && error.empty(); }
 };

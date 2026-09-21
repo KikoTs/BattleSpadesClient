@@ -95,7 +95,8 @@ void publication_receipt_survives_rescan_and_detects_later_edits() {
         if (!files.empty()) files += ',';
         files += "{\"filename\":\"" + std::string{name} + "\",\"size\":" +
             std::to_string(std::filesystem::file_size(path)) + ",\"modified_ticks\":\"" +
-            std::to_string(std::filesystem::last_write_time(path).time_since_epoch().count()) + "\"}";
+            std::to_string(static_cast<long long>(
+                std::filesystem::last_write_time(path).time_since_epoch().count())) + "\"}";
     }
     write(temporary.root / "Map.ugc.publication.json", "{\"files\":[" + files + "]}");
     expect(scan_ugc_projects(temporary.root).maps[0].state == UgcLocalMapState::published,

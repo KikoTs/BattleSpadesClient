@@ -228,7 +228,7 @@ void ghost_transform_matches_voxels_at_every_rotation_and_pivot() {
                                         render[2U] * transform[8U + axis] + transform[12U + axis];
                     expect(std::abs(rotated[axis] - expected[axis]) < 1e-6,
                            "protocol cell rotation must match the independent axis oracle");
-                    expect(std::abs(actual - (expected[axis] + 20.5 + 10.0 * axis)) < 1e-6,
+                    expect(std::abs(actual - (expected[axis] + 20.5 + 10.0 * static_cast<double>(axis))) < 1e-6,
                            "preview voxel centres must match placement after every axis/pivot rotation");
                 }
             }

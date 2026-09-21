@@ -79,9 +79,9 @@ int main(int argc,char** argv){
                 for(std::size_t tile=0;tile<6 && page*6+tile<all.size();++tile){
                     const auto x0=52+static_cast<int>(tile%3)*124,y0=246+static_cast<int>(tile/3)*126;
                     std::size_t details=0;
-                    const auto background=(y0*800+x0)*4;
+                    const auto background=static_cast<std::size_t>((y0*800+x0)*4);
                     for(int y=y0;y<y0+46;++y)for(int x=x0;x<x0+101;++x){
-                        const auto p=(y*800+x)*4;
+                        const auto p=static_cast<std::size_t>((y*800+x)*4);
                         if(std::abs(pixels[p]-pixels[background])+std::abs(pixels[p+1]-pixels[background+1])+std::abs(pixels[p+2]-pixels[background+2])>24)++details;
                     }
                     expect(details>30,"Empty rendered icon: "+model.data.items[all[page*6+tile]].id);

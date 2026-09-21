@@ -46,12 +46,14 @@ constexpr std::array<unsigned char, 32U> key{
 
 #if defined(_WIN32)
 using Socket = SOCKET;
+using SendLength = int;  // Winsock counts bytes in int
 constexpr Socket invalid_socket{INVALID_SOCKET};
 void close_socket(Socket socket) noexcept {
     if (socket != invalid_socket) static_cast<void>(closesocket(socket));
 }
 #else
 using Socket = int;
+using SendLength = std::size_t;
 constexpr Socket invalid_socket{-1};
 void close_socket(Socket socket) noexcept {
     if (socket != invalid_socket) static_cast<void>(close(socket));
@@ -211,9 +213,10 @@ struct RelayFixture final {
         std::scoped_lock lock{mutex};
         if (host.sin_port == 0U) return false;
         const auto packet = frame(type, ++sequence, client, payload);
-        return sendto(endpoint.socket, reinterpret_cast<const char*>(packet.data()),
-            static_cast<int>(packet.size()), 0, reinterpret_cast<const sockaddr*>(&host),
-            sizeof(host)) == static_cast<int>(packet.size());
+        const auto sent = sendto(endpoint.socket, reinterpret_cast<const char*>(packet.data()),
+            static_cast<SendLength>(packet.size()), 0, reinterpret_cast<const sockaddr*>(&host),
+            sizeof(host));
+        return sent >= 0 && static_cast<std::size_t>(sent) == packet.size();
     }
 
     battlespades::platform::RelayHostTunnelConfig config(std::uint16_t local_port) const {
@@ -328,7 +331,7 @@ void authenticated_relay_round_trip_reaches_one_local_peer() {
         if (bytes != 4) return;
         std::ranges::reverse(packet.begin(), packet.begin() + bytes);
         static_cast<void>(sendto(server_socket,
-                                 reinterpret_cast<const char*>(packet.data()), bytes, 0,
+                                 reinterpret_cast<const char*>(packet.data()), static_cast<SendLength>(bytes), 0,
                                  reinterpret_cast<const sockaddr*>(&peer), peer_size));
     }};
 
@@ -350,13 +353,13 @@ void authenticated_relay_round_trip_reaches_one_local_peer() {
         const auto acknowledgement = frame(2U, 1U, 0U);
         static_cast<void>(sendto(relay_socket,
                                  reinterpret_cast<const char*>(acknowledgement.data()),
-                                 static_cast<int>(acknowledgement.size()), 0,
+                                 static_cast<SendLength>(acknowledgement.size()), 0,
                                  reinterpret_cast<const sockaddr*>(&host), host_size));
         constexpr std::array<unsigned char, 4U> request{1U, 2U, 3U, 4U};
         const auto inbound = frame(4U, 2U, 7U, request);
         static_cast<void>(sendto(relay_socket,
                                  reinterpret_cast<const char*>(inbound.data()),
-                                 static_cast<int>(inbound.size()), 0,
+                                 static_cast<SendLength>(inbound.size()), 0,
                                  reinterpret_cast<const sockaddr*>(&host), host_size));
 
         for (;;) {
