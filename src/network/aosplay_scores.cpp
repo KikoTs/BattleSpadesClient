@@ -3,6 +3,7 @@
 #endif
 
 #include "battlespades/network/aosplay_scores.hpp"
+#include "battlespades/core/build_info.hpp"
 
 #include <algorithm>
 #include <array>
@@ -157,7 +158,7 @@ struct HttpResult final {
     curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, static_cast<long>(config.timeout.count()));
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING, "");
-    curl_easy_setopt(handle, CURLOPT_USERAGENT, "BattleSpadesClient/0.0.1 Protocol168/1");
+    curl_easy_setopt(handle, CURLOPT_USERAGENT, "BattleSpadesClient/" AOS_VERSION_STRING " Protocol168/1");
     curl_easy_setopt(handle, CURLOPT_POSTFIELDS, form_copy.c_str());
     curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE,
                      static_cast<long>(form_copy.size()));

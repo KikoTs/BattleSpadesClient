@@ -4,6 +4,7 @@
 #endif
 
 #include "battlespades/network/server_discovery.hpp"
+#include "battlespades/core/build_info.hpp"
 
 #include <algorithm>
 #include <array>
@@ -515,7 +516,7 @@ DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config,
     curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, static_cast<long>(config.timeout.count()));
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING, "");
-    curl_easy_setopt(handle, CURLOPT_USERAGENT, "BattleSpadesClient/0.0.1 Protocol168/1");
+    curl_easy_setopt(handle, CURLOPT_USERAGENT, "BattleSpadesClient/" AOS_VERSION_STRING " Protocol168/1");
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &curl_write);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, &buffer);
     curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);

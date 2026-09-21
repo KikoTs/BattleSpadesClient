@@ -2,10 +2,14 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     BattleSpadesClient
-    VERSION 0.0.1
+    VERSION 0.1.0
     DESCRIPTION "Native Ace of Spades-compatible client"
     LANGUAGES CXX
 )
+
+# CMake versions are numeric. The public release label carries the beta tag
+# and matches the BattleSpades server's VERSION format.
+set(AOS_RELEASE_VERSION "${PROJECT_VERSION}-beta.1")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -175,7 +179,7 @@ target_compile_features(aos_build_options INTERFACE cxx_std_20)
 target_compile_definitions(
     aos_build_options
     INTERFACE
-        AOS_VERSION_STRING="${PROJECT_VERSION}"
+        AOS_VERSION_STRING="${AOS_RELEASE_VERSION}"
         AOS_BUILD_PROFILE="${AOS_BUILD_PROFILE}"
         $<$<STREQUAL:${AOS_BUILD_PROFILE},release>:AOS_ENABLE_DEVELOPER_TOOLS=0>
         $<$<NOT:$<STREQUAL:${AOS_BUILD_PROFILE},release>>:AOS_ENABLE_DEVELOPER_TOOLS=1>
@@ -313,7 +317,7 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Portable native BattleSpades client")
 set(
     CPACK_PACKAGE_FILE_NAME
-    "BattleSpadesClient-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
+    "BattleSpadesClient-${AOS_RELEASE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
 )
 set(CPACK_GENERATOR "ZIP")
 set(CPACK_PACKAGE_CHECKSUM "SHA256")

@@ -1,4 +1,5 @@
 #include "battlespades/network/revival_identity.hpp"
+#include "battlespades/core/build_info.hpp"
 #include "battlespades/network/cosmetic_slots.hpp"
 
 #include <curl/curl.h>
@@ -34,7 +35,7 @@ namespace {
 using Json = nlohmann::json;
 
 constexpr std::string_view user_agent{
-    "BattleSpadesClient/0.0.1 (AoS Revival protocol 168)"};
+    "BattleSpadesClient/" AOS_VERSION_STRING " (AoS Revival protocol 168)"};
 constexpr std::size_t state_size_limit{64U * 1'024U};
 
 struct HttpResult final {
