@@ -175,8 +175,10 @@ bool readable(Socket socket, std::chrono::milliseconds duration) {
     FD_ZERO(&sockets);
     FD_SET(socket, &sockets);
     const auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-    timeval timeout{static_cast<long>(microseconds / 1'000'000),
-                    static_cast<long>(microseconds % 1'000'000)};
+    // The field types differ by platform (long on Windows and Linux, int microseconds on macOS).
+    timeval timeout{};
+    timeout.tv_sec = static_cast<decltype(timeout.tv_sec)>(microseconds / 1'000'000);
+    timeout.tv_usec = static_cast<decltype(timeout.tv_usec)>(microseconds % 1'000'000);
     return select(static_cast<int>(socket + 1), &sockets, nullptr, nullptr, &timeout) > 0;
 }
 
