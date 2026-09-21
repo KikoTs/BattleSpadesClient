@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "id": "pack-169749-default-soviet-smg",
+  "name": "OpenSpades: Winter Warfare — Soviet SMG",
+  "source": "https://gamebanana.com/mods/169749",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/SMG/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/Magazine.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/SMG/Sight1.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight1.kv6",
+    "Models/Weapons/SMG/Sight2.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight2.kv6",
+    "Models/Weapons/SMG/Sight3.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6",
+    "Sounds/Weapons/SMG/V2AmbienceSmall1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg",
+    "Sounds/Weapons/SMG/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg",
+    "Sounds/Weapons/SMG/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/SMG/Magazine.kv6": "6f79d143d4c619397238b93a77786de38097e4a2304e5c5c96939dc96a3b57c8",
+    "Models/Weapons/SMG/Weapon.kv6": "f6b861db7b8e8c2a12c97bc188fd666a9e2fc203c7c1f41ddd4af92d6522e540",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "843bb54e466962dd396416f04815031b2d4a6a66f221f0b0e5877b4e33d27d6e",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight1.kv6": "bbb2f52cf57a91b70dea21745f5f2c005ea71418edb81c0becbf62dd29044f90",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight2.kv6": "9c9a89d3786bbaf20de9217fdbd0bbc85d6cd3f73525700729d410c6a71697d6",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6": "93d3935dc5ce1bcce63d92436192f80956823c0367d9d4d505685586cd8f1465",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg": "159b5ed7f251d508567559b75b0d930964e3a24110c0237b6723084edf2f6783",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg": "22ea2a37441f045d2e2af34350da1ebd24876531d4dec14ce5abd38224de3637",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg": "780669f27bf3e0c1cbfbbf88fa990e7d02bc581974a5b22061dd290cdb3bcdd4",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg": "8f264c764743ba5aa848f03884f255e35bac8757c30821b4ed9ba4977a6685cf",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg": "5e630d9e7c74432b2dc463df0362b047a1e76b63ba2598fac33cce7dbfffe79e",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg": "afe5c6ac1f88891cc9567440e24a8b510ce37066c5cca8c5acd664933bc7526f",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg": "f25a8fd9d4b16d5d1028c43ffaa0e0598ffe9a6ed9d686f4e761354e347290f1",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg": "5445725fca7ec66807e06265e9540dae12e782b3e30dd01107b5a8896265965a",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg": "26bd0f3599beb95e753823baaee35049abf3c0f484dfb5c8655a829bef14e256",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg": "a063548128c4f8fb6ec53a9ae31a298af8aa1689def1db26604f907c2430a111",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg": "be9521e918e40c40f50feaca75c9a758f578d27b9a25066c16504462d02d0249",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg": "b05b0a7547a147f3bac30289b8b560abfc97d1b62650b367aeab57ec003e3717",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg": "39344f0184c3af9e16660b6c3721e00e8da3066bb5e60138bf0080a608a79aaa",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg": "e305da33fa00c2f6bd9da98d5bfaeee18cac8321958a21d1b958da5367a1ee36",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg": "1bc38e66ed6abba02cd410d5049c45aa702bc26f740539a329ddb8a8f344c426",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/SMG/View.as": "e21cc19bd30c95c98bcbafd21eefc8ecb2b8b0bc8b99e370c732973a4e540566"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\"><img alt=\"Creative Commons License\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\"></a><br>OpenSpades: Winter Warfare by Foxxy. is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\">Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Created everything",
+          "_idRow": "1285881",
+          "_sName": "Foxxy.",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/5a6d601d12779.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1285881",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/6141701f58ade.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default SMG script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

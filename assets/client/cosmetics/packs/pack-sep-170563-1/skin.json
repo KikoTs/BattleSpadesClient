@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170563-1",
+  "name": "M14 Remastered — 0.1.1c",
+  "source": "https://gamebanana.com/mods/170563",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/Flash/Weapons/Rifle/000.png": "Gfx/Flash/Weapons/Rifle/000.png",
+    "Gfx/Flash/Weapons/Rifle/001.png": "Gfx/Flash/Weapons/Rifle/001.png",
+    "Gfx/Flash/Weapons/Rifle/002.png": "Gfx/Flash/Weapons/Rifle/002.png",
+    "Gfx/Flash/Weapons/Rifle/003.png": "Gfx/Flash/Weapons/Rifle/003.png",
+    "Gfx/Flash/Weapons/Rifle/004.png": "Gfx/Flash/Weapons/Rifle/004.png",
+    "Gfx/Flash/Weapons/Rifle/005.png": "Gfx/Flash/Weapons/Rifle/005.png",
+    "Gfx/Flash/Weapons/Rifle/006.png": "Gfx/Flash/Weapons/Rifle/006.png",
+    "Gfx/Flash/Weapons/Rifle/007.png": "Gfx/Flash/Weapons/Rifle/007.png",
+    "Gfx/Flash/Weapons/Rifle/008.png": "Gfx/Flash/Weapons/Rifle/008.png",
+    "Gfx/Flash/Weapons/Rifle/009.png": "Gfx/Flash/Weapons/Rifle/009.png",
+    "Gfx/Flash/Weapons/Rifle/010.png": "Gfx/Flash/Weapons/Rifle/010.png",
+    "Gfx/Flash/Weapons/Rifle/011.png": "Gfx/Flash/Weapons/Rifle/011.png",
+    "Gfx/Flash/Weapons/Rifle/012.png": "Gfx/Flash/Weapons/Rifle/012.png",
+    "Gfx/Flash/Weapons/Rifle/013.png": "Gfx/Flash/Weapons/Rifle/013.png",
+    "Gfx/Flash/Weapons/Rifle/014.png": "Gfx/Flash/Weapons/Rifle/014.png",
+    "Gfx/Flash/Weapons/Rifle/015.png": "Gfx/Flash/Weapons/Rifle/015.png",
+    "Gfx/Flash/Weapons/Rifle/016.png": "Gfx/Flash/Weapons/Rifle/016.png",
+    "Gfx/Flash/Weapons/Rifle/017.png": "Gfx/Flash/Weapons/Rifle/017.png",
+    "Gfx/Flash/Weapons/Rifle/018.png": "Gfx/Flash/Weapons/Rifle/018.png",
+    "Gfx/Flash/Weapons/Rifle/019.png": "Gfx/Flash/Weapons/Rifle/019.png",
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/ChargingHandle.kv6": "Models/Weapons/Rifle/ChargingHandle.kv6",
+    "Models/Weapons/Rifle/FrontSight.kv6": "Models/Weapons/Rifle/FrontSight.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/RearSight.kv6": "Models/Weapons/Rifle/RearSight.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Sounds/Weapons/Rifle/FireFar.wav.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.wav": "Sounds/Weapons/Rifle/FireStereo.wav.ogg",
+    "Sounds/Weapons/Rifle/Reload.wav": "Sounds/Weapons/Rifle/Reload.wav.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.wav": "Sounds/Weapons/Rifle/V2AmbienceLarge.wav.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.wav": "Sounds/Weapons/Rifle/V2AmbienceSmall.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png"
+  },
+  "hashes": {
+    "Gfx/Flash/Weapons/Rifle/000.png": "8e6cdf8cb9179fc0e99beeefd0c499a3bb6bdc47e05e40f296b5650bc5b07e3e",
+    "Gfx/Flash/Weapons/Rifle/001.png": "cf484a04777fe4caa676dcf3065cf0bf8f3081fd649f6844c3197d86d071d660",
+    "Gfx/Flash/Weapons/Rifle/002.png": "4f458d60cf3ef0933353c0239ff1adbb60ebecfc5480c4f5790b09a8ba22539b",
+    "Gfx/Flash/Weapons/Rifle/003.png": "73615fd76cd69c82c74e089c9d634ab04ceb7f06371e4d14e205243f7fd7f6c5",
+    "Gfx/Flash/Weapons/Rifle/004.png": "c53ef21ab4e109e82545c9b080960e35999e3ffef3356c7cc49daad5b8772c40",
+    "Gfx/Flash/Weapons/Rifle/005.png": "1b6197d1b9464fcf7f8762a3ce58c161ffdcadbfcc916ccdbe62b58ac0269892",
+    "Gfx/Flash/Weapons/Rifle/006.png": "dfe67dd413328aca78f4a756bd625513e535123fec87e0c21c49a043dd53a56e",
+    "Gfx/Flash/Weapons/Rifle/007.png": "266352c078aaf7c9f86e40de1ebc34e0be656955f0f69748365382824bba7539",
+    "Gfx/Flash/Weapons/Rifle/008.png": "5c83dcca229b89614c9213f77e22011d130ff3a949691625b06a78b721188063",
+    "Gfx/Flash/Weapons/Rifle/009.png": "dc896359ca839b63917ee9975d6924df5bc13fda41ae82ac9cd96ee06dcd04ff",
+    "Gfx/Flash/Weapons/Rifle/010.png": "fa52994d2de41940db67c8b5e8a8528c70add896474af7539c9d091cfd048816",
+    "Gfx/Flash/Weapons/Rifle/011.png": "89f9c9516d60739a572388d8470ce4e565f49d454576f6309fde7110fe247b0d",
+    "Gfx/Flash/Weapons/Rifle/012.png": "7062ee6d345fcdd13d240238197e88886bc173a288adba4ccfe0b8981c38fb1c",
+    "Gfx/Flash/Weapons/Rifle/013.png": "ae0b2c407346dea6a730dbbb486209be530c0a8f58d2e8686eb48ffefd290b09",
+    "Gfx/Flash/Weapons/Rifle/014.png": "d185d46b8685b70fa61f9e10445c6b64e7720cbfe83547e06a4c2976252bcc78",
+    "Gfx/Flash/Weapons/Rifle/015.png": "96078d116091e5174f9473b3622ac1511c28a255e0bc83e70fc4c8168ccac98f",
+    "Gfx/Flash/Weapons/Rifle/016.png": "c6593420a6ee13e574cefa66ebd8381a6021cef7506b79513f6b11a7717448fa",
+    "Gfx/Flash/Weapons/Rifle/017.png": "5353931204445a0217d346c563273b2650f2ed8374715a52a4998d9befcd28b6",
+    "Gfx/Flash/Weapons/Rifle/018.png": "545cad4a7397f220923728c63c352d799444e0fc122f62a742fcd7f292d9b475",
+    "Gfx/Flash/Weapons/Rifle/019.png": "2fef1b71afbed3861bda60be858a4848cd81428d805a01b37720c7bd25b0ef6e",
+    "Models/Weapons/Rifle/Casing.kv6": "2ebab30d7700f04e309ef353818584cd61a494a8d6fd00a2bab2f2039ded195d",
+    "Models/Weapons/Rifle/ChargingHandle.kv6": "0f8fcd57f30b9fc881eaa48697dba27ff26e03bd6071336e4fcc1bc29d829849",
+    "Models/Weapons/Rifle/FrontSight.kv6": "6bc3905cd176ef183a6a8dca95a8a72e6009f6ed164167885b90cdccb375283d",
+    "Models/Weapons/Rifle/Magazine.kv6": "6d18e9d8dc7b35f83155f0d4b3c1485d132a5f50eed30487323e51962f8bfa3b",
+    "Models/Weapons/Rifle/RearSight.kv6": "8aeaf28cb5b0d8a67f4de001a9aec74bd03c60a1cf604d4274fca90c34dc9ee7",
+    "Models/Weapons/Rifle/Weapon.kv6": "8cefef3e08e75bde25fa016e18168174e4d175084d816003e817d4068aa49223",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "9ae794b04b074b8a9979a47240518e10ae5affb614d185f88d441b6a418a8343",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "a91dbc3a33dc82d4e04c92d2a7bf00e5d64ec6a9d68600e00ae36d9393aa2773",
+    "Scripts/Skin/Rifle/View.as": "52044a26f3bbcd3506aebc02593a4696a84fe956cef6f263e14a0643f5594f8c",
+    "Sounds/Weapons/Rifle/FireFar.wav.ogg": "90499966d8de486a4a29b447f8a6e7de6bdc9f972d985067b0bf764836fe3d05",
+    "Sounds/Weapons/Rifle/FireStereo.wav.ogg": "d480673035b10e50b007fdf923ab39062740e1410adb650eae3768cbe7d2b4cb",
+    "Sounds/Weapons/Rifle/Reload.wav.ogg": "08312dec0a50925925478e304a60b8ca333e5c48429c0ba3bf98a61e18d7da03",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg": "b64bee8f535d83512809043669223455a9e0e75e901d48cfbf993b576c1dec44",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.wav.ogg": "8a7fdcc377ae68e2716720d9f59e5d36e00fe19398d7302efee649606eecd360",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.wav.ogg": "231529005e60c547132c5aedfec106378f5d6833e3db356d1b6b842bd0746cf2",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "52044a26f3bbcd3506aebc02593a4696a84fe956cef6f263e14a0643f5594f8c",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "Copyright (c) 2013 yvt<br><br>Modified by Paratrooper<br><br>This file is part of OpenSpades.&nbsp;OpenSpades is free software: you can redistribute it and/or modify&nbsp;it under the terms of the GNU General Public License as published by&nbsp;the Free Software Foundation, either version 3 of the License, or&nbsp;(at your option) any later version.&nbsp;OpenSpades is distributed in the hope that it will be useful,&nbsp;but WITHOUT ANY WARRANTY; without even the implied warranty of&nbsp;MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.&nbsp; See the&nbsp;&nbsp;GNU General Public License for more details.&nbsp;You should have received a copy of the GNU General Public License&nbsp;along with OpenSpades.&nbsp; If not, see &lt;<a href=\"http://www.gnu.org/licenses/\" class=\"linkified\" target=\"_blank\">http://www.gnu.org/licenses/</a>&gt;.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170403-1",
+  "name": "Armalite AR-30A1 Acog",
+  "source": "https://gamebanana.com/mods/170403",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/Killfeed/a-Rifle.png": "Gfx/Killfeed/a-Rifle.png",
+    "Gfx/RifleSight.png": "Gfx/RifleSight.png",
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Scope.kv6": "Models/Weapons/Rifle/Scope.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Readme.txt": "Readme.txt",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/Fire.wav": "Sounds/Weapons/Rifle/Fire.wav.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.wav": "Sounds/Weapons/Rifle/FireStereo.wav.ogg",
+    "Sounds/Weapons/Rifle/Reload.wav": "Sounds/Weapons/Rifle/Reload.wav.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/Rifle.wav": "Sounds/Weapons/Rifle/Rifle.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg"
+  },
+  "hashes": {
+    "Gfx/Killfeed/a-Rifle.png": "116299c02f42bd4a2e76309b4eed1a9377cef2fb0d72a5411e2ac60ad0fbac14",
+    "Gfx/RifleSight.png": "ef7d30c949c47a66034e6ae5ac7c61d1b71cbb56c83cad8aafb41abbb20b5a58",
+    "Models/Weapons/Rifle/Casing.kv6": "e772a6acc48a9f8101edc966c1f6da75c9dbf345e533fb55cfd41957d3759105",
+    "Models/Weapons/Rifle/Magazine.kv6": "0765b88c94672e930c40428581b8f73dd73891e3ab8778a4c612bd1578e51a6f",
+    "Models/Weapons/Rifle/Scope.kv6": "664482eaa4fc0f466cdee07ffed7056bf6ed2807ea3a7d423e03b78493744ba0",
+    "Models/Weapons/Rifle/Weapon.kv6": "271f7aed043d36cfa6f1a1ecd3efb47c4e186d6f13681c750f044c76a24ba242",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "67344cf2555cdab9d68fdee6c3286899f506fba75efd87a7e231acbb919b4fe2",
+    "Readme.txt": "e762cee6d97bdfd0100d10b7f0df4f7a756d8cc960add006f5cec2c203fbef2f",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "ec56b57a7c0e910264baa45b64df134f23dccc4b5dba58788c88199f7730b561",
+    "Scripts/Skin/Rifle/View.as": "0c9e43339234d3d33d4a1b8870f52d6a8d9afa26f57e6cd0d2cef27f2b2b9dcd",
+    "Sounds/Weapons/Rifle/Fire.wav.ogg": "b0061eddce8ca555f94f415c5e21efc5e01b9eecf4ca18cf78360d097f8cf366",
+    "Sounds/Weapons/Rifle/FireStereo.wav.ogg": "926cadc70daf90ae0d156d478a41e66c14f74db8b84d7a1673c5bc7bc5b59fd8",
+    "Sounds/Weapons/Rifle/Reload.wav.ogg": "885836136976187efd30b479ae25e482eea02a172b38dbf16a07106346827b70",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg": "ae688a39d4ae77555e544ae3690a1c3625ff5355061b1a7aadb725cc6b2d4d47",
+    "Sounds/Weapons/Rifle/Rifle.wav.ogg": "c5973145cb794fcc7cb3b2ef71773a18cff26fc25c2c3be8ad8b2477c5dedd54",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg": "9de55f872888568398732a8937f5ba005d84365bf48195f816c609faf6719ffe",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "0c9e43339234d3d33d4a1b8870f52d6a8d9afa26f57e6cd0d2cef27f2b2b9dcd",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripter",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1616620",
+          "_sName": "Krothen",
+          "_sProfileUrl": "https://gamebanana.com/members/1616620",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5a281e4f56066.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireFar.wav",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireFar.opus"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 2.5,
+    "scope": true
+  }
+}

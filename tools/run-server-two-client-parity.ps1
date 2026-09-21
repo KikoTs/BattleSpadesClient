@@ -12,6 +12,8 @@ spawned process is owned and stopped by this script.
 param(
     [string] $ServerRoot = 'G:\AoSRevival\BattleSpades',
     [string] $BuildRoot = 'G:\AoSRevival\BattleSpadesClient\out\build\native-dev',
+    [string] $ServerExecutable = '',
+    [string[]] $ClientArguments = @(),
     [int] $Port = 32775,
     [ValidateRange(8, 60)][int] $Seconds = 12,
     [ValidateRange(0, 10)][int] $SecondClientDelaySeconds = 5,
@@ -41,13 +43,27 @@ $client2Err = Join-Path $evidence 'client-2.stderr.log'
 $trace1 = Join-Path $evidence 'client-1.csv'
 $trace2 = Join-Path $evidence 'client-2.csv'
 
-$python = (Get-Command py.exe -ErrorAction Stop).Source
+if (Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue) {
+    throw "Parity port UDP $Port is already in use. Choose a free -Port."
+}
+$serverArguments = @('--config', ('"' + $config + '"'), '--port', $Port)
+$serverWorkingDirectory = $serverRootPath
+if ([string]::IsNullOrWhiteSpace($ServerExecutable)) {
+    $serverCommand = (& py.exe -3.12 -c 'import sys; print(sys.executable)').Trim()
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serverCommand -PathType Leaf)) {
+        throw 'Python 3.12 could not be resolved'
+    }
+    $serverArguments = @('run_server.py') + $serverArguments
+} else {
+    $serverCommand = (Resolve-Path -LiteralPath $ServerExecutable).Path
+    $serverWorkingDirectory = Split-Path -Parent $serverCommand
+}
 $server = $null
 $clients = @()
 try {
-    $server = Start-Process -FilePath $python `
-        -ArgumentList @('-3.12', 'run_server.py', '--config', $config, '--port', $Port) `
-        -WorkingDirectory $serverRootPath -WindowStyle Hidden -PassThru `
+    $server = Start-Process -FilePath $serverCommand `
+        -ArgumentList $serverArguments `
+        -WorkingDirectory $serverWorkingDirectory -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
@@ -55,14 +71,15 @@ try {
         if ($server.HasExited) {
             throw "Parity server exited early. stdout=$serverOut stderr=$serverErr"
         }
-        $udp = Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue
+        $udp = Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue |
+            Where-Object OwningProcess -eq $server.Id
     } while (-not $udp -and [DateTime]::UtcNow -lt $deadline)
     if (-not $udp) {
         throw "Parity server did not bind UDP $Port"
     }
 
     $common = @('127.0.0.1', $Port, $Seconds)
-    $clients += Start-Process -FilePath $client -ArgumentList ($common + @($trace1, '--require-peer')) `
+    $clients += Start-Process -FilePath $client -ArgumentList ($common + @(('"' + $trace1 + '"'), '--require-peer') + $ClientArguments) `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $client1Out `
         -RedirectStandardError $client1Err
     # Five seconds exercises ordinary join-in-progress. Zero deliberately
@@ -71,7 +88,7 @@ try {
     if ($SecondClientDelaySeconds -gt 0) {
         Start-Sleep -Seconds $SecondClientDelaySeconds
     }
-    $clients += Start-Process -FilePath $client -ArgumentList ($common + @($trace2, '--require-peer')) `
+    $clients += Start-Process -FilePath $client -ArgumentList ($common + @(('"' + $trace2 + '"'), '--require-peer') + $ClientArguments) `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $client2Out `
         -RedirectStandardError $client2Err
 

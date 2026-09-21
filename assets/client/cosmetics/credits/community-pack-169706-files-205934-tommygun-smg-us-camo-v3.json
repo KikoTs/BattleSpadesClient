@@ -1,0 +1,126 @@
+{
+  "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — US Camo",
+  "source": "https://gamebanana.com/mods/169706",
+  "archive": [
+    {
+      "archive": "169706\\205934-tommygun.rar",
+      "extracted": "169706\\files-205934",
+      "sha256": "f001e3b3cd5beb79e9fdaccf8a516f66ab9ea92adde893e301e8826f4a2ec232",
+      "listing": [
+        "TommyGun",
+        "TommyGun/Original/Casing.kv6",
+        "TommyGun/Original/ChargingHandle.kv6",
+        "TommyGun/Original/MagazineEmpty.kv6",
+        "TommyGun/Original/MagazineLoaded.kv6",
+        "TommyGun/Original/SightsFront.kv6",
+        "TommyGun/Original/SightsPin.kv6",
+        "TommyGun/Original/SightsReflex.kv6",
+        "TommyGun/Original/Weapon.kv6",
+        "TommyGun/Original/WeaponNoMagazine.kv6",
+        "TommyGun/US Camo/Casing.kv6",
+        "TommyGun/US Camo/ChargingHandle.kv6",
+        "TommyGun/US Camo/MagazineEmpty.kv6",
+        "TommyGun/US Camo/MagazineLoaded.kv6",
+        "TommyGun/US Camo/SightsFront.kv6",
+        "TommyGun/US Camo/SightsPin.kv6",
+        "TommyGun/US Camo/SightsReflex.kv6",
+        "TommyGun/US Camo/Weapon.kv6",
+        "TommyGun/US Camo/WeaponNoMagazine.kv6",
+        "TommyGun/Black&White/Casing.kv6",
+        "TommyGun/Black&White/ChargingHandle.kv6",
+        "TommyGun/Black&White/MagazineEmpty.kv6",
+        "TommyGun/Black&White/MagazineLoaded.kv6",
+        "TommyGun/Black&White/SightsFront.kv6",
+        "TommyGun/Black&White/SightsPin.kv6",
+        "TommyGun/Black&White/SightsReflex.kv6",
+        "TommyGun/Black&White/Weapon.kv6",
+        "TommyGun/Black&White/WeaponNoMagazine.kv6",
+        "TommyGun/Gold/Casing.kv6",
+        "TommyGun/Gold/ChargingHandle.kv6",
+        "TommyGun/Gold/MagazineEmpty.kv6",
+        "TommyGun/Gold/MagazineLoaded.kv6",
+        "TommyGun/Gold/SightsFront.kv6",
+        "TommyGun/Gold/SightsPin.kv6",
+        "TommyGun/Gold/SightsReflex.kv6",
+        "TommyGun/Gold/Weapon.kv6",
+        "TommyGun/Gold/WeaponNoMagazine.kv6",
+        "TommyGun/Original",
+        "TommyGun/US Camo",
+        "TommyGun/Black&White",
+        "TommyGun/Gold",
+        "TommyGun/Gfx/Bullet/9mm.tga",
+        "TommyGun/Gfx/Flash/Weapons/SMG/000.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/001.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/002.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/003.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/004.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/005.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/006.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/007.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/008.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/009.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/010.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/011.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/012.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/013.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/014.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/015.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/016.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/017.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/018.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG/019.png",
+        "TommyGun/Gfx/Killfeed/b-SMG.png",
+        "TommyGun/Gfx/Killfeed/b-SMG.tga",
+        "TommyGun/Gfx/ReflexRound.png",
+        "TommyGun/Gfx/Flash/Weapons/SMG",
+        "TommyGun/Gfx/Flash/Weapons",
+        "TommyGun/Gfx/Bullet",
+        "TommyGun/Gfx/Flash",
+        "TommyGun/Gfx/Killfeed",
+        "TommyGun/Gfx",
+        "TommyGun/Scripts/Skin/SMG/ThirdPerson.as",
+        "TommyGun/Scripts/Skin/SMG/View.as",
+        "TommyGun/Scripts/Skin/SMG",
+        "TommyGun/Scripts/Skin",
+        "TommyGun/Scripts"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Magpul M4",
+          "_sName": "PTrooper"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

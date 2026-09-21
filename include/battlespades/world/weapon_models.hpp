@@ -1,6 +1,9 @@
 #pragma once
 
 #include "battlespades/world/chunk_mesh.hpp"
+#include "battlespades/world/kv6_model.hpp"
+#include "battlespades/world/weapon_presentation.hpp"
+#include <memory>
 
 #include <array>
 #include <cstdint>
@@ -10,6 +13,17 @@
 #include <vector>
 
 namespace battlespades::world {
+struct WeaponCosmeticFinish final {
+    std::string asset;
+    std::array<std::uint8_t,3U> palette{};
+    std::shared_ptr<const Kv6Model> replacement{};
+    float scale{1.0F};
+    std::array<float,3U> pivot{};
+    /** Optional measured iron-sight pivot in source KV6 coordinates. */
+    std::optional<std::array<float,3U>> sight_pivot{};
+    std::optional<WeaponSightTags> sight_tags{};
+    std::shared_ptr<const Kv6Model> sight_replacement{};
+};
 
 /** Render-ready KV6 parts for one exact retail tool definition. */
 struct WeaponModelSet final {
@@ -42,6 +56,7 @@ struct WeaponModelLoadResult final {
     const std::filesystem::path& asset_root, std::uint8_t tool_id,
     std::array<float, 3U> tint = {1.0F, 1.0F, 1.0F},
     std::optional<VxlColor> team_color = std::nullopt,
-    std::uint8_t inverse_scale = 1U);
+    std::uint8_t inverse_scale = 1U,
+    const WeaponCosmeticFinish* finish = nullptr);
 
 } // namespace battlespades::world

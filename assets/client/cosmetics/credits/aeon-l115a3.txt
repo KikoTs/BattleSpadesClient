@@ -1,0 +1,52 @@
+AEON L115A3
+Original authors: iSkyte., 1Shot_1Kill
+https://gamebanana.com/mods/319083
+
+{
+  "id": "aeon-l115a3",
+  "name": "AEON L115A3",
+  "archive": "b_s_aeon_l115a3.zip",
+  "archive_sha256": "f614ad298e7e10c4f824e8475dd55a695b6b573e225354b6374695039c88ad8d",
+  "source": "https://gamebanana.com/mods/319083",
+  "credits": [
+    {
+      "group": "Skin",
+      "authors": [
+        {
+          "name": "iSkyte.",
+          "role": "Skin Maker",
+          "url": "https://gamebanana.com/members/1992661"
+        }
+      ]
+    },
+    {
+      "group": "Model",
+      "authors": [
+        {
+          "name": "1Shot_1Kill",
+          "role": "Original Model",
+          "url": "https://gamebanana.com/members/1394077"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "ed417c8def9f82278fb3803abaef3cb5bb6c1e684a7f609e5507581b5dd4b645"
+}

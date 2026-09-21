@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "id": "pack-170191-default",
+  "name": "[AoS/OpenSpades/AoS Steam] Heckler & Koch HK416",
+  "source": "https://gamebanana.com/mods/170191",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/SMG/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/Magazine.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/SMG/Sight1.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight1.kv6",
+    "Models/Weapons/SMG/Sight2.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight2.kv6",
+    "Models/Weapons/SMG/Sight3.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6",
+    "Sounds/Weapons/SMG/V2AmbienceSmall1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg",
+    "Sounds/Weapons/SMG/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg",
+    "Sounds/Weapons/SMG/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/SMG/Magazine.kv6": "b7d746980f231c8609541357f9dd36900af8f8bc18214a2ce475e4762d0ca810",
+    "Models/Weapons/SMG/Weapon.kv6": "a70d6aab1d19e05e77d2866d8d253e844f62e3251c440f94e64aa03efa50fc44",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "b572ea260c8a1bc9f3201e2e183cc32c60f26557fa2859f3ca27820244bf8556",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight1.kv6": "bbb2f52cf57a91b70dea21745f5f2c005ea71418edb81c0becbf62dd29044f90",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight2.kv6": "9c9a89d3786bbaf20de9217fdbd0bbc85d6cd3f73525700729d410c6a71697d6",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6": "93d3935dc5ce1bcce63d92436192f80956823c0367d9d4d505685586cd8f1465",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg": "91b780a62ca9f5489e7c50974bab3665ee65bc88842dae63d9cfde85b9a21697",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg": "aac83d252e3f12bc4b6dcbda5de54a322eb14bcb501568e6d3ca55c9926bf343",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg": "abbb20c5efcfe5148b32d3a307339cd3796a3a3a49ee71edffc1270cee91903a",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg": "1692ffb910cf8d08a77c4ad58ff0867b8849877697940d43fed768cd7af1aa38",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg": "3d0a4d7eb6eac417e897cb3596880c7ef1fe86ef16c3c7ba92e4e538c34a62c2",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg": "86d04418f0ae667169438f0d8fe67efffc135f615b8e4b8c2dcb78780d19ef49",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg": "d9f8f5f6e5e3c2c866a3d829e06d4a9278cb30d5dd8ece30abb84c43c5221032",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg": "cfb361db4c92b30bee6ae797f3c3a3fbb3a45292c4513d36a2576cf8fba06875",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg": "214068a8bfeb2c9de099bcc07b060eca3ca1eac9fb62f2a12e9218cb045105fe",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg": "cabfc890707382b4e4cc1297ecf29b70be8d86f8937f2873ce5b41b6ccac2024",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg": "fdab1f788ff2ad8c431cc1685ec5759020cbfacb5b679eed9f5b560ba1bf379c",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg": "f3b68a79e5cb5047ff04caeddb4591afd475acdad73e9aad7ebd53d4a9bc6b84",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg": "2b720386f2e4ae837a121e46444a52f140237f85d4060419f540850482544753",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg": "407a324b9468d2a41260b98751697fddb8e6acf44abbc3ba730fadfa21b589a3",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg": "10c4642eab001b172691ae6cbf2e364819efdc33d5ad8231458f2c0755de776f",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/SMG/View.as": "e21cc19bd30c95c98bcbafd21eefc8ecb2b8b0bc8b99e370c732973a4e540566"
+  },
+  "license": "1. Any modifications of my mods that will be distributed will need my permission and credit.\r\n2. Any of my mods that will be re-distributed will need my permission and credit.\r\n3. Do not use adf.ly or any other advert links to link to my mods.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "1Shot1Kill"
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default SMG script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

@@ -1,0 +1,113 @@
+MP5K
+Original authors: Nuceto, Lolwuut, PTrooper
+https://gamebanana.com/mods/487866
+
+{
+  "id": "mp5k",
+  "name": "MP5K",
+  "archive": "mp5k_1f629.zip",
+  "archive_sha256": "69e7c42b96d6260162fd199a677fef92356e939cc3eebf2ab3f380e3b404b887",
+  "source": "https://gamebanana.com/mods/487866",
+  "credits": [
+    {
+      "group": "Key Authors",
+      "authors": [
+        {
+          "name": "Nuceto",
+          "role": "animation",
+          "url": "https://gamebanana.com/members/1773911"
+        }
+      ]
+    },
+    {
+      "group": "Contributors",
+      "authors": [
+        {
+          "name": "Lolwuut",
+          "role": "Modeler",
+          "url": "https://gamebanana.com/members/1732817"
+        }
+      ]
+    },
+    {
+      "group": "Special Thanks",
+      "authors": [
+        {
+          "name": "PTrooper",
+          "role": "Script",
+          "url": "https://gamebanana.com/members/1415230"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Static voxel assembly from the original third-person part transforms; native parent animations.",
+  "model_sha256": "89f6d35ab8fbad021045e4a4a718b72c8e9a7b2227879b2236878ffd37692319"
+}
+
+--- Scripts/Skin/SMG/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+
+ This file is part of OpenSpades.
+
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
+ namespace spades {
+	class ThirdPersonSMGSkin:
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin, IWeaponSkin2 {
+		private float sprintState;
+--- Scripts/Skin/SMG/View.as ---
+/*
+ Copyright (c) 2013 yvt
+ Modified by Paratrooper
+
+ This file is part of OpenSpades.
+ Modified by PTrooper
+ Modified by Nuceto
+
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+ namespace spades {
+    class ViewSMGSpring {

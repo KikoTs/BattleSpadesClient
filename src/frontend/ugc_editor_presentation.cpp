@@ -73,6 +73,10 @@ constexpr std::string_view arrow_down{
     "png/ui/common_elements/scroll_bar/scroll_bar_arrow_down.png"};
 constexpr std::string_view arrow_up{
     "png/ui/common_elements/scroll_bar/scroll_bar_arrow_up.png"};
+constexpr std::string_view arrow_left{
+    "png/ui/common_elements/scroll_bar/scroll_bar_arrow_left.png"};
+constexpr std::string_view arrow_right{
+    "png/ui/common_elements/scroll_bar/scroll_bar_arrow_right.png"};
 constexpr std::string_view collapse_minus{
     "png/ui/common_elements/collapse_minus.png"};
 constexpr std::string_view bullet_slider{
@@ -467,7 +471,8 @@ void append_panel(ui::DrawList& list,
                   DrawRect panel,
                   DrawRect header,
                   std::string_view title_key,
-                  bool centered = false) {
+                  bool centered = false,
+                  double title_width = 0.0) {
     list.push(sprite(ugc_editor_assets::panel,
                      panel,
                      DrawSpace::design_pixels,
@@ -481,7 +486,8 @@ void append_panel(ui::DrawList& list,
                      UiTextureAnchor::center,
                      global_scale));
     list.push(text(title_key,
-                   {header.x + 14.0, header.y, header.width - 28.0, header.height},
+                   {header.x + 14.0, header.y,
+                    title_width > 0.0 ? title_width : header.width - 28.0, header.height},
                    19.0,
                    cream,
                    centered ? HorizontalTextAlignment::center
@@ -575,7 +581,8 @@ UgcEditorBrowserPresentation::build_layer(const UgcEditorBrowserModel& model) co
                    ugc_editor_assets::title_font));
     append_back(list, layout.back, "BACK", model.visual_state(model.controls()[0U].widget.id));
 
-    append_panel(list, layout.list_panel, layout.list_header, "UGC_OPEN_LOBBIES");
+    append_panel(list, layout.list_panel, layout.list_header, "UGC_OPEN_LOBBIES", false,
+                 layout.source_filter.x - layout.list_header.x - 24.0);
     solid(list, layout.source_filter, black);
     list.push(text(localization_key(model.source()),
                    {layout.source_filter.x + 10.0,
@@ -704,10 +711,10 @@ UgcEditorLobbyClassicLayout ugc_editor_lobby_classic_layout() noexcept {
         {25.0, 5.0, 750.0, 589.0},
         {120.0, 25.0, 560.0, 50.0},
         {54.0, 541.0, 170.0, 32.0},
-        {56.0, 95.0, 340.0, 270.0},
+        {56.0, 95.0, 340.0, 355.0},
         {66.0, 105.0, 320.0, 40.0},
         {66.0, 155.0, 320.0, 25.0},
-        {296.0, 461.0, 80.0, 30.0},
+        {60.0, 456.0, 332.0, 50.0},
         {401.0, 95.0, 340.0, 355.0},
         {411.0, 105.0, 320.0, 40.0},
         {411.0, 145.0, 320.0, 42.0},
@@ -753,14 +760,15 @@ UgcEditorLobbyPresentation::build_layer(const UgcEditorLobbyModel& model,
                  layout.members_panel,
                  layout.members_header,
                  model.configuration().map_title);
-    solid(list, layout.first_member_row, row_grey);
-    list.push(text(player_name,
+    if (model.members().empty()) {
+        solid(list, layout.first_member_row, row_grey);
+        list.push(text(player_name,
                    {layout.first_member_row.x + 14.0,
                     layout.first_member_row.y,
                     215.0,
                     layout.first_member_row.height},
                    12.0));
-    list.push(text("HOST",
+        list.push(text("HOST",
                    {layout.first_member_row.x + 230.0,
                     layout.first_member_row.y,
                     75.0,
@@ -768,11 +776,25 @@ UgcEditorLobbyPresentation::build_layer(const UgcEditorLobbyModel& model,
                    11.0,
                    selected_green,
                    HorizontalTextAlignment::right));
+    } else {
+        const auto& members = model.members();
+        const auto columns = members.size() > 12U ? 2U : 1U;
+        const auto width = layout.first_member_row.width / static_cast<double>(columns);
+        for (std::size_t index = 0U; index < members.size(); ++index) {
+            const auto& member = members[index];
+            const ui::DrawRect row{layout.first_member_row.x + static_cast<double>(index / 12U) * width,
+                layout.first_member_row.y + static_cast<double>(index % 12U) * 22.0, width, 22.0};
+            solid(list, row, index % 2U == 0U ? row_grey : row_dark);
+            list.push(text(member.first, {row.x + 5.0, row.y, width - 35.0, row.height}, 11.0));
+            if (member.second) list.push(text("HOST", {row.x + width - 33.0, row.y, 30.0, row.height},
+                8.0, selected_green, HorizontalTextAlignment::right));
+        }
+    }
     append_button(list,
                   layout.invite_button,
                   "INVITE",
                   model.visual_state(model.controls()[1U].widget.id),
-                  14.0);
+                  22.0);
 
     append_panel(list,
                  layout.settings_panel,
@@ -802,7 +824,7 @@ UgcEditorLobbyPresentation::build_layer(const UgcEditorLobbyModel& model,
         list.push(text(definition.label_key,
                        {row.x + 12.0, row.y, 124.0, row.height},
                        12.0,
-                       cream,
+                       state == WidgetVisualState::disabled ? unavailable : cream,
                        HorizontalTextAlignment::left,
                        TextTransform::preserve,
                        ugc_editor_assets::header_font));
@@ -810,22 +832,25 @@ UgcEditorLobbyPresentation::build_layer(const UgcEditorLobbyModel& model,
         if (definition.editable_text && model.title_editing()) {
             value.push_back('_');
         }
+        if (definition.editable_text) {
+            solid(list, {row.x + 136.0, row.y + 7.0, 176.0, 28.0}, black);
+        }
         list.push(text(value,
-                       {row.x + 140.0, row.y, 146.0, row.height},
+                       {row.x + (definition.editable_text ? 142.0 : 162.0), row.y,
+                        definition.editable_text ? 164.0 : 124.0, row.height},
                        12.0,
-                       definition.editable_text && model.title_editing() ? selected_green : cream,
-                       HorizontalTextAlignment::right));
+                       state == WidgetVisualState::disabled ? unavailable :
+                           (definition.editable_text && model.title_editing() ? selected_green : cream),
+                       HorizontalTextAlignment::center));
         if (!definition.editable_text) {
-            list.push(text("<",
-                           {row.x + 134.0, row.y, 12.0, row.height},
-                           13.0,
-                           gold,
-                           HorizontalTextAlignment::center));
-            list.push(text(">",
-                           {row.x + 292.0, row.y, 12.0, row.height},
-                           13.0,
-                           gold,
-                           HorizontalTextAlignment::center));
+            constexpr auto scale = static_cast<double>(MainMenuModel::subpixels_per_pixel);
+            for (const auto direction : {-1, 1}) {
+                const auto arrow = ugc_editor_setting_arrow(
+                    model.controls()[control_index].widget.bounds, direction);
+                append_square_button(list,
+                    {arrow.x / scale, arrow.y / scale, arrow.width / scale, arrow.height / scale},
+                    direction < 0 ? arrow_left : arrow_right, state != WidgetVisualState::disabled);
+            }
         }
     }
 
@@ -970,6 +995,8 @@ std::span<const MainMenuAsset> required() noexcept {
         result.push_back({settings_row, texture, linear, center, global_scale});
         result.push_back({collapse_minus, texture, nearest, center, global_scale});
         result.push_back({arrow_up, texture, nearest, center, 1.0});
+        result.push_back({arrow_left, texture, nearest, center, 1.0});
+        result.push_back({arrow_right, texture, nearest, center, 1.0});
         result.push_back({bullet_slider, texture, nearest, center, global_scale});
         result.push_back({scrollbar_top, texture, linear, top_left, source_scale});
         result.push_back({scrollbar_mid, texture, linear, top_left, source_scale});

@@ -2,6 +2,7 @@
 #include "battlespades/frontend/player_profile_presentation.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -100,10 +101,10 @@ find_sprite(const battlespades::ui::DrawList& draw, std::string_view asset) {
 
 void recovered_tabs_and_filters_keep_retail_order() {
     const auto tabs = player_profile_tab_definitions();
-    expect(tabs.size() == 4U && tabs[0].label_key == "PLAYER_STATS" &&
+    expect(tabs.size() == 5U && tabs[0].label_key == "PLAYER_STATS" &&
                tabs[1].label_key == "GAME_MODES" && tabs[2].label_key == "CLASSES" &&
-               tabs[3].label_key == "EQUIPMENT",
-           "profile tabs must retain Player Stats, Game Modes, Classes, Equipment order");
+               tabs[3].label_key == "EQUIPMENT" && tabs[4].tab == PlayerProfileTab::inventory,
+           "Inventory follows the four original mastery tabs");
     expect(tabs[1].filter_keys.size() == 11U && tabs[1].filter_keys[6] == "CTF_TITLE" &&
                tabs[1].filter_keys.back() == "HOURS_PLAYED",
            "Game Modes must retain every recovered retail filter in order");
@@ -231,6 +232,116 @@ void dropdown_and_progress_states_are_explicit() {
            "rank progress must show retail level and current/next values over the bar");
 }
 
+void expect_renderable(const PlayerProfileMenuModel& model) {
+    const auto draw = PlayerProfilePresentation{}.build(model);
+    expect(!draw.empty(), "Profile presentation must not be empty");
+    for (const auto& command : draw.commands()) {
+        if (const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command)) {
+            const auto& rect = sprite->destination;
+            if (!std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+                !std::isfinite(rect.width) || !std::isfinite(rect.height) ||
+                rect.width <= 0.0 || rect.height <= 0.0) {
+                throw std::runtime_error{
+                    "Profile submitted a non-renderable sprite: " + sprite->asset_id + " (" +
+                    std::to_string(rect.width) + " x " + std::to_string(rect.height) + ")"};
+            }
+        }
+    }
+}
+
+void zero_and_boundary_progress_remain_renderable() {
+    for (const auto tab : {PlayerProfileTab::game_modes, PlayerProfileTab::classes,
+                           PlayerProfileTab::equipment}) {
+        for (const auto fraction : {0.0, 0.5, 1.0}) {
+            for (const auto detailed : {false, true}) {
+                PlayerProfileMenuModel model{1U};
+                PlayerProfileData data;
+                data.player_name = "Progress fixture";
+                PlayerProfileRow row{PlayerProfileRowKind::statistic, "", "LEADERBOARD_KILLS",
+                                     "0", fraction, {}};
+                if (detailed) {
+                    // Zero fraction at a nonzero rank boundary must also omit the fill.
+                    row.level_details = PlayerProfileLevelDetails{3U, 10.0 + 20.0 * fraction,
+                                                                  10.0, 30.0};
+                }
+                data.rows[static_cast<std::size_t>(tab)].push_back(row);
+                expect(model.complete(*model.take_request(), std::move(data)), "load progress fixture");
+                static_cast<void>(model.select_tab(tab));
+                expect_renderable(model);
+                const auto draw = PlayerProfilePresentation{}.build(model);
+                const auto fills = std::ranges::count_if(draw.commands(), [](const auto& command) {
+                    const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command);
+                    return sprite != nullptr && sprite->modulation.color ==
+                        battlespades::ui::ColorRgba8{137U, 179U, 45U, 255U};
+                });
+                expect(fills == (fraction > 0.0 ? 1 : 0),
+                       "empty progress must keep its background without drawing a fake fill");
+            }
+        }
+        PlayerProfileMenuModel model{1U};
+        PlayerProfileData data;
+        data.player_name = "Zero threshold fixture";
+        data.rows[static_cast<std::size_t>(tab)].push_back(
+            {PlayerProfileRowKind::statistic, "", "LEADERBOARD_KILLS", "0", {},
+             PlayerProfileLevelDetails{1U, 0.0, 0.0, 0.0}});
+        expect(model.complete(*model.take_request(), std::move(data)), "load zero threshold fixture");
+        static_cast<void>(model.select_tab(tab));
+        expect_renderable(model);
+    }
+}
+
+void long_stat_lists_keep_minimum_scrollbar_renderable() {
+    for (const auto tab : {PlayerProfileTab::player_stats, PlayerProfileTab::game_modes,
+                           PlayerProfileTab::classes, PlayerProfileTab::equipment}) {
+        for (const auto count : {0U, 13U, 14U, 64U, 128U}) {
+            PlayerProfileMenuModel model{1U};
+            PlayerProfileData data;
+            data.player_name = "Long profile fixture";
+            const auto category = player_profile_tab_definition(tab).filter_keys.front();
+            data.rows[static_cast<std::size_t>(tab)].assign(count,
+                {PlayerProfileRowKind::statistic, std::string{category}, "LEADERBOARD_KILLS",
+                 "9", {}, {}});
+            expect(model.complete(*model.take_request(), std::move(data)), "load long profile fixture");
+            static_cast<void>(model.select_tab(tab));
+            expect_renderable(model);
+            static_cast<void>(model.scroll_rows(1'000));
+            expect_renderable(model);
+            if (count == 128U) {
+                const auto draw = PlayerProfilePresentation{}.build(model);
+                expect(find_sprite(draw, player_profile_presentation_assets::scrollbar_top) != nullptr &&
+                       find_sprite(draw, player_profile_presentation_assets::scrollbar_bottom) != nullptr,
+                       "minimum thumb must retain both visible end caps");
+                expect(find_sprite(draw, player_profile_presentation_assets::scrollbar_mid) == nullptr,
+                       "minimum thumb must omit its zero-height middle");
+            }
+            if (model.filter_visible()) {
+                static_cast<void>(model.select_filter(1U));
+                expect_renderable(model);
+                expect(model.toggle_filter(), "open filter on long profile");
+                expect_renderable(model);
+            }
+        }
+    }
+}
+
+void every_tab_and_filter_handles_loading_and_missing_profiles() {
+    for (const auto& definition : player_profile_tab_definitions()) {
+        PlayerProfileMenuModel model{1U};
+        static_cast<void>(model.select_tab(definition.tab));
+        expect_renderable(model);
+        expect(model.fail(*model.take_request()), "set missing profile state");
+        expect_renderable(model);
+        if (!model.filter_visible()) continue;
+        for (std::size_t filter = 0U; filter <= definition.filter_keys.size(); ++filter) {
+            static_cast<void>(model.select_filter(filter));
+            expect_renderable(model);
+            expect(model.toggle_filter(), "open unavailable profile filter");
+            expect_renderable(model);
+            static_cast<void>(model.close_filter());
+        }
+    }
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -239,6 +350,9 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"zero_and_boundary_progress_remain_renderable", zero_and_boundary_progress_remain_renderable},
+        {"long_stat_lists_keep_minimum_scrollbar_renderable", long_stat_lists_keep_minimum_scrollbar_renderable},
+        {"every_tab_and_filter_handles_loading_and_missing_profiles", every_tab_and_filter_handles_loading_and_missing_profiles},
         {"recovered_tabs_and_filters_keep_retail_order",
          recovered_tabs_and_filters_keep_retail_order},
         {"request_filter_reset_dropdown_and_effects_match_retail",

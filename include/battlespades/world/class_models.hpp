@@ -1,4 +1,5 @@
 #pragma once
+#include "battlespades/world/kv6_model.hpp"
 
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/class_catalog.hpp"
@@ -7,12 +8,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <map>
 #include <string>
 #include <vector>
 
 namespace battlespades::world {
 
 class Kv6Model;
+struct ClassModelOverrides : std::map<std::string,Kv6Model> {
+    bool open_spades{};
+};
 
 struct ClassModelPart final {
     ChunkMesh mesh;
@@ -24,6 +29,8 @@ struct ClassModelSet final {
     std::uint8_t class_id{};
     std::vector<ClassModelPart> body_parts;
     std::vector<ChunkMesh> first_person_arms;
+    /** Classic packs supply one complete posed arm mesh. */
+    std::optional<ChunkMesh> combined_arms;
     /** Debug/selection-screen standing composite in local world units. */
     ChunkMesh standing_preview;
     /** Compatibility standing head/torso composite used by static previews. */
@@ -64,6 +71,9 @@ class_part_preview_origin(const ClassBodyPartDefinition& part) noexcept;
 [[nodiscard]] ClassModelLoadResult
 load_class_models(const std::filesystem::path& asset_root, std::uint8_t class_id,
                   VxlColor team_color = {44U, 117U, 179U, 255U},
-                  std::uint8_t inverse_scale = 1U);
+                  std::uint8_t inverse_scale = 1U,
+                  std::optional<std::array<std::uint8_t,3U>> palette = std::nullopt,
+                  const Kv6Model* head_override = nullptr,
+                  const ClassModelOverrides* body_override = nullptr);
 
 } // namespace battlespades::world

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -38,6 +39,35 @@ void retail_quality_mapping_is_exact() {
            "a retail high minimum detail must force full-resolution geometry");
     expect(kv6_inverse_scale(ModelQualityTier::low, ModelQualityTier::low, true) == 1U,
            "prefabs must ignore global model quality");
+}
+
+void retail_normals_survive_loading_and_all_six_faces() {
+    for (const auto index : {std::uint8_t{0},std::uint8_t{254},std::uint8_t{255}}) {
+        std::vector<std::byte> bytes;
+        const auto u32 = [&](std::uint32_t value) {
+            for (int byte=0;byte<4;++byte) bytes.push_back(static_cast<std::byte>(value>>(byte*8)));
+        };
+        u32(0x6C78764B); u32(1); u32(1); u32(1); // Kvxl, 1x1x1
+        u32(0); u32(0); u32(0); u32(1); // pivot and voxel count
+        u32(0x00808080); u32((static_cast<std::uint32_t>(index)<<24)|0x003F0000);
+        u32(1); bytes.push_back(std::byte{1}); bytes.push_back(std::byte{0});
+        const auto model=Kv6Model::load(bytes);
+        expect(model && model->voxels().front().normal_index==index,"KV6 normal byte was discarded");
+        const auto mesh=model->mesh();
+        expect(mesh.vertices.size()==24,"one voxel must expose six faces");
+        for (const auto& v:mesh.vertices) {
+            expect(v.static_light==0x40000000U,"KV6 material must stay distinct from terrain/effect cubes");
+            expect(v.ao_u==mesh.vertices.front().ao_u && v.ao_v==mesh.vertices.front().ao_v &&
+                v.edge_u==mesh.vertices.front().edge_u,"authored normal must be shared by all faces");
+            if (index==0) expect(std::abs(v.ao_u+0.08847556F)<0.00001F &&
+                std::abs(v.ao_v+0.99607843F)<0.000001F && v.edge_u==0,
+                "normal zero must match the recovered table and coordinate conversion");
+            if (index==255) expect(v.ao_u==2 && v.ao_v==0 && v.edge_u==0,
+                "normal 255 must retain retail's special vector");
+        }
+        expect(model->inverse_scaled(2).voxels().front().normal_index==1,
+               "reduced-detail models must use retail's rebuilt normal index");
+    }
 }
 
 void inverse_scaling_preserves_size_pivot_and_team_material() {
@@ -115,6 +145,7 @@ void sights_ignore_low_model_quality() {
 int main() {
     try {
         retail_quality_mapping_is_exact();
+        retail_normals_survive_loading_and_all_six_faces();
         inverse_scaling_preserves_size_pivot_and_team_material();
         sights_ignore_low_model_quality();
         std::cout << "model quality tests passed\n";

@@ -1,0 +1,115 @@
+{
+  "name": "SVT 40 WW2 (New) [OS]",
+  "source": "https://gamebanana.com/mods/170241",
+  "archives": [
+    {
+      "archive": "170241\\459307-svt40_24ac7.rar",
+      "extracted": "170241\\files-459307",
+      "sha256": "5053c7ab5a9e36dce7a6bad108db02e2944915608ec6d2b075895f864ffd742d",
+      "listing": [
+        "Rifle/Gfx/Flash/Weapons/Rifle/000.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/001.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/002.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/003.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/004.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/005.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/006.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/007.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/008.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/009.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/010.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/011.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/012.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/013.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/014.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/015.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/016.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/017.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/018.png",
+        "Rifle/Gfx/Flash/Weapons/Rifle/019.png",
+        "Rifle/Scripts/Skin/Rifle/ThirdPerson.as",
+        "Rifle/Scripts/Skin/Rifle/View.as",
+        "Rifle/Sounds/Weapons/Rifle/FireFar.wav",
+        "Rifle/Sounds/Weapons/Rifle/FireStereo.wav",
+        "Rifle/Sounds/Weapons/Rifle/Reload.wav",
+        "Rifle/Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Rifle/Sounds/Weapons/Rifle/V2AmbienceLarge.wav",
+        "Rifle/Sounds/Weapons/Rifle/V2AmbienceSmall.wav",
+        "Rifle/Gfx/Flash/Weapons/Rifle",
+        "Rifle/Gfx/Flash/Weapons",
+        "Rifle/Models/Weapons/Rifle",
+        "Rifle/Scripts/Skin/Rifle",
+        "Rifle/Sounds/Weapons/Rifle",
+        "Rifle/Gfx/Flash",
+        "Rifle/Models/Weapons",
+        "Rifle/Scripts/Skin",
+        "Rifle/Sounds/Weapons",
+        "Rifle/Gfx",
+        "Rifle/Models",
+        "Rifle/Scripts",
+        "Rifle/Sounds",
+        "Rifle",
+        "Rifle/Models/Weapons/Rifle/Magazine.kv6",
+        "Rifle/Models/Weapons/Rifle/RearSight.kv6",
+        "Rifle/Models/Weapons/Rifle/Weapon.kv6",
+        "Rifle/Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Rifle/Models/Weapons/Rifle/Casing.kv6",
+        "Rifle/Models/Weapons/Rifle/ChargingHandle.kv6",
+        "Rifle/Models/Weapons/Rifle/FrontSight.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1546514",
+          "_sName": "Lauchin",
+          "_sProfileUrl": "https://gamebanana.com/members/1546514",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5899e44d92791.png",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Scripts",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripts and Animations",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

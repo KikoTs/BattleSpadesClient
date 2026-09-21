@@ -1,0 +1,78 @@
+{
+  "name": "AK-74 \"Apocalyptic\"",
+  "source": "https://gamebanana.com/mods/170205",
+  "archive": [
+    {
+      "archive": "170205\\214636-ak-74_apocolyptic.zip",
+      "extracted": "170205\\files-214636",
+      "sha256": "a288f95ad7cf0a3b31b59595eb3c3292612ec917b906065ae465da3b88b3f2fc",
+      "listing": [
+        "AK-74 Apocolyptic/Ace of Spades Steam/",
+        "AK-74 Apocolyptic/Ace of Spades Steam/kv6/",
+        "AK-74 Apocolyptic/Ace of Spades Steam/kv6/smg.kv6",
+        "AK-74 Apocolyptic/Ace of Spades Steam/kv6/smg_sight.kv6",
+        "AK-74 Apocolyptic/Ace of Spades Steam/png/",
+        "AK-74 Apocolyptic/Ace of Spades Steam/png/ui/",
+        "AK-74 Apocolyptic/Ace of Spades Steam/png/ui/weapons/",
+        "AK-74 Apocolyptic/Ace of Spades Steam/png/ui/weapons/smg.png",
+        "AK-74 Apocolyptic/Ace of Spades/",
+        "AK-74 Apocolyptic/Ace of Spades/kv6/",
+        "AK-74 Apocolyptic/Ace of Spades/kv6/smg.kv6",
+        "AK-74 Apocolyptic/Ace of Spades/png/",
+        "AK-74 Apocolyptic/Ace of Spades/png/smg.png",
+        "AK-74 Apocolyptic/AK-74 Apocolyptic.jpg",
+        "AK-74 Apocolyptic/OpenSpades/",
+        "AK-74 Apocolyptic/OpenSpades/Gfx/",
+        "AK-74 Apocolyptic/OpenSpades/Gfx/smg.png",
+        "AK-74 Apocolyptic/OpenSpades/Models/",
+        "AK-74 Apocolyptic/OpenSpades/Models/Weapons/",
+        "AK-74 Apocolyptic/OpenSpades/Models/Weapons/SMG/",
+        "AK-74 Apocolyptic/OpenSpades/Models/Weapons/SMG/Magazine.kv6",
+        "AK-74 Apocolyptic/OpenSpades/Models/Weapons/SMG/Weapon.kv6",
+        "AK-74 Apocolyptic/OpenSpades/Models/Weapons/SMG/WeaponNoMagazine.kv6",
+        "AK-74 Apocolyptic/Screenshots/",
+        "AK-74 Apocolyptic/Screenshots/Ace of Spades Steam/",
+        "AK-74 Apocolyptic/Screenshots/Ace of Spades Steam/2014-09-02_00003.jpg",
+        "AK-74 Apocolyptic/Screenshots/Ace of Spades Steam/2014-09-02_00004.jpg",
+        "AK-74 Apocolyptic/Screenshots/OpenSpades/",
+        "AK-74 Apocolyptic/Screenshots/OpenSpades/OpenSpades 2014-09-02 22-42-17-25.jpg",
+        "AK-74 Apocolyptic/Screenshots/OpenSpades/OpenSpades 2014-09-02 22-42-19-66.jpg",
+        "AK-74 Apocolyptic/VoxelShop Project Files/",
+        "AK-74 Apocolyptic/VoxelShop Project Files/AK74.vsd"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_idRow": "1394077",
+          "_sName": "1Shot_1Kill",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/540329fa88a08.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1394077",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/53cacd9314c8b.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

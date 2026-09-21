@@ -1,0 +1,54 @@
+{
+  "name": "Usp with Skin — UspNOSilencerSKINXD",
+  "source": "https://gamebanana.com/mods/170222",
+  "archives": [
+    {
+      "archive": "170222\\535240-uspsilencerskinxd.zip",
+      "extracted": "170222\\files-535240",
+      "sha256": "577e836b5bbeb47752e3ac122464b2a9e9b277f23993e781db25c6fcf1e4c6f9",
+      "listing": [
+        "UspSilencerSKINXD.pak"
+      ]
+    },
+    {
+      "archive": "170222\\537738-usp_no_silencer.zip",
+      "extracted": "170222\\files-537738",
+      "sha256": "4f6dea937eea5ac00c52238a18d55f76642e4ac1a08998d065a156e7829ff13b",
+      "listing": [
+        "UspNOSilencerSKINXD.pak"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "desing",
+      "_aAuthors": [
+        {
+          "_sRole": "a",
+          "_idRow": "1753013",
+          "_sName": "Martinserna577",
+          "_sProfileUrl": "https://gamebanana.com/members/1753013",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

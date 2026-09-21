@@ -1,5 +1,7 @@
 # Weapon Secondary / ADS Recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Authoritative per-tool specification for right-mouse behaviour and aim-down-sights,
 recovered from the retail decompile (`G:/AoSRevival/aceofspades_source`) and from
 `character.pyd` / `gameScene.pyd` via IDA. Every claim below carries a `file:line`

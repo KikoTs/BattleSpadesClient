@@ -14,6 +14,11 @@
 #include "battlespades/world/retail_view_model.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_models.hpp"
+#include "battlespades/world/scripted_weapon.hpp"
+#include "battlespades/frontend/inventory_session.hpp"
+#include "battlespades/frontend/inventory_menu.hpp"
+#include "battlespades/audio/openal_frontend_audio.hpp"
+#include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "render/chunk_vertex_layout.hpp"
 
 #include <bgfx/bgfx.h>
@@ -194,7 +199,8 @@ struct Frame final {
  */
 [[nodiscard]] Frame render(const std::vector<DrawItem>& draws, std::uint32_t width,
                            std::uint32_t height, double fov_y_degrees,
-                           const std::filesystem::path& shader_root) {
+                           const std::filesystem::path& shader_root,
+                           const battlespades::world::ScriptedWeapon* skin=nullptr) {
     const auto w16 = static_cast<std::uint16_t>(width);
     const auto h16 = static_cast<std::uint16_t>(height);
     const auto layout = battlespades::render::chunk_vertex_layout();
@@ -234,6 +240,14 @@ struct Frame final {
     const auto skylight_sampler = bgfx::createUniform("s_skylight", bgfx::UniformType::Sampler);
     const auto emissive_sampler =
         bgfx::createUniform("s_emissiveVolume", bgfx::UniformType::Sampler);
+    const auto retail_ao_sampler = bgfx::createUniform("s_retailAo", bgfx::UniformType::Sampler);
+    const std::array retail_uniforms{
+        bgfx::createUniform("u_retailLight0Direction", bgfx::UniformType::Vec4),
+        bgfx::createUniform("u_retailLight1Direction", bgfx::UniformType::Vec4),
+        bgfx::createUniform("u_retailLight0Color", bgfx::UniformType::Vec4),
+        bgfx::createUniform("u_retailLight1Color", bgfx::UniformType::Vec4),
+        bgfx::createUniform("u_retailAmbient", bgfx::UniformType::Vec4),
+        bgfx::createUniform("u_retailViewDirection", bgfx::UniformType::Vec4)};
 
     const auto light_params = bgfx::createUniform("u_lightParams", bgfx::UniformType::Vec4);
     const auto fog_params = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
@@ -249,8 +263,14 @@ struct Frame final {
     const auto model_opacity =
         bgfx::createUniform("u_modelOpacity", bgfx::UniformType::Vec4);
 
-    // Classic shading: fs_world collapses to `albedo * v_shade`, the retail
-    // face table. Fog is pushed past the far plane so it contributes zero.
+    // This is a geometry/alignment probe: neutral ambient preserves the red
+    // bead's authored color independently of the model normal or map lighting.
+    // The block-shading render test exercises the actual retail light equations.
+    // Nonzero directions keep normalization defined even with zero light colors.
+    constexpr std::array<std::array<float, 4U>, 6U> kRetail{{
+        {0.0F, 1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F, 0.0F},
+        {0.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F},
+        {1.0F, 1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 1.0F, 0.0F}}};
     constexpr std::array<float, 4U> kClassic{1.0F, 1.0F, 0.0F, 1.0F};
     constexpr std::array<float, 4U> kFogDisabled{0.0F, 0.0F, 0.0F, 1.0e6F};
     constexpr std::array<float, 4U> kZero{0.0F, 0.0F, 0.0F, 0.0F};
@@ -302,6 +322,10 @@ struct Frame final {
         bgfx::setUniform(emissive_params, kZero.data());
         bgfx::setUniform(indirect_params, kZero.data());
         bgfx::setUniform(model_opacity, kOpaque.data());
+        for (std::size_t index{}; index < retail_uniforms.size(); ++index) {
+            bgfx::setUniform(retail_uniforms[index], kRetail[index].data());
+        }
+        bgfx::setTexture(0U, retail_ao_sampler, skylight_texture);
         bgfx::setTexture(1U, shadow_sampler, shadow_texture);
         bgfx::setTexture(2U, skylight_sampler, skylight_texture);
         bgfx::setTexture(3U, emissive_sampler, emissive_texture);
@@ -312,9 +336,38 @@ struct Frame final {
         bgfx::submit(0U, program);
     }
 
-    bgfx::setViewFrameBuffer(1U, framebuffer);
+    std::vector<bgfx::TextureHandle> sprite_textures;
+    bgfx::ProgramHandle sprite_program=BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle sprite_sampler=BGFX_INVALID_HANDLE;
+    if(skin){
+        struct Vertex{float x,y,z,u,v;std::uint32_t color;};
+        bgfx::VertexLayout sprite_layout;sprite_layout.begin().add(bgfx::Attrib::Position,3,bgfx::AttribType::Float).add(bgfx::Attrib::TexCoord0,2,bgfx::AttribType::Float).add(bgfx::Attrib::Color0,4,bgfx::AttribType::Uint8,true).end();
+        sprite_program=bgfx::createProgram(bgfx::createShader(load_shader(shader_root/"vs_ui.bin")),bgfx::createShader(load_shader(shader_root/"fs_ui.bin")),true);
+        sprite_sampler=bgfx::createUniform("s_texColor",bgfx::UniformType::Sampler);
+        std::array<float,16> ortho{};bx::mtxOrtho(ortho.data(),0.F,static_cast<float>(width),static_cast<float>(height),0.F,0.F,1.F,0.F,bgfx::getCaps()->homogeneousDepth);
+        bgfx::setViewFrameBuffer(1U,framebuffer);bgfx::setViewRect(1U,0,0,w16,h16);bgfx::setViewClear(1U,BGFX_CLEAR_NONE);bgfx::setViewMode(1U,bgfx::ViewMode::Sequential);bgfx::setViewTransform(1U,identity.data(),ortho.data());
+        const float focal=static_cast<float>(height)*.5F/std::tan(static_cast<float>(fov_y_degrees)*3.14159265F/360.F);
+        for(const auto& s:skin->frame().sprites){
+            if(s.resource>=skin->resources().size()||skin->resources()[s.resource].path.empty())continue;
+            const auto decoded=battlespades::render::decode_png_rgba8(skin->resources()[s.resource].path);expect(static_cast<bool>(decoded),decoded.error);
+            const auto& pixels=*decoded.texture;
+            const auto texture=bgfx::createTexture2D(static_cast<std::uint16_t>(pixels.extent.width),static_cast<std::uint16_t>(pixels.extent.height),false,1,bgfx::TextureFormat::RGBA8,BGFX_SAMPLER_U_CLAMP|BGFX_SAMPLER_V_CLAMP,bgfx::copy(pixels.rgba8.data(),static_cast<std::uint32_t>(pixels.rgba8.size())));sprite_textures.push_back(texture);
+            float x=s.position[0],y=s.position[1],w=s.radius,h=s.position[2]>0?s.position[2]:static_cast<float>(pixels.extent.height);
+            if(!s.screen){if(s.position[1]<=.01F)continue;const float radius=s.radius*focal/s.position[1];w=h=radius*2;x=static_cast<float>(width)*.5F-s.position[0]*focal/s.position[1]-radius;y=static_cast<float>(height)*.5F+s.position[2]*focal/s.position[1]-radius;}
+            const bool additive=!s.screen&&s.color[3]==0;
+            const auto channel=[](float v){return static_cast<std::uint32_t>(std::clamp(v,0.F,1.F)*255.F);};
+            const auto color=channel(s.color[0])|(channel(s.color[1])<<8U)|(channel(s.color[2])<<16U)|((additive?255U:channel(s.color[3]))<<24U);
+            std::array<Vertex,4> quad{{{x,y,0,0,0,color},{x+w,y,0,1,0,color},{x+w,y+h,0,1,1,color},{x,y+h,0,0,1,color}}};
+            for(auto& v:quad){const auto dx=v.x-x-w*.5F,dy=v.y-y-h*.5F;v.x=x+w*.5F+dx*std::cos(s.rotation)-dy*std::sin(s.rotation);v.y=y+h*.5F+dx*std::sin(s.rotation)+dy*std::cos(s.rotation);}
+            const std::array<std::uint16_t,6> indices{0,1,2,0,2,3};
+            const auto vb=bgfx::createVertexBuffer(bgfx::copy(quad.data(),sizeof(quad)),sprite_layout);const auto ib=bgfx::createIndexBuffer(bgfx::copy(indices.data(),sizeof(indices)));vertex_buffers.push_back(vb);index_buffers.push_back(ib);
+            bgfx::setTransform(identity.data());bgfx::setVertexBuffer(0,vb);bgfx::setIndexBuffer(ib);bgfx::setTexture(0,sprite_sampler,texture);
+            bgfx::setState(BGFX_STATE_WRITE_RGB|BGFX_STATE_WRITE_A|(additive?BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,BGFX_STATE_BLEND_ONE):BGFX_STATE_BLEND_ALPHA));bgfx::submit(1U,sprite_program);
+        }
+    }
+    bgfx::setViewFrameBuffer(2U, framebuffer);
     bgfx::setViewRect(1U, 0U, 0U, w16, h16);
-    bgfx::blit(1U, readback, 0U, 0U, colour, 0U, 0U, w16, h16);
+    bgfx::blit(2U, readback, 0U, 0U, colour, 0U, 0U, w16, h16);
 
     Frame frame;
     frame.width = width;
@@ -338,6 +391,8 @@ struct Frame final {
     bgfx::destroy(shadow_sampler);
     bgfx::destroy(skylight_sampler);
     bgfx::destroy(emissive_sampler);
+    bgfx::destroy(retail_ao_sampler);
+    for (const auto uniform : retail_uniforms) bgfx::destroy(uniform);
     bgfx::destroy(shadow_texture);
     bgfx::destroy(skylight_texture);
     bgfx::destroy(emissive_texture);
@@ -351,6 +406,9 @@ struct Frame final {
     bgfx::destroy(emissive_params);
     bgfx::destroy(indirect_params);
     bgfx::destroy(model_opacity);
+    for(const auto t:sprite_textures)bgfx::destroy(t);
+    if(bgfx::isValid(sprite_program))bgfx::destroy(sprite_program);
+    if(bgfx::isValid(sprite_sampler))bgfx::destroy(sprite_sampler);
     return frame;
 }
 
@@ -584,7 +642,7 @@ void write_png(const std::filesystem::path& path, std::uint32_t width, std::uint
  * Composite the frame over a neutral background and stamp the exact optical
  * axis, so the saved image answers "is it centred" by eye as well as by number.
  */
-void save_frame(const std::filesystem::path& path, const Frame& frame) {
+void save_frame(const std::filesystem::path& path, const Frame& frame, bool guides=true) {
     std::vector<std::uint8_t> rgb(static_cast<std::size_t>(frame.width) * frame.height * 3U);
     for (std::uint32_t y{}; y < frame.height; ++y) {
         for (std::uint32_t x{}; x < frame.width; ++x) {
@@ -611,7 +669,7 @@ void save_frame(const std::filesystem::path& path, const Frame& frame) {
     const std::uint32_t cx = frame.width / 2U;
     const std::uint32_t cy = frame.height / 2U;
     const auto stamp = [&](std::uint32_t x, std::uint32_t y) {
-        if (x >= frame.width || y >= frame.height) {
+        if (!guides || x >= frame.width || y >= frame.height) {
             return;
         }
         const auto index = (static_cast<std::size_t>(y) * frame.width + x) * 3U;
@@ -697,15 +755,35 @@ void the_aimed_branch_is_reachable() {
 int main(int argc, char** argv) {
     try {
         std::filesystem::path png_directory;
+        std::filesystem::path skin_manifest;
+        std::string character_id;
+        battlespades::world::SkinVariantSelection variants;
         bool measure_only = false;
+        bool cosmetics = false;
+        bool audio_probe = false;
+        bool reload_aim = false;
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
             if (argument == "--verbose") {
                 verbose = true;
             } else if (argument == "--measure") {
                 measure_only = true;
+            } else if (argument == "--cosmetics") {
+                cosmetics = true;
+            } else if (argument == "--audio") {
+                audio_probe = true;
+            } else if(argument=="--reload-aim"){
+                reload_aim=true;
             } else if (argument == "--png" && index + 1 < argc) {
                 png_directory = argv[++index];
+            } else if(argument=="--skin" && index+1<argc){
+                skin_manifest=argv[++index];
+            } else if(argument=="--character" && index+1<argc){
+                character_id=argv[++index];
+            } else if(argument=="--variant" && index+1<argc){
+                const std::string value=argv[++index];const auto split=value.find('=');
+                expect(split!=std::string::npos,"Variant must be option=choice");
+                variants[value.substr(0,split)]=value.substr(split+1);
             }
         }
 
@@ -713,6 +791,30 @@ int main(int argc, char** argv) {
 
         const std::filesystem::path asset_root{AOS_TEST_ASSET_ROOT};
         const std::filesystem::path shader_root{AOS_SHADER_BIN_ROOT};
+        if (audio_probe) {
+            namespace audio = battlespades::audio;
+            audio::OpenAlFrontendAudio sound{{asset_root,48U,0.0F,1.0F,false}};
+            expect(sound.start(), std::string{sound.last_error()});
+            expect(sound.set_master_volume(0.0F), "Could not mute the audio probe");
+            std::size_t custom_groups{};
+            for (const auto& item : battlespades::world::load_weapon_presentations(asset_root)) {
+                for(const auto& [cue,samples]:item.cues)for(std::size_t n=0;n<samples.size();++n)expect(sound.play_cosmetic_cue(item.id,cue,static_cast<std::uint8_t>(n),{},1.F,true),"Cue failed to decode: "+item.id+"/"+cue);
+                expect(sound.has_cosmetic_fire(item.id)==!item.fire_samples.empty(),
+                       "Cosmetic firing samples failed to decode: "+item.id);
+                if (item.fire_samples.empty()) continue;
+                ++custom_groups;
+                for (std::size_t i{};i<item.fire_samples.size();++i)
+                    sound.play_weapon_shoot(7U,static_cast<std::uint8_t>(i),{},1.0F,true,
+                        audio::SpatialSoundProfile::ordinary,item.id);
+            }
+            expect(custom_groups>=20U, "Expanded firing sets are missing");
+            expect(sound.active_one_shot_voices()>0U, "Custom samples did not create playback voices");
+            expect(!sound.has_cosmetic_fire("missing-skin"), "Missing audio did not fall back");
+            sound.play_weapon_shoot(7U,0U,{},1.0F,true,audio::SpatialSoundProfile::ordinary,"missing-skin");
+            sound.stop();
+            expect(!sound.has_cosmetic_fire("community-stg44-v2"), "Stopped audio retained stale sound groups");
+            std::cout << custom_groups << " cosmetic firing sets and all mapped cues decoded; playback and fallback passed\n";
+        }
 
         static DiagnosticCallback callback;
         bgfx::Init init;
@@ -733,6 +835,53 @@ int main(int argc, char** argv) {
         }
 
         const auto backend = shader_root / "dx11";
+        if(!skin_manifest.empty()){
+            battlespades::world::ScriptedWeapon skin;std::string error;
+            expect(skin.load(skin_manifest,error,variants),error);
+            const bool spade=std::ranges::any_of(skin.resources(),[](const auto& r){return r.name=="Models/Weapons/Spade/Spade.kv6";});
+            const auto character=battlespades::frontend::inventory_character_parts(
+                battlespades::frontend::find_inventory_cosmetic(character_id),asset_root);
+            if(!character_id.empty())expect(character.contains("arm_upper")&&character.contains("arm_lower"),"Selected character must supply a verified articulated arm pair");
+            const battlespades::world::VxlColor team{44U,117U,179U,255U};
+            std::vector<ChunkMesh> meshes;
+            for(std::size_t id=0;id<skin.resources().size();++id){
+                const auto& r=skin.resources()[id];meshes.push_back(skin.model_mesh(id,team,character));
+                if(!character.empty()&&character.open_spades&&r.arm_part!=battlespades::world::SkinArmPart::none){
+                    const auto role=r.arm_part==battlespades::world::SkinArmPart::upper?"arm_upper":"arm_lower";
+                    const auto expected=battlespades::world::ScriptedWeapon::source_mesh(character.at(role),team);
+                    const auto& actual=meshes.back();
+                    expect(actual.vertices.size()==expected.vertices.size()&&actual.indices==expected.indices,"Selected arm geometry must reach the weapon renderer unchanged");
+                    for(std::size_t v=0;v<actual.vertices.size();++v){const auto& a=actual.vertices[v];const auto& b=expected.vertices[v];
+                        expect(a.x==b.x&&a.y==b.y&&a.z==b.z&&a.abgr==b.abgr,"Selected skin's sleeves, gloves and attachment pivot must be preserved");}
+                }
+            }
+            if(!character.empty()){
+                const auto retail=battlespades::world::load_class_models(asset_root,2U,team,1U,std::nullopt,nullptr,&character);
+                expect(retail&&retail.models->first_person_arms.size()==2,"Selected character must also supply retail weapon arms");
+                for(std::size_t id=0;id<2;++id){auto source=character.at(id==0?"arm_upper":"arm_lower");source.apply_default_color(team);const auto expected=source.mesh();const auto& actual=retail.models->first_person_arms[id];
+                    expect(actual.vertices.size()==expected.vertices.size(),"Retail fitting must keep the selected skin geometry");
+                    for(std::size_t v=0;v<actual.vertices.size();++v)expect(actual.vertices[v].abgr==expected.vertices[v].abgr,"Retail weapon arms must keep the selected skin materials");}
+            }
+            for(int phase=0;phase<8;++phase){battlespades::world::SkinInput input;input.aim=phase==1||phase==6||phase==7?1.F:0.F;input.reloading=phase==2||phase==3;input.reload_progress=input.reloading?(phase==2?.35F:.7F):1.F;
+                if(reload_aim&&input.reloading)input.aim=1.F;
+                battlespades::world::ScriptedWeaponMotion motion;
+                if(spade){input.aim=phase==2?1.F:0.F;input.ready=phase==0?1.F:phase==1?.25F:phase==2?.5F:.9F;input.reloading=false;input.reload_progress=1;}
+                for(int frame=0;frame<(phase==6?8:120);++frame){
+                    if(phase==6)input.aim=static_cast<float>(frame+1)/8.F;
+                    input.dt=1.F/60.F;input.sprint=phase==4||phase==7?1.F:0.F;
+                    input.swing={0.F,0.F,phase>=5?-3.F:0.F};
+                    if(phase>=4)motion.apply(input,true);
+                    expect(skin.update(input,error),error);
+                }
+                std::vector<DrawItem> draws;for(const auto& d:skin.frame().models)if(d.resource<meshes.size()&&!meshes[d.resource].empty())draws.push_back({&meshes[d.resource],d.transform});
+                if(reload_aim&&input.reloading)expect(!draws.empty()&&skin.frame().scope_opacity==0.F,"Held aim must reveal the reload pose");
+                const auto image=render(draws,1280,720,input.aim==1.F&&!input.reloading&&!spade?37.5:75,backend,&skin);const auto coverage=measure(image,covered);expect(coverage.pixels>0,"Scripted weapon or authored sight must be visible");
+                std::filesystem::create_directories(png_directory);save_frame(png_directory/("skin-"+std::to_string(phase)+".png"),image,false);
+                save_frame(png_directory/("skin-"+std::to_string(phase)+"-guides.png"),image);
+                std::cout<<"phase "<<phase<<": "<<draws.size()<<" parts, "<<coverage.pixels<<" pixels, "<<skin.frame().sprites.size()<<" sprites\n";
+            }
+            bgfx::shutdown();return 0;
+        }
         constexpr double aspect =
             static_cast<double>(kWidth) / static_cast<double>(kHeight);
 
@@ -823,6 +972,26 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (cosmetics) {
+            const auto catalog = battlespades::frontend::inventory_preview_fixture();
+            for (const auto& item : catalog.items) {
+                if (item.kind != "weapon_model") continue;
+                for (const auto& parent : item.parents) {
+                    const auto finish = battlespades::frontend::inventory_weapon_finish(&item, asset_root, parent.tool);
+                    expect(finish.has_value(), "cosmetic must load: " + item.id);
+                    const auto loaded = load_weapon_models(asset_root, parent.tool, {1,1,1}, std::nullopt, 1U, &*finish);
+                    expect(static_cast<bool>(loaded), loaded.error);
+                    if (!loaded.models->sight) continue; // Minigun RMB spools; it never aims.
+                    const auto pose = evaluate_weapon_sight(parent.tool);
+                    std::vector<DrawItem> draws{{&*loaded.models->sight, sight_matrix(pose)}};
+                    if (loaded.models->pin) draws.push_back({&*loaded.models->pin, pin_matrix(pose)});
+                    const auto frame = render(draws, kWidth, kHeight, kAdsFovYDegrees, backend);
+                    std::cout << item.id << " parent " << static_cast<unsigned>(parent.tool) << '\n';
+                    report("cosmetic sight", measure(frame, covered), kAdsFovYDegrees, aspect);
+                    if (!png_directory.empty()) save_frame(png_directory / (item.id + "-" + std::to_string(parent.tool) + ".png"), frame);
+                }
+            }
+        }
         bgfx::shutdown();
         if (!failures.empty()) {
             throw std::runtime_error{"aimed sight is not centred:" + failures};

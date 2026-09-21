@@ -1,0 +1,46 @@
+{
+  "name": "Openspades M14 EBR \"Scoped\"",
+  "source": "https://gamebanana.com/mods/170609",
+  "archive": [
+    {
+      "archive": "170609\\208960-m14ebr.7z",
+      "extracted": "170609\\files-208960",
+      "sha256": "e822913430a3ce4d36a8615b5a6c3e3b950a15786f4caaa4e8ffe4bf7b0cb259",
+      "listing": [
+        "m14ebr/Magazine.kv6",
+        "m14ebr/Sight1.kv6",
+        "m14ebr/Sight2.kv6",
+        "m14ebr/weapon.kv6",
+        "m14ebr/Weaponnomagazine-old.kv6",
+        "m14ebr/WeaponNoMagazine.kv6",
+        "m14ebr/"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Concpet/ Model",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

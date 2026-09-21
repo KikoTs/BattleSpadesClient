@@ -66,6 +66,8 @@ struct QuickPlayServerResponse final {
     std::string texture_skin;
     bool classic{};
     bool matching_version{true};
+    std::string identity_server_id;
+    bool identity_ticket{};
 
     [[nodiscard]] std::string identifier() const;
 };
@@ -101,6 +103,8 @@ struct QuickPlayDirectStartIntent final {
     std::string expected_mode;
     std::string expected_skin;
     bool expected_classic{};
+    std::string identity_server_id;
+    bool identity_ticket{};
 
     [[nodiscard]] friend bool operator==(const QuickPlayDirectStartIntent&,
                                          const QuickPlayDirectStartIntent&) = default;
@@ -177,6 +181,9 @@ public:
     [[nodiscard]] std::optional<QuickPlaySearchIntent> begin_search() noexcept;
     [[nodiscard]] bool accept_server(QuickPlaySearchIntent request,
                                      QuickPlayServerResponse response);
+    /** Admit an unassigned public-list response to its compatible retail playlists. */
+    [[nodiscard]] std::size_t accept_public_server(QuickPlaySearchIntent request,
+                                                  const QuickPlayServerResponse& response);
     [[nodiscard]] bool finish_search(QuickPlaySearchIntent request) noexcept;
     [[nodiscard]] bool fail_search(QuickPlaySearchIntent request) noexcept;
 

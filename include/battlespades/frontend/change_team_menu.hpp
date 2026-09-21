@@ -48,6 +48,8 @@ struct ChangeTeamServerState final {
     std::array<std::uint8_t, 3U> team2_color{92U, 174U, 74U};
     std::vector<TeamRosterPlayer> team1_players;
     std::vector<TeamRosterPlayer> team2_players;
+    /** ViewScores uses spare bottom rows for spectators, in neutral grey. */
+    std::vector<TeamRosterPlayer> spectator_players;
     std::int32_t team1_score{};
     std::int32_t team2_score{};
     std::int32_t score_limit{};

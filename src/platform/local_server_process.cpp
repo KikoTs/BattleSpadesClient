@@ -12,6 +12,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#include <spawn.h>
+#else
+extern char** environ;
+#endif
 #endif
 
 #include "battlespades/platform/local_server_process.hpp"
@@ -30,6 +36,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 namespace battlespades::platform {
 namespace {
@@ -102,6 +109,26 @@ server_executable_name(LocalServerProgram program) noexcept {
            std::ranges::all_of(value, [](unsigned char character) {
                return (character >= 'A' && character <= 'Z') ||
                       (character >= '0' && character <= '9') || character == '_';
+           });
+}
+
+[[nodiscard]] bool safe_environment_override(std::string_view name,
+                                             std::string_view value) noexcept {
+    constexpr std::array allowed{
+        std::string_view{"AOS_MASTER_URL"},
+        std::string_view{"AOS_MASTER_WRITE_TOKEN"},
+        std::string_view{"AOS_PUBLIC_HOST"},
+        std::string_view{"AOS_PUBLIC_PORT"},
+        std::string_view{"AOS_PUBLIC_QUERY_PORT"},
+        std::string_view{"AOS_SERVER_ID"},
+        std::string_view{"AOS_UGC_OWNER_ID"},
+        std::string_view{"AOS_RELAY_LOBBY_ID"},
+        std::string_view{"AOS_MATCH_RESULTS_DIRECTORY"},
+    };
+    return std::ranges::find(allowed, name) != allowed.end() &&
+           !value.empty() && value.size() <= 2'048U &&
+           std::ranges::none_of(value, [](unsigned char character) {
+               return character == 0U || character < 0x20U;
            });
 }
 
@@ -241,6 +268,131 @@ private:
     output.push_back(L'"');
     return output;
 }
+
+[[nodiscard]] std::optional<std::wstring> utf8_to_wide(std::string_view value) {
+    if (value.empty()) return std::wstring{};
+    const auto count = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+        nullptr, 0);
+    if (count <= 0) return std::nullopt;
+    std::wstring output(static_cast<std::size_t>(count), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                            static_cast<int>(value.size()), output.data(), count) != count) {
+        return std::nullopt;
+    }
+    return output;
+}
+
+[[nodiscard]] std::optional<std::vector<wchar_t>> child_environment_block(
+    const std::map<std::string, std::string, std::less<>>& overrides) {
+    std::vector<std::wstring> entries;
+    auto* source = GetEnvironmentStringsW();
+    if (source == nullptr) return std::nullopt;
+    for (auto* cursor = source; *cursor != L'\0';) {
+        std::wstring entry{cursor};
+        cursor += entry.size() + 1U;
+        entries.push_back(std::move(entry));
+    }
+    FreeEnvironmentStringsW(source);
+    for (const auto& [name_utf8, value_utf8] : overrides) {
+        const auto name = utf8_to_wide(name_utf8);
+        const auto value = utf8_to_wide(value_utf8);
+        if (!name.has_value() || !value.has_value()) return std::nullopt;
+        std::erase_if(entries, [&](const std::wstring& entry) {
+            return entry.size() > name->size() && entry[name->size()] == L'=' &&
+                   _wcsnicmp(entry.data(), name->data(), name->size()) == 0;
+        });
+        entries.push_back(*name + L"=" + *value);
+    }
+    std::ranges::sort(entries, [](const std::wstring& left, const std::wstring& right) {
+        return _wcsicmp(left.c_str(), right.c_str()) < 0;
+    });
+    std::size_t size{1U};
+    for (const auto& entry : entries) size += entry.size() + 1U;
+    std::vector<wchar_t> block;
+    block.reserve(size);
+    for (const auto& entry : entries) {
+        block.insert(block.end(), entry.begin(), entry.end());
+        block.push_back(L'\0');
+    }
+    block.push_back(L'\0');
+    return block;
+}
+#else
+[[nodiscard]] std::vector<std::string> child_environment_entries(
+    const std::map<std::string, std::string, std::less<>>& overrides) {
+    std::vector<std::string> entries;
+#if defined(__APPLE__)
+    auto** source = *_NSGetEnviron();
+#else
+    auto** source = environ;
+#endif
+    for (auto** cursor = source; cursor != nullptr && *cursor != nullptr; ++cursor) {
+        const std::string_view entry{*cursor};
+        if (!overrides.contains(entry.substr(0U, entry.find('=')))) {
+            entries.emplace_back(entry);
+        }
+    }
+    for (const auto& [name, value] : overrides) entries.push_back(name + '=' + value);
+    return entries;
+}
+
+// Keep redirected descriptors separate from stdin/stdout/stderr even when a
+// GUI launcher left one of those closed, and do not leak them through exec.
+[[nodiscard]] bool prepare_child_descriptor(int& descriptor) noexcept {
+    if (descriptor > STDERR_FILENO) return fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0;
+    const auto duplicate = fcntl(descriptor, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    if (duplicate < 0) return false;
+    close(descriptor);
+    descriptor = duplicate;
+    return true;
+}
+
+enum class ChildProcessState { running, exited, unowned };
+
+[[nodiscard]] ChildProcessState observe_child(pid_t process) noexcept {
+    siginfo_t information{};
+    int result{};
+    do {
+        result = waitid(P_PID, static_cast<id_t>(process), &information, WEXITED | WNOHANG | WNOWAIT);
+    } while (result < 0 && errno == EINTR);
+    if (result < 0) return ChildProcessState::unowned;
+    // Preserve the waitable leader until cleanup: its reserved PID prevents
+    // the owned process-group ID from being reused by an unrelated process.
+    return information.si_pid == 0 ? ChildProcessState::running : ChildProcessState::exited;
+}
+
+#if defined(__APPLE__)
+[[nodiscard]] int spawn_local_server(pid_t& child, const char* executable,
+                                      const char* directory, int input, int log,
+                                      char* const* arguments, char* const* environment) {
+    // Forking a running Cocoa/Metal client and calling allocator-backed libc
+    // functions in the child can deadlock on locks held by another thread.
+    posix_spawn_file_actions_t actions;
+    auto result = posix_spawn_file_actions_init(&actions);
+    if (result != 0) return result;
+    posix_spawnattr_t attributes;
+    result = posix_spawnattr_init(&attributes);
+    if (result != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        return result;
+    }
+    if ((result = posix_spawn_file_actions_addchdir_np(&actions, directory)) == 0 &&
+        (result = posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO)) == 0 &&
+        (result = posix_spawn_file_actions_adddup2(&actions, log, STDOUT_FILENO)) == 0 &&
+        (result = posix_spawn_file_actions_adddup2(&actions, log, STDERR_FILENO)) == 0 &&
+        (result = posix_spawn_file_actions_addclose(&actions, input)) == 0 &&
+        (result = posix_spawn_file_actions_addclose(&actions, log)) == 0 &&
+        (result = posix_spawnattr_setpgroup(&attributes, 0)) == 0 &&
+        (result = posix_spawnattr_setflags(
+             &attributes, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0) {
+        result = posix_spawn(&child, executable, &actions, &attributes, arguments, environment);
+    }
+    posix_spawnattr_destroy(&attributes);
+    posix_spawn_file_actions_destroy(&actions);
+    return result;
+}
+#endif
 #endif
 
 } // namespace
@@ -249,15 +401,87 @@ struct LocalServerProcess::Impl final {
     std::filesystem::path session_directory;
     std::filesystem::path log_path;
     std::uint16_t port{};
+    std::string mode;
 #if defined(_WIN32)
     HANDLE process{};
     HANDLE stdin_write{};
     HANDLE job{};
 #else
-    mutable pid_t process{-1};
+    pid_t process{-1};
     int stdin_write{-1};
 #endif
 };
+
+LocalServerState read_local_server_status(const std::filesystem::path& directory,
+                                          std::uint16_t port, std::string_view mode) noexcept {
+    try {
+        std::error_code error;
+        const auto path = directory / "host-status.json";
+        const auto size = std::filesystem::file_size(path, error);
+        if (error || size == 0U || size > 4096U) return LocalServerState::unavailable;
+        std::ifstream input{path, std::ios::binary};
+        std::string bytes(static_cast<std::size_t>(size), '\0');
+        if (!input.read(bytes.data(), static_cast<std::streamsize>(size))) return LocalServerState::unavailable;
+        const auto data = nlohmann::json::parse(bytes);
+        if (data.at("schema_version") != 1 || data.at("session") != directory.filename().string() ||
+            data.at("port") != port || data.at("mode").get<std::string>() != mode) return LocalServerState::unavailable;
+        const auto state = data.at("state").get<std::string>();
+        if (state == "starting") return LocalServerState::starting;
+        if (state == "ready") return LocalServerState::ready;
+        if (state == "stopping") return LocalServerState::stopping;
+        if (state == "stopped") return LocalServerState::stopped;
+        if (state == "failed") return LocalServerState::failed;
+    } catch (const std::exception&) { /* Legacy servers and partial/foreign files are not readiness. */ }
+    return LocalServerState::unavailable;
+}
+
+LocalServerState LocalServerProcess::status() const noexcept {
+    return impl_ ? read_local_server_status(impl_->session_directory, impl_->port, impl_->mode)
+                 : LocalServerState::unavailable;
+}
+
+std::optional<std::filesystem::path>
+find_local_server_bundle(const std::filesystem::path& root) {
+    const auto executable = server_executable_name(LocalServerProgram::game_server);
+    const auto complete = [&](const std::filesystem::path& path) {
+        std::error_code error;
+        return std::filesystem::is_regular_file(path / executable, error) &&
+               std::filesystem::is_directory(path / "_internal", error) &&
+               std::filesystem::is_directory(path / "maps", error);
+    };
+    if (complete(root)) return root;
+    if (complete(root / "server")) return root / "server";
+    std::optional<std::filesystem::path> best;
+    std::filesystem::file_time_type best_time{};
+    const auto consider = [&](const std::filesystem::path& path) {
+        if (!complete(path)) return;
+        std::error_code error;
+        const auto built = std::filesystem::last_write_time(path / executable, error);
+        if (!error && (!best || built > best_time)) {
+            best = path;
+            best_time = built;
+        }
+    };
+    consider(root / "dist" / "BattleSpades");
+    std::error_code error;
+    const auto options = std::filesystem::directory_options::skip_permission_denied;
+    for (const auto& release : std::filesystem::directory_iterator(root, options, error)) {
+        if (error) break;
+        const auto name = release.path().filename().string();
+        if (!release.is_directory(error) ||
+            (!name.starts_with("release-dist") && !name.starts_with("local-release"))) {
+            error.clear();
+            continue;
+        }
+        for (const auto& candidate :
+             std::filesystem::directory_iterator(release.path(), options, error)) {
+            if (error) break;
+            consider(candidate.path());
+        }
+        error.clear();
+    }
+    return best;
+}
 
 std::uint16_t allocate_local_server_port(std::uint16_t preferred,
                                          std::string& error) noexcept {
@@ -295,7 +519,7 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
         if (!safe_text(editor.project) || !safe_terrain(editor.terrain) ||
             !safe_map_creator_mode(editor.target_mode) || !safe_text(editor.title) ||
             !safe_text(editor.author) || !safe_path(editor.publish_root) ||
-            !safe_path(editor.retail_root)) {
+            !safe_path(editor.retail_root) || (editor.prefab_set && *editor.prefab_set > 5U)) {
             return {};
         }
     } else if (config.map_creator.has_value()) {
@@ -308,6 +532,23 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
     for (const auto& [key, value] : config.rule_overrides) {
         if (!safe_rule_key(key) || !safe_text(value)) return {};
     }
+    for (const auto& [name, value] : config.environment_overrides) {
+        if (!safe_environment_override(name, value)) return {};
+    }
+    constexpr std::array public_environment{
+        std::string_view{"AOS_MASTER_URL"},
+        std::string_view{"AOS_MASTER_WRITE_TOKEN"},
+        std::string_view{"AOS_PUBLIC_HOST"},
+        std::string_view{"AOS_PUBLIC_PORT"},
+        std::string_view{"AOS_PUBLIC_QUERY_PORT"},
+        std::string_view{"AOS_SERVER_ID"},
+    };
+    const auto public_match = std::ranges::all_of(public_environment, [&](auto name) {
+        return config.environment_overrides.contains(name);
+    });
+    // A partial public identity would make the child advertise a local port,
+    // reject AoSPlay tickets, or publish a listing that nobody can reach.
+    if (!config.environment_overrides.empty() && !public_match) return {};
 
     std::ostringstream output;
     output.imbue(std::locale::classic());
@@ -343,8 +584,8 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "public = false\n"
            << "require_registration = false\n\n"
            << "[revival]\n"
-           << "enabled = false\n"
-           << "require_identity = false\n\n"
+           << "enabled = " << (public_match ? "true" : "false") << '\n'
+           << "require_identity = " << (public_match ? "true" : "false") << "\n\n"
            << "[plugins]\n"
            << "enabled = false\n\n"
            << "[logging]\n"
@@ -362,6 +603,7 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
                << "title = " << toml_quote(editor.title) << '\n'
                << "author = " << toml_quote(editor.author) << '\n'
                << "retail_root = " << toml_quote(editor.retail_root.generic_string()) << '\n';
+        if (editor.prefab_set) output << "prefab_set = " << static_cast<unsigned>(*editor.prefab_set) << '\n';
     }
     if (!config.rule_overrides.empty()) {
         output << "\n[game_rules]\n";
@@ -379,16 +621,29 @@ LocalServerProcess::~LocalServerProcess() {
 }
 
 LocalServerProcess::LocalServerProcess(LocalServerProcess&&) noexcept = default;
-LocalServerProcess& LocalServerProcess::operator=(LocalServerProcess&&) noexcept = default;
+LocalServerProcess& LocalServerProcess::operator=(LocalServerProcess&& other) noexcept {
+    if (this != &other) {
+        stop();
+        impl_ = std::move(other.impl_);
+    }
+    return *this;
+}
 
 bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
                                std::string& error) {
     error.clear();
+    if (!impl_) impl_ = std::make_unique<Impl>();
     if (running()) {
         error = "a local server process is already running";
         return false;
     }
-    const auto executable = config.bundle_root / server_executable_name(config.program);
+    // A previous child may have exited between launches. Release its control
+    // channel, retained process ownership and session before replacing them.
+    stop();
+    // Resolve before changing the child's working directory. A relative bundle
+    // must not become bundle/bundle/BattleSpades at exec time.
+    const auto bundle_root = std::filesystem::absolute(config.bundle_root);
+    const auto executable = bundle_root / server_executable_name(config.program);
     if (!std::filesystem::is_regular_file(executable)) {
         error = std::string{server_executable_name(config.program)} +
                 " is missing from the local server bundle";
@@ -409,7 +664,7 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
 
     const auto parent =
         config.session_parent.empty() ? default_session_parent() : config.session_parent;
-    const auto directory = make_session_directory(parent, error);
+    const auto directory = make_session_directory(std::filesystem::absolute(parent), error);
     if (directory.empty()) return false;
     const auto config_path = directory / "config.toml";
     const auto temporary_path = directory / "config.toml.tmp";
@@ -434,6 +689,10 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
     }
 
     const auto log_path = directory / "server-bootstrap.log";
+    auto child_overrides = config.environment_overrides;
+    const auto status_path_utf8 = (directory / "host-status.json").u8string();
+    child_overrides["AOS_NATIVE_HOST_STATUS"] = std::string{status_path_utf8.begin(), status_path_utf8.end()};
+    child_overrides["AOS_NATIVE_HOST_SESSION"] = directory.filename().string();
 #if defined(_WIN32)
     SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
     HANDLE stdin_read{};
@@ -465,44 +724,63 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
                    quote_windows_argument(config_path.wstring()) + L" --control-stdin";
     std::vector<wchar_t> mutable_command(command.begin(), command.end());
     mutable_command.push_back(L'\0');
+    const auto environment = child_environment_block(child_overrides);
+    if (!environment.has_value()) {
+        CloseHandle(stdin_read);
+        CloseHandle(stdin_write);
+        CloseHandle(log);
+        error = "cannot create the private local-server environment";
+        std::filesystem::remove_all(directory, filesystem_error);
+        return false;
+    }
     PROCESS_INFORMATION process{};
     const auto created = CreateProcessW(
         executable.c_str(), mutable_command.data(), nullptr, nullptr, TRUE,
-        CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, nullptr,
-        config.bundle_root.c_str(), &startup, &process);
+        CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
+        const_cast<wchar_t*>(environment->data()),
+        bundle_root.c_str(), &startup, &process);
+    const auto launch_error = created ? ERROR_SUCCESS : GetLastError();
     CloseHandle(stdin_read);
     CloseHandle(log);
     if (!created) {
         CloseHandle(stdin_write);
         error = "cannot launch the hidden BattleSpades server (Windows error " +
-                std::to_string(GetLastError()) + ')';
+                std::to_string(launch_error) + ')';
+        std::filesystem::remove_all(directory, filesystem_error);
+        return false;
+    }
+    // Own the complete process tree before any server code can spawn helpers.
+    // Assigning an already-running child leaves an unavoidable escape window.
+    const auto job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (job == nullptr || !SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                                  &limits, sizeof(limits)) ||
+        !AssignProcessToJobObject(job, process.hProcess) || ResumeThread(process.hThread) == DWORD(-1)) {
+        const auto ownership_error = GetLastError();
+        static_cast<void>(TerminateProcess(process.hProcess, 1U));
+        static_cast<void>(WaitForSingleObject(process.hProcess, 2'000U));
+        if (job != nullptr) CloseHandle(job);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        CloseHandle(stdin_write);
+        error = "cannot establish ownership of the local server process tree (Windows error " +
+                std::to_string(ownership_error) + ')';
         std::filesystem::remove_all(directory, filesystem_error);
         return false;
     }
     CloseHandle(process.hThread);
-    const auto job = CreateJobObjectW(nullptr, nullptr);
-    if (job != nullptr) {
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
-                                     &limits, sizeof(limits)) ||
-            !AssignProcessToJobObject(job, process.hProcess)) {
-            CloseHandle(job);
-            impl_->job = nullptr;
-        } else {
-            impl_->job = job;
-        }
-    }
+    impl_->job = job;
     impl_->process = process.hProcess;
     impl_->stdin_write = stdin_write;
 #else
     std::array<int, 2U> control{};
-    if (pipe(control.data()) != 0) {
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, control.data()) != 0) {
         error = "cannot create the local-server control pipe";
         std::filesystem::remove_all(directory, filesystem_error);
         return false;
     }
-    const auto log = open(log_path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0600);
+    auto log = open(log_path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0600);
     if (log < 0) {
         close(control[0U]);
         close(control[1U]);
@@ -510,25 +788,58 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
         std::filesystem::remove_all(directory, filesystem_error);
         return false;
     }
-    const auto child = fork();
-    if (child == 0) {
-        static_cast<void>(setsid());
-        static_cast<void>(chdir(config.bundle_root.c_str()));
-        static_cast<void>(dup2(control[0U], STDIN_FILENO));
-        static_cast<void>(dup2(log, STDOUT_FILENO));
-        static_cast<void>(dup2(log, STDERR_FILENO));
+    auto control_ready = prepare_child_descriptor(control[0U]) &&
+                         prepare_child_descriptor(control[1U]) &&
+                         prepare_child_descriptor(log);
+#if defined(__APPLE__)
+    const int no_sigpipe{1};
+    control_ready = control_ready &&
+                    setsockopt(control[1U], SOL_SOCKET, SO_NOSIGPIPE,
+                               &no_sigpipe, sizeof(no_sigpipe)) == 0;
+#endif
+    if (!control_ready) {
         close(control[0U]);
         close(control[1U]);
         close(log);
-        execl(executable.c_str(), executable.c_str(), "--config", config_path.c_str(),
-              "--control-stdin", static_cast<char*>(nullptr));
+        error = "cannot configure the local-server control channel";
+        std::filesystem::remove_all(directory, filesystem_error);
+        return false;
+    }
+    auto environment_entries = child_environment_entries(child_overrides);
+    std::vector<char*> environment;
+    environment.reserve(environment_entries.size() + 1U);
+    for (auto& entry : environment_entries) environment.push_back(entry.data());
+    environment.push_back(nullptr);
+    std::array<std::string, 4U> argument_entries{
+        executable.string(), "--config", config_path.string(), "--control-stdin"};
+    std::array<char*, 5U> arguments{};
+    for (std::size_t index{}; index < argument_entries.size(); ++index) {
+        arguments[index] = argument_entries[index].data();
+    }
+    pid_t child{-1};
+#if defined(__APPLE__)
+    const auto launch_error = spawn_local_server(child, executable.c_str(), bundle_root.c_str(),
+                                                  control[0U], log, arguments.data(), environment.data());
+#else
+    child = fork();
+    const auto launch_error = child < 0 ? errno : 0;
+    if (child == 0) {
+        if (setsid() < 0 || chdir(bundle_root.c_str()) != 0 ||
+            dup2(control[0U], STDIN_FILENO) < 0 ||
+            dup2(log, STDOUT_FILENO) < 0 || dup2(log, STDERR_FILENO) < 0) _exit(126);
+        close(control[0U]);
+        close(control[1U]);
+        close(log);
+        execve(executable.c_str(), arguments.data(), environment.data());
         _exit(127);
     }
+#endif
     close(control[0U]);
     close(log);
-    if (child < 0) {
+    if (launch_error != 0) {
         close(control[1U]);
-        error = "cannot launch the hidden BattleSpades server";
+        error = "cannot launch the hidden BattleSpades server (POSIX error " +
+                std::to_string(launch_error) + ')';
         std::filesystem::remove_all(directory, filesystem_error);
         return false;
     }
@@ -538,6 +849,7 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
     impl_->session_directory = directory;
     impl_->log_path = log_path;
     impl_->port = resolved_port;
+    impl_->mode = config.mode;
     return true;
 }
 
@@ -585,25 +897,37 @@ void LocalServerProcess::stop() noexcept {
     if (impl_->process > 0) {
         if (impl_->stdin_write >= 0) {
             constexpr std::string_view shutdown{"shutdown\n"};
-            static_cast<void>(write(impl_->stdin_write, shutdown.data(), shutdown.size()));
+#if defined(__APPLE__)
+            constexpr int send_flags{}; // SO_NOSIGPIPE is set on this socket only.
+#else
+            constexpr int send_flags{MSG_NOSIGNAL};
+#endif
+            // The server may close stdin or exit between running() and stop().
+            // Its broken control channel must never raise SIGPIPE in the client.
+            static_cast<void>(send(impl_->stdin_write, shutdown.data(), shutdown.size(), send_flags));
         }
         auto deadline = std::chrono::steady_clock::now() + graceful_shutdown_timeout;
-        int status{};
+        auto state = observe_child(impl_->process);
         while (std::chrono::steady_clock::now() < deadline &&
-               waitpid(impl_->process, &status, WNOHANG) == 0) {
+               state == ChildProcessState::running) {
             std::this_thread::sleep_for(std::chrono::milliseconds{25});
+            state = observe_child(impl_->process);
         }
-        if (waitpid(impl_->process, &status, WNOHANG) == 0) {
-            static_cast<void>(kill(impl_->process, SIGTERM));
+        if (state == ChildProcessState::running) {
+            static_cast<void>(kill(-impl_->process, SIGTERM));
             deadline = std::chrono::steady_clock::now() + forced_shutdown_timeout;
             while (std::chrono::steady_clock::now() < deadline &&
-                   waitpid(impl_->process, &status, WNOHANG) == 0) {
+                   state == ChildProcessState::running) {
                 std::this_thread::sleep_for(std::chrono::milliseconds{25});
+                state = observe_child(impl_->process);
             }
-            if (waitpid(impl_->process, &status, WNOHANG) == 0) {
-                static_cast<void>(kill(impl_->process, SIGKILL));
-                static_cast<void>(waitpid(impl_->process, &status, 0));
-            }
+        }
+        if (state != ChildProcessState::unowned) {
+            // Also collect helpers left behind by an early leader exit. The
+            // leader is still waitable, so this group cannot be a reused ID.
+            static_cast<void>(kill(-impl_->process, SIGKILL));
+            int status{};
+            while (waitpid(impl_->process, &status, 0) < 0 && errno == EINTR) {}
         }
         impl_->process = -1;
     }
@@ -629,13 +953,7 @@ bool LocalServerProcess::running() const noexcept {
     return GetExitCodeProcess(impl_->process, &code) != FALSE && code == STILL_ACTIVE;
 #else
     if (impl_->process <= 0) return false;
-    int status{};
-    const auto result = waitpid(impl_->process, &status, WNOHANG);
-    if (result == impl_->process) {
-        impl_->process = -1;
-        return false;
-    }
-    return result == 0;
+    return observe_child(impl_->process) == ChildProcessState::running;
 #endif
 }
 

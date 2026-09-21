@@ -1,4 +1,5 @@
 #include "battlespades/world/jetpack_death.hpp"
+#include "battlespades/world/parachute.hpp"
 
 #include <array>
 #include <cmath>
@@ -23,6 +24,23 @@ void expect(bool value, const char* message) {
 
 int main() {
     try {
+        // The original canopy meshes are world attachments, including the
+        // first-person variant: authored up stays up as the player turns.
+        for (const double yaw : {0.0, 90.0, -90.0, 180.0}) {
+            const auto third = battlespades::world::retail_parachute_world_transform(
+                {10.0, 20.0, 30.0}, yaw, false);
+            const auto first = battlespades::world::retail_parachute_world_transform(
+                {10.0, 20.0, 30.0}, yaw, true);
+            expect(near(third[12U], 10.0) && near(third[13U], 20.0) && near(third[14U], 30.0),
+                   "third-person canopy must inherit the body anchor without an extra offset");
+            expect(near(first[14U], 28.5) && first[12U] == third[12U] && first[13U] == third[13U],
+                   "first-person canopy must remain 1.5 blocks above the eye anchor");
+            expect(near(third[4U], 0.0) && near(third[5U], 0.0) && near(third[6U], -0.12, 1e-7),
+                   "KV6 render-up must become negative world Z at the recovered 0.12 scale");
+            const double axis_length = std::hypot(third[0U], third[1U]);
+            expect(near(axis_length, 0.12, 1e-7) && third[2U] == 0.0F,
+                   "yaw must rotate the canopy horizontally without pitch or scale distortion");
+        }
         const std::vector<std::uint8_t> ordinary{5U, 9U, 64U};
         const std::vector<std::uint8_t> normal_pack{5U, 66U};
         const std::vector<std::uint8_t> glider{67U};
@@ -86,6 +104,20 @@ int main() {
                "packet 36 must explode at the last authoritative airborne point");
         expect(presentation.state(7U) == nullptr,
                "the corpse must disappear at the packet-36 boundary");
+
+        JetpackDeathPresentation smooth;
+        expect(smooth.begin(2U, 1U, true, {10.0, 10.0, 10.0}), "smooth corpse setup");
+        expect(smooth.update_authority(2U, 1U, {10.0, 10.0, 9.0}), "corpse authority update");
+        expect(near(smooth.state(2U)->position.z, 10.0), "a packet must not snap rendered corpse position");
+        smooth.tick(1.0 / 60.0);
+        expect(near(smooth.state(2U)->position.z, 9.5), "first frame must interpolate halfway to 30Hz row");
+        expect(smooth.update_authority(2U, 1U, {10.0, 10.0, 9.0}), "duplicate row accepted");
+        smooth.tick(1.0 / 60.0);
+        expect(near(smooth.state(2U)->position.z, 9.0), "duplicate rows must not restart interpolation");
+        smooth.tick(0.2);
+        expect(near(smooth.state(2U)->position.z, 9.0), "missing rows must not extrapolate through walls");
+        expect(smooth.update_authority(2U, 1U, {20.0, 10.0, 9.0}) &&
+                   near(smooth.state(2U)->position.x, 20.0), "teleports must not interpolate through geometry");
 
         JetpackDeathPresentation replay;
         expect(replay.begin(7U, 3U, true, {0.0, 0.0, 0.0}),

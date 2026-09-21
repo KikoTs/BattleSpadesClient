@@ -100,6 +100,23 @@ int main() {
         expect(inventory.toolbar().selected_tool_id() == 23U &&
                    inventory.selected_prefab() == engineer.prefabs[1U],
                "combined prefab slot must preserve its concrete prefab name");
+        const auto* stable_slots = inventory.toolbar().slots().data();
+        const auto stable_selection = inventory.toolbar().selected_index();
+        static_cast<void>(inventory.toolbar().take_selection_event());
+        for (int tick{}; tick < 600; ++tick) {
+            inventory.tick(1.0 / 60.0);
+            expect(inventory.toolbar().slots().data() == stable_slots,
+                   "fixed-step ammo refresh must not reallocate the combined toolbar");
+        }
+        expect(inventory.toolbar().selected_index() == stable_selection &&
+                   inventory.selected_prefab() == engineer.prefabs[1U] &&
+                   !inventory.toolbar().take_selection_event().has_value() &&
+                   inventory.toolbar().pullout_remaining() == 0.0,
+               "idle ammo refresh must preserve the prefab variant and finish pullout without new selection edges");
+        inventory.restock_ammunition();
+        expect(inventory.toolbar().slots().data() == stable_slots &&
+                   inventory.toolbar().selected_index() == stable_selection,
+               "restocking must refresh ammo without rebuilding or selecting a different variant");
 
         const std::vector<std::uint8_t> zombie_loadout{24U, 28U, 23U};
         const std::vector<std::string> zombie_prefabs{
@@ -143,6 +160,12 @@ int main() {
                        "prefabs/prefab_future_bridge.png" &&
                    prefab_preview_asset("../settings").empty(),
                "prefab previews must follow dynamic safe ids and reject paths");
+        expect(prefab_preview_asset("UGC_Prefab_Desert_landscape_1") ==
+                   "ugc/prefabs/ugc_prefab_desert_landscape_1.png" &&
+                   prefab_preview_asset("ugc_prefab_spookychurch") ==
+                       "ugc/prefabs/ugc_prefab_spookychurch.png" &&
+                   prefab_preview_asset("UGC_Prefab_../settings").empty(),
+               "UGC toolbar and HUD must use the authored UGC thumbnail directory");
 
         const std::vector<std::uint8_t> ugc_selection{44U, 45U};
         expect(inventory.spawn_with_selection(12U, std::vector<std::uint8_t>{17U, 2U},

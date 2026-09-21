@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-169759-1",
+  "name": "Vector",
+  "source": "https://gamebanana.com/mods/169759",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/smg.png": "Gfx/smg.png",
+    "Models/Weapons/SMG/1.kv6": "Models/Weapons/SMG/1.kv6",
+    "Models/Weapons/SMG/2.kv6": "Models/Weapons/SMG/2.kv6",
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/Magazine.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Scripts/Skin/SMG/ThirdPerson.as": "Scripts/Skin/SMG/ThirdPerson.as",
+    "Scripts/Skin/SMG/View.as": "Scripts/Skin/SMG/View.as",
+    "Sounds/Weapons/SMG/FireFar.opus": "Sounds/Weapons/SMG/FireFar.opus.ogg",
+    "Sounds/Weapons/SMG/FireStereo.opus": "Sounds/Weapons/SMG/FireStereo.opus.ogg",
+    "Sounds/Weapons/SMG/RaiseLocal.opus": "Sounds/Weapons/SMG/RaiseLocal.opus.ogg",
+    "Sounds/Weapons/SMG/Reload.wav": "Sounds/Weapons/SMG/Reload.wav.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.wav": "Sounds/Weapons/SMG/ReloadLocal.wav.ogg",
+    "Sounds/Weapons/SMG/ShellDrop1.opus": "Sounds/Weapons/SMG/ShellDrop1.opus.ogg",
+    "Sounds/Weapons/SMG/ShellDrop2.opus": "Sounds/Weapons/SMG/ShellDrop2.opus.ogg",
+    "Sounds/Weapons/SMG/ShellWater.opus": "Sounds/Weapons/SMG/ShellWater.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local1.wav": "Sounds/Weapons/SMG/V2Local1.wav.ogg",
+    "Sounds/Weapons/SMG/V2Local2.wav": "Sounds/Weapons/SMG/V2Local2.wav.ogg",
+    "Sounds/Weapons/SMG/V2Local3.wav": "Sounds/Weapons/SMG/V2Local3.wav.ogg",
+    "Sounds/Weapons/SMG/V2Local4.wav": "Sounds/Weapons/SMG/V2Local4.wav.ogg",
+    "Sounds/Weapons/SMG/V2Third1.wav": "Sounds/Weapons/SMG/V2Third1.wav.ogg",
+    "Sounds/Weapons/SMG/V2Third2.wav": "Sounds/Weapons/SMG/V2Third2.wav.ogg",
+    "Sounds/Weapons/SMG/V2Third3.wav": "Sounds/Weapons/SMG/V2Third3.wav.ogg",
+    "Sounds/Weapons/SMG/V2Third4.wav": "Sounds/Weapons/SMG/V2Third4.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png"
+  },
+  "hashes": {
+    "Gfx/smg.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Models/Weapons/SMG/1.kv6": "6c5d27885b2c93d8fb9df857fc9e6bdaa68985f7594871420a2ca0dcc6e8fc91",
+    "Models/Weapons/SMG/2.kv6": "a1acb6f93c2f0e72560cfd0b5cf9b19825f646e2b36552515995862124a5d612",
+    "Models/Weapons/SMG/Magazine.kv6": "0b64dce11f23b12263309da345cf734de6a6486662dd9676862ce0f2e2a059f5",
+    "Models/Weapons/SMG/Weapon.kv6": "e8ec64e072742c4e4e7ee99cddeca8cc34fb4cfd6ad703ec772648bd4e99ef64",
+    "Scripts/Skin/SMG/ThirdPerson.as": "298356ad9d23aed80d28c67e5c18b13eed0eca13aefd4e72ca07728fe1a91823",
+    "Scripts/Skin/SMG/View.as": "0b762ac1ca9dde6cf91bfc729a3c48fec321e8b4a5166830fca9fd1556fd3851",
+    "Sounds/Weapons/SMG/FireFar.opus.ogg": "6beac20612e1c0a5d061f82f18e37686c38d1c45bd705fad0254d3a4e9a16fcd",
+    "Sounds/Weapons/SMG/FireStereo.opus.ogg": "e749dd4195287fa2eae710650c35ee5d30692c2043c18344d831d95bd6817a5b",
+    "Sounds/Weapons/SMG/RaiseLocal.opus.ogg": "b20edb7b40e7367bfcd5c575642e8909b9a727a4825dbf9605d7885fdcb8cb40",
+    "Sounds/Weapons/SMG/Reload.wav.ogg": "6d32f3738dadb468505644c84b602f032346bc9fbc31d35fa052b38f6f5e83d4",
+    "Sounds/Weapons/SMG/ReloadLocal.wav.ogg": "f33e3c9df012d803c6ffb590570f217f78cbf1eff8c6a7e3bf348c60960d3c96",
+    "Sounds/Weapons/SMG/ShellDrop1.opus.ogg": "7a9466cbc0dce70ea9796c4f9d0047a32aa05403d5d3541ff854cac582abe995",
+    "Sounds/Weapons/SMG/ShellDrop2.opus.ogg": "d1bf369fd77c90575678ecb68abb0c057a17f9aede29a0ead4fe354df6d248da",
+    "Sounds/Weapons/SMG/ShellWater.opus.ogg": "2f461f4375419ff98746ad0d53df56432bec356dc4b8797fe72783c0d238d92c",
+    "Sounds/Weapons/SMG/V2Local1.wav.ogg": "6481850b2c917a7addaef310723c1eb12e71491708ed72eaec93e493192cc9fc",
+    "Sounds/Weapons/SMG/V2Local2.wav.ogg": "12b802ac797eac5a4ba04d8b07b878f0680fbdf4f345bb10a79667d768bf1bd2",
+    "Sounds/Weapons/SMG/V2Local3.wav.ogg": "b8350e89a233b390c5f30a90cddbe64d667bb75c535de49f43480e88e968dd53",
+    "Sounds/Weapons/SMG/V2Local4.wav.ogg": "5a339b3cdfb580bc2a18b752dd9d9f31a1852ec2243ba187f4d7ba6926dec207",
+    "Sounds/Weapons/SMG/V2Third1.wav.ogg": "2398b2df0c7305c21bc3831aa337713243ccb13f73d0202bc80b76b6948ece72",
+    "Sounds/Weapons/SMG/V2Third2.wav.ogg": "48f3a8da5a4733c0ddf48a1943179e24c7f2cd88073906b0dae4dc49a7482138",
+    "Sounds/Weapons/SMG/V2Third3.wav.ogg": "f0dcaee518c1aba75d20de83ec9ed7f532a58e5ab049fe11d584575fb48c7d98",
+    "Sounds/Weapons/SMG/V2Third4.wav.ogg": "311f329356da4525c31162f0bfa29601c9e7f9ead1bd4a6d19c09a5fa44812d4",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "62eaa7653788bd5881421cec6e0ac2091a4b6fc8d2e881ba61e177c593ff700b",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Author",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler/Scripter",
+          "_idRow": "1773911",
+          "_sName": "Nuceto",
+          "_sProfileUrl": "https://gamebanana.com/members/1773911",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/60075cb236bc6.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Keep the actual weapon and hands visible for iron-sight ADS; replace the empty full-screen sight image with the native aiming mark."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

@@ -1,5 +1,7 @@
 # Gameplay parity audit
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 Updated 2026-07-21. This document separates recovered retail behavior from
 temporary native-client approximations. Do not tune gameplay by eye when an
 oracle named below can answer the question.

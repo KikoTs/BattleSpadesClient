@@ -1,8 +1,10 @@
 #pragma once
 
 #include "battlespades/network/protocol168_players.hpp"
+#include "battlespades/network/protocol168_packet_queue.hpp"
 #include "battlespades/network/protocol168_ugc.hpp"
 #include "battlespades/world/vxl_map.hpp"
+#include "battlespades/world/flight_profile.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -50,10 +52,16 @@ struct Protocol168SessionConfig final {
      * retain their field ordering.
      */
     std::vector<std::byte> steam_ticket;
+    /** Explicit extension support; never inferred from a player identity. */
+    bool negotiate_flight_profile{};
 };
 
 struct Protocol168InitialInfo final {
     std::string server_name;
+    /** Server-authored localization keys or literal loading-screen text. */
+    std::string mode_name;
+    std::string mode_description;
+    std::array<std::string, 3U> mode_infographic_text;
     std::string map_name;
     std::string filename;
     /**
@@ -75,6 +83,7 @@ struct Protocol168InitialInfo final {
     bool exposed_teams_always_on_minimap{};
     bool enable_minimap_height_icons{};
     bool allow_shooting_holding_intel{};
+    bool friendly_fire{};
     /** Whether authoritative movement collides players with allied bodies. */
     bool same_team_collision{};
     bool enable_colour_picker{};
@@ -92,6 +101,7 @@ struct Protocol168InitialInfo final {
     /** Initial UGC terrain palette rows in retail RGB/Z-threshold order. */
     std::vector<std::array<std::uint8_t, 4U>> ground_colors;
     std::uint8_t ugc_mode{};
+    world::FlightProfile flight_profile;
 };
 
 /**
@@ -250,7 +260,7 @@ public:
      * StateData and the local CreatePlayer readiness edge.
      */
     [[nodiscard]] std::vector<std::vector<std::byte>>
-    take_deferred_runtime_packets() noexcept;
+    take_deferred_runtime_packets();
     /** Next label after the handshake's mandatory first ClientData frame. */
     [[nodiscard]] std::uint32_t next_client_loop_count() const noexcept;
 
@@ -274,7 +284,8 @@ private:
     /** Packet 54/56/58 UGC lobby-host source stream, distinct from MapSync. */
     std::vector<std::byte> ugc_source_stream_;
     bool receiving_ugc_source_{};
-    std::vector<std::vector<std::byte>> deferred_runtime_packets_;
+    detail::Protocol168PacketQueue deferred_runtime_packets_{
+        detail::deferred_runtime_packet_limit, detail::deferred_runtime_byte_limit};
     std::string last_error_;
     std::size_t unknown_packets_{};
     std::size_t malformed_packets_{};

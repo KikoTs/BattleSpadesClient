@@ -1,7 +1,8 @@
 # Retail UI parity browser
 
 Press **F12** after the startup preload to open the developer parity browser
-from any frontend screen. Press F12 again while the browser is active, click
+from an offline frontend screen. Developer tools are gated out of network play.
+Press F12 again while the browser is active, click
 Back, or press Escape to return.
 
 The left panel is the complete recovered inventory. Use Left/Right or click
@@ -37,11 +38,10 @@ freshness with:
 .\tools\validate-retail-frontend-catalog.ps1
 ```
 
-The current catalog accounts for 41 screen/component fixtures, all 57 classes
-under `aoslib.scenes.frontend`, 34 core/composite widget types, three navigation
-factories, and 30 specialized list-row types. The generated F12 list contains
-137 inspectable entries after de-duplicating classes already represented by a
-screen fixture.
+The source catalogue records screen/component fixtures, recovered frontend
+classes, widget types, navigation factories and specialized list rows. Derive
+counts from `assets/catalog/retail-frontend-screens.json` and validate the
+generated list after changes; old inventory totals do not prove current coverage.
 
 ## Shell and cursor fixtures
 

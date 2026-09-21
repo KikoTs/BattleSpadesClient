@@ -1,11 +1,14 @@
 #include "battlespades/audio/audio_port.hpp"
 #include "battlespades/core/application.hpp"
 #include "battlespades/core/command_line.hpp"
+#include "battlespades/core/frame_pacing.hpp"
 #include "battlespades/headless/headless_module.hpp"
 #include "battlespades/network/transport_port.hpp"
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/renderer_port.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -38,9 +41,10 @@ public:
     RecordingModule(std::string name,
                     std::vector<std::string>& events,
                     bool start_succeeds = true,
-                    std::optional<std::uint64_t> stop_at_tick = std::nullopt)
+                    std::optional<std::uint64_t> stop_at_tick = std::nullopt,
+                    std::vector<TickContext>* contexts = nullptr)
         : name_{std::move(name)}, events_{events}, start_succeeds_{start_succeeds},
-          stop_at_tick_{stop_at_tick} {}
+          stop_at_tick_{stop_at_tick}, contexts_{contexts} {}
 
     [[nodiscard]] std::string_view name() const noexcept override {
         return name_;
@@ -53,6 +57,9 @@ public:
 
     [[nodiscard]] TickDecision tick(const TickContext& context) override {
         events_.push_back("tick:" + name_ + ":" + std::to_string(context.index));
+        if (contexts_ != nullptr) {
+            contexts_->push_back(context);
+        }
         if (stop_at_tick_.has_value() && context.index == *stop_at_tick_) {
             return TickDecision::stop;
         }
@@ -68,6 +75,7 @@ private:
     std::vector<std::string>& events_;
     bool start_succeeds_;
     std::optional<std::uint64_t> stop_at_tick_;
+    std::vector<TickContext>* contexts_;
 };
 
 void command_line_defaults_are_safe() {
@@ -117,7 +125,7 @@ void command_line_rejects_malformed_values() {
 
 void command_line_parses_tutorial_tool() {
     const std::vector<std::string_view> arguments{
-        "--tutorial-tool", "55", "--tutorial-aim"};
+        "--tutorial-tool", "55", "--tutorial-aim", "--tutorial-cosmetic", "community-stg44-v2"};
     const auto parsed = battlespades::core::parse_command_line(arguments);
 
 #if AOS_ENABLE_DEVELOPER_TOOLS
@@ -126,6 +134,11 @@ void command_line_parses_tutorial_tool() {
            "tutorial tool option must retain the retail tool id");
     expect(parsed.options->tutorial_debug_aim,
            "tutorial aim option must retain the requested state");
+    expect(parsed.options->tutorial_debug_cosmetic == "community-stg44-v2",
+           "local visual checks must retain the requested bundled cosmetic");
+    const std::vector<std::string_view> invalid_cosmetic{"--tutorial-cosmetic", "../outside"};
+    expect(!static_cast<bool>(battlespades::core::parse_command_line(invalid_cosmetic)),
+           "cosmetic preview ids must not allow filesystem traversal");
 
     const std::vector<std::string_view> invalid{"--tutorial-tool", "65"};
     expect(!static_cast<bool>(battlespades::core::parse_command_line(invalid)),
@@ -192,6 +205,13 @@ void command_line_parses_offline_ui_oracle() {
            "chat and vote must be available as deterministic UI capture oracles");
 
     const std::vector<std::string_view> invalid{"--debug-ui", "invented"};
+    for (const auto fixture : {"loading/map", "loading/mode", "loading/scores", "loading/hosting", "loading/error", "create_match/notice",
+                               "friends", "friends/requests", "friends/invites", "friends/lobby", "friends/offline", "friends/busy"}) {
+        const auto fixture_options = battlespades::core::parse_command_line(
+            std::vector<std::string_view>{"--debug-ui", fixture});
+        expect(static_cast<bool>(fixture_options) && fixture_options.options->debug_ui == fixture,
+               "loading, lobby notice and Friends oracles must be available for visual regression checks");
+    }
     expect(!static_cast<bool>(battlespades::core::parse_command_line(invalid)),
            "offline UI oracle must reject unknown screens");
     const std::vector<std::string_view> online{
@@ -281,6 +301,115 @@ void headless_module_observes_fixed_ticks() {
     expect(!observer->is_running(), "headless module should be stopped after run");
 }
 
+void unpaced_application_keeps_every_fixed_step_and_presentation() {
+    std::vector<std::string> events;
+    std::vector<TickContext> contexts;
+    RuntimeConfig config{};
+    config.tick_limit = 12U;
+    Application application{config};
+    expect(application.add_module(std::make_unique<RecordingModule>(
+               "observer", events, true, std::nullopt, &contexts)),
+           "context observer should register");
+    expect(application.run() == RunResult::success, "unpaced application must succeed");
+    expect(contexts.size() == *config.tick_limit, "unpaced ticks must never be skipped");
+    for (std::size_t index{}; index < contexts.size(); ++index) {
+        expect(contexts[index].index == index && contexts[index].present &&
+                   contexts[index].fixed_delta == config.fixed_delta &&
+                   contexts[index].elapsed == config.fixed_delta *
+                                                 static_cast<std::int64_t>(index),
+               "headless/smoke runs must retain exact tick indices, time and presentation");
+    }
+}
+
+void fixed_step_pacer_keeps_simulation_cadence_when_rendering_is_slow() {
+    using namespace std::chrono_literals;
+    using Pacer = battlespades::core::FixedStepPacer;
+    constexpr auto period = 16'666'666ns;
+    for (const auto render_cost : {5ms, 20ms, 33ms}) {
+        Pacer::Clock::time_point now{};
+        Pacer pacer{now, period};
+        const auto finish = now + 10s;
+        std::uint64_t ticks{};
+        std::uint64_t presentations{};
+        std::int64_t consecutive_skips{};
+        while (now < finish && ticks < 1'000U) {
+            const auto step = pacer.step(now);
+            ++ticks; // Input, network and simulation execute on every step.
+            now += 200us;
+            if (step.present) {
+                ++presentations;
+                consecutive_skips = 0;
+                now += render_cost;
+            } else {
+                ++consecutive_skips;
+            }
+            expect(consecutive_skips <= Pacer::maximum_catch_up_ticks,
+                   "the UI must be presented at least once per four simulation steps");
+            now = std::max(now, step.next_tick); // Fake sleep_until, no wall-clock sleeps.
+        }
+        expect(ticks >= 599U && ticks <= 602U,
+               "a 20/33ms presentation must not reduce simulation to 50/30Hz");
+        if (render_cost == 5ms) {
+            expect(presentations == ticks, "on-time steps must all present");
+        } else {
+            expect(presentations < ticks,
+                   "slow rendering must yield catch-up steps without redundant draws");
+        }
+    }
+}
+
+void fixed_step_pacer_bounds_loading_stall_debt() {
+    using namespace std::chrono_literals;
+    using Pacer = battlespades::core::FixedStepPacer;
+    constexpr auto period = 16'666'666ns;
+    Pacer::Clock::time_point now{};
+    Pacer pacer{now, period};
+    const auto first = pacer.step(now);
+    expect(first.present && first.next_tick == now + period,
+           "the first step must present immediately and schedule one period");
+
+    now += 30s; // Loading, debugger pause or OS suspend.
+    for (std::int64_t step_index{}; step_index < Pacer::maximum_catch_up_ticks; ++step_index) {
+        const auto step = pacer.step(now);
+        expect(!step.present, "bounded debt must recover with simulation-only ticks");
+        expect(now - step.next_tick <= period * (Pacer::maximum_catch_up_ticks - 1),
+               "a long pause must not retain seconds of simulation debt");
+    }
+    const auto recovered = pacer.step(now);
+    expect(recovered.present && recovered.next_tick == now + period,
+           "three catch-up steps must recover the clock after even a 30-second stall");
+    now = recovered.next_tick;
+    const auto normal = pacer.step(now);
+    expect(normal.present && normal.next_tick == now + period,
+           "normal cadence must resume immediately after the bounded recovery");
+}
+
+void fixed_step_pacer_still_presents_when_simulation_itself_overruns() {
+    using namespace std::chrono_literals;
+    using Pacer = battlespades::core::FixedStepPacer;
+    constexpr auto period = 16'666'666ns;
+    Pacer::Clock::time_point now{};
+    Pacer pacer{now, period};
+    std::int64_t consecutive_skips{};
+    std::size_t presentations{};
+    for (std::size_t index{}; index < 120U; ++index) {
+        const auto step = pacer.step(now);
+        if (step.present) {
+            ++presentations;
+            consecutive_skips = 0;
+        } else {
+            ++consecutive_skips;
+        }
+        expect(consecutive_skips <= Pacer::maximum_catch_up_ticks,
+               "persistent overload must not starve presentation indefinitely");
+        expect(now - step.next_tick <= period * Pacer::maximum_catch_up_ticks,
+               "persistent overload must not accumulate unbounded future catch-up");
+        now += 100ms;
+    }
+    expect(presentations >= 30U,
+           "even CPU overload must leave a bounded path to visible input feedback");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -307,6 +436,14 @@ int main() {
          application_ticks_and_stops_modules_in_reverse_order},
         {"startup_failure_unwinds_started_modules", startup_failure_unwinds_started_modules},
         {"headless_module_observes_fixed_ticks", headless_module_observes_fixed_ticks},
+        {"unpaced_application_keeps_every_fixed_step_and_presentation",
+         unpaced_application_keeps_every_fixed_step_and_presentation},
+        {"fixed_step_pacer_keeps_simulation_cadence_when_rendering_is_slow",
+         fixed_step_pacer_keeps_simulation_cadence_when_rendering_is_slow},
+        {"fixed_step_pacer_bounds_loading_stall_debt",
+         fixed_step_pacer_bounds_loading_stall_debt},
+        {"fixed_step_pacer_still_presents_when_simulation_itself_overruns",
+         fixed_step_pacer_still_presents_when_simulation_itself_overruns},
     };
 
     std::size_t failures{};

@@ -245,6 +245,17 @@ int main() {
                        objective_rows);
         UgcLoadoutPresentation presentation;
         const auto draw = presentation.build(menu, {800, 600});
+        for (const auto& command : draw.commands()) {
+            if (const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command)) {
+                expect(sprite->destination.width > 0.0 && sprite->destination.height > 0.0,
+                       "UGC menus must never submit a degenerate sprite");
+                if (sprite->asset_id == "png/ui/ugc_tools/ugc_select_bg.png") {
+                    expect(sprite->destination.x >= 31.0 &&
+                               sprite->destination.x + sprite->destination.width <= 770.0,
+                           "UGC footer must fit within the editor frame");
+                }
+            }
+        }
         expect(find_text(draw, "PREFABS_MENU") != nullptr &&
                    has_sprite(draw, "png/ui/ugc_tools/pf_template_bg.png") &&
                    has_sprite(draw,

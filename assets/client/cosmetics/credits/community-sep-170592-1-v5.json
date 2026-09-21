@@ -1,0 +1,75 @@
+{
+  "name": "CZ 750 S1 M1 Sniper",
+  "source": "https://gamebanana.com/mods/170592",
+  "archives": [
+    {
+      "archive": "170592\\198132-cz_750_s1_m1.rar",
+      "extracted": "170592\\files-198132",
+      "sha256": "60c75f6bee912d6cc178a5d527512eb0d3103089cbdee6e0e56050f8375203cf",
+      "listing": [
+        "Casing.kv6",
+        "Magazine.kv6",
+        "Sight1.kv6",
+        "Sight2.kv6",
+        "Tracer.kv6",
+        "Weapon.kv6",
+        "WeaponNoMagazine.kv6",
+        ".DS_Store",
+        "Fire.wav",
+        "Fire1.wav",
+        "Fire2.wav",
+        "Fire3.wav",
+        "FireFar.wav",
+        "FireLocal.wav",
+        "FireStereo.wav",
+        "RaiseLocal.wav",
+        "Reload.wav",
+        "ReloadLocal.wav",
+        "ShellDrop1.wav",
+        "ShellDrop2.wav",
+        "ShellWater.wav",
+        "_Assets_/New",
+        "_Assets_/Old",
+        "_Assets_/Old2",
+        "_Assets_/Old3",
+        "_Assets_"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "BlackySwagzhio",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_sName": "BlackySwagzhio"
+        },
+        {
+          "_sRole": "Texturer",
+          "_idRow": "321256",
+          "_sName": "hard-killer",
+          "_sProfileUrl": "https://gamebanana.com/members/321256",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/_5.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

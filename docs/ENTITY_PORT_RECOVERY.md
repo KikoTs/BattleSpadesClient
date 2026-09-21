@@ -1,5 +1,7 @@
 # Entity port recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 > **STATUS: Stage 1-3 landed.** The catalog, the local entity runtime, the F7
 > spawn menu and per-entity behaviour are implemented and shipping. The exact
 > per-field constant table, with adversarial verification and provenance, now
@@ -48,7 +50,7 @@ Model column: only paths I verified on disk under `G:/AoSRevival/BattleSpadesCli
 | id | Name | Model (verified on disk) | Category | Behaviour |
 |---|---|---|---|---|
 | 0 | FLAG | **NOT PORTABLE** — no `load_model` for it anywhere in `models.py` (grep returns nothing) | objective marker | Used only as an invisible indicator anchor (`aceofspades_source/server/aosmodes/dia.py:24`). No art exists; do not invent one. |
-| 1 | BASE | `kv6/cp.kv6` — *unconfirmed binding* (`models.py:339 CP_MODEL`; `server/aosserver/types.py:240 class CommandPost: type = BASE`) | structure | Team base volume. **DO NOT WIRE LATER**: BASE=1 is absent from retail `GameScene.ENTITIES` and freezes a clean client with `KeyError: 1` (`BattleSpades/docs/HANDOFF.md:740-744`, enforced `BattleSpades/server/entities/registry.py:72-79`). Locally renderable; never serialize. |
+| 1 | BASE | `kv6/cp.kv6` — *unconfirmed binding* (`models.py:339 CP_MODEL`; `server/aosserver/types.py:240 class CommandPost: type = BASE`) | structure | Team base volume. **DO NOT WIRE LATER**: BASE=1 is absent from retail `GameScene.ENTITIES` and freezes a clean client with `KeyError: 1` (`BattleSpades/docs/PROTOCOL.md (entity compatibility contract)`, enforced `BattleSpades/server/entities/registry.py:72-79`). Locally renderable; never serialize. |
 | 2 | HELICOPTER | **NOT PORTABLE** — no model (`grep -i helicopter models.py` → nothing) | vehicle | Class string exists in `gameScene.pyd.strtab.json` only. |
 | 3 | AMMO_CRATE | `kv6/ammocrate.kv6` (`models.py:344`) | pickup | Proximity 2.5, partial ammo top-up, consume + respawn. |
 | 4 | HEALTH_CRATE | `kv6/healthcrate.kv6` (`models.py:343`) | pickup | Proximity 2.5, heal, consume + respawn. |
@@ -299,6 +301,39 @@ Place, walk away, walk back → boom. Numbers from the A-alias block (`constants
 Sees/hears: `landmine_place.ogg` on placement, blinking arm state in the readout, then the existing explosion VFX + crater + falling structures via the shared `detonate()`, with `landmineexplode.ogg` / `landmineexplode_water.ogg` selected by `z >= MAP_Z - 2` (`rocketTurret.py:99-103`). All four files verified.
 
 ### D3. Rocket turret (8). *The showpiece — a thing that acts on its own.*
+
+#### Legacy network terrain damage
+
+Legacy `Damage(37)` type **21** (`ROCKET_TURRET_ROCKET_DAMAGE`) is a seeded
+blast, not an exact-cell hit. Rejecting its fractional position leaves stale
+terrain in the client after the server removes it, so authoritative movement
+can appear to place a player below an intact floor.
+
+Recovered from retail `gameScene.pyd`, SHA-256
+`3C4BAE35F955EAA5C3F0CBFDFA5CE7E9BBC277293DE849E3E6219C4CBA67C1E7`:
+
+- `BlockManager.handle_damage` (`0x10075FD0`) rounds each centre component
+  with Python 2 `int(round(value))`, including halves away from zero.
+- The turret wrapper (`0x10085FA0`) selects radius 3 (`A1621`) and disables
+  debris; the rocket entity's deletion owns the explosion effects.
+- The radius generator (`0x10079680`) visits 93 integer offsets with
+  `dx*dx + dy*dy + dz*dz < 9`, in ascending **Z, X, Y** order.
+- The common handler (`0x1007C3A0`) seeds CPython 2 `random.Random` with the
+  packet seed and applies `ceil((D / 9.0 * (9 - d2) + random() * 2) * 4) / 4`
+  damage per candidate. It consumes a sample even for air or a candidate
+  outside the map. Damage accumulates against the normal block health.
+
+The native terrain replica shares the already recovered CPython RNG with
+replicated shots, applies each candidate through normal voxel mutation, and
+invalidates affected render chunks. Signed centres allow blasts just outside
+the map to affect its edge; protected terrain remains immutable.
+
+`test_protocol168_terrain.cpp` checks collision and mesh removal, accumulated
+damage, edge clipping, and seed fixtures reconstructed from these disassemblies
+using CPython 2.7 (not direct calls into the original BlockManager). With
+damage 10 and block health 5, seeds 0, 1, 123, and 255 destroy respectively
+65, 58, 56, and 57 of the 93 candidate blocks. This recovery concerns type 21;
+other compact damage handlers require their own independent parity audit.
 
 `constants.py:6551-6577` (double-confirmed by `A1600..A1626` at `:3854-3880`): stock 4 / initial 2 / restock 2, `SHOOT_INTERVAL 1.5`, `TRACKING_RANGE 50.0` (sticky target), `DETECTION_RANGE 30.0` (acquire), `TOLERANCE 0.1`°, `AIMING_SPEED 180`°/s, `LOWER_PITCH_LIMIT 30`, `MODEL_SIZE 0.06`, `HEALTH 100`, `AMMO 10`, rocket blast `50 / r=3 / 10 block dmg`, turret death blast `100 / r=3 / 15`. Per-part z offsets are `-3/-17/-11 × 0.06` (`A1612..A1614`).
 

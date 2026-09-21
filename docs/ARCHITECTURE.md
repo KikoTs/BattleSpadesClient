@@ -23,7 +23,10 @@ ENet / Protocol 168 --> decoded events ------------+
 immutable render snapshot --> interpolated frame --> Classic/Enhanced renderer
 ```
 
-- Simulation advances on a fixed 60 Hz clock. Rendering may run at any rate.
+- Simulation advances on a fixed 60 Hz clock. The current application presents
+  at most once per fixed tick; overdue catch-up ticks skip presentation while
+  still processing input and networking. Catch-up is bounded so loading or
+  resuming does not replay an unlimited backlog of renders.
 - Server WorldUpdates arrive at the retail 30 Hz cadence. Remote actors are
   interpolated; the local actor predicts and reconciles against its own row.
 - The gameplay world is mutated only by the simulation owner. Rendering,
@@ -33,9 +36,10 @@ immutable render snapshot --> interpolated frame --> Classic/Enhanced renderer
 - A map or session change increments an epoch. Results from an old epoch are
   discarded instead of being installed into the new world.
 
-The current executable uses this runtime for the native frontend and headless
-tests. Network, world, prediction, and snapshot branches in the model above are
-architectural requirements, not completed features.
+The source implements the native frontend, offline Tutorial, network session,
+world/prediction and replicated gameplay paths. This diagram expresses ownership
+constraints, not proof of complete retail parity. See [ROADMAP.md](ROADMAP.md)
+for acceptance still required.
 
 ## Subsystem boundaries
 
@@ -43,13 +47,13 @@ architectural requirements, not completed features.
 |---|---|---|
 | `app` | startup, shutdown, scene/session composition | gameplay rules |
 | `platform` | window, input devices, timing, filesystem paths | renderer or game state |
-| `protocol` | ENet transport, Protocol 168 framing and packet codecs | gameplay mutation |
-| `simulation` | fixed clock, prediction, reconciliation, characters and entities | graphics API calls |
+| `network` | ENet, Protocol 168 framing/codecs and service adapters | rendering |
+| `core`, `world` and session integration | fixed clock, prediction, reconciliation, characters and entities | graphics API ownership |
 | `world` | canonical VXL cells, coordinate conversion, dirty regions | UI or packet layouts |
 | `assets` | asset IDs, source streams, format importers and caches | gameplay authority |
 | `render` | voxel meshes, characters, effects, camera and render profiles | collision truth |
 | `audio` | music, ambience, positional effects and voice allocation | world mutation |
-| `ui` | menus, HUD, localization and input focus | protocol-specific branching |
+| `ui` and `frontend` | menus, HUD, localization, input focus and typed service effects | server gameplay authority |
 | `diagnostics` | metrics, captures, overlays and crash context | production behavior |
 
 Public interfaces use stable value types such as packet events, input frames,
@@ -95,39 +99,47 @@ but it is disposable and keyed by the source bytes plus importer version. The
 source asset tree is never modified at runtime.
 
 VXL is the collision truth. Render meshes are derived artifacts and can lag a
-bounded number of frames after an edit without changing collision. Dirty
-columns rebuild in background jobs and install atomically for the current map
-epoch.
+bounded number of frames after an edit without changing collision. Initial map
+meshing uses background jobs over immutable map data. Live edits coalesce into
+a FIFO chunk queue on the presentation thread. A two-millisecond deadline,
+checked between complete chunks, prevents large edit bursts from monopolizing
+a frame; at least one chunk completes per presented frame. Collision and
+accepted block costs remain server-authoritative.
 
 ## Rendering profiles
 
 Both profiles consume the same simulation snapshot:
 
-- **Classic** is the compatibility baseline: original geometry, fog, palette,
+- **Legacy/compatibility** is the retail baseline: original geometry, fog, palette,
   nearest-filtered presentation, skybox, flare lighting, particles, camera,
   animations, and HUD timing.
-- **Enhanced** is optional: modern antialiasing, shadows, ambient occlusion,
-  improved water, higher-quality lighting, and particles.
+- **Enhanced quality settings** select native presentation features such as
+  shadows, lighting and particles. `settings/client_settings.*` and
+  `render/quality_profile.hpp` define the available capabilities; this is not
+  a promise that every proposed rendering feature is implemented.
 
 Enhanced mode may change presentation only. It may not change collision,
 hitboxes, recoil, spread, visibility distance, fog gameplay limits, movement,
-or packet behavior. Every release must still build and pass in Classic mode.
+or packet behavior. Every release must still validate the compatibility path.
 
 ## Build profiles
 
-CMake presets are the supported Windows build interface:
+CMake presets and the build wrappers are the supported build interface:
 
-- `debug`: assertions, sanitizable code, protocol validation and diagnostics;
-- `dev`: optimized iteration with symbols and bounded debug overlays;
-- `release`: optimized, diagnostics off by default, reproducible packaging.
+- `native-debug` / `Debug`: Windows native debugging;
+- `native-dev` / `RelWithDebInfo`: optimized Windows iteration with symbols;
+- `native-release` / `Release`: Windows distribution build;
+- `native-linux-dev`, `native-linux-release`, `native-macos-dev` and
+  `native-macos-release`: platform-native builds;
+- `debug`, `dev` and `release`: core/headless configurations.
 
 Rendering backends and Enhanced features are compile-time capabilities with
-runtime selection. Protocol 168, Classic rendering, and deterministic tests are
+runtime selection. Protocol 168, compatibility rendering, and deterministic tests are
 never optional build features once their milestones exist.
 
-Linux and macOS currently use ordinary CMake configure/build/install commands
-until platform presets and CI runners are checked in. The native dependency
-manifest is pinned through vcpkg on every platform.
+`scripts/build.sh` selects the Linux/macOS presets. The native dependency
+manifest is pinned through vcpkg. Presets and workflow definitions do not prove
+current target-platform acceptance. See [RUNBOOK.md](RUNBOOK.md) for commands.
 
 ## Architectural rules
 
@@ -197,11 +209,68 @@ prefab names, UGC tools, and equipment IDs above 64. The combined HUD inventory
 expands PREFAB_TOOL(23) into named construct variants; FLAREBLOCK_TOOL(22) is a
 separate mechanism and packet family.
 
-Remaining Phase 3 work is complete inbound combat presentation: hit/death and
-respawn ownership, zoom/laser/muzzle effects for remote actors, projectile and
-entity lifetimes, mode objectives, and broader owner/observer/late-join tests.
-The current live probes prove firearm ShootFeedback and prefab block
-replication, but do not claim every inbound weapon family is presented yet.
+Flight-pack prediction advances activation delay, ignition cost, native thrust
+handoff, consumption, exhaustion and regeneration from the same consumed input
+frames as the server. It does not wait for the active bit to return before
+predicting a boost. Decoded fuel and ability rows reconcile at their acknowledged
+frame, then replay the retained ability history. Movement replay uses the thrust
+state consumed by each historical step. The local fuel gauge reads this predicted
+resource between server updates; wire fuel quantization alone does not alter the
+exhaustion frame.
+
+Inbound combat, death/respawn, entities, objectives and result/HUD paths exist
+in the session/frontend/world code. Their existence does not close
+owner/observer/late-join, adverse-network or visual/audio parity gates. Use
+[ROADMAP.md](ROADMAP.md), not a historical probe count, for remaining acceptance.
+
+## Collection and online services
+
+Identity, discovery, scores and social services use bounded asynchronous
+adapters under `network`. Frontend models own revisions and visible state;
+worker results must match the active request/session. Owned servers/tunnels
+live under `platform`. Identity, projects and pending hosted results outlive
+temporary server sessions.
+
+The local-server owner normalizes bundle paths before launch and cleans the
+previous session before a retry. macOS uses `posix_spawn` with child-only cwd,
+environment and standard streams. POSIX shutdown uses a socket with SIGPIPE
+suppressed for that channel. The owned leader remains waitable until its process
+group is stopped, preventing helper leaks without targeting a reused process ID.
+Windows creates the child suspended, assigns its kill-on-close job, then resumes
+it. A job assignment failure ends the suspended launch instead of leaving an
+unowned child. Move assignment stops the destination's previous process before
+transferring ownership. Bundled POSIX executables keep their source permissions
+when installed.
+
+Frontend cancellation signals the live connection immediately, then transfers
+its joining destructor to a bounded cleanup queue. Hosted process/tunnel/relay
+retirement and map bootstrap derivation each use separate queues. Reservations cover live resources and pending
+cleanup, preventing repeated Start/Back from accumulating unbounded workers.
+Application shutdown drains those queues; system DNS can still delay a final
+join, even though it no longer blocks ordinary menu cancellation.
+
+Relay readiness requires valid server acknowledgements, not successful UDP
+sends. Lost acknowledgement leases or terminal socket errors end the tunnel;
+the frontend releases the host and unwinds the match route. Inactive client
+forwarding sockets expire so successive guests can reuse the bounded capacity.
+
+Inventory uses native RmlUi through the bgfx UI renderer, with the existing
+presentation as fallback. The backend owns rewards/equipment; `InventorySession`
+owns request/retry state. See [INVENTORY.md](INVENTORY.md). Catalogue hashes
+confine cosmetic resources. Bounded AngelScript handles supported weapon
+presentation only. Packet 240 is a separately negotiated appearance envelope,
+not a change to baseline Protocol 168. See [COMMUNITY_COSMETICS.md](COMMUNITY_COSMETICS.md).
+
+The UI renderer submits sprites and markup in their original drawing order.
+Texture handles retain generations across renderer restarts; runtime textures
+are mutable, cached image textures are immutable, and preview targets are
+borrowed from the renderer. Empty finite clips discard draws, while invalid
+coordinates and mesh indices fail before GPU submission.
+Transient UI buffer exhaustion skips and counts affected draws for that frame
+and resumes normally on the next frame. It does not terminate the client.
+World mesh replacement validates the full new mesh and allocates replacement
+buffers before releasing the previous resident mesh. Failed initialization
+rolls back partially allocated renderer resources before a retry.
 
 ## Explicit non-goals
 
@@ -211,5 +280,4 @@ replication, but do not claim every inbound weapon family is presented yet.
 - Requiring Enhanced rendering for correct gameplay.
 - Loading retail Python 2 modules or native `.pyd` files in production.
 - Changing Protocol 168 to make the new client easier to implement.
-- Shipping an asset editor, matchmaking replacement, or account service in the
-  first playable milestone.
+- Embedding the authoritative account/reward service in the native client.

@@ -1,0 +1,306 @@
+[
+  {
+    "stem": "stg44-fire-1",
+    "archive": "sgt44.zip",
+    "archive_sha256": "b0a6f6996cfc9fd6af29c6f0ff18c91a3ddae809c19c894016abed75d950f397",
+    "source_file": "Sounds/Fire1.wav",
+    "source_sha256": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "ogg_sha256": "dc7ef671ccfd0a4049eb3a28fe106d842db7562243d6f17b605848f465ded656",
+    "authors": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Lauchin",
+            "role": "Modeler",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "DaLemon",
+            "role": "Model and Sound",
+            "url": null
+          },
+          {
+            "name": "PTrooper",
+            "role": "Scripts",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script Creator",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/169827",
+    "terms": "See stg44.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "stg44-fire-2",
+    "archive": "sgt44.zip",
+    "archive_sha256": "b0a6f6996cfc9fd6af29c6f0ff18c91a3ddae809c19c894016abed75d950f397",
+    "source_file": "Sounds/Fire2.wav",
+    "source_sha256": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "ogg_sha256": "8bf87f9461d360e846e4afa75edc7e704e727eaa0b719b8704b1dcfe2d2d64b3",
+    "authors": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Lauchin",
+            "role": "Modeler",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "DaLemon",
+            "role": "Model and Sound",
+            "url": null
+          },
+          {
+            "name": "PTrooper",
+            "role": "Scripts",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script Creator",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/169827",
+    "terms": "See stg44.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "m1a1-fire-1",
+    "archive": "m1a1_v2_recommended_e31e4.zip",
+    "archive_sha256": "ac2f8869b40675bd114adbc64786aeee1ab539068c1318d0246e4c322d833f3d",
+    "source_file": "wav/smgshoot.wav",
+    "source_sha256": "7eb8505d376e2e6c89d0ce4628116d5b32fe39eb82a8a69d937bb8c15d05bd4d",
+    "ogg_sha256": "069927c2b163631987e83489873574a862431f212bce2cbce471b726bee48157",
+    "authors": [
+      {
+        "group": "Me",
+        "authors": [
+          {
+            "name": "Azeitona",
+            "role": "Made the skin",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Activion",
+        "authors": [
+          {
+            "name": "Cod Team",
+            "role": "Made the sounds",
+            "url": null
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/169765",
+    "terms": "See m1a1.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "aeon-awp-fire-1",
+    "archive": "os_aeon_awp.zip",
+    "archive_sha256": "ed9bbc4c66a8de7000a2f3347066931df5bf8b464d2899512e4ad11b0103eff9",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "7d732fa2bef694d6018b1234595b11b01f239a8b6a72d42bc7c74426387785be",
+    "ogg_sha256": "c5be6ca99e0abf820d460619eb8389300a75ec461b0d9affb66bd7a8d8106dc6",
+    "authors": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      },
+      {
+        "group": "Model and Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Original Model",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/319882",
+    "terms": "See aeon-awp.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "aeon-awp-fire-2",
+    "archive": "os_aeon_awp.zip",
+    "archive_sha256": "ed9bbc4c66a8de7000a2f3347066931df5bf8b464d2899512e4ad11b0103eff9",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "eeaf2fc7a03cc88688040c6c1e21db71c2c18449ccaf78f37ae0f5e6b65a7e79",
+    "ogg_sha256": "c172e1093b01a48ab4a4b2271669b38f4b19f4afb6eec2e15d1cdcabd9a4b55c",
+    "authors": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      },
+      {
+        "group": "Model and Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Original Model",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/319882",
+    "terms": "See aeon-awp.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "mp5k-fire-1",
+    "archive": "mp5k_1f629.zip",
+    "archive_sha256": "69e7c42b96d6260162fd199a677fef92356e939cc3eebf2ab3f380e3b404b887",
+    "source_file": "Sounds/Weapons/SMG/V2Third1.wav",
+    "source_sha256": "a703de56024e7724f737ad69062c96f8e2b36ad2b69481ac9a60b4cf236af8dd",
+    "ogg_sha256": "cec97f28b27c6a2d1e12a805a818e7a578177016d4103b84ac129a5af67e5b78",
+    "authors": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Nuceto",
+            "role": "animation",
+            "url": "https://gamebanana.com/members/1773911"
+          }
+        ]
+      },
+      {
+        "group": "Contributors",
+        "authors": [
+          {
+            "name": "Lolwuut",
+            "role": "Modeler",
+            "url": "https://gamebanana.com/members/1732817"
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/487866",
+    "terms": "See mp5k.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "mp5k-fire-2",
+    "archive": "mp5k_1f629.zip",
+    "archive_sha256": "69e7c42b96d6260162fd199a677fef92356e939cc3eebf2ab3f380e3b404b887",
+    "source_file": "Sounds/Weapons/SMG/V2Third2.wav",
+    "source_sha256": "a703de56024e7724f737ad69062c96f8e2b36ad2b69481ac9a60b4cf236af8dd",
+    "ogg_sha256": "ce778adf27d7a21634ec22ce704cb827421d78430bb3802b1bf96890cf94ac70",
+    "authors": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Nuceto",
+            "role": "animation",
+            "url": "https://gamebanana.com/members/1773911"
+          }
+        ]
+      },
+      {
+        "group": "Contributors",
+        "authors": [
+          {
+            "name": "Lolwuut",
+            "role": "Modeler",
+            "url": "https://gamebanana.com/members/1732817"
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/487866",
+    "terms": "See mp5k.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  },
+  {
+    "stem": "bren-fire-1",
+    "archive": "twodayudie_bren_gun_9ac41.zip",
+    "archive_sha256": "b17cd8c9ba4fbebb3f34bda303f5d5a7808c92efc6e3dbc20001314c4cd218fe",
+    "source_file": "Sounds/Weapons/SMG/Fire3rd.wav",
+    "source_sha256": "c63651a25f0d2f4bc4f41c363409ff77b76555659637e9a89aca70276d40fd18",
+    "ogg_sha256": "5028aff812be8f021fe1837bcfac0644de9385575c010bc85a5c30b988023b72",
+    "authors": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Twodayudie",
+            "role": "Creator",
+            "url": "https://gamebanana.com/members/1982902"
+          }
+        ]
+      }
+    ],
+    "source": "https://gamebanana.com/mods/344131",
+    "terms": "See bren.txt",
+    "adaptation": "Mono 44.1 kHz Vorbis with peak limiting; original timing retained."
+  }
+]

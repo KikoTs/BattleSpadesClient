@@ -14,12 +14,12 @@ namespace battlespades::render {
  * renderer so it can be unit-tested without a GPU, and so a new technique has
  * exactly one table to be added to.
  *
- * `legacy` is the retail-parity path: baked face/occlusion shading straight to
+ * `legacy` is the retail path: baked VXL illumination and authored two-light shading straight to
  * the backbuffer, no offscreen target, no post. It must stay reachable so
  * screenshot comparison against retail remains runnable.
  */
 struct QualityProfile final {
-    /** Render the world to an offscreen float target and tonemap it once. */
+    /** Reserved for an offscreen float target. False until that pass exists. */
     bool hdr_target{};
     /** Per-pixel directional lighting for terrain AND voxel models. */
     bool enhanced_lighting{};
@@ -56,14 +56,14 @@ struct QualityProfile final {
      * thick, so do not raise these without looking at a bridge.
      */
     float shadow_softness{};
-    /** 0 disables screen-space ambient occlusion. */
+    /** Reserved for screen-space AO. All shipped profiles keep this at zero. */
     std::uint8_t ssao_samples{};
     bool ssao_half_resolution{true};
     /** Bounded forward light array; 0 disables dynamic lights. */
     std::uint8_t dynamic_lights{};
     /** Evaluate the light array per particle as well as per surface. */
     bool particle_lighting{};
-    /** Bloom pyramid levels; 0 disables bloom. */
+    /** Reserved bloom pyramid levels. Zero until the pass exists. */
     std::uint8_t bloom_levels{};
     /**
      * Self-illumination gain for authored emissive voxels; 0 disables them.
@@ -87,7 +87,7 @@ struct QualityProfile final {
  * it straight through gave every stone, dirt, cloth, and weapon cube the same
  * broad plastic sheen. The current VXL format has no per-voxel roughness
  * channel, so enhanced rendering conservatively caps the lobe; Legacy never
- * calls this path and remains byte-for-byte shaded by its baked face table.
+ * calls this path and retains the recovered map/model lighting equations.
  */
 [[nodiscard]] constexpr float matte_voxel_specular(float authored) noexcept {
     if (!(authored > 0.0F)) {

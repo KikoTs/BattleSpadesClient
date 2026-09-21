@@ -174,13 +174,53 @@ void direct_connect_accepts_retail_host_and_port_input() {
     const auto has_add_button =
         std::ranges::any_of(direct_layer.commands(), [](const auto& command) {
             const auto* text = std::get_if<TextDrawCommand>(&command);
-            return text != nullptr && text->localization_key == "ADD FAVORITE";
+            return text != nullptr && text->localization_key == "FAVORITE" &&
+                   text->destination == DrawRect{418.0, 296.0, 99.0, 50.0};
         });
-    expect(has_add_button, "direct-IP screen must render an explicit Add Favorite button");
+    expect(has_add_button,
+           "direct-IP screen must fit its Favourite action beside Connect inside the retail frame");
+
+    direct.pointer_press(Point{2'240, 2'480});
+    expect(!direct.pointer_release(Point{3'360, 2'480}).has_value(),
+           "dragging from Connect to Favourite must not activate a different control");
+    direct.pointer_press(Point{3'360, 2'480});
+    const auto pointer_favourite = direct.pointer_release(Point{3'360, 2'480});
+    expect(pointer_favourite.has_value() &&
+               pointer_favourite->kind == DirectConnectActionKind::add_favourite,
+           "the compact Favourite button must preserve its typed action");
+
+    direct.set_notice("Added to Favorites");
+    expect(!direct.message_is_error(), "successful persistence must not render as a red error");
+    direct.set_error("Invalid endpoint");
+    expect(direct.message_is_error(), "invalid endpoints must retain the error presentation");
     expect(!direct.append_character('/'),
            "direct connect must reject URL/path characters before endpoint parsing");
     expect(direct.erase_character() && direct.endpoint() == "127.0.0.1:2701",
            "backspace must update the focused endpoint deterministically");
+}
+
+void direct_connect_committed_text_and_paste_preserve_endpoints() {
+    DirectConnectMenuModel direct;
+    expect(direct.append_text("127.0.0.1") && direct.append_text(":") &&
+               direct.append_text("27015"), "committed colon text must reach the address");
+    expect(direct.endpoint() == "127.0.0.1:27015", "port separator must be retained");
+    direct.clear();
+    expect(direct.paste_text(" \tPlay.example.net:32887\r\n") &&
+               direct.endpoint() == "Play.example.net:32887",
+           "paste must preserve host and port while trimming outer whitespace");
+    expect(!direct.paste_text("bad/path") &&
+               direct.endpoint() == "Play.example.net:32887",
+           "a rejected paste must not silently change the destination");
+    expect(!direct.paste_text("one\ntwo") && !direct.append_text("\xc3\xa9"),
+           "embedded newlines and unsupported non-ASCII host names must be rejected atomically");
+    direct.clear();
+    expect(direct.append_text(std::string(254U, 'a')), "allow input up to the byte limit");
+    expect(!direct.paste_text("bc") && direct.endpoint().size() == 254U,
+           "overlong paste must not truncate into a different hostname");
+    expect(direct.append_text("z") && !direct.append_text("z"), "enforce exact byte limit");
+    direct.pointer_press(Point{0, 0});
+    expect(!direct.paste_text("127.0.0.1") && !direct.append_text(":"),
+           "unfocused fields must ignore text and paste");
 }
 
 void direct_connect_favourites_are_durable_and_fail_closed() {
@@ -244,6 +284,10 @@ void retail_server_metadata_resolvers_cover_live_modes_and_authored_maps() {
            "Zombie discovery metadata must use the retail title and description");
     expect(arena.code == "arena" && arena.title_key == "ARENA",
            "BattleSpades Arena discovery metadata must not masquerade as TDM");
+    expect(resolve_server_mode("ARENA").code == "arena" &&
+               resolve_server_mode("nor").code == "nor" &&
+               battlespades::frontend::resolve_protocol168_mode(0U).code == "nor",
+           "shared Arena titles must not shadow exact discovery codes or change the normal wire ordinal");
     expect(classic_ctf.code == "cctf" && classic_ctf.title_key == "CLASSIC_CTF_TITLE" &&
                classic_ctf.classic,
            "Classic CTF must preserve its distinct mode title and classic loading contract");
@@ -345,8 +389,8 @@ void server_browser_refresh_requests_reject_stale_discovery_callbacks() {
     browser.set_region(ServerBrowserRegion::europe);
     const auto internet = browser.begin_refresh();
     expect(internet.source == ServerBrowserSource::all &&
-               internet.region == ServerBrowserRegion::europe && browser.refreshing(),
-           "internet discovery must carry the persisted region and enter refreshing state");
+                !internet.region.has_value() && browser.refreshing(),
+           "All Servers discovery must not apply an invisible region filter");
 
     auto first = server("Current", "10.0.0.1", 32887U, 10U, 1U, 32U);
     expect(browser.accept_response(internet.generation, first),
@@ -570,6 +614,36 @@ void server_browser_presentation_exposes_retail_sort_scroll_and_button_states() 
     expect(favourite_enabled, "Favourite must return to full intensity when a row is selected");
 }
 
+void public_regions_match_wire_names_without_hidden_filters() {
+    ServerBrowserModel browser;
+    auto eu = server("EU", "192.0.2.1", 27015U, 30U, 2U, 24U);
+    auto west = server("US West", "192.0.2.2", 27015U, 90U, 2U, 24U);
+    auto east = server("US East", "192.0.2.3", 27015U, 70U, 2U, 24U);
+    eu.region = "europe"; west.region = "us-west"; east.region = "US_EAST";
+    eu.official = west.official = east.official = true;
+    const auto populate = [&] {
+        const auto request = browser.begin_refresh();
+        for (const auto& entry : {eu, west, east}) {
+            expect(browser.accept_response(request.generation, entry), "Region fixture rejected");
+        }
+        expect(browser.finish_refresh(request.generation), "Region fixture did not finish");
+    };
+    browser.set_region(ServerBrowserRegion::europe); populate();
+    expect(browser.visible_indices().size() == 3U, "All Servers hid a different region");
+    browser.set_source(ServerBrowserSource::official);
+    for (const auto region : {ServerBrowserRegion::us_west, ServerBrowserRegion::us_east,
+                              ServerBrowserRegion::europe}) {
+        browser.set_region(region); populate();
+        expect(browser.visible_indices().size() == 1U, "Official region alias did not match");
+    }
+    browser.set_source(ServerBrowserSource::all); populate();
+    expect(browser.visible_indices().size() == 3U, "Leaving Official retained its region filter");
+    eu.official = west.official = east.official = false;
+    browser.set_source(ServerBrowserSource::community); populate();
+    expect(browser.visible_indices().size() == 3U && !browser.region_tabs_visible(),
+           "Community discovery retained an invisible region filter");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -579,6 +653,9 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"direct_connect_committed_text_and_paste_preserve_endpoints",
+         direct_connect_committed_text_and_paste_preserve_endpoints},
+        {"public_regions_match_wire_names_without_hidden_filters", public_regions_match_wire_names_without_hidden_filters},
         {"join_geometry_and_routes_match_retail", join_geometry_and_routes_match_retail},
         {"retail_pointer_arming_and_disabled_state_are_explicit",
          retail_pointer_arming_and_disabled_state_are_explicit},

@@ -26,6 +26,7 @@ public:
         std::uint16_t z{};
         VxlColor color{};
         std::uint8_t visibility{};
+        std::uint8_t normal_index{};
     };
 
     [[nodiscard]] static std::optional<Kv6Model> load(std::span<const std::byte> bytes,
@@ -50,6 +51,10 @@ public:
      */
     [[nodiscard]] Kv6Model inverse_scaled(std::uint8_t inverse_scale) const;
 
+    /** Adapt the classic 12x10x6 combined arm pose into upper/lower segments.
+     * Uses the authored sleeve/glove voxels; returns empty for other layouts. */
+    [[nodiscard]] std::vector<Kv6Model> articulated_classic_arms() const;
+
     /**
      * Apply retail KV6.offset_pivots in authored voxel units.
      *
@@ -72,6 +77,8 @@ public:
      * including shared crouch meshes and graves, rather than selected classes.
      */
     void apply_default_color(VxlColor team_color) noexcept;
+    /** Render-only finish; preserves every voxel, pivot and team material marker. */
+    void apply_cosmetic_palette(std::array<std::uint8_t, 3U> palette) noexcept;
 
     /**
      * Cube-meshes the surface voxels into the recovered retail GL model

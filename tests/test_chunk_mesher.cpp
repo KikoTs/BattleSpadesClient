@@ -2,9 +2,13 @@
 #include "battlespades/world/vxl_map.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -47,10 +51,59 @@ void expect(bool value, const char* message) {
 
 constexpr VxlColor stone{120U, 96U, 80U, 255U};
 
+// Optional real-map timing probe. Buffer fingerprints exclude struct padding
+// and let optimization runs verify exact geometry, colours and AO coordinates.
+int benchmark_map(const char* path) {
+    const auto loaded = VxlMap::load_file(path);
+    expect(static_cast<bool>(loaded), "Benchmark map must load");
+    const ChunkMesher mesher;
+    std::vector<double> timings;
+    std::uint64_t fingerprint{14695981039346656037ULL};
+    const auto hash = [&fingerprint](std::uint32_t value) {
+        fingerprint = (fingerprint ^ value) * 1099511628211ULL;
+    };
+    std::size_t faces{};
+    double total_ms{};
+    for (std::uint32_t y{}; y < mesher.chunks_per_axis(); ++y) {
+        for (std::uint32_t x{}; x < mesher.chunks_per_axis(); ++x) {
+            const auto begin = std::chrono::steady_clock::now();
+            const auto mesh = mesher.mesh(*loaded.map, {x, y});
+            const auto elapsed = std::chrono::duration<double, std::milli>{
+                std::chrono::steady_clock::now() - begin}.count();
+            timings.push_back(elapsed);
+            total_ms += elapsed;
+            faces += mesh.face_count();
+            hash(x); hash(y);
+            for (const auto& vertex : mesh.vertices) {
+                hash(std::bit_cast<std::uint32_t>(vertex.x));
+                hash(std::bit_cast<std::uint32_t>(vertex.y));
+                hash(std::bit_cast<std::uint32_t>(vertex.z));
+                hash(vertex.abgr); hash(vertex.face); hash(vertex.occlusion);
+                hash(vertex.noise_corner); hash(vertex.directional_influence);
+                hash(vertex.static_light); hash(std::bit_cast<std::uint32_t>(vertex.retail_baked_light));
+                hash(std::bit_cast<std::uint32_t>(vertex.ao_u));
+                hash(std::bit_cast<std::uint32_t>(vertex.ao_v));
+                hash(std::bit_cast<std::uint32_t>(vertex.edge_u));
+                hash(std::bit_cast<std::uint32_t>(vertex.edge_v));
+            }
+            for (const auto index : mesh.indices) hash(index);
+        }
+    }
+    std::ranges::sort(timings);
+    std::cout << "terrain benchmark: chunks=" << timings.size() << " faces=" << faces
+              << " fingerprint=" << fingerprint << " total_ms=" << total_ms
+              << " p50_ms=" << timings[timings.size() / 2U]
+              << " p95_ms=" << timings[(timings.size() * 95U) / 100U]
+              << " max_ms=" << timings.back() << '\n';
+    return 0;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc == 3 && std::string_view{argv[1]} == "--benchmark")
+            return benchmark_map(argv[2]);
         const ChunkMesher mesher;
         expect(mesher.chunks_per_axis() == 32U, "512-wide map must split into 32 chunks");
 
@@ -89,7 +142,7 @@ int main() {
                             a.directional_influence == b.directional_influence &&
                             a.static_light == b.static_light && a.ao_u == b.ao_u &&
                             a.ao_v == b.ao_v && a.edge_u == b.edge_u &&
-                            a.edge_v == b.edge_v;
+                            a.edge_v == b.edge_v && a.retail_baked_light == b.retail_baked_light;
             }
             expect(identical, "meshing must reproduce identical vertices");
         }
@@ -116,10 +169,30 @@ int main() {
                        recovered->edge_u == 0.25F &&
                        recovered->edge_v == 0.255859375F &&
                        recovered->noise_corner == 2U &&
-                       recovered->directional_influence == 255U &&
+                       recovered->directional_influence == 0U && recovered->retail_baked_light == 1.0F &&
                        (recovered->static_light >> 24U) == 255U,
                    "isolated terrain vertex must carry exact retail AO/edge/noise/light fields");
             expect(meshed.minimum[2U] == 100.0F, "mesh bounds must include the floating voxel");
+        }
+
+        // Original vxl.pyd light smoothing uses current + occupied tangent neighbours,
+        // then sub_100051C0 multiplies RGB. It never fills gl_Vertex.w from these bytes.
+        {
+            auto lights = empty_world();
+            expect(lights.set_voxel(100,100,100,{128,64,32,127}), "light fixture");
+            expect(lights.set_voxel(101,100,100,{128,64,32,63}), "light neighbour");
+            const auto check_corner = [&](float expected) {
+                const auto mesh = mesher.mesh(lights,interior);
+                const auto corner = std::ranges::find_if(mesh.vertices, [](const auto& v) {
+                    return v.face==4 && v.x==101 && v.y==100 && v.z==100 && v.abgr==0x00204080;
+                });
+                expect(corner!=mesh.vertices.end(), "shared light corner must be emitted");
+                expect(std::abs(corner->retail_baked_light-expected)<0.000001F &&
+                       corner->directional_influence==0, "baked light must not bypass directional shading");
+            };
+            check_corner(48.0F/127.0F); // (64 + 32) / (127 * 2).
+            expect(lights.set_voxel(100,100,100,{128,64,32,0}), "zero light fixture");
+            check_corner(16.0F/127.0F); // Current zero still contributes to the divisor.
         }
 
         // Two adjacent voxels share one interior face pair: ten exposed faces.

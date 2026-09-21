@@ -1,11 +1,14 @@
 # Profile progression recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 ## Implemented boundary
 
-The native client restores the retail profile progression model as a read-only
-presentation of AoSPlay-owned statistics. It does not award XP and it does not
-submit scores. A trusted game server remains the only component allowed to send
-idempotent match-stat events to `aosplay.net`.
+The retail profile model is a read-only presentation of AoSPlay-owned statistics.
+It does not calculate authoritative account awards. Current native hosting also
+retries credential-free server-generated result reports through authenticated
+service APIs; the backend validates their allocation/identity evidence and owns
+stat/XP ingestion. That newer integration is described in [INVENTORY.md](INVENTORY.md).
 
 The signed-in player path is:
 
@@ -19,7 +22,9 @@ The signed-in player path is:
 5. The native profile model calculates retail levels/ranks locally from the
    authoritative count/score pairs.
 
-This intentionally leaves the BattleSpades server repository unchanged.
+The recovery below establishes retail mastery calculations. Server statistics,
+hosted-result ingestion and account XP have their own maintained contracts;
+the original client-only investigation did not define their complete lifecycle.
 
 ## Retail evidence
 

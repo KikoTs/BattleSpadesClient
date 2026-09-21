@@ -12,6 +12,7 @@ struct CreateMatchPresentationContext final {
     ui::PixelExtent window{CreateMatchMenuPresentation::reference_width,
                            CreateMatchMenuPresentation::reference_height};
     std::uint16_t background_opacity_per_mille{1'000U};
+    std::string_view status_message{};
 };
 
 namespace create_match_presentation_assets {

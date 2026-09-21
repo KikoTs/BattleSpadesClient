@@ -58,6 +58,35 @@ constexpr double fixed_dt{1.0 / 60.0};
 
 int main() {
     try {
+        {
+            namespace art = battlespades::frontend::game_hud_assets;
+            GameHudModel model;
+            model.set_health(100);
+            model.set_ammo_state("spectator-test-weapon", 99, 198, true);
+            model.set_block_state(std::string{art::block_icon}, 200, 1000, true);
+            model.set_player_score(12345, true);
+            model.set_jetpack_fuel(1.0, true);
+            model.set_team_scores(
+                {battlespades::frontend::hud_layout::Team::team1, 7, 100, true},
+                {battlespades::frontend::hud_layout::Team::team2, 4, 100, true}, true);
+            GameHudPresentationContext context{{800, 600}};
+            const GameHudPresentation presentation;
+            const auto alive = presentation.build(model, context);
+            expect(sprite_count(alive, art::health_bar_frame) == 1U &&
+                       sprite_count(alive, "spectator-test-weapon") == 1U,
+                   "ordinary player HUD must retain health and selected weapon");
+            context.player_widgets_visible = false;
+            const auto spectating = presentation.build(model, context);
+            expect(sprite_count(spectating, art::health_bar_frame) == 0U &&
+                       sprite_count(spectating, art::health_bar) == 0U &&
+                       sprite_count(spectating, "spectator-test-weapon") == 0U &&
+                       sprite_count(spectating, art::block_icon) == 0U &&
+                       sprite_count(spectating, art::jetpack_fuel_frame) == 0U &&
+                       !contains_text(spectating, "12345"),
+                   "spectators must not display invented local health or inventory");
+            expect(contains_text(spectating, "7") && contains_text(spectating, "4"),
+                   "spectating must retain the live team score display");
+        }
         expect(battlespades::frontend::retail_jetpack_fuel_fraction(100.0) == 1.0 &&
                    battlespades::frontend::retail_jetpack_fuel_fraction(50.0) == 0.5,
                "retail 0..100 fuel units must normalize before drawing the gauge");
@@ -751,7 +780,44 @@ int main() {
                    "the help panel must survive the HUD toggle");
         }
 
-        // Lesson driver: recovered thresholds and monotonic progression.
+        // Block hotbar: per-placement cost remains separate from stock/capacity.
+        {
+            GameHudModel model;
+            const GameHudPresentation presentation;
+            model.set_team(battlespades::frontend::hud_layout::Team::team2);
+            const auto block_tint = model.team_color();
+            model.set_block_state("png/ui/weapons/block.png", 200, 1000, true);
+            model.set_block_cost_state(1, false, block_tint, true);
+            const auto draw = presentation.build(
+                model, GameHudPresentationContext{{800, 600}, 1'000U, {}});
+            expect(sprite_count(draw, "png/ui/ammo/ammo_frame.png") == 2U &&
+                       contains_text(draw, "200") && contains_text(draw, "/ 1000"),
+                   "block cost and stock/capacity must draw as two independent retail rows");
+            bool red_cost{};
+            std::size_t team_tinted_block_icons{};
+            for (const auto& command : draw.commands()) {
+                if (const auto* text = std::get_if<battlespades::ui::TextDrawCommand>(&command)) {
+                    red_cost = red_cost ||
+                               (text->localization_key == "1" &&
+                                text->modulation.color == battlespades::frontend::hud_layout::not_enough_ammo_color);
+                }
+                if (const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command)) {
+                    if (sprite->asset_id == "png/ui/weapons/block.png" &&
+                        sprite->destination.width == 33.0 &&
+                        sprite->modulation.color == block_tint) {
+                        ++team_tinted_block_icons;
+                    }
+                }
+            }
+            expect(red_cost && team_tinted_block_icons == 2U,
+                   "invalid placement must show a red one-block cost with both icons using the team tint");
+            model.set_block_cost_state(12, true, block_tint, true);
+            expect(model.ammo().current == 12 && model.ammo().enough &&
+                       !model.ammo().reserve.has_value() && model.blocks().count == 200,
+                   "drag-line cost updates must not overwrite the authoritative block stock");
+        }
+
+        // Retail palette: eight hue rows, eight brightness columns, 9px cells.
         {
             GameHudModel model;
             const GameHudPresentation presentation;
@@ -766,11 +832,29 @@ int main() {
             const auto list =
                 presentation.build(model, GameHudPresentationContext{{800, 600}, 1'000U, {}});
             expect(model.palette().visible && model.palette().selected == 10U &&
-                       model.palette().colors.size() == 32U,
+                       model.palette().colors.size() == 64U,
                    "the enabled block palette must retain all selectable swatches");
             expect(sprite_count(list, "png/high/white.png") ==
-                       sprite_count(without, "png/high/white.png") + 33U,
-                   "the palette must draw 32 cells and one selected-cell border");
+                       sprite_count(without, "png/high/white.png") + 65U,
+                   "the palette must draw all 64 cells and one selected-cell border");
+            expect(palette.front() == battlespades::ui::ColorRgba8{15U, 15U, 15U, 255U} &&
+                       palette[7] == battlespades::ui::ColorRgba8{239U, 239U, 239U, 255U} &&
+                       palette[36] == battlespades::ui::ColorRgba8{31U, 255U, 31U, 255U} &&
+                       palette.back() == battlespades::ui::ColorRgba8{255U, 223U, 255U, 255U},
+                   "palette indices must match the original screenshot RGB values");
+            std::size_t swatches{};
+            bool first_cell{};
+            bool last_cell{};
+            for (const auto& command : list.commands()) {
+                const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command);
+                if (sprite == nullptr || sprite->asset_id != "png/high/white.png" ||
+                    sprite->destination.width != 9.0 || sprite->destination.height != 9.0) continue;
+                ++swatches;
+                first_cell = first_cell || sprite->destination == battlespades::ui::DrawRect{542.0, 498.0, 9.0, 9.0};
+                last_cell = last_cell || sprite->destination == battlespades::ui::DrawRect{619.0, 575.0, 9.0, 9.0};
+            }
+            expect(swatches == 64U && first_cell && last_cell,
+                   "palette must use the recovered 88px anchors and 11px cell spacing");
         }
 
         // Lesson driver: recovered thresholds and monotonic progression.

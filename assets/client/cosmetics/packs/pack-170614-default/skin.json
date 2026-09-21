@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "pack-170614-default",
+  "name": "Openspades .950 JDJ",
+  "source": "https://gamebanana.com/mods/170614",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Sight1.kv6": "Models/Weapons/Rifle/Sight1.kv6",
+    "Models/Weapons/Rifle/Sight2.kv6": "Models/Weapons/Rifle/Sight2.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Rifle/Magazine.kv6": "c3d24187cb2efc12baf0bdcd16a9b76625765e32f31c77dab4b8a462b9bfc66a",
+    "Models/Weapons/Rifle/Sight1.kv6": "c8df3527fb7af559c29e275c3f96cd1ff0f08b08a39a3421b5052177e1816736",
+    "Models/Weapons/Rifle/Sight2.kv6": "a48cd164e65c097e9407098bf21a9dd25eebd2b208a778a908e3f218467a8b89",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "3ca9eadc814f5dc98820f6202a9c6a4d3e1dff83089f9ce991f044037b86e91e",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "f15ff7877dd6526aad176e96edd43184781a3f31edc38624924b46c39d01554d",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg": "5974cc0b0b7befe6f4777096cc8d86dec5def44e0e5934c01bd0b64afa07e041",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "3905c89680eece4975dba70424be63606b0335a4c24d12763cc0235d88189688",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "1a786608102e6cdf09139b189a28d98cde9f7e1dda12c7d17375184da5b71ceb",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "25de9bb9e454b0edf3b5cd4a360d3462356ca4919eefe49932ef4e4eedce76b7",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "97f80c297409b5430319226b67a22ac03afcfdfb0bb3b5067862a6fe9e4f13d0",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/Rifle/View.as": "80c1517cdfc47495e8432e17b0ba749dceebbfc84b82f89c83e8f95c3355e2ad",
+    "Tuning/scope-crosshair.png": "db5e8ca8edc451995a94827e5d640833f22910c457ed6c3712635c303c933fc3"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "design and modling",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default Rifle script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "aim_overlay": "Tuning/scope-crosshair.png",
+  "hide_aimed_models": true,
+  "tuning_note": "The model-only scope obscures the firing axis with the default Rifle script. Use the supplied Kar98 crosshair during ADS; retain original model parts and default Rifle reload.",
+  "overlay_credit": {
+    "note": "scope2.png from the existing Kar98 archive kar89mod_b7541.rar; see original imported pack credits.",
+    "source": "https://gamebanana.com/mods/170226"
+  }
+}

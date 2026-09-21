@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170222-1",
+  "name": "Usp with Skin — UspSilencerSKINXD",
+  "source": "https://gamebanana.com/mods/170222",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/semi.png": "Gfx/semi.png",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/Fire.wav": "Sounds/Weapons/Rifle/Fire.wav.ogg",
+    "Sounds/Weapons/Rifle/Fire1.wav": "Sounds/Weapons/Rifle/Fire1.wav.ogg",
+    "Sounds/Weapons/Rifle/Fire2.wav": "Sounds/Weapons/Rifle/Fire2.wav.ogg",
+    "Sounds/Weapons/Rifle/Fire3.wav": "Sounds/Weapons/Rifle/Fire3.wav.ogg",
+    "Sounds/Weapons/Rifle/Fire4.wav": "Sounds/Weapons/Rifle/Fire4.wav.ogg",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Sounds/Weapons/Rifle/FireFar.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal.wav": "Sounds/Weapons/Rifle/FireLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal1.wav": "Sounds/Weapons/Rifle/FireLocal1.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal2.wav": "Sounds/Weapons/Rifle/FireLocal2.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal3.wav": "Sounds/Weapons/Rifle/FireLocal3.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal4.wav": "Sounds/Weapons/Rifle/FireLocal4.wav.ogg",
+    "Sounds/Weapons/Rifle/FireMedium.wav": "Sounds/Weapons/Rifle/FireMedium.wav.ogg",
+    "Sounds/Weapons/Rifle/FireMedium1.wav": "Sounds/Weapons/Rifle/FireMedium1.wav.ogg",
+    "Sounds/Weapons/Rifle/FireMedium2.wav": "Sounds/Weapons/Rifle/FireMedium2.wav.ogg",
+    "Sounds/Weapons/Rifle/FireMedium3.wav": "Sounds/Weapons/Rifle/FireMedium3.wav.ogg",
+    "Sounds/Weapons/Rifle/FireMedium4.wav": "Sounds/Weapons/Rifle/FireMedium4.wav.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.wav": "Sounds/Weapons/Rifle/FireStereo.wav.ogg",
+    "Sounds/Weapons/Rifle/RaiseLocal.wav": "Sounds/Weapons/Rifle/RaiseLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/reload.wav": "Sounds/Weapons/Rifle/reload.wav.ogg",
+    "Sounds/Weapons/Rifle/Reload2.wav": "Sounds/Weapons/Rifle/Reload2.wav.ogg",
+    "Sounds/Weapons/Rifle/reloadLocal.wav": "Sounds/Weapons/Rifle/reloadLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/ShellDrop1.wav": "Sounds/Weapons/Rifle/ShellDrop1.wav.ogg",
+    "Sounds/Weapons/Rifle/ShellDrop2.wav": "Sounds/Weapons/Rifle/ShellDrop2.wav.ogg",
+    "Sounds/Weapons/Rifle/ShellWater.wav": "Sounds/Weapons/Rifle/ShellWater.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/Reload.wav": "Sounds/Weapons/Rifle/reload.wav.ogg"
+  },
+  "hashes": {
+    "Gfx/semi.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Models/Weapons/Rifle/Magazine.kv6": "68cf8d8af10bb910a0cadfc5e20163ea21a41dcd3bf8b228def92eac4ae60e46",
+    "Models/Weapons/Rifle/Weapon.kv6": "40d5a3606eed240cec1b6ad7f1d03359ad27e707109c470e7e5d3baeb1a8e528",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "1b8da2f37c007ccad966be28ebf796bb71ffa2a8d2b764b0fbf475ee19771ab9",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "35511aeba541780ddba9b28b1e5875da550ac29ff12df38f9e6f462320163fe9",
+    "Scripts/Skin/Rifle/View.as": "cbb0040e5252f167b8c069dcb2844a42cf6a5d85b580dc2d2decfc471ecaf2a7",
+    "Sounds/Weapons/Rifle/Fire.wav.ogg": "d367ef7a9171a5e20a46bed651c4e41068ef83bb8721004639ee713f50322db6",
+    "Sounds/Weapons/Rifle/Fire1.wav.ogg": "2488fa982602e1305f838c6197ca4a4ae484520689718cb02e8c9d470e87b2d0",
+    "Sounds/Weapons/Rifle/Fire2.wav.ogg": "dcac121c65435100ff32b9034e628ba261626058c86d1d7d23f32adbf1068279",
+    "Sounds/Weapons/Rifle/Fire3.wav.ogg": "d8e862ae44aba386b78c493e37601ece09dbff74f3fc6bbd625600127509d93d",
+    "Sounds/Weapons/Rifle/Fire4.wav.ogg": "da506d6a9334ac1bc1a4472a98c3dd9cad635cdb13aea09ae81e1ea42172d3b1",
+    "Sounds/Weapons/Rifle/FireFar.wav.ogg": "da277e23022223d185a07b4df0adc9fe196465d650f4f12b888752b1db8e74cb",
+    "Sounds/Weapons/Rifle/FireLocal.wav.ogg": "994f2580fc077ce18448e6b45299be863ec2d64a7ed968c5e915b0949abf84f9",
+    "Sounds/Weapons/Rifle/FireLocal1.wav.ogg": "42417291229f62b5008ba8183a92854bfe42b6e7122d44cb3a3c5cafd82fa57c",
+    "Sounds/Weapons/Rifle/FireLocal2.wav.ogg": "204d2a0d9d0fe2e514175700394be778021ddc315d697c48d2e048d4ad8f9374",
+    "Sounds/Weapons/Rifle/FireLocal3.wav.ogg": "1a2afc5c40069f534bbb1cde1b39b7e43bc2b23fa4dc6ded5ed6772b9d086bca",
+    "Sounds/Weapons/Rifle/FireLocal4.wav.ogg": "9dd85b3990a3572858089a7384c43cc09a4ec74d025642e53f918bfecd410d73",
+    "Sounds/Weapons/Rifle/FireMedium.wav.ogg": "7d951ec9a18ce8d56b0ca8721a78ca5cac7cca33b6f8f7ce9eab468051e6a8b8",
+    "Sounds/Weapons/Rifle/FireMedium1.wav.ogg": "3d2b1f50087669b5ddfb69cd7ff7f124ec68a139ff791f63b568af4c33363f0e",
+    "Sounds/Weapons/Rifle/FireMedium2.wav.ogg": "a8b53bc9e1d9cfa33803f16f367bc70a2fd345b9ccee1d69f5cfaf74a2c3054e",
+    "Sounds/Weapons/Rifle/FireMedium3.wav.ogg": "0d014286807be46b8cf3df8c4d9c854874a0e11803144328a4534bdd26fe329a",
+    "Sounds/Weapons/Rifle/FireMedium4.wav.ogg": "0ec847ed03a48108334d01288dbf251044a6bfae6c3b655d5eba17a0f93f6f85",
+    "Sounds/Weapons/Rifle/FireStereo.wav.ogg": "7a481ff526cad82cba2dc19e8eada1e6f5763403c3a876a472f7e429f30277f3",
+    "Sounds/Weapons/Rifle/RaiseLocal.wav.ogg": "6a94ccc85a727f3ec047670f7b213fb0f1c7230970df61057579314494f6dd51",
+    "Sounds/Weapons/Rifle/reload.wav.ogg": "445986cbaa0676e49fe03c19364ccc6d34887dd3919bd52c9f6e9f40ec4a15f7",
+    "Sounds/Weapons/Rifle/Reload2.wav.ogg": "c911fc6bec3861e38235db94f30662edde8f9e020f3db7d3d2d551929bab7642",
+    "Sounds/Weapons/Rifle/reloadLocal.wav.ogg": "dc633d9dc6a4590b945c2c030bf07611993739f248bcd845477784fd66abea85",
+    "Sounds/Weapons/Rifle/ShellDrop1.wav.ogg": "0c1caf36f98159d1813030f407e5e6d7dd03e9bbbc8e046494269901ae4b31f9",
+    "Sounds/Weapons/Rifle/ShellDrop2.wav.ogg": "540fde915c3a30ef590e689fba917387fec69bb5fb6acaa0419b267745feea52",
+    "Sounds/Weapons/Rifle/ShellWater.wav.ogg": "30520608149944c9689010ca2e2a865f0d5bf245a884e89b7f51d8240e31926f",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "66bb38e5a02948aa90797d60164864148f61b6f199c3dc54fcac042d62a4a0cb",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "desing",
+      "_aAuthors": [
+        {
+          "_sRole": "a",
+          "_idRow": "1753013",
+          "_sName": "Martinserna577",
+          "_sProfileUrl": "https://gamebanana.com/members/1753013",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Keep the actual weapon and hands visible for iron-sight ADS; replace the empty full-screen sight image with the native aiming mark.",
+    "Aligned pistol ADS to the supplied model sight height and centre."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

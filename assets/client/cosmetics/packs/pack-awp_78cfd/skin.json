@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "pack-awp_78cfd",
+  "name": "awp_78cfd.rar",
+  "source": "User-provided archive",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "Gfx/riflesight.png": "Gfx/riflesight.png",
+    "Models/Weapons/Rifle/Base1.kv6": "Models/Weapons/Rifle/Base1.kv6",
+    "Models/Weapons/Rifle/Base4.kv6": "Models/Weapons/Rifle/Base4.kv6",
+    "Models/Weapons/Rifle/Base5.kv6": "Models/Weapons/Rifle/Base5.kv6",
+    "Models/Weapons/Rifle/Bolt.kv6": "Models/Weapons/Rifle/Bolt.kv6",
+    "Models/Weapons/Rifle/Bolt1.kv6": "Models/Weapons/Rifle/Bolt1.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine1.kv6": "Models/Weapons/Rifle/WeaponNoMagazine1.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Sounds/Weapons/Rifle/FireFar.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal.wav": "Sounds/Weapons/Rifle/FireLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg"
+  },
+  "hashes": {
+    "Gfx/riflesight.png": "952929c59855c5518d54504c7325a674b812a3422495af6d321065cf4bcd4d9a",
+    "Models/Weapons/Rifle/Base1.kv6": "9f1032679425588e73603a52dd0179e3afdb93d634d27cf024172917ab28ee31",
+    "Models/Weapons/Rifle/Base4.kv6": "3eb9d1d150338486a24cc428c7f09e34117b2a79f1444b61eb3d5d13cf07cab5",
+    "Models/Weapons/Rifle/Base5.kv6": "25541710edcf7d7f96b01263d0bb2777db51f0d3cabe4fed39e00f042f453879",
+    "Models/Weapons/Rifle/Bolt.kv6": "2919962c74ba6bfc16fd2e2914040a2a60b3f2bda186a55e157cab3e06e3f396",
+    "Models/Weapons/Rifle/Bolt1.kv6": "f0b709f3970d92e984e7f261ba9eada813f9359cd4e0d40649d1de8c1f1b1451",
+    "Models/Weapons/Rifle/Magazine.kv6": "0335861ab078bf20b3145533fbacf7cc3ede74fe27e5f534ca4f6ec5dae14593",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "fec4778bee92b45e2c09c9e73867df04c5b56b4dc9046646546efddca6140000",
+    "Models/Weapons/Rifle/WeaponNoMagazine1.kv6": "56fa4dffe05e8dda2768a856373c7c0149aa2e93c4f96f25787a08d898976ac7",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "a675ab36cba39f117a5772dceeceae1ccd4b33133072083da64df509002c040b",
+    "Scripts/Skin/Rifle/View.as": "a6a69942eb58ea68996008142ebf9431ca7193c1323019d5beba665b7ecdf53a",
+    "Sounds/Weapons/Rifle/FireFar.wav": "65ceb5454ec712fcdc05130024409eb8486d7688a28a2a6910d041c09a0a8941",
+    "Sounds/Weapons/Rifle/FireLocal.wav": "ae38f17fe5abd901157cc77d263014f631bec08b8d2c172c47a5aec4f5ceda11",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "95c6d1f2b935f309d66979dd5fa028daa8885d9366c4c53e2032f913c6ac1006",
+    "Sounds/Weapons/Rifle/FireFar.wav.ogg": "6d25d96056e4ad8392c122368e9e8e275ce058afeb945b95c56e2b3eee9c9d04",
+    "Sounds/Weapons/Rifle/FireLocal.wav.ogg": "7d0756ea2dea4d350c6b0a7be8ece1a5d44ee09776c05d91f28d99cf075a0239",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg": "cdb9690767eb5300ba85f74bf3104b7833e378f32e2ab34d5a43d730337e3650",
+    "Hands/Arm.kv6": "90ea25e3878c228be7a64edd80e09088b1e343334b3bdacbdd3649beee6eb3e0",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "21892e2e4c796e8a41258f31e9733afb20fdee8b1347adba0db8a7ad17af7440",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "See original archive notices",
+  "credits": [],
+  "missing": [
+    "Gfx/Sight.tga",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus"
+  ],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "User-supplied Deuce Remastered; original archive retained"
+  },
+  "fallbacks": []
+}

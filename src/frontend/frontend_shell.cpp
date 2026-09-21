@@ -31,6 +31,17 @@ bool FrontendShellModel::navigate(ui::ScreenId target, NavigationDirection direc
     return true;
 }
 
+bool FrontendShellModel::navigate_immediate(ui::ScreenId target) noexcept {
+    if (!target.is_valid()) {
+        return false;
+    }
+    active_ = target;
+    previous_.reset();
+    direction_ = NavigationDirection::forward;
+    active_offset_ = 0.0;
+    return true;
+}
+
 void FrontendShellModel::tick() noexcept {
     if (!active_.has_value() || active_offset_ == 0.0) {
         return;

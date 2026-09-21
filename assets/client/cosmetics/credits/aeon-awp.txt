@@ -1,0 +1,103 @@
+AEON AWP
+Original authors: iSkyte., PTrooper
+https://gamebanana.com/mods/319882
+
+{
+  "id": "aeon-awp",
+  "name": "AEON AWP",
+  "archive": "os_aeon_awp.zip",
+  "archive_sha256": "ed9bbc4c66a8de7000a2f3347066931df5bf8b464d2899512e4ad11b0103eff9",
+  "source": "https://gamebanana.com/mods/319882",
+  "credits": [
+    {
+      "group": "Skin",
+      "authors": [
+        {
+          "name": "iSkyte.",
+          "role": "Skin Maker",
+          "url": "https://gamebanana.com/members/1992661"
+        }
+      ]
+    },
+    {
+      "group": "Model and Scripts",
+      "authors": [
+        {
+          "name": "PTrooper",
+          "role": "Original Model",
+          "url": "https://gamebanana.com/members/1415230"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "a4b11ea05f438eddf623bb22ccb50340e2c533125895b3c5f6c427d5267ba652"
+}
+
+--- Scripts/Skin/Rifle/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+ Modified by Paratrooper
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+ namespace spades {
+	class ThirdPersonRifleSkin: 
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin {
+		private float sprintState;
+--- Scripts/Skin/Rifle/View.as ---
+/*
+ Copyright (c) 2013 yvt
+ Modified by Paratrooper
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
+ namespace spades {
+	// A class for the magazine that gets thrown out when the rifle is reloaded
+	class RifleMagazineParticle {
+		private Matrix4 originalMatrix;

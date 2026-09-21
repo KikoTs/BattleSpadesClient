@@ -1,0 +1,137 @@
+{
+  "name": "AKU-12",
+  "source": "https://gamebanana.com/mods/170208",
+  "archives": [
+    {
+      "archive": "170208\\204196-aku-12.rar",
+      "extracted": "170208\\files-204196",
+      "sha256": "0a3b8d95e84d82b5ec924c11042a937e8810ccc0abe1d7d07ae1ee2bfbe93297",
+      "listing": [
+        "Models",
+        "Models/Weapons",
+        "Models/Weapons/SMG",
+        "Models/Weapons/SMG/Casing.kv6",
+        "Models/Weapons/SMG/ChargingHandle.kv6",
+        "Models/Weapons/SMG/MagazineEmpty.kv6",
+        "Models/Weapons/SMG/MagazineLoaded.kv6",
+        "Models/Weapons/SMG/SightsFront.kv6",
+        "Models/Weapons/SMG/SightsPin.kv6",
+        "Models/Weapons/SMG/SightsReflex.kv6",
+        "Models/Weapons/SMG/Tracer.kv6",
+        "Models/Weapons/SMG/Weapon.kv6",
+        "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+        "Scripts",
+        "Scripts/Skin",
+        "Scripts/Skin/SMG",
+        "Scripts/Skin/SMG/ThirdPerson.as",
+        "Scripts/Skin/SMG/View.as",
+        "Sounds",
+        "Sounds/Weapons",
+        "Sounds/Weapons/SMG",
+        "Sounds/Weapons/SMG/.DS_Store",
+        "Sounds/Weapons/SMG/Fire1.wav",
+        "Sounds/Weapons/SMG/Fire2.wav",
+        "Sounds/Weapons/SMG/Fire3.wav",
+        "Sounds/Weapons/SMG/Fire4.wav",
+        "Sounds/Weapons/SMG/FireFar.wav",
+        "Sounds/Weapons/SMG/FireLocal1.wav",
+        "Sounds/Weapons/SMG/FireLocal2.wav",
+        "Sounds/Weapons/SMG/FireLocal3.wav",
+        "Sounds/Weapons/SMG/FireLocal4.wav",
+        "Sounds/Weapons/SMG/FireMedium1.wav",
+        "Sounds/Weapons/SMG/FireMedium2.wav",
+        "Sounds/Weapons/SMG/FireMedium3.wav",
+        "Sounds/Weapons/SMG/FireMedium4.wav",
+        "Sounds/Weapons/SMG/FireStereo.wav",
+        "Sounds/Weapons/SMG/RaiseLocal.wav",
+        "Sounds/Weapons/SMG/Reload.wav",
+        "Sounds/Weapons/SMG/ReloadLocal.wav",
+        "Sounds/Weapons/SMG/ShellDrop1.wav",
+        "Sounds/Weapons/SMG/ShellDrop2.wav",
+        "Sounds/Weapons/SMG/ShellWater.wav",
+        "Sounds/Weapons/SMG/_Assets_/Old",
+        "Sounds/Weapons/SMG/_Assets_/Old2",
+        "Sounds/Weapons/SMG/_Assets_/Old3",
+        "Sounds/Weapons/SMG/_Assets_/Old4",
+        "Sounds/Weapons/SMG/_Assets_",
+        "TO PAK000-BASE",
+        "TO PAK000-BASE/Gfx",
+        "TO PAK000-BASE/Gfx/Bullet/9mm.tga",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/000.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/001.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/002.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/003.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/004.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/005.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/006.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/007.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/008.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/009.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/010.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/011.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/012.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/013.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/014.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/015.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/016.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/017.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/018.png",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG/019.png",
+        "TO PAK000-BASE/Gfx/Killfeed/b-SMG.png",
+        "TO PAK000-BASE/Gfx/Killfeed/b-SMG.tga",
+        "TO PAK000-BASE/Gfx/Flash/Weapons/SMG",
+        "TO PAK000-BASE/Gfx/Flash/Weapons",
+        "TO PAK000-BASE/Gfx/Bullet",
+        "TO PAK000-BASE/Gfx/Flash",
+        "TO PAK000-BASE/Gfx/Killfeed",
+        "TO PAK000-BASE/Gfx/ReflexRound.png"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Model",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripts",
+          "_sName": "PTrooper"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "Battlefield 4",
+          "_sName": "DICE"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

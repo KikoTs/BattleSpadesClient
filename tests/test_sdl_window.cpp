@@ -126,7 +126,7 @@ void sdl_window_preserves_lifecycle_and_input_events() {
     committed_text.text.type = SDL_EVENT_TEXT_INPUT;
     committed_text.text.timestamp = SDL_GetTicksNS();
     committed_text.text.windowID = window_id;
-    committed_text.text.text = "hello";
+    committed_text.text.text = ":";
     expect(SDL_PushEvent(&committed_text),
            "SDL rejected injected committed text");
 
@@ -169,10 +169,38 @@ void sdl_window_preserves_lifecycle_and_input_events() {
             return event.type == WindowEventType::text_input;
         });
     expect(text_event != window.events().end() &&
-               text_event->text == "hello",
+               text_event->text == ":",
            "committed text bytes must be retained");
+    // The dummy video driver uses an isolated clipboard; never replace the desktop clipboard.
+    expect(SDL_SetClipboardText("127.0.0.1:27015"), "dummy clipboard must accept fixture text");
+    expect(window.clipboard_text() == "127.0.0.1:27015",
+           "explicit paste must read the complete host:port through the platform boundary");
     expect(window.set_text_input_enabled(false),
            "SDL text input must stop cleanly");
+
+    for (const auto direction : {SDL_MOUSEWHEEL_NORMAL, SDL_MOUSEWHEEL_FLIPPED}) {
+        SDL_Event wheel{};
+        wheel.wheel.type = SDL_EVENT_MOUSE_WHEEL;
+        wheel.wheel.windowID = window_id;
+        wheel.wheel.direction = direction;
+        const float sign = direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0F : 1.0F;
+        wheel.wheel.x = 0.25F * sign;
+        wheel.wheel.y = 1.5F * sign;
+        wheel.wheel.mouse_x = 81.25F;
+        wheel.wheel.mouse_y = 42.5F;
+        expect(SDL_PushEvent(&wheel), "SDL rejected injected wheel event");
+    }
+    expect(window.tick(TickContext{}) == TickDecision::continue_running,
+           "Wheel direction normalization must not stop the window");
+    std::size_t wheel_count{};
+    for (const auto& event : window.events()) {
+        if (event.type != WindowEventType::mouse_wheel) continue;
+        ++wheel_count;
+        expect(event.mouse_delta_x == 0.25F && event.mouse_delta_y == 1.5F &&
+                   event.mouse_x == 81.25F && event.mouse_y == 42.5F,
+               "Normal and flipped wheels must share fractional deltas and pointer coordinates");
+    }
+    expect(wheel_count == 2U, "Both wheel directions must cross the platform boundary");
 
     push_window_event(SDL_EVENT_WINDOW_CLOSE_REQUESTED, window_id);
     expect(window.tick(TickContext{}) == TickDecision::stop,
@@ -181,6 +209,7 @@ void sdl_window_preserves_lifecycle_and_input_events() {
            "native close request must remain observable during shutdown");
 
     window.stop();
+    expect(window.clipboard_text().empty(), "stopped windows must not read the clipboard");
     expect(window.logical_extent() == WindowExtent{}, "stop must clear logical extent");
     expect(window.drawable_extent() == WindowExtent{}, "stop must clear drawable extent");
     expect(window.events().empty(), "stop must clear retained events");

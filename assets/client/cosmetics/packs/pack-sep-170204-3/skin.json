@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170204-3",
+  "name": "FN-SCAR — Sniper/Full Auto (SMG Replacement)/Black",
+  "source": "https://gamebanana.com/mods/170204",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/Bullet/9mm.tga": "Gfx/Bullet/9mm.tga.png",
+    "Gfx/Flash/Weapons/SMG/000.png": "Gfx/Flash/Weapons/SMG/000.png",
+    "Gfx/Flash/Weapons/SMG/001.png": "Gfx/Flash/Weapons/SMG/001.png",
+    "Gfx/Flash/Weapons/SMG/002.png": "Gfx/Flash/Weapons/SMG/002.png",
+    "Gfx/Flash/Weapons/SMG/003.png": "Gfx/Flash/Weapons/SMG/003.png",
+    "Gfx/Flash/Weapons/SMG/004.png": "Gfx/Flash/Weapons/SMG/004.png",
+    "Gfx/Flash/Weapons/SMG/005.png": "Gfx/Flash/Weapons/SMG/005.png",
+    "Gfx/Flash/Weapons/SMG/006.png": "Gfx/Flash/Weapons/SMG/006.png",
+    "Gfx/Flash/Weapons/SMG/007.png": "Gfx/Flash/Weapons/SMG/007.png",
+    "Gfx/Flash/Weapons/SMG/008.png": "Gfx/Flash/Weapons/SMG/008.png",
+    "Gfx/Flash/Weapons/SMG/009.png": "Gfx/Flash/Weapons/SMG/009.png",
+    "Gfx/Flash/Weapons/SMG/010.png": "Gfx/Flash/Weapons/SMG/010.png",
+    "Gfx/Flash/Weapons/SMG/011.png": "Gfx/Flash/Weapons/SMG/011.png",
+    "Gfx/Flash/Weapons/SMG/012.png": "Gfx/Flash/Weapons/SMG/012.png",
+    "Gfx/Flash/Weapons/SMG/013.png": "Gfx/Flash/Weapons/SMG/013.png",
+    "Gfx/Flash/Weapons/SMG/014.png": "Gfx/Flash/Weapons/SMG/014.png",
+    "Gfx/Flash/Weapons/SMG/015.png": "Gfx/Flash/Weapons/SMG/015.png",
+    "Gfx/Flash/Weapons/SMG/016.png": "Gfx/Flash/Weapons/SMG/016.png",
+    "Gfx/Flash/Weapons/SMG/017.png": "Gfx/Flash/Weapons/SMG/017.png",
+    "Gfx/Flash/Weapons/SMG/018.png": "Gfx/Flash/Weapons/SMG/018.png",
+    "Gfx/Flash/Weapons/SMG/019.png": "Gfx/Flash/Weapons/SMG/019.png",
+    "Gfx/Killfeed/b-smg.png": "Gfx/Killfeed/b-smg.png",
+    "Gfx/SMG.png": "Gfx/SMG.png",
+    "Models/Weapons/SMG/Casing.kv6": "Models/Weapons/SMG/Casing.kv6",
+    "Models/Weapons/SMG/ChargingHandle.kv6": "Models/Weapons/SMG/ChargingHandle.kv6",
+    "Models/Weapons/SMG/MagazineEmpty.kv6": "Models/Weapons/SMG/MagazineEmpty.kv6",
+    "Models/Weapons/SMG/MagazineLoaded.kv6": "Models/Weapons/SMG/MagazineLoaded.kv6",
+    "Models/Weapons/SMG/SightsFront.kv6": "Models/Weapons/SMG/SightsFront.kv6",
+    "Models/Weapons/SMG/Tracer.kv6": "Models/Weapons/SMG/Tracer.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Scripts/skin/SMG/ThirdPerson.as": "Scripts/skin/SMG/ThirdPerson.as",
+    "Scripts/skin/SMG/View.as": "Scripts/skin/SMG/View.as",
+    "sounds/Weapons/SMG/Fire1.wav": "sounds/Weapons/SMG/Fire1.wav.ogg",
+    "sounds/Weapons/SMG/Fire2.wav": "sounds/Weapons/SMG/Fire2.wav.ogg",
+    "sounds/Weapons/SMG/Fire3.wav": "sounds/Weapons/SMG/Fire3.wav.ogg",
+    "sounds/Weapons/SMG/Fire4.wav": "sounds/Weapons/SMG/Fire4.wav.ogg",
+    "sounds/Weapons/SMG/FireFar.wav": "sounds/Weapons/SMG/FireFar.wav.ogg",
+    "sounds/Weapons/SMG/FireLocal1.wav": "sounds/Weapons/SMG/FireLocal1.wav.ogg",
+    "sounds/Weapons/SMG/FireLocal2.wav": "sounds/Weapons/SMG/FireLocal2.wav.ogg",
+    "sounds/Weapons/SMG/FireLocal3.wav": "sounds/Weapons/SMG/FireLocal3.wav.ogg",
+    "sounds/Weapons/SMG/FireLocal4.wav": "sounds/Weapons/SMG/FireLocal4.wav.ogg",
+    "sounds/Weapons/SMG/FireMedium1.wav": "sounds/Weapons/SMG/FireMedium1.wav.ogg",
+    "sounds/Weapons/SMG/FireMedium2.wav": "sounds/Weapons/SMG/FireMedium2.wav.ogg",
+    "sounds/Weapons/SMG/FireMedium3.wav": "sounds/Weapons/SMG/FireMedium3.wav.ogg",
+    "sounds/Weapons/SMG/FireMedium4.wav": "sounds/Weapons/SMG/FireMedium4.wav.ogg",
+    "sounds/Weapons/SMG/FireStereo.wav": "sounds/Weapons/SMG/FireStereo.wav.ogg",
+    "sounds/Weapons/SMG/RaiseLocal.wav": "sounds/Weapons/SMG/RaiseLocal.wav.ogg",
+    "sounds/Weapons/SMG/reload.wav": "sounds/Weapons/SMG/reload.wav.ogg",
+    "sounds/Weapons/SMG/reloadLocal.wav": "sounds/Weapons/SMG/reloadLocal.wav.ogg",
+    "sounds/Weapons/SMG/ShellDrop1.wav": "sounds/Weapons/SMG/ShellDrop1.wav.ogg",
+    "sounds/Weapons/SMG/ShellDrop2.wav": "sounds/Weapons/SMG/ShellDrop2.wav.ogg",
+    "sounds/Weapons/SMG/ShellWater.wav": "sounds/Weapons/SMG/ShellWater.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/SMG/FireLocal1.wav": "sounds/Weapons/SMG/FireLocal1.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal2.wav": "sounds/Weapons/SMG/FireLocal2.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal3.wav": "sounds/Weapons/SMG/FireLocal3.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal4.wav": "sounds/Weapons/SMG/FireLocal4.wav.ogg",
+    "Sounds/Weapons/SMG/FireFar.wav": "sounds/Weapons/SMG/FireFar.wav.ogg",
+    "Sounds/Weapons/SMG/FireStereo.wav": "sounds/Weapons/SMG/FireStereo.wav.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.wav": "sounds/Weapons/SMG/reloadLocal.wav.ogg",
+    "Gfx/ReflexRound.png": "SharedVariant/ReflexSight.png"
+  },
+  "hashes": {
+    "Gfx/Bullet/9mm.tga.png": "0dc347c4e073f526cfec6c974efcdea55884098cf21ed74f895b772d4f3b8269",
+    "Gfx/Flash/Weapons/SMG/000.png": "8e6cdf8cb9179fc0e99beeefd0c499a3bb6bdc47e05e40f296b5650bc5b07e3e",
+    "Gfx/Flash/Weapons/SMG/001.png": "cf484a04777fe4caa676dcf3065cf0bf8f3081fd649f6844c3197d86d071d660",
+    "Gfx/Flash/Weapons/SMG/002.png": "4f458d60cf3ef0933353c0239ff1adbb60ebecfc5480c4f5790b09a8ba22539b",
+    "Gfx/Flash/Weapons/SMG/003.png": "73615fd76cd69c82c74e089c9d634ab04ceb7f06371e4d14e205243f7fd7f6c5",
+    "Gfx/Flash/Weapons/SMG/004.png": "c53ef21ab4e109e82545c9b080960e35999e3ffef3356c7cc49daad5b8772c40",
+    "Gfx/Flash/Weapons/SMG/005.png": "1b6197d1b9464fcf7f8762a3ce58c161ffdcadbfcc916ccdbe62b58ac0269892",
+    "Gfx/Flash/Weapons/SMG/006.png": "dfe67dd413328aca78f4a756bd625513e535123fec87e0c21c49a043dd53a56e",
+    "Gfx/Flash/Weapons/SMG/007.png": "266352c078aaf7c9f86e40de1ebc34e0be656955f0f69748365382824bba7539",
+    "Gfx/Flash/Weapons/SMG/008.png": "5c83dcca229b89614c9213f77e22011d130ff3a949691625b06a78b721188063",
+    "Gfx/Flash/Weapons/SMG/009.png": "dc896359ca839b63917ee9975d6924df5bc13fda41ae82ac9cd96ee06dcd04ff",
+    "Gfx/Flash/Weapons/SMG/010.png": "fa52994d2de41940db67c8b5e8a8528c70add896474af7539c9d091cfd048816",
+    "Gfx/Flash/Weapons/SMG/011.png": "89f9c9516d60739a572388d8470ce4e565f49d454576f6309fde7110fe247b0d",
+    "Gfx/Flash/Weapons/SMG/012.png": "7062ee6d345fcdd13d240238197e88886bc173a288adba4ccfe0b8981c38fb1c",
+    "Gfx/Flash/Weapons/SMG/013.png": "ae0b2c407346dea6a730dbbb486209be530c0a8f58d2e8686eb48ffefd290b09",
+    "Gfx/Flash/Weapons/SMG/014.png": "d185d46b8685b70fa61f9e10445c6b64e7720cbfe83547e06a4c2976252bcc78",
+    "Gfx/Flash/Weapons/SMG/015.png": "96078d116091e5174f9473b3622ac1511c28a255e0bc83e70fc4c8168ccac98f",
+    "Gfx/Flash/Weapons/SMG/016.png": "c6593420a6ee13e574cefa66ebd8381a6021cef7506b79513f6b11a7717448fa",
+    "Gfx/Flash/Weapons/SMG/017.png": "5353931204445a0217d346c563273b2650f2ed8374715a52a4998d9befcd28b6",
+    "Gfx/Flash/Weapons/SMG/018.png": "545cad4a7397f220923728c63c352d799444e0fc122f62a742fcd7f292d9b475",
+    "Gfx/Flash/Weapons/SMG/019.png": "2fef1b71afbed3861bda60be858a4848cd81428d805a01b37720c7bd25b0ef6e",
+    "Gfx/Killfeed/b-smg.png": "541b9f9e0de64d52a7c807e7bb76e407c9d72b482d134cd52af83ae5ab310682",
+    "Gfx/SMG.png": "5ff567784528eaadd361c2d8b8aeb32dd0559c92e3f290e3e04a4d5add125882",
+    "Models/Weapons/SMG/Casing.kv6": "d09074f327068b1e11d364d8d405bbae81fd86fd324bd0f53c56a92b9f4df50d",
+    "Models/Weapons/SMG/ChargingHandle.kv6": "57282d2fa24195103d8420cd9b95f030c242af6aefddfa19fe41921518a76357",
+    "Models/Weapons/SMG/MagazineEmpty.kv6": "156901937a535184b155c2baeec63e82ef2ec4574032a2fbb2b239dcb9450d6a",
+    "Models/Weapons/SMG/MagazineLoaded.kv6": "29e7e4fc880a66479b3d2074af27f6502adee9a1d3db38979f199f7bd25ea7cf",
+    "Models/Weapons/SMG/SightsFront.kv6": "cdcda8656220f54813dcc847a5a85cac6e58c1e02bbd3fefd8c6c8790e78d164",
+    "Models/Weapons/SMG/Tracer.kv6": "cc39de045f631d080c3c29cd0d60d7977a5358ebfeeb1d2d880af968be95674a",
+    "Models/Weapons/SMG/Weapon.kv6": "cd59a4b9ef026f4228e9a1dcf37309b1bcf66dbee3da4dba4ca98649efac507c",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "df693d6c9d4629826b8c53e210d038995e3b9acaa7aaed4405ac4b187584a094",
+    "Scripts/skin/SMG/ThirdPerson.as": "dafa12ebf087eaf0754b79d158715be46e1fa28c7703a1d2138585759f6bb73a",
+    "Scripts/skin/SMG/View.as": "9c3e842e50ba91ee587f3bdb7ca21ee94c80dfa0b163ef4c1b0f839dfebaef4c",
+    "sounds/Weapons/SMG/Fire1.wav.ogg": "b2801c0a45ad2f518120773e31dab2d0ede0f016c3be6f11b1d84fcca79738a0",
+    "sounds/Weapons/SMG/Fire2.wav.ogg": "16ab842574e1c8c6b7033b7a8bcc45026a9f0c26fc28800b03163a48a6302411",
+    "sounds/Weapons/SMG/Fire3.wav.ogg": "7bc8fc1a253bff7aa11896d660ef3ab2fb1d84ec62c97576b337fd24dc6e911b",
+    "sounds/Weapons/SMG/Fire4.wav.ogg": "97568b318e1f974319780f6730863136ad307c7e51322615a3f345f9e05bee3e",
+    "sounds/Weapons/SMG/FireFar.wav.ogg": "89fdf149b9201bd90fbec7665f97a2f70206b5a3144eb208c928cf5f7c33189a",
+    "sounds/Weapons/SMG/FireLocal1.wav.ogg": "e58c4ba19d7b37d3b82010e0deb7b93720939db746f32c88f13dd265c22502a1",
+    "sounds/Weapons/SMG/FireLocal2.wav.ogg": "da4305f5e722ac3fcb47b24ee7310752b5caa05b66b19513f2e07f2062917a08",
+    "sounds/Weapons/SMG/FireLocal3.wav.ogg": "b66f5c1ed7eebd105cc57253972d276e34c12bca056b5d83e1dca72d8b6fa809",
+    "sounds/Weapons/SMG/FireLocal4.wav.ogg": "55364cb741947477b96c1fc569400a56b840b8477075be0c2b6c00ef3c4221cd",
+    "sounds/Weapons/SMG/FireMedium1.wav.ogg": "be58ea922c2f1ae7c5f0002d17bd67119ebf87ecba415cff4fa44647df06561b",
+    "sounds/Weapons/SMG/FireMedium2.wav.ogg": "dda37732644fea6356a2c8a325d1c99dbcf2931fab111702ca6561a4bdfdfa3c",
+    "sounds/Weapons/SMG/FireMedium3.wav.ogg": "0702a0d18ec0ecbb1edd7ee78063996d23a666cd11438387cf2a7c9e40c89b57",
+    "sounds/Weapons/SMG/FireMedium4.wav.ogg": "a0cabf6da03e57332b6223999b5d5aa3e9c074ce97bf7253fb8426c7d81daf3d",
+    "sounds/Weapons/SMG/FireStereo.wav.ogg": "0f5d86345e4505c82733b7f9cdaa5561b8c8512dc99a6a87dc0062af77b7ab4d",
+    "sounds/Weapons/SMG/RaiseLocal.wav.ogg": "c2e85b89b36c92a20a89607c863d81cd814ec04ede4b37ff4a1111c098cc47cb",
+    "sounds/Weapons/SMG/reload.wav.ogg": "9d64722936b0f958bb9f9ea314564c49db79a3d32db1960e15e3bb6e41a3d177",
+    "sounds/Weapons/SMG/reloadLocal.wav.ogg": "9314dcf16f00e69750dfd1d51ae7547c798f5057e7a0edd4c15804e28fdbe0eb",
+    "sounds/Weapons/SMG/ShellDrop1.wav.ogg": "804b33e6ab5d98c3ca1a3d0b2e6ce49db4f375fc145d02e9273b63091897b616",
+    "sounds/Weapons/SMG/ShellDrop2.wav.ogg": "a3be8b622d1c96d132ca56ef75c18f5f61102694968819b49630aed88efa0450",
+    "sounds/Weapons/SMG/ShellWater.wav.ogg": "64f60793ceb0f580ad861fb036a77e4864480dc59f605fa280386afe90a33787",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "9c3e842e50ba91ee587f3bdb7ca21ee94c80dfa0b163ef4c1b0f839dfebaef4c",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "SharedVariant/ReflexSight.png": "448219c275c3dc891441e3650b9e7084bc15a5e94faa46ad9b5d0c5a0da2fa72"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models/Coding/Photoshop/Sounds",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Source Code.",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "Some of his Codings",
+          "_idRow": "153683",
+          "_sName": "Chameleon",
+          "_sProfileUrl": "https://gamebanana.com/members/153683",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Restored Gfx/ReflexRound.png from another variant in the same FN-SCAR archive."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 2.5,
+    "scope": true
+  }
+}

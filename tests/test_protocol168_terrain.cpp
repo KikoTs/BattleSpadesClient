@@ -2,10 +2,12 @@
 #include "battlespades/network/protocol168_tool_actions.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -297,6 +299,142 @@ void live_damage_produces_one_drainable_impact_event() {
            "impact feedback must be delivered exactly once");
 }
 
+void legacy_turret_rocket_removes_support_and_invalidates_visible_chunks() {
+    auto map = empty_world();
+    expect(map.set_voxel(15U, 31U, 100U, {90U, 100U, 110U, 255U}),
+           "turret fixture must contain a support voxel on two chunk borders");
+    const battlespades::world::ChunkMesher mesher;
+    const auto visible_before = mesher.mesh(map, {0U, 1U}).vertices.size();
+    Protocol168TerrainReplica replica{map};
+    DamagePacket damage;
+    damage.player_id = 7U;
+    damage.causer_id = 180;
+    damage.type = 21U; // ROCKET_TURRET_ROCKET_DAMAGE, not direct WEAPON_DAMAGE.
+    damage.damage = 10.0F;
+    damage.position = {15.25F, 31.5F, 100.75F};
+    const auto result = replica.apply(encode_packet(damage));
+    expect(result.recognized && result.error.empty() && result.mutation.destroyed,
+           "legacy turret damage must accept a fractional rocket impact position");
+    expect(!map.solid(15U, 31U, 100U),
+           "the legacy turret blast must remove the player's canonical support voxel");
+    expect(mesher.mesh(map, {0U, 1U}).vertices.size() < visible_before,
+           "the destroyed support must also disappear from the rebuilt visible mesh");
+    const auto dirty = replica.take_dirty_chunks();
+    for (const auto key : {battlespades::world::ChunkKey{0U, 1U},
+                           battlespades::world::ChunkKey{1U, 1U},
+                           battlespades::world::ChunkKey{0U, 2U}}) {
+        expect(std::find(dirty.begin(), dirty.end(), key) != dirty.end(),
+               "turret destruction must invalidate both terrain and neighboring faces");
+    }
+    expect(replica.take_dirty_chunks().empty(),
+           "turret remesh invalidation must drain once");
+    expect(replica.take_impact_events().empty(),
+           "turret terrain damage must not duplicate DestroyEntity explosion effects");
+}
+
+void legacy_turret_blast_matches_recovered_python2_seed_fixtures() {
+    // Independent CPython 2.7 reconstruction of gameScene.pyd's radius-list
+    // generator and damage loop: D=10, block health=5, radius=3, 93 candidates.
+    struct Fixture { std::uint8_t seed; std::size_t destroyed; };
+    for (const auto fixture : {Fixture{0U, 65U}, Fixture{1U, 58U},
+                                Fixture{123U, 56U}, Fixture{255U, 57U}}) {
+        auto map = empty_world();
+        for (std::uint32_t x{97U}; x <= 103U; ++x)
+            for (std::uint32_t y{97U}; y <= 103U; ++y)
+                for (std::uint32_t z{97U}; z <= 103U; ++z)
+                    static_cast<void>(map.set_voxel(x, y, z, {80U, 90U, 100U, 255U}));
+        DamagePacket packet;
+        packet.type = 21U;
+        packet.damage = 10.0F;
+        packet.seed = fixture.seed;
+        // Python 2 round(99.5)=100; floor would shift this entire crater.
+        packet.position = {99.5F, 99.75F, 100.25F};
+        Protocol168TerrainReplica replica{map};
+        const auto result = replica.apply(encode_packet(packet));
+        expect(result.mutation.changed_cells.size() == 93U,
+               "the retail turret radius-three list must contain exactly 93 cells");
+        std::size_t destroyed{};
+        for (const auto& cell : result.mutation.changed_cells)
+            destroyed += map.solid(cell.x, cell.y, cell.z) ? 0U : 1U;
+        expect(destroyed == fixture.destroyed,
+               "turret destruction must match CPython2 seed-dependent falloff fixtures");
+        for (const auto cell : {battlespades::world::VoxelCell{97U, 100U, 100U},
+                                battlespades::world::VoxelCell{103U, 100U, 100U},
+                                battlespades::world::VoxelCell{100U, 97U, 100U},
+                                battlespades::world::VoxelCell{100U, 100U, 103U}}) {
+            expect(map.solid(cell.x, cell.y, cell.z) &&
+                       map.damage_fraction(cell.x, cell.y, cell.z) == 0.0F,
+                   "cells on/outside the strict blast boundary must remain untouched");
+        }
+        if (fixture.seed == 0U) {
+            expect(map.damage_fraction(98U, 100U, 98U) == 0.6F &&
+                       !map.solid(99U, 99U, 98U) && !map.solid(99U, 100U, 98U) &&
+                       map.damage_fraction(99U, 101U, 98U) == 0.8F &&
+                       map.damage_fraction(100U, 98U, 98U) == 0.45F,
+                   "turret RNG ordering and quarter-damage rounding must match the original");
+        }
+    }
+}
+
+void turret_rng_does_not_skip_air_or_out_of_map_candidates() {
+    auto full = empty_world();
+    auto sparse = empty_world();
+    const VxlColor stone{80U, 90U, 100U, 255U};
+    for (std::uint32_t x{0U}; x <= 4U; ++x)
+        for (std::uint32_t y{0U}; y <= 4U; ++y)
+            for (std::uint32_t z{0U}; z <= 4U; ++z)
+                static_cast<void>(full.set_voxel(x, y, z, stone));
+    // The final radius-list offset is (2,0,2), after both air and invalid
+    // negative offsets. Seed0 gives it2.25 damage, independent of map solids.
+    static_cast<void>(sparse.set_voxel(2U, 0U, 2U, stone));
+    DamagePacket packet;
+    packet.type = 21U;
+    packet.damage = 10.0F;
+    packet.seed = 0U;
+    packet.position = {0.0F, 0.0F, 0.0F};
+    const auto full_result = apply_expanded_damage(full, packet);
+    const auto sparse_result = apply_expanded_damage(sparse, packet);
+    expect(full_result.accepted && sparse_result.accepted &&
+               full.damage_fraction(2U, 0U, 2U) == 0.45F &&
+               sparse.damage_fraction(2U, 0U, 2U) == 0.45F,
+           "empty/out-of-map offsets must still consume the original random stream");
+    static_cast<void>(apply_expanded_damage(sparse, packet));
+    expect(sparse.solid(2U, 0U, 2U) && sparse.damage_fraction(2U, 0U, 2U) == 0.9F,
+           "outer blast damage must accumulate without prematurely deleting terrain");
+    static_cast<void>(apply_expanded_damage(sparse, packet));
+    expect(!sparse.solid(2U, 0U, 2U),
+           "successive turret blasts must eventually destroy weakened outer terrain");
+}
+
+void turret_blast_centres_can_straddle_map_edges_but_never_break_bedrock() {
+    auto map = empty_world();
+    const VxlColor stone{80U, 90U, 100U, 255U};
+    static_cast<void>(map.set_voxel(0U, 100U, 100U, stone));
+    static_cast<void>(map.set_voxel(VxlMap::width - 1U, 100U, 100U, stone));
+    static_cast<void>(map.set_voxel(100U, 100U, VxlMap::height - 1U, stone));
+    DamagePacket packet;
+    packet.type = 21U;
+    packet.damage = 10.0F;
+    packet.position = {-0.25F, 100.0F, 100.0F};
+    expect(apply_expanded_damage(map, packet).destroyed && !map.solid(0U, 100U, 100U),
+           "a slightly negative rocket centre must still damage the valid map edge");
+    packet.position[0U] = static_cast<float>(VxlMap::width);
+    expect(apply_expanded_damage(map, packet).destroyed &&
+               !map.solid(VxlMap::width - 1U, 100U, 100U),
+           "a rocket centred beyond the positive edge must clip its per-cell stencil");
+    packet.position = {100.0F, 100.0F, static_cast<float>(VxlMap::height - 1U)};
+    static_cast<void>(apply_expanded_damage(map, packet));
+    expect(map.solid(100U, 100U, VxlMap::height - 1U),
+           "legacy turret damage must preserve the unmodifiable bottom layer");
+    const auto revision = map.revision();
+    for (const float invalid : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity(), -1.0e30F}) {
+        packet.position[0U] = invalid;
+        expect(!apply_expanded_damage(map, packet).accepted && map.revision() == revision,
+               "nonfinite or far-outside blast coordinates must not mutate the map");
+    }
+}
+
 void drill_damage_is_a_bore_tick_not_a_terminal_explosion() {
     auto map = empty_world();
     const VxlColor color{88U, 76U, 64U, 255U};
@@ -490,6 +628,10 @@ int main() {
         terrain_packets_share_damage_and_collapse_world_path();
         native_damage_shapes_match_server_and_retail_block_manager();
         live_damage_produces_one_drainable_impact_event();
+        legacy_turret_rocket_removes_support_and_invalidates_visible_chunks();
+        legacy_turret_blast_matches_recovered_python2_seed_fixtures();
+        turret_rng_does_not_skip_air_or_out_of_map_candidates();
+        turret_blast_centres_can_straddle_map_edges_but_never_break_bedrock();
         drill_damage_is_a_bore_tick_not_a_terminal_explosion();
         melee_damage_ids_translate_to_canonical_tools();
         stateful_replica_orders_palette_mutation_and_chunk_invalidation();

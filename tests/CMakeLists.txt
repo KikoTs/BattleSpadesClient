@@ -13,6 +13,12 @@ aos_enable_strict_warnings(aos_core_tests)
 
 add_test(NAME aos_core_tests COMMAND aos_core_tests)
 
+add_executable(aos_deferred_cleanup_tests test_deferred_cleanup.cpp)
+target_link_libraries(aos_deferred_cleanup_tests PRIVATE BattleSpades::Core)
+aos_enable_strict_warnings(aos_deferred_cleanup_tests)
+add_test(NAME aos_deferred_cleanup_tests COMMAND aos_deferred_cleanup_tests)
+set_tests_properties(aos_deferred_cleanup_tests PROPERTIES TIMEOUT 15)
+
 add_executable(aos_hud_layout_tests test_hud_layout.cpp)
 target_link_libraries(aos_hud_layout_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_hud_layout_tests)
@@ -42,6 +48,11 @@ add_executable(aos_camera_basis_tests test_camera_basis.cpp)
 target_link_libraries(aos_camera_basis_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_camera_basis_tests)
 add_test(NAME aos_camera_basis_tests COMMAND aos_camera_basis_tests)
+
+add_executable(aos_shadow_projection_tests test_shadow_projection.cpp)
+target_link_libraries(aos_shadow_projection_tests PRIVATE BattleSpades::World)
+aos_enable_strict_warnings(aos_shadow_projection_tests)
+add_test(NAME aos_shadow_projection_tests COMMAND aos_shadow_projection_tests)
 
 add_executable(aos_death_camera_tests test_death_camera.cpp)
 target_link_libraries(aos_death_camera_tests PRIVATE BattleSpades::Frontend)
@@ -94,6 +105,16 @@ add_executable(aos_player_movement_tests test_player_movement.cpp)
 target_link_libraries(aos_player_movement_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_player_movement_tests)
 add_test(NAME aos_player_movement_tests COMMAND aos_player_movement_tests)
+
+find_package(nlohmann_json CONFIG REQUIRED)
+add_executable(aos_retail_movement_core_tests test_retail_movement_core.cpp)
+target_link_libraries(aos_retail_movement_core_tests PRIVATE
+    BattleSpades::World nlohmann_json::nlohmann_json)
+target_compile_definitions(aos_retail_movement_core_tests PRIVATE
+    AOS_RETAIL_MOVEMENT_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/retail_movement_core.json"
+    AOS_RETAIL_CLASS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/retail_class_movement.json")
+aos_enable_strict_warnings(aos_retail_movement_core_tests)
+add_test(NAME aos_retail_movement_core_tests COMMAND aos_retail_movement_core_tests)
 
 add_executable(aos_chunk_mesher_tests test_chunk_mesher.cpp)
 target_link_libraries(aos_chunk_mesher_tests PRIVATE BattleSpades::World)
@@ -360,7 +381,23 @@ if(Python3_Interpreter_FOUND)
         NAME aos_asset_catalog_policy_tests
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_assets_tool.py"
     )
+    add_test(
+        NAME aos_localization_catalog_tests
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_localization_catalog.py"
+    )
 endif()
+
+add_executable(
+    aos_localization_runtime_tests
+    test_localization_catalog_runtime.cpp
+)
+target_link_libraries(aos_localization_runtime_tests PRIVATE BattleSpades::Frontend)
+target_compile_definitions(
+    aos_localization_runtime_tests
+    PRIVATE AOS_TEST_LOCALIZATION_ROOT="${PROJECT_SOURCE_DIR}/config/localization"
+)
+aos_enable_strict_warnings(aos_localization_runtime_tests)
+add_test(NAME aos_localization_runtime_tests COMMAND aos_localization_runtime_tests)
 if(Python3_Interpreter_FOUND AND
    EXISTS "${AOS_SIBLING_SERVER_ROOT}/server/game_constants.py" AND
    EXISTS "${AOS_RETAIL_SOURCE_ROOT}/aoslib/weapons/list.py")
@@ -682,11 +719,19 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_text_tests
         test_text_rasterizer.cpp
     )
-    target_link_libraries(aos_text_tests PRIVATE BattleSpades::Text)
+    find_package(nlohmann_json CONFIG REQUIRED)
+    target_link_libraries(
+        aos_text_tests
+        PRIVATE
+            BattleSpades::Text
+            nlohmann_json::nlohmann_json
+    )
     target_compile_definitions(
         aos_text_tests
         PRIVATE
             AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_TEST_CLIENT_ASSET_ROOT="${PROJECT_SOURCE_DIR}/assets/client"
+            AOS_TEST_LOCALIZATION_ROOT="${PROJECT_SOURCE_DIR}/config/localization"
     )
     aos_enable_strict_warnings(aos_text_tests)
     add_test(NAME aos_text_tests COMMAND aos_text_tests)
@@ -702,6 +747,14 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_protocol168_session_tests)
     add_test(NAME aos_protocol168_session_tests COMMAND aos_protocol168_session_tests)
 
+    find_package(unofficial-enet CONFIG REQUIRED)
+    add_executable(aos_connection_recovery_tests test_connection_recovery.cpp)
+    target_link_libraries(aos_connection_recovery_tests
+        PRIVATE BattleSpades::NetworkEnet unofficial::enet::enet)
+    aos_enable_strict_warnings(aos_connection_recovery_tests)
+    add_test(NAME aos_connection_recovery_tests COMMAND aos_connection_recovery_tests)
+    set_tests_properties(aos_connection_recovery_tests PROPERTIES TIMEOUT 30)
+
     add_executable(aos_server_discovery_tests test_server_discovery.cpp)
     target_link_libraries(aos_server_discovery_tests PRIVATE BattleSpades::NetworkEnet)
     aos_enable_strict_warnings(aos_server_discovery_tests)
@@ -716,6 +769,22 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_revival_identity_tests PRIVATE BattleSpades::NetworkEnet)
     aos_enable_strict_warnings(aos_revival_identity_tests)
     add_test(NAME aos_revival_identity_tests COMMAND aos_revival_identity_tests)
+    add_executable(aos_inventory_tests test_inventory.cpp)
+    target_link_libraries(aos_inventory_tests PRIVATE BattleSpades::FrontendNative BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_inventory_tests)
+    add_test(NAME aos_inventory_tests COMMAND aos_inventory_tests
+        "${PROJECT_SOURCE_DIR}/assets/original" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/inventory-receipt-v1.json")
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME aos_inventory_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_inventory_http.py" "$<TARGET_FILE:aos_inventory_tests>")
+        add_test(NAME aos_inventory_session_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_inventory_session_http.py" "$<TARGET_FILE:aos_inventory_tests>")
+        add_test(NAME aos_hosted_results_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_hosted_results_http.py" "$<TARGET_FILE:aos_revival_identity_tests>")
+        set_tests_properties(aos_hosted_results_http_tests PROPERTIES TIMEOUT 60)
+        add_test(NAME aos_workshop_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_workshop_http.py" "$<TARGET_FILE:aos_revival_identity_tests>")
+    endif()
 
     add_executable(aos_revival_social_tests test_revival_social.cpp)
     target_link_libraries(aos_revival_social_tests PRIVATE BattleSpades::NetworkEnet)
@@ -726,6 +795,13 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_local_server_process_tests PRIVATE BattleSpades::LocalHost)
     aos_enable_strict_warnings(aos_local_server_process_tests)
     add_test(NAME aos_local_server_process_tests COMMAND aos_local_server_process_tests)
+
+    find_package(unofficial-sodium CONFIG REQUIRED)
+    add_executable(aos_relay_host_tunnel_tests test_relay_host_tunnel.cpp)
+    target_link_libraries(aos_relay_host_tunnel_tests PRIVATE
+        BattleSpades::LocalHost unofficial-sodium::sodium)
+    aos_enable_strict_warnings(aos_relay_host_tunnel_tests)
+    add_test(NAME aos_relay_host_tunnel_tests COMMAND aos_relay_host_tunnel_tests)
 
     # Renders the shipped world shaders into an offscreen target on a real
     # device. Nothing else ties the Color1 encoding in the vertex layout to the
@@ -754,11 +830,75 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     # recovered draw_sight constants only centre the sight if the KV6 mesher
     # uses retail's voxel convention, and no arithmetic test can see that --
     # it takes real pixels.
+    add_executable(aos_scripted_weapon_tests test_scripted_weapon.cpp)
+    target_link_libraries(aos_scripted_weapon_tests PRIVATE BattleSpades::World)
+    add_executable(aos_weapon_variant_tests test_weapon_variants.cpp)
+    target_link_libraries(aos_weapon_variant_tests PRIVATE BattleSpades::World nlohmann_json::nlohmann_json)
+    add_test(NAME aos_weapon_variant_tests COMMAND aos_weapon_variant_tests "${AOS_ASSET_ROOT}")
+    set_tests_properties(aos_weapon_variant_tests PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    if(WIN32)
+        add_executable(aos_ui_renderer_tests test_ui_renderer.cpp)
+        target_link_libraries(aos_ui_renderer_tests PRIVATE
+            BattleSpades::FrontendNative BattleSpades::RenderBgfx SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_ui_renderer_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_ui_renderer_tests PRIVATE
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        aos_enable_strict_warnings(aos_ui_renderer_tests)
+        add_test(NAME aos_ui_renderer_tests COMMAND aos_ui_renderer_tests)
+        set_tests_properties(aos_ui_renderer_tests PROPERTIES RESOURCE_LOCK gpu TIMEOUT 90)
+        add_executable(aos_shadow_stability_render_tests test_shadow_stability_render.cpp)
+        target_link_libraries(aos_shadow_stability_render_tests PRIVATE
+            BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_shadow_stability_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_shadow_stability_render_tests PRIVATE
+            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        aos_enable_strict_warnings(aos_shadow_stability_render_tests)
+        add_test(NAME aos_shadow_stability_render_tests COMMAND aos_shadow_stability_render_tests)
+        add_executable(aos_inventory_view_tests test_inventory_view.cpp)
+        add_executable(aos_cosmetic_icon_tests test_cosmetic_icons.cpp)
+        target_link_libraries(aos_cosmetic_icon_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_cosmetic_icon_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_cosmetic_icon_tests PRIVATE AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}" AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        add_test(NAME aos_cosmetic_icon_tests COMMAND aos_cosmetic_icon_tests "${AOS_ASSET_ROOT}")
+        set_tests_properties(aos_cosmetic_icon_tests PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        target_link_libraries(aos_inventory_view_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx RmlUi::RmlUi)
+        target_include_directories(aos_inventory_view_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_inventory_view_tests PRIVATE AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}" AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        add_custom_command(TARGET aos_inventory_view_tests POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different $<TARGET_RUNTIME_DLLS:aos_inventory_view_tests> $<TARGET_FILE_DIR:aos_inventory_view_tests>
+            COMMAND_EXPAND_LISTS)
+        add_test(NAME aos_inventory_view_tests COMMAND aos_inventory_view_tests "${AOS_ASSET_ROOT}")
+        set_tests_properties(aos_inventory_view_tests PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_executable(aos_scripted_weapon_images_tests test_scripted_weapon_images.cpp)
+        target_link_libraries(aos_scripted_weapon_images_tests PRIVATE
+            BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_scripted_weapon_images_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_scripted_weapon_images_tests PRIVATE
+            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        add_test(NAME aos_scripted_weapon_images_tests COMMAND aos_scripted_weapon_images_tests)
+        add_executable(aos_muzzle_flash_render_tests test_muzzle_flash_render.cpp)
+        target_link_libraries(aos_muzzle_flash_render_tests PRIVATE
+            BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_muzzle_flash_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_muzzle_flash_render_tests PRIVATE
+            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        add_test(NAME aos_muzzle_flash_render_tests COMMAND aos_muzzle_flash_render_tests)
+        set_tests_properties(aos_muzzle_flash_render_tests PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            aos_shadow_stability_render_tests aos_cosmetic_icon_tests aos_inventory_view_tests
+            aos_scripted_weapon_images_tests aos_muzzle_flash_render_tests
+            PROPERTIES RESOURCE_LOCK gpu)
+    endif()
     add_executable(aos_ads_sight_render_tests test_ads_sight_render.cpp)
     target_link_libraries(
         aos_ads_sight_render_tests
         PRIVATE
             BattleSpades::World
+            BattleSpades::FrontendNative
+            BattleSpades::NetworkEnet
             bgfx::bgfx
     )
     target_include_directories(aos_ads_sight_render_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
@@ -770,4 +910,30 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     aos_enable_strict_warnings(aos_ads_sight_render_tests)
     add_test(NAME aos_ads_sight_render_tests COMMAND aos_ads_sight_render_tests)
+    set_tests_properties(aos_ads_sight_render_tests PROPERTIES RESOURCE_LOCK gpu)
+endif()
+
+if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
+    add_executable(aos_block_shading_render_tests test_block_shading_render.cpp)
+    target_link_libraries(aos_block_shading_render_tests PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_block_shading_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_block_shading_render_tests PRIVATE
+        AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_block_shading_render_tests)
+    add_test(NAME aos_block_shading_render_tests COMMAND aos_block_shading_render_tests)
+    set_tests_properties(aos_block_shading_render_tests PROPERTIES RESOURCE_LOCK gpu
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" TIMEOUT 90)
+    add_executable(aos_placement_render_tests test_placement_render.cpp)
+    target_link_libraries(aos_placement_render_tests PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_placement_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_placement_render_tests PRIVATE
+        AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_placement_render_tests)
+    add_test(NAME aos_placement_render_tests COMMAND aos_placement_render_tests)
+    set_tests_properties(aos_placement_render_tests PROPERTIES RESOURCE_LOCK gpu
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 endif()

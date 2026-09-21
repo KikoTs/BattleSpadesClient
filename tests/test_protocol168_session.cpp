@@ -48,12 +48,15 @@ std::vector<std::byte> server_datagram(std::span<const std::byte> packet,
 
 std::vector<std::byte> initial_info(
     battlespades::network::UgcRole role = battlespades::network::UgcRole::none,
-    bool enable_numeric_hp = true, bool enable_player_score = true) {
+    bool enable_numeric_hp = true, bool enable_player_score = true,
+    bool friendly_fire = false,
+    std::array<std::string_view, 5U> mode_strings = {
+        "TDM", "Description", "One", "Two", "Three"}) {
     std::vector<std::byte> packet{std::byte{114U}};
     integer<std::uint64_t>(packet, 0U);
     integer<std::uint32_t>(packet, 0U);
     integer<std::uint32_t>(packet, 32887U);
-    for (const auto value : {"TDM", "Description", "One", "Two", "Three"}) {
+    for (const auto value : mode_strings) {
         string(packet, value);
     }
     string(packet, "Training");
@@ -86,7 +89,9 @@ std::vector<std::byte> initial_info(
     }
     packet.push_back(std::byte{}); // ground color terminator
     packet.push_back(std::byte{1U}); // allow shooting while carrying intel
-    for (std::size_t index{}; index < 3U; ++index) packet.push_back(std::byte{});
+    packet.push_back(friendly_fire ? std::byte{1U} : std::byte{});
+    packet.push_back(std::byte{}); // padding
+    packet.push_back(std::byte{}); // corpse explosions
     packet.push_back(std::byte{7U}); // UGC/mode mirror
     return packet;
 }
@@ -170,6 +175,11 @@ void offline_ticket_and_initial_sequence_are_exact() {
            "InitialInfo server name must be exact");
     expect(info->texture_skin == "mafia",
            "InitialInfo must retain the server-owned UI skin");
+    expect(info->mode_name == "TDM" && info->mode_description == "Description" &&
+               info->mode_infographic_text ==
+                   std::array<std::string, 3U>{"One", "Two", "Three"} &&
+               !info->friendly_fire,
+           "InitialInfo must retain literal loading text and disabled friendly fire");
     expect(info->classic && info->enable_minimap && info->same_team_collision &&
                 info->enable_numeric_hp && info->enable_player_score &&
                 info->enable_deathcam && info->enable_sniper_beam &&
@@ -227,6 +237,85 @@ void initial_info_retains_disabled_hud_presentation_flags() {
            "InitialInfo must retain a disabled numeric-HP gate");
     expect(!info->enable_player_score,
            "InitialInfo must retain a disabled player-score gate");
+}
+
+void flight_profile_is_negotiated_bounded_and_separate_from_the_ticket() {
+    using namespace battlespades::network;
+    Protocol168SessionConfig config;
+    config.negotiate_flight_profile = true;
+    config.steam_ticket = {std::byte{'k'}, std::byte{'e'}, std::byte{'y'}};
+    Protocol168Session session{config};
+    const auto ticket = session.connected();
+    expect(ticket.size() == 14U && ticket[2U] == std::byte{3U} &&
+               ticket[6U] == std::byte{'k'} && ticket[9U] == std::byte{'B'} &&
+               ticket.back() == std::byte{1U},
+           "flight support must be explicit and outside the length-delimited auth key");
+    // Exact server.flight_profile.BALANCED_FLIGHT.encode() bytes.
+    const std::array<unsigned char, 20U> trailer{
+        0x42,0x53,0x46,0x50,0x01,0x03,0x40,0x00,0x80,0x07,
+        0x40,0x02,0xE0,0x01,0x00,0x05,0x00,0x05,0x00,0x05};
+    auto packet = initial_info();
+    const auto original_size = packet.size();
+    for (const auto value : trailer) packet.push_back(static_cast<std::byte>(value));
+    const auto result = session.ingest(server_datagram(packet));
+    expect(result.accepted && session.initial_info(), "negotiated flight profile must survive handshake");
+    const auto& profile = session.initial_info()->flight_profile;
+    expect(profile.drain[1U] == 30.0 && profile.drain[2U] == 9.0 && profile.drain[3U] == 7.5 &&
+               profile.refill[1U] == 20.0 && profile.refill[3U] == 20.0 &&
+               profile.grounded_refill_only && profile.refill_idle_seconds == 1.0 &&
+               profile.descending_parachute_only,
+           "authoritative profile must reach prediction without rounded or guessed rates");
+    const std::array<std::byte, 5U> validation{std::byte{60U}, std::byte{}, std::byte{}, std::byte{}, std::byte{}};
+    expect(result.outbound_datagrams.front() == encode_protocol168_client_datagram(validation, config.steam_ticket),
+           "capability trailer must not contaminate the XOR key");
+    std::string error;
+    const auto stock = decode_protocol168_initial_info(initial_info(), error);
+    expect(stock && stock->flight_profile.drain[1U] == 75.0 && !stock->flight_profile.grounded_refill_only,
+           "servers without a negotiated profile retain recovered defaults");
+    for (std::size_t size{1U}; size < trailer.size(); ++size) {
+        expect(!decode_protocol168_initial_info(std::span{packet}.first(original_size + size), error),
+               "every truncated profile must fail closed");
+    }
+    for (const auto offset : {4U, 5U, 7U, 9U, 15U}) {
+        auto invalid = packet;
+        invalid[original_size + offset] = std::byte{0xFFU};
+        expect(!decode_protocol168_initial_info(invalid, error),
+               "unknown versions, flags, excessive delays and rates must be rejected");
+    }
+    packet.push_back(std::byte{});
+    expect(!decode_protocol168_initial_info(packet, error), "extra profile bytes must not be ignored");
+}
+
+void initial_info_retains_bounded_loading_metadata() {
+    using namespace battlespades::network;
+    std::string error;
+    const std::array<std::string_view, 5U> keys{
+        "ZOM_TITLE", "ZOM_DESCRIPTION", "ZOM_INFOGRAPHIC_TEXT1",
+        "ZOM_INFOGRAPHIC_TEXT2", "ZOM_INFOGRAPHIC_TEXT3"};
+    const auto info = decode_protocol168_initial_info(
+        initial_info(UgcRole::none, true, true, true, keys), error);
+    expect(info.has_value() && error.empty() && info->friendly_fire &&
+               info->mode_name == keys[0U] && info->mode_description == keys[1U] &&
+               info->mode_infographic_text[0U] == keys[2U] &&
+               info->mode_infographic_text[1U] == keys[3U] &&
+               info->mode_infographic_text[2U] == keys[4U],
+           "Loading localization keys and enabled friendly fire must survive decoding");
+
+    std::string long_text(4096U, 'A');
+    for (std::size_t index{}; index < keys.size(); ++index) {
+        auto fields = keys;
+        fields[index] = long_text;
+        expect(decode_protocol168_initial_info(
+                   initial_info(UgcRole::none, true, true, false, fields), error)
+                   .has_value(),
+               "Loading strings at the existing wire bound must still decode");
+        const std::string oversized(4097U, 'A');
+        fields[index] = oversized;
+        expect(!decode_protocol168_initial_info(
+                    initial_info(UgcRole::none, true, true, false, fields), error)
+                    .has_value(),
+               "Retaining loading metadata must not relax existing wire bounds");
+    }
 }
 
 void initial_info_preserves_host_and_client_ugc_roles() {
@@ -409,13 +498,56 @@ void audio_arriving_during_join_is_deferred_in_order() {
            "deferred audio transfer must consume the bounded queue");
 }
 
+void deferred_runtime_memory_is_bounded_independently_of_map_transfer() {
+    using namespace battlespades::network;
+    Protocol168Session session;
+    static_cast<void>(session.connected());
+    expect(session.ingest(server_datagram(initial_info())).accepted, "reach deferred packet phase");
+    // These complete, untrusted runtime bodies used to retain 64 MiB before
+    // typed audio validation. Reject overload at admission, before a UI exists.
+    std::vector<std::byte> large(detail::deferred_runtime_byte_limit / 4U, std::byte{});
+    large.front() = std::byte{26U};
+    const auto wire = server_datagram(large);
+    for (unsigned index{}; index < 4U; ++index)
+        expect(session.ingest(wire).accepted, "deferred burst must fit its byte budget");
+
+    expect(session.ingest(server_datagram(std::array{std::byte{55U}})).accepted,
+           "a full audio budget must not block the independent map stream");
+    std::vector<std::byte> map_chunk{std::byte{57U}, std::byte{1U}, std::byte{}, std::byte{4U}};
+    map_chunk.resize(1'028U, std::byte{0x55U});
+    expect(session.ingest(server_datagram(map_chunk)).accepted && session.compressed_map_bytes() == 1'024U,
+           "ordinary MapSync chunks retain their independent map byte limit");
+    const auto drained = session.take_deferred_runtime_packets();
+    expect(drained.size() == 4U && drained.front() == large && drained.back() == large,
+           "bounded deferral must preserve complete packet bodies");
+    for (unsigned index{}; index < 4U; ++index)
+        expect(session.ingest(wire).accepted, "draining deferred audio must restore its byte budget");
+    expect(!session.ingest(server_datagram(std::array{std::byte{27U}})).accepted &&
+               session.phase() == Protocol168SessionPhase::failed &&
+               session.last_error().find("queue overflow") != std::string_view::npos,
+           "deferred byte overflow must fail closed before the 64-packet limit");
+    expect(!session.ingest(wire).accepted && session.take_deferred_runtime_packets().size() == 4U,
+           "a failed session must not continue accumulating untrusted audio");
+
+    Protocol168Session replacement;
+    static_cast<void>(replacement.connected());
+    static_cast<void>(replacement.ingest(server_datagram(initial_info())));
+    const auto small = server_datagram(std::array{std::byte{27U}});
+    for (std::size_t index{}; index < detail::deferred_runtime_packet_limit; ++index)
+        expect(replacement.ingest(small).accepted, "fresh session must retain its normal packet capacity");
+    expect(!replacement.ingest(small).accepted && replacement.phase() == Protocol168SessionPhase::failed,
+           "the existing deferred packet-count bound must remain enforced");
+}
+
 } // namespace
 
 int main() {
     try {
         offline_ticket_and_initial_sequence_are_exact();
         native_steam_ticket_and_xor_sequence_are_exact();
+        flight_profile_is_negotiated_bounded_and_separate_from_the_ticket();
         initial_info_retains_disabled_hud_presentation_flags();
+        initial_info_retains_bounded_loading_metadata();
         initial_info_preserves_host_and_client_ugc_roles();
         new_player_announcement_is_explicit_and_exact();
         state_data_retains_server_owned_team_and_menu_state();
@@ -423,6 +555,7 @@ int main() {
         malformed_phase_packets_fail_closed();
         ugc_source_stream_is_framed_before_map_sync();
         audio_arriving_during_join_is_deferred_in_order();
+        deferred_runtime_memory_is_bounded_independently_of_map_transfer();
         std::cout << "Protocol 168 session tests passed\n";
         return 0;
     } catch (const std::exception& error) {

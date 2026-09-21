@@ -1,5 +1,7 @@
 # Retail Quick Play reconstruction
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 ## Scope and evidence
 
 The renderer-neutral implementation is based on these preserved retail sources:
@@ -58,4 +60,3 @@ generation-checked `QuickPlaySearchIntent`; it makes no network call itself.
 catalog, ownership, offline state, generation safety, server-choice priority,
 both Start paths, pointer activation, Back, geometry, slide composition, mode
 art, and the presence of every declared preserved asset.
-

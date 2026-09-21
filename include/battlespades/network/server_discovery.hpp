@@ -77,6 +77,10 @@ struct LanDiscoveryConfig final {
 [[nodiscard]] std::optional<DiscoveredServer> find_discovered_server(
     std::span<const DiscoveredServer> servers,
     std::string_view identifier);
+/** Keep only servers whose AoSPlay or endpoint identifier belongs to a friend. */
+[[nodiscard]] DiscoveryResult select_discovered_servers(
+    DiscoveryResult source,
+    std::span<const std::string> identifiers);
 
 /** Blocking adapters. Call them only from a bounded discovery worker. */
 [[nodiscard]] DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config = {},

@@ -1,5 +1,7 @@
 # UGC Select Frontend Recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This note records the retail evidence behind the renderer-neutral UGC Select
 menu. Retail coordinates use an 800x600 bottom-left canvas; the native model
 stores top-left coordinates in eighth-pixels.

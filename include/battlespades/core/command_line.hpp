@@ -25,6 +25,7 @@ struct LaunchOptions final {
     bool runtime_lifetime_explicit{false};
     /** Developer automation: grant the Tutorial catalogue and equip this tool. */
     std::optional<std::uint8_t> tutorial_debug_tool;
+    std::optional<std::string> tutorial_debug_cosmetic;
     /** Developer automation: enter the selected tool's recovered aim state. */
     bool tutorial_debug_aim{false};
     /** Developer/live-smoke shortcut through the normal Protocol 168 loader. */

@@ -1,0 +1,62 @@
+{
+  "name": "SWAT — Goggles / Goggles down / Balaclava",
+  "source": "https://gamebanana.com/mods/170865",
+  "archives": [
+    {
+      "archive": "170865\\209042-swat_pack.7z",
+      "extracted": "170865\\files-209042",
+      "sha256": "c59ca8934db56505cbe0a969d82718662abeda783e3a1bf85e3007d7a2097eb7",
+      "listing": [
+        "Swat Pack/player/Arm.kv6",
+        "Swat Pack/player/Arms.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Plain/Head.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Plain/Balaclava/Head.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles up/Head.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles up/Balaclava/Head.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles down/Balaclava/Head.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles down/Head.kv6",
+        "Swat Pack/player/Leg.kv6",
+        "Swat Pack/player/LegCrouch.kv6",
+        "Swat Pack/player/Torso.kv6",
+        "Swat Pack/player/TorsoCrouch.kv6",
+        "Swat Pack/player/UpperArm.kv6",
+        "Swat Pack/player/Mich2000 Helmet options/Plain/Balaclava/",
+        "Swat Pack/player/Mich2000 Helmet options/Plain/",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles up/Balaclava/",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles up/",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles down/Balaclava/",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/Goggles down/",
+        "Swat Pack/player/Mich2000 Helmet options/Goggles/",
+        "Swat Pack/player/Mich2000 Helmet options/",
+        "Swat Pack/player/",
+        "Swat Pack/"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator/ Modeler/ Original Concept",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

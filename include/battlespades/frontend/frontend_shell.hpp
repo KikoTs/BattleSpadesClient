@@ -25,6 +25,15 @@ public:
     navigate(ui::ScreenId target,
              NavigationDirection direction = NavigationDirection::forward) noexcept;
 
+    /**
+     * Changes the active route without retaining or translating the old one.
+     *
+     * Gameplay overlays use this boundary: Escape must reveal Pause over the
+     * live world immediately, while navigation inside Pause still uses the
+     * recovered horizontal menu transition.
+     */
+    [[nodiscard]] bool navigate_immediate(ui::ScreenId target) noexcept;
+
     /** Advances the retail interpolation once on the fixed UI tick. */
     void tick() noexcept;
 

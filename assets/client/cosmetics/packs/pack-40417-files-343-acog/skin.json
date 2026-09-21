@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "pack-40417-files-343-acog",
+  "name": "ACOG with script (OpenSpades)",
+  "source": "https://gamebanana.com/mods/40417",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "ReflexSight.png": "ReflexSight.png",
+    "Scope.kv6": "Scope.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Models/Weapons/Rifle/Scope.kv6": "Scope.kv6",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Fallback/semireload.ogg"
+  },
+  "hashes": {
+    "ReflexSight.png": "ef7d30c949c47a66034e6ae5ac7c61d1b71cbb56c83cad8aafb41abbb20b5a58",
+    "Scope.kv6": "664482eaa4fc0f466cdee07ffed7056bf6ed2807ea3a7d423e03b78493744ba0",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "ec56b57a7c0e910264baa45b64df134f23dccc4b5dba58788c88199f7730b561",
+    "Scripts/Skin/Rifle/View.as": "ba54989f93f8023ec10db57c63327ddd063c561bf84f67108b97c45af374ce88",
+    "Fallback/semireload.ogg": "b4272bf790e8146ae51b65067662e135f0eb2a1084b9c233276a3498a196562b",
+    "Hands/Arm.kv6": "90ea25e3878c228be7a64edd80e09088b1e343334b3bdacbdd3649beee6eb3e0",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "21892e2e4c796e8a41258f31e9733afb20fdee8b1347adba0db8a7ad17af7440",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models, Scripts and sprite",
+          "_idRow": "1583766",
+          "_sName": "Brk",
+          "_sProfileUrl": "https://gamebanana.com/members/1583766",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/596cdde066934.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "missing": [
+    "Gfx/Sight.tga",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6",
+    "Gfx/RifleSight.png",
+    "Sounds/Weapons/Rifle/Fire.wav",
+    "Sounds/Weapons/Rifle/FireFar.wav",
+    "Sounds/Weapons/Rifle/FireStereo.wav"
+  ],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "User-supplied Deuce Remastered; original archive retained"
+  },
+  "fallbacks": [
+    {
+      "resource": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+      "source": "B&S parent sample: semireload.ogg"
+    }
+  ]
+}

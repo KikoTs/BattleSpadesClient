@@ -1,8 +1,9 @@
-# UGC Map Creator Recovery
+# UGC Map Creator
 
 This document is the implementation contract for the native Map Creator. The
-authoritative BattleSpades server remains unchanged; the native client speaks
-its existing Protocol 168 editor surface.
+authoritative BattleSpades server owns edits and project state; the native
+client speaks its Protocol 168 editor surface. Source and tests in both repos
+take precedence over historical descriptions of a client-only recovery pass.
 
 ## Retail evidence
 
@@ -25,9 +26,8 @@ The recovered behavior is derived from these read-only retail sources:
 - `shared/constants_prefabs.py` (all 448 prefab categories and size tags)
 - `shared/constants_ugc_objectives.py` (marker ids and validation limits)
 
-The server interoperability evidence is the read-only
-`modes/ugc.py` implementation and its Protocol 168 tests in the BattleSpades
-repository. No server file is part of this client change.
+Server interoperability is defined by `modes/ugc.py`, `server/ugc_launcher.py`,
+`server/ugc_project.py` and their tests in the BattleSpades repository.
 
 ## Frontend route and local host
 
@@ -66,12 +66,13 @@ opaque, traversal-safe project identifiers.
 |---:|---|---|---|
 | 12 | bidirectional | mode byte | switch the editor's target game mode |
 | 51 | bidirectional | NUL string | selected skydome definition |
-| 97 | client -> server | item, XYZ, place flag | place/remove one UGC marker |
-| 98 | server -> clients | item, XYZ, place flag | replicate marker mutation |
+| 68 | server -> client | objective validation records | editor validation result |
+| 97 | bidirectional | item, XYZ, place flag | host-authorized marker mutation and echo |
+| 98 | server -> clients | counted UGC object batch | initial/reconnect marker replay |
 | 99 | client -> server | mode, in-editor flag | request the filtered marker set |
 | 100 | bidirectional | lifecycle code 0..4 | convert/validate/VXL/map-info requests |
-| 101 | server -> client | 0..100 percent | host-map loading progress |
-| 102 | server -> client | counted objective records | mode validation result |
+| 101 | retail lobby host -> client | progress value | retail peer-host progress; not emitted by the dedicated editor |
+| 102 | bidirectional | bounded map-preview payload | optional PNG map preview exchange |
 | 118 | bidirectional | count then RGBZ rows | terrain palette and water color |
 
 `InitialInfo.map_is_ugc` is a three-state role, not a boolean: none=0,
@@ -191,8 +192,8 @@ The held ghost uses the source green 0.9..2.0 pulse at alpha 0.5; invalid
 placement remains red at alpha 0.4. UGC packet 30 always carries
 `add_to_user_blocks = false`, exactly as `UGCPrefabTool.confirm_prefab_placement`
 requests. Competitive prefab builders retain `true` and therefore keep their
-normal stock accounting. The existing BattleSpades server is only a packet
-oracle and was not changed.
+normal stock accounting. The BattleSpades server validates and commits these
+actions; client previews never grant edit authority.
 
 ## Host settings
 
@@ -243,8 +244,8 @@ Run the real hidden-server bootstrap against an existing portable bundle:
 
 ```powershell
 out/build/native-dev/src/RelWithDebInfo/aos_ugc_local_server_host_smoke.exe `
-  G:/AoSRevival/BattleSpades/release-alpha8-final/BattleSpades-0.0.3-alpha.8-windows-x86_64 `
-  G:/AoSRevival/BattleSpadesClient/assets/original
+  ../BattleSpades/release-dist/BattleSpades-0.0.3-alpha.9-windows-x86_64 `
+  ./assets/original
 ```
 
 The smoke requires a ready ENet session, a decoded UGC world, mode `ugc`, the
@@ -253,6 +254,16 @@ files before it passes.
 
 ## External boundary
 
-Steam Workshop upload and friend invitation are external platform adapters,
-not map-authoring protocol. The UI retains typed requests and fails visibly
-when no adapter is installed; it never reports a false successful upload.
+The native frontend integrates social editor lobbies/invitations and publishes
+saved projects through `RevivalIdentityService::publish_ugc_project` to the
+Revival Workshop. This is separate from the original Steam Workshop uploader.
+Unavailable services and failed/cancelled uploads must report a terminal result.
+Two-client editing, owner changes, interrupted uploads and save/reopen require
+fresh acceptance against the intended service and server versions.
+
+Prefab previews retain rotated geometry and cache validation by terrain revision,
+anchor and rotation. Focus/menu changes clear held placement actions. Bounded,
+sliced network transactions support large constructs and commit atomically.
+Regression coverage is in the prefab placement/control, project repository,
+editor/loadout/publish and Workshop HTTP tests. Historical captures and test
+counts are not required runtime files; see [RUNBOOK.md](RUNBOOK.md).

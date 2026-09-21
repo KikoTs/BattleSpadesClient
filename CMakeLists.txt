@@ -205,6 +205,7 @@ if(AOS_BUNDLED_SERVER_ROOT)
     install(
         DIRECTORY "${AOS_BUNDLED_SERVER_ROOT}/"
         DESTINATION "${CMAKE_INSTALL_BINDIR}/server"
+        USE_SOURCE_PERMISSIONS
         COMPONENT Runtime
     )
 endif()
@@ -268,10 +269,13 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         COMPONENT Runtime
     )
     install(
-        FILES
-            "${CMAKE_CURRENT_SOURCE_DIR}/config/localization.json"
-            "${CMAKE_CURRENT_SOURCE_DIR}/config/ui-layout.json"
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/ui-layout.json"
         DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        COMPONENT Runtime
+    )
+    install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/localization/"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}/localization"
         COMPONENT Runtime
     )
 

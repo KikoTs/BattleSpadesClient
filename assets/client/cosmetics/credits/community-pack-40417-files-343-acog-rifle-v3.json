@@ -1,0 +1,53 @@
+{
+  "name": "ACOG with script (OpenSpades)",
+  "source": "https://gamebanana.com/mods/40417",
+  "archive": [
+    {
+      "archive": "40417\\343-acog.zip",
+      "extracted": "40417\\files-343",
+      "sha256": "eab83658f78c31ae1cce1d99e30e186586cc4e7c09d3b7a3d7d2f09421993e74",
+      "listing": [
+        "ACOG/",
+        "ACOG/ReflexSight.png",
+        "ACOG/Scope.kv6",
+        "ACOG/Scripts/",
+        "ACOG/Scripts/Skin/",
+        "ACOG/Scripts/Skin/Rifle/",
+        "ACOG/Scripts/Skin/Rifle/ThirdPerson.as",
+        "ACOG/Scripts/Skin/Rifle/View.as"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models, Scripts and sprite",
+          "_idRow": "1583766",
+          "_sName": "Brk",
+          "_sProfileUrl": "https://gamebanana.com/members/1583766",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/596cdde066934.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170512-1",
+  "name": "M1 Garand WW2",
+  "source": "https://gamebanana.com/mods/170512",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Sight1.kv6": "Models/Weapons/Rifle/Sight1.kv6",
+    "Models/Weapons/Rifle/Sight2.kv6": "Models/Weapons/Rifle/Sight2.kv6",
+    "Models/Weapons/Rifle/Tracer.kv6": "Models/Weapons/Rifle/Tracer.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal.opus": "Fallback/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.opus": "Fallback/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Rifle/Casing.kv6": "2ebab30d7700f04e309ef353818584cd61a494a8d6fd00a2bab2f2039ded195d",
+    "Models/Weapons/Rifle/Magazine.kv6": "457dff17f88aa4fa73178faa099d4bfc8d53f9fc3e1ef08381204bec4e10f210",
+    "Models/Weapons/Rifle/Sight1.kv6": "6d591cfb132112bc358c33ab81c3ab9fe361da0fb85877f1c9b2d15c2d3e94a9",
+    "Models/Weapons/Rifle/Sight2.kv6": "ec070f28fe45d7e31958d5d72ace76b0d48742c84cc0fbb6b411d628cb738f2f",
+    "Models/Weapons/Rifle/Tracer.kv6": "f4464ffbdb43e267bf195b19d9e8e9dee14b83fe747af3ef60cc3e5377723dd5",
+    "Models/Weapons/Rifle/Weapon.kv6": "150fe9a2a7bf0062fdf5edcfc2cbe25fdc3d97a3f4c0df2f9f1d35361661a2ef",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "f3cebfdbd75aa816d4d337826343d315f6a6032ee3a731dc0c42c063a76908c9",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "37da780338fa7a392f6fc6d7571b41f89bd4518a1630c9a2156282efc2fab76a",
+    "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg": "fe82d785d287accd7bdbf780b23e740c58edf64a5786f62bed37626dfd5a1726",
+    "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "e393d3b608f7fba06220d0ed09de833c775cb99ab9df1f7a53a84db3e8e22379",
+    "Fallback/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "88b6fabb6e6b3ec4c576f9d8bcac0bdab16266a5aa2b36fdab590a068828b36b",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "5b37a8686824cd22bf57c14b8f0b4c898d451d6f1114caa71bc10275a27aeedf",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "d4c05cdea375a8d19372facc7e8e63b8972ce5d0550f92808dc6890bcd07c9ef",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "a65b931fd8b9c2c6b7f62dac57efe1098323ecd83f14bd7a574db288d1ede91d",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "BlackTos",
+      "_aAuthors": [
+        {
+          "_sRole": "Mayor",
+          "_idRow": "1526077",
+          "_sName": "YoSUu",
+          "_sProfileUrl": "https://gamebanana.com/members/1526077",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Creator ",
+          "_idRow": "1546514",
+          "_sName": "Lauchin",
+          "_sProfileUrl": "https://gamebanana.com/members/1546514",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5899e44d92791.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireFar.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireStereo.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireStereo.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/ReloadLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceSmall.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceSmall.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceLarge.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceLarge.opus"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "OpenSpades base Rifle animation fitted to supplied model parts",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

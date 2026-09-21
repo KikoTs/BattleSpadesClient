@@ -1,8 +1,10 @@
 #pragma once
 
 #include "battlespades/render/texture_quality.hpp"
+#include "battlespades/world/chunk_mesh.hpp"
 
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -81,7 +83,7 @@ struct UiColor final {
     std::uint8_t alpha{255U};
 };
 
-/** Stable cache handle. The generation prevents use-after-release on slot reuse. */
+/** Stable cache handle. Generation checks survive slot reuse and renderer restarts. */
 struct UiTexture final {
     static constexpr std::uint32_t invalid_index{UINT32_MAX};
 
@@ -132,6 +134,34 @@ struct UiSprite final {
     UiDrawSpace space{UiDrawSpace::design_canvas};
     /** Clockwise rotation about `destination`'s centre. */
     float rotation_degrees{};
+    bool additive{};
+};
+
+/** Resident image billboard in native eye coordinates (right, up, back). */
+struct ViewModelSprite final {
+    UiTexture texture{};
+    std::array<float,3> position{};
+    float radius{},rotation{};
+    UiColor tint{};
+    bool additive{true};
+};
+
+struct UiGeometryVertex final {
+    float x{}, y{}, z{}, u{}, v{};
+    std::uint32_t abgr{0xffffffffU};
+};
+struct UiGeometryData final {
+    std::vector<UiGeometryVertex> vertices;
+    std::vector<std::uint32_t> indices;
+};
+/** Retained markup geometry. Text atlases and images use checked UI handles. */
+struct UiGeometry final {
+    std::shared_ptr<const UiGeometryData> mesh;
+    UiTexture texture;
+    float x{}, y{};
+    std::array<float,16U> transform{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    /** A finite empty scissor accepts the draw without emitting pixels. */
+    std::optional<UiRect> clip;
 };
 
 /**
@@ -195,6 +225,8 @@ public:
     [[nodiscard]] std::string_view last_error() const noexcept;
     /** The concrete backend selected by bgfx; never `automatic` after init. */
     [[nodiscard]] GraphicsBackend active_backend() const noexcept;
+    /** Draws skipped for transient-buffer pressure in the last completed frame. */
+    [[nodiscard]] std::size_t last_frame_dropped_draws() const noexcept;
 
     /** Resets the backbuffer. A zero extent records a minimized window. */
     [[nodiscard]] bool resize(UiExtent drawable_extent);
@@ -217,7 +249,7 @@ public:
     [[nodiscard]] std::optional<UiTextureInfo> load_texture(const std::filesystem::path& asset_path,
                                                             TextureFilter filter);
 
-    /** Creates an immutable RGBA8 texture from tightly packed top-left-origin pixels. */
+    /** Creates an updatable RGBA8 runtime texture from top-left-origin pixels. */
     [[nodiscard]] std::optional<UiTextureInfo> create_texture_rgba8(
         std::span<const std::uint8_t> pixels, UiExtent extent, TextureFilter filter);
 
@@ -225,8 +257,8 @@ public:
      * Replaces every pixel of an existing runtime texture.
      *
      * This render-thread operation is intentionally forbidden mid-frame.
-     * Asset-cache textures and runtime textures share the same checked handle
-     * model, but only the caller owns deciding which may be updated.
+     * Only textures created by create_texture_rgba8() may be updated. Cached
+     * PNGs are immutable, and model previews are renderer-owned targets.
      */
     [[nodiscard]] bool update_texture_rgba8(UiTexture texture,
                                             std::span<const std::uint8_t> pixels);
@@ -234,10 +266,20 @@ public:
     /** Releases one cache reference. Textures may not be released mid-frame. */
     [[nodiscard]] bool release_texture(UiTexture texture);
 
+    /**
+     * Upload once on selection, then orbit the resident model without CPU rasterization.
+     * The returned texture is borrowed; the renderer owns it until shutdown.
+     */
+    [[nodiscard]] std::optional<UiTextureInfo> set_model_preview(const world::ChunkMesh& mesh);
+    void render_model_preview(float yaw, float pitch, float zoom);
+
     /** Starts a frame and clears the prior draw list. */
     [[nodiscard]] bool begin_frame();
     [[nodiscard]] bool draw(const UiSprite& sprite);
+    /** Call after WorldRenderer::submit: shares the weapon's depth and HDR target. */
+    [[nodiscard]] bool draw(const ViewModelSprite& sprite);
     [[nodiscard]] bool draw(const UiThreeSlice& three_slice);
+    [[nodiscard]] bool draw(const UiGeometry& geometry);
 
     /** Submits the frame and advances bgfx even when the draw list is empty. */
     [[nodiscard]] bool end_frame();

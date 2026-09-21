@@ -11,5 +11,6 @@
 *.ogg binary
 *.png binary
 *.tga binary
+*.ttf binary
 *.vox binary
 *.vxl binary

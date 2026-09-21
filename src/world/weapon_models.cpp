@@ -2,8 +2,10 @@
 
 #include "battlespades/world/kv6_model.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
+#include "battlespades/world/retail_view_model.hpp"
 
 #include <span>
+#include <algorithm>
 #include <string_view>
 #include <utility>
 
@@ -13,18 +15,35 @@ namespace {
 [[nodiscard]] std::optional<ChunkMesh> load_part(
     const std::filesystem::path& asset_root, const WeaponModelPartDefinition& part,
     std::array<float, 3U> tint, std::optional<VxlColor> team_color,
-    std::uint8_t inverse_scale, std::string& error) {
+    std::uint8_t inverse_scale, std::string& error, const WeaponCosmeticFinish* finish = nullptr) {
     std::string detail;
-    auto model = Kv6Model::load_file(asset_root / part.asset, &detail);
+    const bool replacement = finish && finish->replacement && finish->asset == part.asset;
+    auto model = replacement ? std::optional<Kv6Model>{*finish->replacement}
+                             : Kv6Model::load_file(asset_root / part.asset, &detail);
     if (!model.has_value()) {
         error = "failed to load " + std::string{part.asset} + ": " + detail;
         return std::nullopt;
     }
     *model = model->inverse_scaled(inverse_scale);
+    if (finish && !replacement && finish->asset==part.asset) model->apply_cosmetic_palette(finish->palette);
     if (team_color.has_value()) {
         model->apply_default_color(*team_color);
     }
     auto mesh = model->mesh({}, tint);
+    if (replacement) {
+        const auto& pivot = finish->replacement->pivot();
+        const std::array<float,3U> delta{pivot[0]-finish->pivot[0],
+                                       -pivot[2]+finish->pivot[2],pivot[1]-finish->pivot[1]};
+        for (auto& vertex : mesh.vertices) {
+            vertex.x = (vertex.x+delta[0])*finish->scale;
+            vertex.y = (vertex.y+delta[1])*finish->scale;
+            vertex.z = (vertex.z+delta[2])*finish->scale;
+        }
+        for (std::size_t axis{}; axis<3U; ++axis) {
+            mesh.minimum[axis]=(mesh.minimum[axis]+delta[axis])*finish->scale;
+            mesh.maximum[axis]=(mesh.maximum[axis]+delta[axis])*finish->scale;
+        }
+    }
     if (mesh.vertices.empty() || mesh.indices.empty()) {
         error = "weapon model produced an empty mesh: " + std::string{part.asset};
         return std::nullopt;
@@ -54,9 +73,13 @@ namespace {
                               std::uint8_t inverse_scale,
                               std::vector<ChunkMesh>& output,
                               std::string& error,
-                              std::optional<std::size_t> tint_only_part = std::nullopt) {
+                              std::optional<std::size_t> tint_only_part = std::nullopt,
+                              const WeaponCosmeticFinish* finish = nullptr) {
     output.reserve(parts.size());
     for (std::size_t index{}; index < parts.size(); ++index) {
+        // A complete replacement has one assembled model. Do not retain the
+        // parent's rotating barrel or other independently animated geometry.
+        if (index > 0U && finish && finish->replacement) break;
         // ZombiePrefabTool is the only retail composite mixing character art
         // with a colourable block. Character.draw changes the KV6 default
         // colour for the block marker; it does not wash both Zombie hands in
@@ -65,7 +88,7 @@ namespace {
                                    ? std::array<float, 3U>{1.0F, 1.0F, 1.0F}
                                    : tint;
         auto mesh = load_part(asset_root, parts[index], part_tint, team_color,
-                              inverse_scale, error);
+                              inverse_scale, error, finish);
         if (!mesh.has_value()) {
             return false;
         }
@@ -92,7 +115,7 @@ namespace {
 WeaponModelLoadResult load_weapon_models(
     const std::filesystem::path& asset_root, std::uint8_t tool_id,
     std::array<float, 3U> tint, std::optional<VxlColor> team_color,
-    std::uint8_t inverse_scale) {
+    std::uint8_t inverse_scale, const WeaponCosmeticFinish* finish) {
     const auto* definition = find_weapon_definition(tool_id);
     if (definition == nullptr) {
         return {std::nullopt, "tool id is outside the selectable catalog"};
@@ -109,10 +132,10 @@ WeaponModelLoadResult load_weapon_models(
                                     : std::nullopt;
     if (!load_parts(asset_root, definition->third_person_models, tint,
                     model_team_color, inverse_scale,
-                    result.third_person_parts, error, tint_only_part) ||
+                    result.third_person_parts, error, tint_only_part, finish) ||
         !load_parts(asset_root, definition->first_person_models, tint,
                     model_team_color, inverse_scale,
-                    result.first_person_parts, error, tint_only_part) ||
+                    result.first_person_parts, error, tint_only_part, finish) ||
         // models.py passes min_model_detail=2 for sight and pin so aiming
         // geometry never loses alignment at low global model quality.
         !load_optional(asset_root, {definition->sight_model_asset, {}}, tint,
@@ -127,6 +150,39 @@ WeaponModelLoadResult load_weapon_models(
         !load_optional(asset_root, {definition->tracer_model_asset, {}}, tint,
                        result.tracer, inverse_scale, error)) {
         return {std::nullopt, std::move(error)};
+    }
+    if(finish&&finish->sight_replacement){result.sight=finish->sight_replacement->mesh({},tint);result.pin.reset();}
+    // Preserve older one-point fits only when no two-point calibration exists.
+    // Untagged skins keep the parent's authored ADS/optic and pin.
+    if (finish && finish->replacement && !finish->sight_tags && finish->sight_pivot && !definition->first_person_models.empty()) {
+        auto aimed=*finish;
+        aimed.pivot=*finish->sight_pivot;
+        result.sight=load_part(asset_root,{definition->first_person_models.front().asset,{}},
+            tint,std::nullopt,1U,error,&aimed);
+        if (!result.sight) return {std::nullopt,std::move(error)};
+        result.pin.reset();
+    }
+    if (finish && finish->replacement && finish->sight_tags && result.sight) {
+        auto mesh = finish->replacement->mesh({}, tint);
+        const auto& pivot = finish->replacement->pivot();
+        const auto pose = evaluate_weapon_sight(tool_id);
+        mesh.minimum = {1e9F, 1e9F, 1e9F};
+        mesh.maximum = {-1e9F, -1e9F, -1e9F};
+        for (auto& vertex : mesh.vertices) {
+            const auto point = sight_tag_position(*finish->sight_tags,
+                {vertex.x+pivot[0],vertex.z+pivot[1],pivot[2]-vertex.y},
+                finish->scale*static_cast<float>(pose.model_scale));
+            vertex.x = (point[0]-static_cast<float>(pose.position.x))/static_cast<float>(pose.model_scale);
+            vertex.y = (point[1]-static_cast<float>(pose.position.y))/static_cast<float>(pose.model_scale);
+            vertex.z = (point[2]-static_cast<float>(pose.position.z))/static_cast<float>(pose.model_scale);
+            const std::array values{vertex.x,vertex.y,vertex.z};
+            for (std::size_t axis{};axis<3U;++axis) {
+                mesh.minimum[axis]=std::min(mesh.minimum[axis],values[axis]);
+                mesh.maximum[axis]=std::max(mesh.maximum[axis],values[axis]);
+            }
+        }
+        result.sight = std::move(mesh);
+        result.pin.reset();
     }
     return {std::move(result), {}};
 }

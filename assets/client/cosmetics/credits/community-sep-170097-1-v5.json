@@ -1,0 +1,67 @@
+{
+  "name": "Lewis Gun WW2",
+  "source": "https://gamebanana.com/mods/170097",
+  "archives": [
+    {
+      "archive": "170097\\197430-lewis_gun_ww2_updated.rar",
+      "extracted": "170097\\files-197430",
+      "sha256": "3a480f74c4c344be6adbb9b7e9ae94d434cebfb749e3b97fa8505841488076de",
+      "listing": [
+        "Tracer.kv6",
+        "Weapon.kv6",
+        "WeaponNoMagazine.kv6",
+        "WeaponNoMagazine-old.kv6",
+        "Casing.kv6",
+        "Magazine.kv6",
+        "Sight1.kv6",
+        "Sight2.kv6",
+        "Sight3.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1546514",
+          "_sName": "Lauchin",
+          "_sProfileUrl": "https://gamebanana.com/members/1546514",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5899e44d92791.png",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_idRow": "1546514",
+          "_sName": "Lauchin",
+          "_sProfileUrl": "https://gamebanana.com/members/1546514",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5899e44d92791.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

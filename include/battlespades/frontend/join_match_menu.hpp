@@ -187,6 +187,9 @@ public:
     pointer_release(std::optional<ui::Point> point) noexcept;
 
     [[nodiscard]] bool append_character(char character);
+    /** Committed keyboard text or a complete paste; invalid input is never partially inserted. */
+    [[nodiscard]] bool append_text(std::string_view text);
+    [[nodiscard]] bool paste_text(std::string_view text);
     [[nodiscard]] bool erase_character() noexcept;
     void clear() noexcept;
     void focus_input() noexcept;
@@ -196,7 +199,10 @@ public:
     /** Add the typed endpoint to the durable Favourites source without joining. */
     [[nodiscard]] std::optional<DirectConnectAction> submit_favourite() const;
     void set_error(std::string message);
+    /** Shows a non-error confirmation without styling it as a failed connection. */
+    void set_notice(std::string message);
     [[nodiscard]] std::string_view error() const noexcept;
+    [[nodiscard]] bool message_is_error() const noexcept;
 
     [[nodiscard]] WidgetVisualState connect_state() const noexcept;
     [[nodiscard]] WidgetVisualState favourite_state() const noexcept;
@@ -206,7 +212,9 @@ public:
 private:
     std::string endpoint_;
     std::string error_;
+    bool message_is_error_{true};
     std::optional<ui::Point> pointer_;
+    std::optional<DirectConnectActionKind> armed_action_;
     bool pointer_down_{};
     bool input_focused_{true};
 };

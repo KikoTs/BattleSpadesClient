@@ -42,6 +42,8 @@ struct WorldCamera final {
 struct WorldFrameStats final {
     std::size_t chunks_resident{};
     std::size_t chunks_submitted{};
+    std::size_t shadow_chunks_submitted{};
+    std::size_t shadow_chunks_culled{};
 };
 
 /**
@@ -149,6 +151,8 @@ public:
 
     /** StateData(45) fog is also the terrain fade/clear fallback colour. */
     void set_fog_color(std::array<std::uint8_t, 3U> color) noexcept;
+    /** Preserve packet fog in Legacy while Enhanced uses its measured sky horizon. */
+    void set_retail_fog_color(std::array<std::uint8_t, 3U> color) noexcept;
 
     /** Installs packet-45's exact two directional lights and ambient fill. */
     void set_retail_lighting(const RetailTerrainLighting& lighting) noexcept;
@@ -157,12 +161,11 @@ public:
     /**
      * The active renderer quality profile, resolved by the caller.
      *
-     * `enhanced_lighting` selects between the recovered baked face/occlusion
-     * tables (Legacy, so retail screenshot parity stays runnable) and real
-     * per-pixel directional lighting. Both read the same meshes, so switching
-     * costs no re-mesh. The remaining fields are stored and reported now and
-     * consumed by the HDR, shadow, ambient-occlusion and bloom passes as those
-     * land; until then they change no pixels.
+     * `enhanced_lighting` selects between recovered VXL/KV6 lighting (Legacy)
+     * and enhanced directional lighting. Both read the same meshes, so
+     * switching costs no re-mesh. Active profiles configure shadows, dynamic
+     * lights, emission and particle lighting; reserved HDR/SSAO/bloom fields
+     * stay zero until those passes exist.
      *
      * Tier policy lives in render::profile_for(), so this class never has to
      * know what a tier name means.
@@ -229,7 +232,7 @@ public:
      * models. Character.draw_sight draws up to two more (the sight and the
      * classic rifle's pin), so the budget is ten.
      */
-    static constexpr std::uint32_t view_model_slot_count{10U};
+    static constexpr std::uint32_t view_model_slot_count{64U};
     /** Uploads or replaces one viewmodel mesh slot. */
     [[nodiscard]] bool set_view_model_mesh(std::uint32_t slot,
                                            const world::ChunkMesh& mesh);

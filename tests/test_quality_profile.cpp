@@ -44,9 +44,9 @@ void every_tier_above_legacy_is_lit_and_tonemapped() {
             continue;
         }
         const auto profile = profile_for(tier, QualityLevel::medium);
-        expect(profile.hdr_target,
+        expect(!profile.hdr_target && profile.ssao_samples == 0U && profile.bloom_levels == 0U,
                "tier " + std::string{quality_profile_name(tier)} +
-                   " must render to the HDR target");
+                   " must not report unimplemented HDR/SSAO/bloom passes");
         expect(profile.enhanced_lighting,
                "tier " + std::string{quality_profile_name(tier)} +
                    " must use per-pixel lighting");

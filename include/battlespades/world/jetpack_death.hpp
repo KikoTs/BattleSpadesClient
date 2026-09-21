@@ -13,8 +13,8 @@ namespace battlespades::world {
 /**
  * One retained jetpack corpse between KillAction(25) and ExplodeCorpse(36).
  *
- * Position is always copied from the authoritative WorldUpdate stream. Only
- * the retail visual rotation is evaluated locally; it cannot affect collision,
+ * Position interpolates the authoritative WorldUpdate stream. Presentation
+ * and retail visual rotation cannot affect collision,
  * damage, respawn timing, or the eventual grave entity.
  */
 struct JetpackDeathSnapshot final {
@@ -23,6 +23,9 @@ struct JetpackDeathSnapshot final {
     /** Exact equipped row, retained so the corpse draws the correct pack. */
     std::uint8_t jetpack_id{};
     Vec3 position{};
+    Vec3 authoritative_position{};
+    Vec3 interpolation_start{};
+    double interpolation_elapsed{};
     /** Random vector chosen once by Character.set_dead in the retail client. */
     Vec3 rotation_axis{};
     /** Accumulated Character yaw, pitch and roll offsets, in degrees. */
@@ -90,14 +93,14 @@ public:
                                         std::uint32_t generation,
                                         Vec3 position) noexcept;
 
-    /** Advance only Character.update_dead's visual yaw/pitch/roll accumulator. */
+    /** Smooth network positions and advance the visual yaw/pitch/roll accumulator. */
     void tick(double dt) noexcept;
 
     [[nodiscard]] const JetpackDeathSnapshot* state(std::uint8_t player_id) const noexcept;
     [[nodiscard]] bool active(std::uint8_t player_id,
                               std::uint32_t generation) const noexcept;
 
-    /** Consume the packet-36 boundary and return its final presentation point. */
+    /** Consume packet 36; returned position is the exact latest authority point. */
     [[nodiscard]] std::optional<JetpackDeathSnapshot> finish(
         std::uint8_t player_id) noexcept;
 

@@ -186,6 +186,19 @@ constexpr ui::Rect list_rows_bounds{pixels(66, first_row_top, 320, row_height)};
            std::isfinite(response.ping_seconds) && response.ping_seconds >= 0.0;
 }
 
+[[nodiscard]] std::string map_identity(std::string_view value) {
+    std::string result;
+    for (const char character : value) {
+        if (character >= 'A' && character <= 'Z') {
+            result.push_back(static_cast<char>(character - 'A' + 'a'));
+        } else if ((character >= 'a' && character <= 'z') ||
+                   (character >= '0' && character <= '9')) {
+            result.push_back(character);
+        }
+    }
+    return result;
+}
+
 [[nodiscard]] std::uint32_t ping_in_milliseconds(double seconds) noexcept {
     constexpr auto maximum = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
     return static_cast<std::uint32_t>(std::clamp(seconds * 1'000.0, 0.0, maximum));
@@ -282,10 +295,44 @@ bool QuickPlayMenuModel::accept_server(QuickPlaySearchIntent request,
     if (iterator == rows_.end()) {
         return false;
     }
-    iterator->lowest_ping_seconds = std::min(iterator->lowest_ping_seconds, response.ping_seconds);
-    iterator->server_responses.push_back(std::move(response));
+    auto& responses = iterator->server_responses;
+    const auto existing = std::ranges::find_if(responses, [&response](const auto& candidate) {
+        return candidate.address == response.address && candidate.game_port == response.game_port;
+    });
+    if (existing != responses.end()) {
+        *existing = std::move(response);
+    } else {
+        if (responses.size() >= 512U) {
+            return false;
+        }
+        responses.push_back(std::move(response));
+    }
+    iterator->lowest_ping_seconds = std::ranges::min_element(
+        responses, {}, &QuickPlayServerResponse::ping_seconds)->ping_seconds;
     choose_server(*iterator);
     return true;
+}
+
+std::size_t QuickPlayMenuModel::accept_public_server(QuickPlaySearchIntent request,
+                                                     const QuickPlayServerResponse& response) {
+    std::size_t accepted{};
+    std::string_view mode = response.mode_id;
+    if (mode == "cctf") mode = "ctf";
+    if (mode == "occ") mode = "oc";
+    const auto map = map_identity(response.map);
+    for (const auto& definition : definitions) {
+        if (definition.classic != response.classic ||
+            std::ranges::find(definition.modes, mode) == definition.modes.end() ||
+            !std::ranges::any_of(definition.maps, [&map](std::string_view candidate) {
+                return map_identity(candidate) == map;
+            })) {
+            continue;
+        }
+        auto candidate = response;
+        candidate.playlist_id = definition.id;
+        accepted += accept_server(request, std::move(candidate)) ? 1U : 0U;
+    }
+    return accepted;
 }
 
 bool QuickPlayMenuModel::finish_search(QuickPlaySearchIntent request) noexcept {
@@ -303,6 +350,7 @@ bool QuickPlayMenuModel::fail_search(QuickPlaySearchIntent request) noexcept {
     }
     active_search_.reset();
     search_state_ = QuickPlaySearchState::failed;
+    clear_discovery();
     return true;
 }
 
@@ -320,7 +368,8 @@ QuickPlayPrimaryKind QuickPlayMenuModel::primary_kind() const noexcept {
 bool QuickPlayMenuModel::primary_enabled() const noexcept {
     switch (primary_kind()) {
     case QuickPlayPrimaryKind::start:
-        return network_available_;
+        return network_available_ && search_state_ == QuickPlaySearchState::complete &&
+               selected().chosen_server() != nullptr;
     case QuickPlayPrimaryKind::buy:
         return true;
     case QuickPlayPrimaryKind::hidden:
@@ -344,7 +393,9 @@ std::optional<QuickPlayIntent> QuickPlayMenuModel::activate_primary() const {
                                           server->map,
                                           server->mode_id,
                                           server->texture_skin,
-                                          server->classic};
+                                          server->classic,
+                                          server->identity_server_id,
+                                          server->identity_ticket};
     }
     return QuickPlayPlaylistStartIntent{QuickPlayServerMode::public_match, row.definition->id};
 }

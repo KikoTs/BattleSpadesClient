@@ -4,6 +4,8 @@
 #include "battlespades/world/player_movement.hpp"
 
 #include <array>
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -27,7 +29,7 @@ struct LocalEntity final {
     Vec3 velocity{};
     /** Where a consumed pickup returns to. */
     Vec3 home{};
-    /** Degrees, retail convention: yaw 0 faces -x, pitch positive down. */
+    /** Degrees: ordinary rigs use -X/down; turret packets use +Y/up. */
     double yaw{};
     double pitch{};
     /** Where the rig is currently pointing, which lags `yaw`/`pitch`. */
@@ -50,6 +52,8 @@ struct LocalEntity final {
     double lifetime_remaining{-1.0};
     /** Client-only age used to settle spawn presentation onto packet motion. */
     double presentation_age{};
+    /** Matched at creation to an explicitly sent local launcher action. */
+    bool local_launcher_muzzle{};
     /**
      * Remaining presentation time for the Drill's contact-only loop.
      * Damage(37) refreshes it to the recovered 0.5 seconds while the separate
@@ -311,6 +315,38 @@ struct EntityFaceRotation final {
 
 [[nodiscard]] EntityFaceRotation entity_face_rotation(std::uint8_t face) noexcept;
 
+/** Map-space articulation after the KV6 basis conversion; pitch precedes yaw. */
+struct EntityAimRotation final {
+    std::uint8_t pitch_axis{1U};
+    double pitch_degrees{};
+    double yaw_degrees{};
+};
+
+/** Turret packets use retail +Y forward/positive-up angles, unlike characters. */
+[[nodiscard]] EntityAimRotation entity_aim_rotation(std::uint8_t entity_type,
+                                                    double yaw,
+                                                    double pitch) noexcept;
+
+/** Correlates owned rockets with sent launcher actions, never merely ownership. */
+class LauncherMuzzleTracker final {
+public:
+    using Clock = std::chrono::steady_clock;
+    void remember(std::uint8_t tool, Vec3 position, Vec3 velocity,
+                  Clock::time_point now) noexcept;
+    [[nodiscard]] bool consume(const LocalEntity& entity, Clock::time_point now) noexcept;
+    void clear() noexcept;
+
+private:
+    struct Shot final {
+        Vec3 position{};
+        Vec3 velocity{};
+        Clock::time_point created{};
+        std::uint8_t entity_type{};
+    };
+    std::array<Shot, 8U> shots_{};
+    std::size_t next_{};
+};
+
 /**
  * Exact retail display origin for one entity model part in map coordinates.
  *
@@ -321,6 +357,13 @@ struct EntityFaceRotation final {
  */
 [[nodiscard]] Vec3 entity_presentation_position(const LocalEntity& entity,
                                                 const EntityModelPart& part) noexcept;
+
+/** Shared row-vector transform for a placed entity and its placement ghost. */
+[[nodiscard]] std::array<float, 16U> entity_presentation_transform(
+    const LocalEntity& entity,
+    const EntityDefinition& definition,
+    const EntityModelPart& part,
+    double contact_adjustment = 0.0) noexcept;
 
 /**
  * Vertical contact offset that keeps a face-up KV6 rig on its physics anchor.
@@ -344,6 +387,14 @@ struct EntityFaceRotation final {
     const EntityDefinition& definition,
     const EntityModelPart& contact_part,
     float mesh_minimum_y) noexcept;
+
+/** Seat all non-pitching parts together; imported rigs may keep the real
+ * feet in the yawing body and use a placeholder for the nominal base. */
+[[nodiscard]] double entity_rig_vertical_contact_adjustment(
+    const LocalEntity& entity,
+    const EntityDefinition& definition,
+    std::span<const EntityModelPart> parts,
+    std::span<const float> mesh_minimum_y) noexcept;
 
 /**
  * Terrain-projected centre for retail's health-crate spot shadow.

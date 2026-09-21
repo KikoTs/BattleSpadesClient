@@ -1,5 +1,7 @@
 # Entity Constants — Authoritative Clean-Room Spec
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Merged from the entity-recovery pass and the adversarial verification pass. Every
 correction from the verifier has been applied. This file supersedes the entity tables in
 `docs/ENTITY_PORT_RECOVERY.md`.
@@ -43,7 +45,7 @@ correction from the verifier has been applied. This file supersedes the entity t
 absent — `A899` (FLAG=0), `A900` (BASE=1), `A905` (JETPACK_CRATE=6), `A911` (CORPSE_ENTITY=12),
 `A925` (TANK_ENTITY=26). Sending one of those five through `CreateEntity` (packet 21) makes
 `GameScene.create_entity` index `GameScene.ENTITIES` with an unsupported key. For BASE this was
-live-measured: `KeyError: 1`, client freeze (`BattleSpades/docs/HANDOFF.md:741-745`).
+live-measured: `KeyError: 1`, client freeze (`BattleSpades/docs/PROTOCOL.md (entity compatibility contract)`).
 **Never put ids 0, 1, 6, 12 or 26 on the wire.**
 
 ---
@@ -66,7 +68,7 @@ Not recovered beyond the id. Retail has no client-side FLAG entity.
 |---|---|---|---|---|
 | type_id | `BASE` / `A900` | 1 | retail_named | `shared/constants.py:2801`, alias `:2804` |
 | wire_safe | — | false | retail_literal | `A900` absent from `gameScene.pyd`; no Base/CommandPost class among its 64 classes, no `base.py` among its 60 scene modules |
-| what_breaks | — | `GameScene.create_entity` raises `KeyError: 1`, client freezes | battlespades | live-measured, `BattleSpades/docs/HANDOFF.md:740-745`; mitigation `server/entities/registry.py:72-79` (`wire_visible=False`), filtered at `:156` |
+| what_breaks | — | `GameScene.create_entity` raises `KeyError: 1`, client freezes | battlespades | live-measured, `BattleSpades/docs/PROTOCOL.md (entity compatibility contract)`; mitigation `server/entities/registry.py:72-79` (`wire_visible=False`), filtered at `:156` |
 | model | — | null | absent | **no** BASE model binding exists in `models.py`. The `cp.kv6` attribution in `ENTITY_PORT_RECOVERY.md:32` is unconfirmed and could not be reproduced — `models.py:339` binds `CP_MODEL` to the capture point only |
 | model_size | — | null | absent | no model |
 | touch_radius | — | null | absent | no BASE distance constant. Related but different: `CLASSIC_CTF_BASE_CAPTURE_DISTANCE = 5` (`constants_gamemode.py:497`, `A2645 :498`), `CLASSIC_CTF_INTEL_MIN_RADIUS_FROM_BASE = 3` (`:499`, `A2646 :500`) — neither alias is in any `.pyd`. The generic `ENTITY_RADIUS = 5.0` (`constants.py:4980`, `A2260 :4981`) **is** referenced by `gameScene.pyd` |

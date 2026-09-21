@@ -344,6 +344,24 @@ template <typename Value, typename Parser>
     }
 
     if (state.section == Section::main) {
+        if (key == "audio_device") {
+            if (!state.remember(line, key)) return false;
+            const auto parsed = parse_string(value);
+            if (!parsed.has_value()) return state.fail(line, "audio_device must be a quoted name");
+            state.candidate.main.audio_device = *parsed;
+            return true;
+        }
+        if (key == "language") {
+            if (!state.remember(line, key)) {
+                return false;
+            }
+            const auto parsed = parse_string(value);
+            if (!parsed.has_value()) {
+                return state.fail(line, "language must be a quoted locale tag");
+            }
+            state.candidate.main.language = *parsed;
+            return true;
+        }
         if (key == "master_volume" || key == "music_volume") {
             if (!state.remember(line, key)) {
                 return false;
@@ -359,7 +377,8 @@ template <typename Value, typename Parser>
             }
             return true;
         }
-        if (key == "fullscreen" || key == "invert_mouse") {
+        if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
+            key == "show_other_skins" || key == "weapon_motion") {
             if (!state.remember(line, key)) {
                 return false;
             }
@@ -369,6 +388,12 @@ template <typename Value, typename Parser>
             }
             if (key == "fullscreen") {
                 state.candidate.main.fullscreen = *parsed;
+            } else if (key == "show_skins") {
+                state.candidate.main.show_skins = *parsed;
+            } else if (key == "show_other_skins") {
+                state.candidate.main.show_other_skins = *parsed;
+            } else if (key == "weapon_motion") {
+                state.candidate.main.weapon_motion = *parsed;
             } else {
                 state.candidate.main.invert_mouse = *parsed;
             }
@@ -497,10 +522,15 @@ template <typename Value, typename Parser>
            << "# Generated atomically. Unknown keys are ignored for forward compatibility.\n"
            << "schema_version = " << settings.schema_version << "\n\n"
            << "[main]\n"
+           << "language = \"" << settings.main.language << "\"\n"
            << "master_volume = " << decimal(settings.main.master_volume) << "\n"
            << "music_volume = " << decimal(settings.main.music_volume) << "\n"
+           << "audio_device = " << std::quoted(settings.main.audio_device) << "\n"
            << "fullscreen = " << (settings.main.fullscreen ? "true" : "false") << "\n"
-           << "invert_mouse = " << (settings.main.invert_mouse ? "true" : "false") << "\n\n"
+           << "invert_mouse = " << (settings.main.invert_mouse ? "true" : "false") << "\n"
+           << "show_skins = " << (settings.main.show_skins ? "true" : "false") << "\n"
+           << "show_other_skins = " << (settings.main.show_other_skins ? "true" : "false") << "\n"
+           << "weapon_motion = " << (settings.main.weapon_motion ? "true" : "false") << "\n\n"
            << "[graphics]\n"
            << "resolution = \"" << settings.graphics.resolution.width << 'x'
            << settings.graphics.resolution.height << "\"\n"

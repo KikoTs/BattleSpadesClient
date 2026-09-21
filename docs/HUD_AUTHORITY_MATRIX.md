@@ -1,5 +1,7 @@
 # Protocol 168 in-game HUD authority matrix
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Status: audited against the recovered retail Python/Cython code, the protocol
 layout, and the current native-client handlers on 2026-08-04.
 

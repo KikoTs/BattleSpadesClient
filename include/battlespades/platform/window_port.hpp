@@ -243,6 +243,9 @@ public:
         static_cast<void>(enabled);
         return false;
     }
+
+    /** Reads UTF-8 text only in response to an explicit paste command. */
+    [[nodiscard]] virtual std::string clipboard_text() { return {}; }
 };
 
 } // namespace battlespades::platform

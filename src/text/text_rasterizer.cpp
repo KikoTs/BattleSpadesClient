@@ -116,8 +116,74 @@ struct Utf8NormalizationResult final {
     }
 };
 
+[[nodiscard]] constexpr std::uint32_t simple_uppercase(std::uint32_t code_point) noexcept {
+    if (code_point >= 'a' && code_point <= 'z') return code_point - ('a' - 'A');
+
+    // Latin-1 letters used by the recovered Western European packs.
+    if ((code_point >= 0x00E0U && code_point <= 0x00F6U && code_point != 0x00F7U) ||
+        (code_point >= 0x00F8U && code_point <= 0x00FEU)) {
+        return code_point - 0x20U;
+    }
+    if (code_point == 0x00FFU) return 0x0178U; // ÿ -> Ÿ
+
+    // Locale letters outside Latin-1 (Polish, Czech and Turkish).  Keeping
+    // this table explicit avoids process-locale dependent std::towupper and
+    // gives identical output on Windows, Linux and macOS.
+    switch (code_point) {
+    case 0x0105U: return 0x0104U; // ą
+    case 0x0107U: return 0x0106U; // ć
+    case 0x010DU: return 0x010CU; // č
+    case 0x010FU: return 0x010EU; // ď
+    case 0x0119U: return 0x0118U; // ę
+    case 0x011BU: return 0x011AU; // ě
+    case 0x011FU: return 0x011EU; // ğ
+    case 0x0131U: return 0x0049U; // dotless i
+    case 0x0142U: return 0x0141U; // ł
+    case 0x0144U: return 0x0143U; // ń
+    case 0x0148U: return 0x0147U; // ň
+    case 0x0159U: return 0x0158U; // ř
+    case 0x015BU: return 0x015AU; // ś
+    case 0x015FU: return 0x015EU; // ş
+    case 0x0161U: return 0x0160U; // š
+    case 0x0165U: return 0x0164U; // ť
+    case 0x016FU: return 0x016EU; // ů
+    case 0x017AU: return 0x0179U; // ź
+    case 0x017CU: return 0x017BU; // ż
+    case 0x017EU: return 0x017DU; // ž
+    default: break;
+    }
+
+    // Russian/Bulgarian plus the Ukrainian letters used by community packs.
+    if (code_point >= 0x0430U && code_point <= 0x044FU) return code_point - 0x20U;
+    if (code_point >= 0x0450U && code_point <= 0x045FU) return code_point - 0x50U;
+    switch (code_point) {
+    case 0x0491U: return 0x0490U; // ґ
+    case 0x04CFU: return 0x04C0U;
+    default: return code_point;
+    }
+}
+
+void append_utf8(std::string& output, std::uint32_t code_point) {
+    if (code_point <= 0x7FU) {
+        output.push_back(static_cast<char>(code_point));
+    } else if (code_point <= 0x7FFU) {
+        output.push_back(static_cast<char>(0xC0U | (code_point >> 6U)));
+        output.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+    } else if (code_point <= 0xFFFFU) {
+        output.push_back(static_cast<char>(0xE0U | (code_point >> 12U)));
+        output.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3FU)));
+        output.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+    } else {
+        output.push_back(static_cast<char>(0xF0U | (code_point >> 18U)));
+        output.push_back(static_cast<char>(0x80U | ((code_point >> 12U) & 0x3FU)));
+        output.push_back(static_cast<char>(0x80U | ((code_point >> 6U) & 0x3FU)));
+        output.push_back(static_cast<char>(0x80U | (code_point & 0x3FU)));
+    }
+}
+
 [[nodiscard]] Utf8NormalizationResult normalize_utf8(std::string_view input, TextCase text_case) {
-    Utf8NormalizationResult result{std::string{input}, {}};
+    Utf8NormalizationResult result{{}, {}};
+    result.text.reserve(input.size());
     std::size_t index{};
     while (index < input.size()) {
         const auto first = static_cast<std::uint8_t>(input[index]);
@@ -163,12 +229,22 @@ struct Utf8NormalizationResult final {
             return result;
         }
 
-        // Retail English labels only require locale-invariant ASCII casing.
-        // Non-ASCII text remains byte-for-byte intact for HarfBuzz shaping.
-        if (text_case == TextCase::ascii_uppercase && length == 1U && first >= 'a' &&
-            first <= 'z') {
-            result.text[index] = static_cast<char>(first - ('a' - 'A'));
+        // A few recovered European strings use no-break spacing characters
+        // whose retail fonts expose no cmap entry. They are layout spaces, not
+        // visible missing glyphs; normalize them before HarfBuzz so they can
+        // never turn into a question-mark/tofu box on another platform.
+        if (code_point == 0x00A0U || code_point == 0x2007U || code_point == 0x202FU) {
+            code_point = 0x20U;
         }
+
+        // Retail English labels only require locale-invariant ASCII casing.
+        if (text_case == TextCase::ascii_uppercase && code_point >= 'a' &&
+            code_point <= 'z') {
+            code_point -= ('a' - 'A');
+        } else if (text_case == TextCase::unicode_uppercase) {
+            code_point = simple_uppercase(code_point);
+        }
+        append_utf8(result.text, code_point);
         index += length;
     }
     return result;
@@ -265,12 +341,60 @@ public:
     std::string init_error;
     mutable std::mutex mutex;
     std::unordered_map<std::string, CacheEntry> cache;
+    mutable std::unordered_map<std::string, bool> coverage_cache;
     std::list<std::string> lru;
     TextCacheStats stats;
 
     [[nodiscard]] bool ready() const noexcept {
         return init_error_code == TextErrorCode::none && library != nullptr && face != nullptr &&
                hb_font != nullptr;
+    }
+
+    [[nodiscard]] bool supports_text(std::string_view utf8, TextCase text_case) const {
+        if (!ready() || utf8.size() > config.limits.maximum_utf8_bytes) return false;
+        const auto normalized = normalize_utf8(utf8, text_case);
+        if (!normalized) return false;
+
+        std::scoped_lock lock{mutex};
+        if (const auto cached = coverage_cache.find(normalized.text);
+            cached != coverage_cache.end()) {
+            return cached->second;
+        }
+        bool covered{true};
+        std::size_t offset{};
+        while (offset < normalized.text.size()) {
+            const auto first = static_cast<std::uint8_t>(normalized.text[offset]);
+            std::size_t length{1U};
+            std::uint32_t code_point{first};
+            if (first >= 0xC2U && first <= 0xDFU) {
+                length = 2U;
+                code_point = first & 0x1FU;
+            } else if (first >= 0xE0U && first <= 0xEFU) {
+                length = 3U;
+                code_point = first & 0x0FU;
+            } else if (first >= 0xF0U) {
+                length = 4U;
+                code_point = first & 0x07U;
+            }
+            for (std::size_t index = 1U; index < length; ++index) {
+                code_point =
+                    (code_point << 6U) |
+                    (static_cast<std::uint8_t>(normalized.text[offset + index]) & 0x3FU);
+            }
+
+            const auto non_rendering = code_point < 0x20U || code_point == 0x7FU ||
+                                       code_point == 0x200CU || code_point == 0x200DU ||
+                                       (code_point >= 0xFE00U && code_point <= 0xFE0FU) ||
+                                       (code_point >= 0xE0100U && code_point <= 0xE01EFU);
+            if (!non_rendering && FT_Get_Char_Index(face, code_point) == 0U) {
+                covered = false;
+                break;
+            }
+            offset += length;
+        }
+        if (coverage_cache.size() >= 1'024U) coverage_cache.clear();
+        coverage_cache.emplace(normalized.text, covered);
+        return covered;
     }
 
     void initialize() {
@@ -414,9 +538,15 @@ public:
         canonical += "\npixel-height=";
         canonical += std::to_string(pixel_height);
         canonical += "\ncase=";
-        canonical += request.text_case == TextCase::ascii_uppercase ? "ascii-upper" : "preserve";
+        switch (request.text_case) {
+        case TextCase::ascii_uppercase: canonical += "ascii-upper"; break;
+        case TextCase::unicode_uppercase: canonical += "unicode-upper"; break;
+        case TextCase::preserve: canonical += "preserve"; break;
+        }
         canonical += "\nrender=";
         canonical += request.retail_outline_stroke ? "ftgl-outside-stroke-140" : "normal";
+        canonical += config.allow_missing_glyphs ? "\nmissing-glyphs=notdef"
+                                                 : "\nmissing-glyphs=reject";
         canonical += "\nutf8-bytes=";
         canonical += std::to_string(transformed.size());
         canonical += "\n";
@@ -524,6 +654,13 @@ public:
             glyph_count > config.limits.maximum_glyphs) {
             return failure(
                 TextErrorCode::resource_limit, "shaped glyph count exceeds configured limits", key);
+        }
+        if (!config.allow_missing_glyphs && glyph_count > 0U &&
+            std::any_of(glyph_info, glyph_info + glyph_count,
+                        [](const hb_glyph_info_t& glyph) { return glyph.codepoint == 0U; })) {
+            return failure(TextErrorCode::font_error,
+                           "font shaping produced missing glyph zero",
+                           key);
         }
 
         std::vector<PlacedGlyph> glyphs;
@@ -793,6 +930,7 @@ public:
     void clear_cache() noexcept {
         std::scoped_lock lock{mutex};
         cache.clear();
+        coverage_cache.clear();
         lru.clear();
         stats.entries = 0U;
         stats.bytes = 0U;
@@ -836,6 +974,10 @@ std::uint64_t TextRasterizer::font_fingerprint() const noexcept {
     return impl_ == nullptr ? 0U : impl_->fingerprint;
 }
 
+bool TextRasterizer::supports_text(std::string_view utf8, TextCase text_case) const {
+    return impl_ != nullptr && impl_->supports_text(utf8, text_case);
+}
+
 TextCacheKeyResult TextRasterizer::cache_key(const TextRasterRequest& request) const {
     if (impl_ == nullptr) {
         return {std::nullopt, TextErrorCode::not_ready, "text rasterizer was moved from"};
@@ -858,6 +1000,20 @@ void TextRasterizer::clear_cache() noexcept {
 
 TextCacheStats TextRasterizer::cache_stats() const noexcept {
     return impl_ == nullptr ? TextCacheStats{} : impl_->cache_stats();
+}
+
+TextRasterizer* select_text_font(std::span<TextRasterizer* const> candidates,
+                                 std::string_view utf8, TextCase text_case) {
+    TextRasterizer* fallback{};
+    for (std::size_t index{}; index < candidates.size(); ++index) {
+        auto* const candidate = candidates[index];
+        if (candidate == nullptr || !candidate->ready()) continue;
+        if (fallback == nullptr) fallback = candidate;
+        const auto current = candidates.begin() + static_cast<std::ptrdiff_t>(index);
+        if (std::find(candidates.begin(), current, candidate) != current) continue;
+        if (candidate->supports_text(utf8, text_case)) return candidate;
+    }
+    return fallback;
 }
 
 } // namespace battlespades::text

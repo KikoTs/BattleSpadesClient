@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "pack-axe_960ef-spade",
+  "name": "axe_960ef.zip",
+  "source": "User-provided archive",
+  "class": "ViewSpadeSkin",
+  "category": "Spade",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Spade/View.as"
+  ],
+  "resources": {
+    "Gfx/Spade.tga": "Gfx/Spade.tga.png",
+    "Models/Weapons/spade/Spade.kv6": "Models/Weapons/spade/Spade.kv6",
+    "Scripts/Skin/Spade/ThirdPerson.as": "Scripts/Skin/Spade/ThirdPerson.as",
+    "Scripts/Skin/Spade/View.as": "Scripts/Skin/Spade/View.as",
+    "sounds/Weapons/Spade/Hitblock.opus": "sounds/Weapons/Spade/Hitblock.opus.ogg",
+    "sounds/Weapons/Spade/HitPlayer.opus": "sounds/Weapons/Spade/HitPlayer.opus.ogg",
+    "sounds/Weapons/Spade/Miss.opus": "sounds/Weapons/Spade/Miss.opus.ogg",
+    "sounds/Weapons/Spade/RaiseLocal.opus": "sounds/Weapons/Spade/RaiseLocal.opus.ogg",
+    "Models/Weapons/Spade/Spade.kv6": "Models/Weapons/spade/Spade.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png"
+  },
+  "hashes": {
+    "Gfx/Spade.tga": "7a410bccff90b2e966ca37f554ebe32bce79ac7098f3c6a40d57011ebc3a77c1",
+    "Models/Weapons/spade/Spade.kv6": "2b58ec004e72069fe5f232b80beeaf47c165af8cdd8f902de2e007c02fdb96e9",
+    "Scripts/Skin/Spade/ThirdPerson.as": "a622dedd273fcaea408d50a1b8e95b223684292f242a09d491591b91b0708032",
+    "Scripts/Skin/Spade/View.as": "48642e4021048f2e13f76e5fc6b6e454f99cded305ce59ad7f22283ef140720b",
+    "sounds/Weapons/Spade/Hitblock.opus": "3695a5c43c17b15fd0993d6cdd7cb253f4a6dc8ae1e9aef0ee1e3b21e5d02640",
+    "sounds/Weapons/Spade/HitPlayer.opus": "0581d4f591fa92e8a1864e65584b856d5ab028137e500c9e9e3dbb13988383de",
+    "sounds/Weapons/Spade/Miss.opus": "a6805b4b61994aba7c9204f4a4483f555a1534bf9e0df73218b6cab8d24cd157",
+    "sounds/Weapons/Spade/RaiseLocal.opus": "ecdec6858965d12089ef02c44a9581c011b66f023319e08c5ae0c4d85bb789af",
+    "sounds/Weapons/Spade/Hitblock.opus.ogg": "3cec51ac250d4caab591515cbe23bc625af7ff159664e931817b5067d1b47156",
+    "sounds/Weapons/Spade/HitPlayer.opus.ogg": "5f69e068dd044c7f7b811666259106719bc11934b806e5fed9d7399f0f0895ef",
+    "sounds/Weapons/Spade/Miss.opus.ogg": "ccab1068a16ccfcde9134422bcc6b2dc5f5fe60a86b92d156dea83785154c5d1",
+    "sounds/Weapons/Spade/RaiseLocal.opus.ogg": "caf66e58507b25852c4e4c8f1a69aa94a3ddc4c0ebbb7b6be2dc50191efde7f5",
+    "Gfx/Spade.tga.png": "a146b38c69695b21d63215c1d71b7cb6141f1efb7422fded7cdc0f6b558968ca",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "See original archive notices",
+  "credits": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": []
+}

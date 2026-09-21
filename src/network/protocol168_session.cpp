@@ -148,12 +148,18 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
         return std::nullopt;
     }
     Protocol168InitialInfo info;
-    // mode name/description/three infographic strings
-    for (std::size_t index{}; index < 5U; ++index) {
-        if (!reader.string(4096U).has_value()) {
+    // Retain the same bounded strings the server supplies for Loading/Mode.
+    const std::array<std::string*, 5U> mode_strings{
+        &info.mode_name, &info.mode_description,
+        &info.mode_infographic_text[0U], &info.mode_infographic_text[1U],
+        &info.mode_infographic_text[2U]};
+    for (auto* destination : mode_strings) {
+        auto value = reader.string(4096U);
+        if (!value.has_value()) {
             error = "malformed InitialInfo mode strings";
             return std::nullopt;
         }
+        *destination = std::move(*value);
     }
     auto map_name = reader.string(255U);
     auto filename = reader.string(1024U);
@@ -286,7 +292,6 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
     const auto friendly_fire = reader.u8();
     const auto padding = reader.u8();
     const auto enable_corpse_explosion = reader.u8();
-    static_cast<void>(friendly_fire);
     static_cast<void>(padding);
     static_cast<void>(enable_corpse_explosion);
     if (!allow_shooting_holding_intel.has_value() ||
@@ -297,10 +302,43 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
     }
     info.allow_shooting_holding_intel =
         *allow_shooting_holding_intel != 0U;
+    info.friendly_fire = *friendly_fire != 0U;
     const auto ugc_mode = reader.u8();
-    if (!ugc_mode.has_value() || !reader.done()) {
+    if (!ugc_mode.has_value()) {
         error = "malformed InitialInfo UGC mode";
         return std::nullopt;
+    }
+    if (!reader.done()) {
+        // Only our explicitly negotiated extension may follow retail fields.
+        for (const auto expected : {'B', 'S', 'F', 'P', '\x01'}) {
+            if (reader.u8() != static_cast<std::uint8_t>(expected)) {
+                error = "unknown InitialInfo flight profile";
+                return std::nullopt;
+            }
+        }
+        const auto flags = reader.u8();
+        const auto idle = reader.integer<std::uint16_t>();
+        if (!flags || *flags > 3U || !idle || *idle > 640U) {
+            error = "invalid InitialInfo flight refill policy";
+            return std::nullopt;
+        }
+        info.flight_profile.grounded_refill_only = (*flags & 1U) != 0U;
+        info.flight_profile.descending_parachute_only = (*flags & 2U) != 0U;
+        info.flight_profile.refill_idle_seconds = *idle / 64.0;
+        for (auto* values : {&info.flight_profile.drain, &info.flight_profile.refill}) {
+            for (std::size_t pack{1U}; pack <= 3U; ++pack) {
+                const auto raw = reader.integer<std::uint16_t>();
+                if (!raw || *raw == 0U || *raw > 6400U) {
+                    error = "invalid InitialInfo flight resource rate";
+                    return std::nullopt;
+                }
+                (*values)[pack] = *raw / 64.0;
+            }
+        }
+        if (!reader.done()) {
+            error = "trailing InitialInfo flight data";
+            return std::nullopt;
+        }
     }
     info.ugc_mode = *ugc_mode;
     info.server_name = std::move(*server_name);
@@ -646,12 +684,16 @@ decode_full_map_records(std::span<const std::byte> records, std::string& error) 
 }
 
 [[nodiscard]] std::vector<std::byte>
-steam_ticket_packet(std::span<const std::byte> ticket) {
+steam_ticket_packet(std::span<const std::byte> ticket, bool flight_profile) {
     Writer writer;
     writer.u8(105U);
     writer.integer<std::int32_t>(static_cast<std::int32_t>(ticket.size()));
     for (const auto value : ticket) {
         writer.u8(std::to_integer<std::uint8_t>(value));
+    }
+    if (flight_profile) {
+        for (const auto value : {'B', 'S', 'C', 'F', '\x01'})
+            writer.u8(static_cast<std::uint8_t>(value));
     }
     return std::move(writer).take();
 }
@@ -820,7 +862,7 @@ std::vector<std::byte> Protocol168Session::connected() {
     // Packet 105 itself is plain. Its payload becomes the key only after the
     // server has consumed it, matching retail's SteamSendSessionTicket order.
     return encode_protocol168_client_datagram(
-        steam_ticket_packet(config_.steam_ticket));
+        steam_ticket_packet(config_.steam_ticket, config_.negotiate_flight_profile));
 }
 
 Protocol168IngestResult Protocol168Session::ingest(
@@ -1092,16 +1134,13 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
     // its live-packet loop. These are complete ENet datagrams and already have
     // typed runtime decoders; retain them in arrival order instead of silently
     // losing the soundscape during the handshake.
-    constexpr std::size_t maximum_deferred_runtime_packets{64U};
     if (phase_ != Protocol168SessionPhase::disconnected &&
         phase_ != Protocol168SessionPhase::awaiting_initial_info &&
         phase_ != Protocol168SessionPhase::ready &&
         id >= 22U && id <= 27U) {
-        if (deferred_runtime_packets_.size() >=
-            maximum_deferred_runtime_packets) {
+        if (!deferred_runtime_packets_.push(packet)) {
             return fail("Protocol 168 deferred audio queue overflow");
         }
-        deferred_runtime_packets_.emplace_back(packet.begin(), packet.end());
         result.accepted = true;
         return result;
     }
@@ -1192,8 +1231,8 @@ std::size_t Protocol168Session::malformed_packets() const noexcept {
 }
 
 std::vector<std::vector<std::byte>>
-Protocol168Session::take_deferred_runtime_packets() noexcept {
-    return std::exchange(deferred_runtime_packets_, {});
+Protocol168Session::take_deferred_runtime_packets() {
+    return deferred_runtime_packets_.take(deferred_runtime_packets_.size());
 }
 
 std::uint32_t Protocol168Session::next_client_loop_count() const noexcept {

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "id": "pack-170127-default",
+  "name": "Openspades G3A3",
+  "source": "https://gamebanana.com/mods/170127",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/SMG/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/Magazine.kv6",
+    "Models/Weapons/SMG/Sight1.kv6": "Models/Weapons/SMG/Sight1.kv6",
+    "Models/Weapons/SMG/Sight2.kv6": "Models/Weapons/SMG/Sight2.kv6",
+    "Models/Weapons/SMG/Sight3.kv6": "Models/Weapons/SMG/Sight3.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Sounds/Weapons/SMG/V2AmbienceSmall1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local1.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local2.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local3.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local4.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg",
+    "Sounds/Weapons/SMG/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg",
+    "Sounds/Weapons/SMG/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/SMG/Magazine.kv6": "31bbcb440cddb9e44f0f5b94b49cc000ed86e8ed1233606277616fe139c39bc2",
+    "Models/Weapons/SMG/Sight1.kv6": "9fe6c4a2277f10c52bc5d167cca360092a03d3ef1867afc5ccb4924152b9eb97",
+    "Models/Weapons/SMG/Sight2.kv6": "ff3714715ee8d4750116c1e01f01a6f9f5e767fe18b6713c7d4d85a6d8fcbf76",
+    "Models/Weapons/SMG/Sight3.kv6": "634a57401ac83504a96db92c1537fe8591b5b617597c2dc1fd0b5d164a2e53e3",
+    "Models/Weapons/SMG/Weapon.kv6": "d8f262ab17f8c336281ba45a2b61e238c6d34fa2d93db05d5120124c024fd90c",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "9fb6fe69169d6479bebbfa8b7ff63234e03c9de6c97bc947a98da6d6eafc17ac",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg": "5ea55c25da1af07cb4a0ffef35241920cb447128044b8352470504402e1070e7",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg": "675b7eb4293fa95d0a533a840533f3af65e660f84fe4b3f598e752136a419213",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg": "c5fbde87f23d87fbbbfe23eae1e30cc7c8e3ec0374b5d5103bbb596fdf38748c",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg": "993abd8c3afc017fdce1b1d713af9df05531b7445b0670377b7bd974e4308be5",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg": "a3d1fa71804290abda02021920161fed5b55307a1c37e1646c50b451e9c95c9e",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg": "72cc1343308c2fccdaacc50aba1b4332bb5378faaf40f43195a08b409a3c65f6",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg": "8374c14efee4619d0fb126ee5e48abe3cf8517b1241c6d1c12cb40b5b64c39af",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg": "86f3b9a4424795cded579d0a8b02499344c0da4851d08a2a644ead9f86741ae0",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local1.opus.ogg": "b2292b3df96830421a2d5a16f894afc432b16d740a62512c83c59af346199ef1",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local2.opus.ogg": "abea3765e5430a11403ad8a5c2d49b51c370f699c5cb95c7b4a5bce688d21f73",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local3.opus.ogg": "ac78e8821e67908f8f190430828a32a859bbcbae52b1aa2c090af55035ff044c",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/V2Local4.opus.ogg": "ec0ed853a18a15959d8a438831b1055dab6bb8cf11bb435157fafa9117adef21",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireFar.opus.ogg": "704863037aedbddbd842a7a170af137e9cc6d33ff026c359e66237fe92ffb28d",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/FireStereo.opus.ogg": "711775612ebe3ed063826c01adf96c59a9793bf54d1e8d15691ab453f9b743ce",
+    "Fallback/OpenSpades/Sounds/Weapons/SMG/ReloadLocal.opus.ogg": "3045c6e12ba64adab7e4aa5740dc091aff39e713567fa5fc697c5baea3b08527",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/SMG/View.as": "e21cc19bd30c95c98bcbafd21eefc8ecb2b8b0bc8b99e370c732973a4e540566"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Concept and design",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default SMG script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

@@ -34,6 +34,18 @@ bool FrontendNavigationModel::push(FrontendScreen child) noexcept {
     return false;
 }
 
+bool FrontendNavigationModel::push_instant(FrontendScreen child) noexcept {
+    const auto id = screen_id(child);
+    if (!routes_.apply(ui::ScreenCommand::push(id))) {
+        return false;
+    }
+    if (shell_.navigate_immediate(id)) {
+        return true;
+    }
+    static_cast<void>(routes_.apply(ui::ScreenCommand::pop()));
+    return false;
+}
+
 bool FrontendNavigationModel::pop() noexcept {
     if (!shell_.accepts_input() || routes_.size() <= 1U) {
         return false;
@@ -45,6 +57,23 @@ bool FrontendNavigationModel::pop() noexcept {
         return false;
     }
     if (shell_.navigate(target, NavigationDirection::back)) {
+        return true;
+    }
+    static_cast<void>(routes_.apply(ui::ScreenCommand::push(popped)));
+    return false;
+}
+
+bool FrontendNavigationModel::pop_instant() noexcept {
+    if (routes_.size() <= 1U) {
+        return false;
+    }
+    const auto screens = routes_.screens();
+    const auto target = screens[screens.size() - 2U];
+    const auto popped = screens.back();
+    if (!routes_.apply(ui::ScreenCommand::pop())) {
+        return false;
+    }
+    if (shell_.navigate_immediate(target)) {
         return true;
     }
     static_cast<void>(routes_.apply(ui::ScreenCommand::push(popped)));
@@ -66,6 +95,42 @@ bool FrontendNavigationModel::replace(FrontendScreen target,
     }
     if (before.has_value()) {
         static_cast<void>(routes_.apply(ui::ScreenCommand::replace(*before)));
+    }
+    return false;
+}
+
+bool FrontendNavigationModel::leave_match_instant() noexcept {
+    const auto screens = routes_.screens();
+    for (std::size_t index{}; index < screens.size(); ++index) {
+        const auto route = frontend_screen(screens[index]);
+        if (route != FrontendScreen::game_loading && route != FrontendScreen::tutorial_world &&
+            route != FrontendScreen::class_selection && route != FrontendScreen::change_team) continue;
+        if (index == 0U) {
+            const auto root = screen_id(FrontendScreen::select_menu);
+            if (!routes_.apply(ui::ScreenCommand::reset(root))) return false;
+            return shell_.navigate_immediate(root);
+        }
+        // The stack remains authoritative after transport/world teardown, and
+        // includes Settings, Pause and other overlays above the match itself.
+        while (routes_.size() > index) {
+            if (!pop_instant()) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool FrontendNavigationModel::return_to(FrontendScreen target) noexcept {
+    if (!shell_.accepts_input()) return false;
+    const auto id = screen_id(target);
+    const auto screens = routes_.screens();
+    for (auto remaining = screens.size(); remaining > 0U; --remaining) {
+        if (screens[remaining - 1U] != id) continue;
+        if (remaining == screens.size()) return true;
+        const std::vector<ui::ScreenCommand> pops(screens.size() - remaining,
+                                                ui::ScreenCommand::pop());
+        if (!routes_.apply(pops)) return false;
+        return shell_.navigate(id, NavigationDirection::back);
     }
     return false;
 }

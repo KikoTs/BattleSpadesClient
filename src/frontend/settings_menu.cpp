@@ -32,12 +32,16 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 5U> main_inventory{{
+constexpr std::array<SettingsRowId, 9U> main_inventory{{
+    SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
     SettingsRowId::fullscreen,
     SettingsRowId::invert_mouse,
     SettingsRowId::favorite_server,
+    SettingsRowId::show_skins,
+    SettingsRowId::show_other_skins,
+    SettingsRowId::weapon_motion,
 }};
 
 constexpr std::array<SettingsRowId, 39U> controls_inventory{{
@@ -146,11 +150,13 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     if (row == SettingsRowId::mouse_sensitivity) {
         return SettingsRowKind::continuous_slider;
     }
-    if (row == SettingsRowId::fullscreen || row == SettingsRowId::favorite_server ||
+    if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
+        row == SettingsRowId::weapon_motion || row == SettingsRowId::fullscreen || row == SettingsRowId::favorite_server ||
         row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader) {
         return SettingsRowKind::toggle;
     }
-    if (row == SettingsRowId::invert_mouse || row == SettingsRowId::resolution ||
+    if (row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
+        row == SettingsRowId::resolution ||
         row == SettingsRowId::graphics_api || row == SettingsRowId::antialiasing ||
         row == SettingsRowId::effect_quality || row == SettingsRowId::draw_distance ||
         row == SettingsRowId::shader_quality || row == SettingsRowId::texture_quality ||
@@ -165,6 +171,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
 
 [[nodiscard]] constexpr std::string_view label_for(SettingsRowId row) noexcept {
     switch (row) {
+    case SettingsRowId::language:
+        return "LANGUAGE";
     case SettingsRowId::master_volume:
         return "MASTER_VOLUME";
     case SettingsRowId::music_volume:
@@ -175,6 +183,12 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "INVERT_MOUSE";
     case SettingsRowId::favorite_server:
         return "FAVORITE";
+    case SettingsRowId::show_skins:
+        return "SHOW_SKINS";
+    case SettingsRowId::show_other_skins:
+        return "SHOW_OTHER_SKINS";
+    case SettingsRowId::weapon_motion:
+        return "WEAPON_MOTION";
     case SettingsRowId::resolution:
         return "RESOLUTION";
     case SettingsRowId::graphics_api:
@@ -583,10 +597,14 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
 #define AOS_SETTINGS_ROW_NAME(name)                                                                \
     case SettingsRowId::name:                                                                      \
         return #name
+        AOS_SETTINGS_ROW_NAME(language);
         AOS_SETTINGS_ROW_NAME(master_volume);
         AOS_SETTINGS_ROW_NAME(music_volume);
         AOS_SETTINGS_ROW_NAME(fullscreen);
         AOS_SETTINGS_ROW_NAME(invert_mouse);
+        AOS_SETTINGS_ROW_NAME(show_skins);
+        AOS_SETTINGS_ROW_NAME(show_other_skins);
+        AOS_SETTINGS_ROW_NAME(weapon_motion);
         AOS_SETTINGS_ROW_NAME(favorite_server);
         AOS_SETTINGS_ROW_NAME(resolution);
         AOS_SETTINGS_ROW_NAME(graphics_api);
@@ -648,6 +666,7 @@ SettingsMenuModel::SettingsMenuModel(settings::SettingsSession& session,
       favorite_server_{environment_.favorite_server},
       initial_favorite_server_{environment_.favorite_server},
       focused_{SettingsMenuTarget::for_tab(settings::SettingsTab::main)} {
+    set_languages(std::move(environment_.languages));
     auto& modes = environment_.display_modes;
     modes.erase(std::remove_if(modes.begin(),
                                modes.end(),
@@ -699,6 +718,21 @@ SettingsMenuModel::SettingsMenuModel(settings::SettingsSession& session,
                        (left.width == right.width && left.height < right.height);
             });
     }
+}
+
+void SettingsMenuModel::set_languages(std::vector<SettingsLanguageOption> languages) {
+    languages.erase(std::remove_if(languages.begin(), languages.end(), [](const auto& language) {
+                        return language.locale.empty() || language.native_name.empty();
+                    }),
+                    languages.end());
+    std::ranges::sort(languages, {}, &SettingsLanguageOption::locale);
+    languages.erase(std::unique(languages.begin(), languages.end(), [](const auto& left,
+                                                                       const auto& right) {
+                        return left.locale == right.locale;
+                    }),
+                    languages.end());
+    if (languages.empty()) languages.push_back({"en", "English"});
+    environment_.languages = std::move(languages);
 }
 
 settings::SettingsTab SettingsMenuModel::active_tab() const noexcept {
@@ -1059,6 +1093,24 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         item.enabled = target_enabled(target);
 
         switch (row) {
+        case SettingsRowId::language: {
+            const auto found = std::ranges::find(environment_.languages,
+                                                 current.main.language,
+                                                 &SettingsLanguageOption::locale);
+            item.choice_index = found == environment_.languages.end()
+                                    ? 0U
+                                    : static_cast<std::size_t>(
+                                          std::distance(environment_.languages.begin(), found));
+            item.choice_count = environment_.languages.size();
+            item.choices.reserve(item.choice_count);
+            for (const auto& language : environment_.languages) {
+                item.choices.push_back(language.native_name);
+            }
+            item.value_text = environment_.languages.empty()
+                                  ? current.main.language
+                                  : environment_.languages[item.choice_index].native_name;
+            break;
+        }
         case SettingsRowId::master_volume:
             item.scalar_value = current.main.master_volume;
             item.value_text =
@@ -1077,6 +1129,18 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             item.choices = {"OFF", "ON"};
             item.value_text = current.main.fullscreen ? "ON" : "OFF";
             break;
+        case SettingsRowId::show_skins:
+        case SettingsRowId::show_other_skins:
+        case SettingsRowId::weapon_motion: {
+            const bool on = row == SettingsRowId::show_skins ? current.main.show_skins :
+                            row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
+                            current.main.weapon_motion;
+            item.choice_index = on ? 1U : 0U;
+            item.choice_count = 2U;
+            item.choices = {"OFF", "ON"};
+            item.value_text = on ? "ON" : "OFF";
+            break;
+        }
         case SettingsRowId::invert_mouse:
             item.choice_index = current.main.invert_mouse ? 1U : 0U;
             item.choice_count = 2U;
@@ -1169,12 +1233,14 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             item.choice_count = 3U;
             item.choices = {"LOW", "MEDIUM", "HIGH"};
             item.value_text = quality_text(item.choice_index);
+            item.description = "RESTART_REQUIRED";
             break;
         case SettingsRowId::model_quality:
             item.choice_index = quality_index(current.graphics.model_quality);
             item.choice_count = 3U;
             item.choices = {"LOW", "MEDIUM", "HIGH"};
             item.value_text = quality_text(item.choice_index);
+            item.description = "RESTART_REQUIRED";
             break;
         case SettingsRowId::vsync:
             item.choice_index = current.graphics.vsync ? 1U : 0U;
@@ -1624,6 +1690,12 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.fullscreen ? -1 : 1);
     case SettingsRowId::invert_mouse:
         return adjust_row(target.row, draft.main.invert_mouse ? -1 : 1);
+    case SettingsRowId::show_skins:
+        return adjust_row(target.row, draft.main.show_skins ? -1 : 1);
+    case SettingsRowId::show_other_skins:
+        return adjust_row(target.row, draft.main.show_other_skins ? -1 : 1);
+    case SettingsRowId::weapon_motion:
+        return adjust_row(target.row, draft.main.weapon_motion ? -1 : 1);
     case SettingsRowId::favorite_server:
         return adjust_row(target.row, favorite_server_ ? -1 : 1);
     case SettingsRowId::vsync:
@@ -1747,10 +1819,26 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         return true;
     }
 
-    if (row == SettingsRowId::master_volume || row == SettingsRowId::music_volume ||
-        row == SettingsRowId::fullscreen || row == SettingsRowId::invert_mouse) {
+    if (row == SettingsRowId::language || row == SettingsRowId::master_volume ||
+        row == SettingsRowId::music_volume ||
+        row == SettingsRowId::fullscreen || row == SettingsRowId::invert_mouse ||
+        row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
+        row == SettingsRowId::weapon_motion) {
         auto main = before.main;
         switch (row) {
+        case SettingsRowId::language: {
+            if (environment_.languages.empty()) return false;
+            const auto found = std::ranges::find(environment_.languages,
+                                                 main.language,
+                                                 &SettingsLanguageOption::locale);
+            const auto current_index = found == environment_.languages.end()
+                                           ? 0U
+                                           : static_cast<std::size_t>(std::distance(
+                                                 environment_.languages.begin(), found));
+            main.language = environment_.languages[shifted_index(
+                current_index, environment_.languages.size(), direction)].locale;
+            break;
+        }
         case SettingsRowId::master_volume:
             main.master_volume =
                 std::clamp(main.master_volume + (direction < 0 ? -0.2 : 0.2), 0.0, 1.0);
@@ -1766,6 +1854,15 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             break;
         case SettingsRowId::invert_mouse:
             main.invert_mouse = direction > 0;
+            break;
+        case SettingsRowId::show_skins:
+            main.show_skins = direction > 0;
+            break;
+        case SettingsRowId::show_other_skins:
+            main.show_other_skins = direction > 0;
+            break;
+        case SettingsRowId::weapon_motion:
+            main.weapon_motion = direction > 0;
             break;
         default:
             break;

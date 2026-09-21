@@ -94,6 +94,11 @@ param(
     [ValidateRange(0, 30000)]
     [int] $SettleMilliseconds = 500,
 
+    # Account restoration can apply saved display settings after window creation.
+    # Let it settle before imposing capture dimensions and click coordinates.
+    [ValidateRange(0, 30000)]
+    [int] $StartupDelayMilliseconds = 0,
+
     [ValidateRange(1, 60)]
     [int] $ShutdownTimeoutSeconds = 5,
 
@@ -410,18 +415,31 @@ namespace BattleSpades.VisualCapture
             // Win32 paths, so posting WM_LBUTTON* alone can click wherever the
             // user's cursor happened to be. Move the cursor to the requested
             // client point and inject a real button transition instead.
-            NativePoint screen = new NativePoint { X = x, Y = y };
-            if (!ClientToScreen(window, ref screen) ||
-                !SetCursorPos(screen.X, screen.Y))
-                return false;
-            SetForegroundWindow(window);
-            System.Threading.Thread.Sleep(30);
-            const uint MouseLeftDown = 0x0002;
-            const uint MouseLeftUp = 0x0004;
-            mouse_event(MouseLeftDown, 0, 0, 0, UIntPtr.Zero);
-            System.Threading.Thread.Sleep(30);
-            mouse_event(MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
-            return true;
+            uint targetThread = GetWindowThreadProcessId(window, IntPtr.Zero);
+            uint currentThread = GetCurrentThreadId();
+            bool attached = targetThread != 0 && targetThread != currentThread &&
+                            AttachThreadInput(currentThread, targetThread, true);
+            try
+            {
+                SetActiveWindow(window);
+                SetFocus(window);
+                SetForegroundWindow(window);
+                NativePoint screen = new NativePoint { X = x, Y = y };
+                if (!ClientToScreen(window, ref screen) ||
+                    !SetCursorPos(screen.X, screen.Y))
+                    return false;
+                System.Threading.Thread.Sleep(60);
+                const uint MouseLeftDown = 0x0002;
+                const uint MouseLeftUp = 0x0004;
+                mouse_event(MouseLeftDown, 0, 0, 0, UIntPtr.Zero);
+                System.Threading.Thread.Sleep(60);
+                mouse_event(MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
+                return true;
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(currentThread, targetThread, false);
+            }
         }
 
         public static bool PostVirtualKey(IntPtr window, int virtualKey)
@@ -642,6 +660,9 @@ try {
         throw "Timed out waiting for a visible top-level window owned by PID $($process.Id)$titleDetail."
     }
 
+    if ($StartupDelayMilliseconds -gt 0) {
+        Start-Sleep -Milliseconds $StartupDelayMilliseconds
+    }
     [BattleSpades.VisualCapture.NativeMethods]::BringForward($windowHandle)
     if ($ClientWidth -ne 0) {
         Set-ExactClientSize -WindowHandle $windowHandle -Width $ClientWidth -Height $ClientHeight
@@ -661,6 +682,7 @@ try {
         'F10' = 0x79
         'TAB' = 0x09
         'ENTER' = 0x0D
+        'ESCAPE' = 0x1B
         'SPACE' = 0x20
         'LEFT' = 0x25
         'UP' = 0x26

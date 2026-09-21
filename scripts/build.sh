@@ -39,6 +39,7 @@ case "$(uname -s)" in
 esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
 preset="native-${platform}-${profile}"
 configuration="RelWithDebInfo"
 if [[ "$profile" == "release" ]]; then

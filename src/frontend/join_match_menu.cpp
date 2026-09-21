@@ -42,6 +42,14 @@ constexpr std::int32_t scale{MainMenuModel::subpixels_per_pixel};
                 height * scale};
 }
 
+// InputServer.py uses the full-width edit box and Connect row below it. The
+// native Favourites extension shares that row instead of overflowing the
+// retail three-button frame with a fourth stacked control.
+constexpr Rect direct_connect_input = retail_bottom_left(267, 325, 270, 100);
+constexpr Rect direct_connect_button = retail_text_button(269, 308, 127, 58);
+constexpr Rect direct_favourite_button = retail_text_button(404, 308, 127, 58);
+constexpr Rect direct_back_button = retail_bottom_left(248, 32, 78, 26);
+
 [[nodiscard]] constexpr Widget widget(std::uint32_t id, Rect bounds) noexcept {
     return Widget{WidgetId{id}, bounds, {}};
 }
@@ -78,8 +86,16 @@ constexpr std::int32_t scale{MainMenuModel::subpixels_per_pixel};
 }
 
 [[nodiscard]] constexpr bool uses_region(ServerBrowserSource source) noexcept {
-    return source == ServerBrowserSource::all || source == ServerBrowserSource::official ||
-           source == ServerBrowserSource::community;
+    // Only Official exposes region tabs. All/Community must not silently
+    // inherit an invisible filter from a previously selected Official tab.
+    return source == ServerBrowserSource::official;
+}
+
+[[nodiscard]] bool same_region(std::string_view left, std::string_view right) noexcept {
+    const auto canonical = [](char character) {
+        return character == '-' ? '_' : ascii_lower(character);
+    };
+    return std::ranges::equal(left, right, {}, canonical, canonical);
 }
 
 [[nodiscard]] constexpr std::uint64_t next_generation(std::uint64_t generation) noexcept {
@@ -268,44 +284,85 @@ void DirectConnectMenuModel::pointer_move(std::optional<ui::Point> point) noexce
 void DirectConnectMenuModel::pointer_press(std::optional<ui::Point> point) noexcept {
     pointer_ = point;
     pointer_down_ = point.has_value();
+    armed_action_.reset();
+    if (!point.has_value()) {
+        return;
+    }
+    if (retail_hit_test(direct_connect_input, *point)) {
+        input_focused_ = true;
+        return;
+    }
+
+    input_focused_ = false;
+    if (retail_hit_test(direct_connect_button, *point) && !endpoint_.empty()) {
+        armed_action_ = DirectConnectActionKind::connect;
+    } else if (retail_hit_test(direct_favourite_button, *point) && !endpoint_.empty()) {
+        armed_action_ = DirectConnectActionKind::add_favourite;
+    } else if (retail_hit_test(direct_back_button, *point)) {
+        armed_action_ = DirectConnectActionKind::back;
+    }
 }
 
 std::optional<DirectConnectAction>
 DirectConnectMenuModel::pointer_release(std::optional<ui::Point> point) noexcept {
     pointer_ = point;
     const auto was_down = std::exchange(pointer_down_, false);
-    if (!point.has_value())
+    const auto armed = std::exchange(armed_action_, std::nullopt);
+    if (!point.has_value()) {
         return std::nullopt;
-    constexpr auto input = retail_bottom_left(267, 325, 270, 100);
-    constexpr auto connect = retail_text_button(269, 308, 262, 58);
-    constexpr auto favourite = retail_text_button(269, 245, 262, 58);
-    constexpr auto back = retail_bottom_left(248, 32, 78, 26);
-    if (retail_hit_test(input, *point)) {
+    }
+    if (retail_hit_test(direct_connect_input, *point)) {
         input_focused_ = true;
         return std::nullopt;
     }
     input_focused_ = false;
-    if (!was_down)
+    if (!was_down || !armed.has_value()) {
         return std::nullopt;
-    if (retail_hit_test(connect, *point))
+    }
+    if (*armed == DirectConnectActionKind::connect &&
+        retail_hit_test(direct_connect_button, *point)) {
         return submit();
-    if (retail_hit_test(favourite, *point))
+    }
+    if (*armed == DirectConnectActionKind::add_favourite &&
+        retail_hit_test(direct_favourite_button, *point)) {
         return submit_favourite();
-    if (retail_hit_test(back, *point)) {
+    }
+    if (*armed == DirectConnectActionKind::back &&
+        retail_hit_test(direct_back_button, *point)) {
         return DirectConnectAction{DirectConnectActionKind::back, {}};
     }
     return std::nullopt;
 }
 
 bool DirectConnectMenuModel::append_character(char character) {
-    const auto byte = static_cast<unsigned char>(character);
-    if (!input_focused_ || endpoint_.size() >= maximum_endpoint_bytes ||
-        !(std::isalnum(byte) != 0 || character == '.' || character == '-' || character == ':')) {
+    return append_text(std::string_view{&character, 1U});
+}
+
+bool DirectConnectMenuModel::append_text(std::string_view text) {
+    const auto valid = [](char character) {
+        return (character >= 'a' && character <= 'z') ||
+               (character >= 'A' && character <= 'Z') ||
+               (character >= '0' && character <= '9') ||
+               character == '.' || character == '-' || character == ':';
+    };
+    if (!input_focused_ || text.empty() ||
+        text.size() > maximum_endpoint_bytes - endpoint_.size() ||
+        !std::ranges::all_of(text, valid)) {
         return false;
     }
-    endpoint_.push_back(character);
+    endpoint_.append(text);
     error_.clear();
     return true;
+}
+
+bool DirectConnectMenuModel::paste_text(std::string_view text) {
+    if (!input_focused_) return false;
+    const auto first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string_view::npos) return false;
+    text = text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1U);
+    if (append_text(text)) return true;
+    set_error("Paste a host or IP address with an optional :port (up to 255 characters).");
+    return false;
 }
 
 bool DirectConnectMenuModel::erase_character() noexcept {
@@ -347,6 +404,13 @@ std::optional<DirectConnectAction> DirectConnectMenuModel::submit_favourite() co
 
 void DirectConnectMenuModel::set_error(std::string message) {
     error_ = std::move(message);
+    message_is_error_ = true;
+    input_focused_ = true;
+}
+
+void DirectConnectMenuModel::set_notice(std::string message) {
+    error_ = std::move(message);
+    message_is_error_ = false;
     input_focused_ = true;
 }
 
@@ -354,37 +418,43 @@ std::string_view DirectConnectMenuModel::error() const noexcept {
     return error_;
 }
 
+bool DirectConnectMenuModel::message_is_error() const noexcept {
+    return message_is_error_;
+}
+
 WidgetVisualState DirectConnectMenuModel::connect_state() const noexcept {
-    constexpr auto bounds = retail_text_button(269, 308, 262, 58);
     if (endpoint_.empty())
         return WidgetVisualState::disabled;
-    if (!pointer_.has_value() || !retail_hit_test(bounds, *pointer_)) {
+    if (!pointer_.has_value() || !retail_hit_test(direct_connect_button, *pointer_)) {
         return WidgetVisualState::normal;
     }
-    return pointer_down_ ? WidgetVisualState::pressed : WidgetVisualState::hovered;
+    return pointer_down_ && armed_action_ == DirectConnectActionKind::connect
+               ? WidgetVisualState::pressed
+               : WidgetVisualState::hovered;
 }
 
 WidgetVisualState DirectConnectMenuModel::favourite_state() const noexcept {
-    constexpr auto bounds = retail_text_button(269, 245, 262, 58);
     if (endpoint_.empty())
         return WidgetVisualState::disabled;
-    if (!pointer_.has_value() || !retail_hit_test(bounds, *pointer_)) {
+    if (!pointer_.has_value() || !retail_hit_test(direct_favourite_button, *pointer_)) {
         return WidgetVisualState::normal;
     }
-    return pointer_down_ ? WidgetVisualState::pressed : WidgetVisualState::hovered;
+    return pointer_down_ && armed_action_ == DirectConnectActionKind::add_favourite
+               ? WidgetVisualState::pressed
+               : WidgetVisualState::hovered;
 }
 
 WidgetVisualState DirectConnectMenuModel::back_state() const noexcept {
-    constexpr auto bounds = retail_bottom_left(248, 32, 78, 26);
-    if (!pointer_.has_value() || !retail_hit_test(bounds, *pointer_)) {
+    if (!pointer_.has_value() || !retail_hit_test(direct_back_button, *pointer_)) {
         return WidgetVisualState::normal;
     }
-    return pointer_down_ ? WidgetVisualState::pressed : WidgetVisualState::hovered;
+    return pointer_down_ && armed_action_ == DirectConnectActionKind::back
+               ? WidgetVisualState::pressed
+               : WidgetVisualState::hovered;
 }
 
 bool DirectConnectMenuModel::input_hovered() const noexcept {
-    constexpr auto bounds = retail_bottom_left(267, 325, 270, 100);
-    return pointer_.has_value() && retail_hit_test(bounds, *pointer_);
+    return pointer_.has_value() && retail_hit_test(direct_connect_input, *pointer_);
 }
 
 std::string ServerBrowserEntry::identifier() const {
@@ -524,9 +594,7 @@ ServerBrowserRegion ServerBrowserModel::region() const noexcept {
 }
 
 bool ServerBrowserModel::region_tabs_visible() const noexcept {
-    // `serverMenu.py` exposes tabs only for INTERNET_OFFICIAL even though the
-    // retained region is also passed to All and Community discovery calls.
-    return source_ == ServerBrowserSource::official;
+    return uses_region(source_);
 }
 
 ServerBrowserRefreshRequest ServerBrowserModel::begin_refresh() {
@@ -713,12 +781,7 @@ bool ServerBrowserModel::visible(const ServerBrowserEntry& server) const noexcep
         return false;
     }
     if (uses_region(source_) && !server.region.empty() &&
-        server.region != localization_key(region_)) {
-        auto normalized_region = std::string{localization_key(region_)};
-        std::ranges::transform(normalized_region, normalized_region.begin(), ascii_lower);
-        if (server.region != normalized_region)
-            return false;
-    }
+        !same_region(server.region, localization_key(region_))) return false;
     switch (source_) {
     case ServerBrowserSource::all:
         return true;

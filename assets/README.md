@@ -3,7 +3,13 @@
 `original/` is a local, immutable compatibility snapshot of the retail
 content layout. It is ignored by Git and excluded from every source and binary
 release. Runtime code must not rewrite it. Generated GPU-ready caches belong
-in `generated/`; locally authored maps and UGC projects belong in `user/`.
+in disposable output. The native Map Creator stores authored project triplets
+and optional previews under `<settings directory>/hosted_ugc/maps/`; see the
+[Map Creator guide](../docs/UGC_MAP_CREATOR.md).
+
+`client/` contains the maintained native UI, fonts and cosmetic resources.
+Keep catalogues, attribution, per-pack licences and resource hashes with those
+assets. They are not disposable because they were imported or are untracked.
 
 Player releases contain `BattleSpadesAssetInstaller` and
 `asset-manifest.json`. On first launch, the client checks the imported tree and
@@ -16,7 +22,7 @@ never downloaded by or embedded in BattleSpadesClient.
 Synchronize the canonical pack:
 
 ```powershell
-py -3 tools/assets.py sync --source G:\AoSRevival\aos-nonsteam\src
+py -3 tools/assets.py sync --source 'C:\Path\To\Owned\AceOfSpades\src'
 ```
 
 Verify every path, size, and SHA-256 hash:

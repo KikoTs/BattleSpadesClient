@@ -25,7 +25,7 @@ class_prefab_options(std::uint8_t class_id) noexcept;
 /** Build a valid one-choice-per-row selection, including three prefabs. */
 [[nodiscard]] ClassSelection default_class_selection(std::uint8_t class_id);
 
-/** Build a selection from four explicit class row indices. */
+/** Build from explicit row/construct choices; never refill deselected prefabs. */
 [[nodiscard]] ClassSelection make_class_selection(
     std::uint8_t class_id,
     const std::array<std::size_t, 4U>& option_indices,

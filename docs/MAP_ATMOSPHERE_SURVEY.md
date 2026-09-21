@@ -1,5 +1,7 @@
 # Map atmosphere survey
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Measured evidence behind the per-map override table in
 `src/world/map_atmosphere.cpp` and the emissive palettes in
 `src/world/emissive_set.cpp`.

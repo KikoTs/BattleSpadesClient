@@ -489,7 +489,7 @@ ui::DrawList DirectConnectPresentation::build(const DirectConnectMenuModel& menu
 
 ui::DrawList DirectConnectPresentation::build_layer(const DirectConnectMenuModel& menu) const {
     ui::DrawList list;
-    list.reserve(22U);
+    list.reserve(30U);
     list.push(sprite(join_match_assets::three_button_frame,
                      bottom_left(231.0, 217.5, 339.0, 253.0),
                      DrawSpace::design_pixels,
@@ -502,46 +502,86 @@ ui::DrawList DirectConnectPresentation::build_layer(const DirectConnectMenuModel
                      TextureFilter::linear,
                      UiTextureAnchor::center,
                      source_scale));
+
+    // Retail InputServer uses a raw dark quad here. Keep that source geometry,
+    // but add a one-pixel focus rim and an inset so the field reads as an
+    // intentional server-address control instead of an empty grey slab.
+    const auto input_rim = menu.input_focused()
+                               ? ColorRgba8{230U, 202U, 68U, 255U}
+                               : menu.input_hovered() ? ColorRgba8{154U, 145U, 82U, 255U}
+                                                      : ColorRgba8{82U, 80U, 56U, 255U};
     list.push(sprite(white_pixel,
                      DrawRect{267.0, 175.0, 270.0, 100.0},
                      DrawSpace::design_pixels,
                      TextureFilter::nearest,
                      UiTextureAnchor::top_left,
                      1.0,
-                     color(menu.input_hovered() || menu.input_focused()
-                               ? ColorRgba8{92U, 88U, 72U, 255U}
-                               : ColorRgba8{65U, 62U, 52U, 255U})));
-    const auto endpoint = menu.endpoint().empty() ? std::string_view{"IP:PORT"} : menu.endpoint();
-    list.push(text(endpoint,
+                     color(input_rim)));
+    list.push(sprite(white_pixel,
+                     DrawRect{270.0, 178.0, 264.0, 94.0},
+                     DrawSpace::design_pixels,
+                     TextureFilter::nearest,
+                     UiTextureAnchor::top_left,
+                     1.0,
+                     color(ColorRgba8{38U, 38U, 32U, 255U})));
+    list.push(text("SERVER_LOCATION",
                    "fonts/A750-Sans-Medium.ttf",
-                   DrawRect{274.0, 182.0, 256.0, 86.0},
-                   22.0,
-                   menu.endpoint().empty() ? ColorRgba8{174U, 166U, 133U, 255U} : menu_text,
+                   DrawRect{280.0, 184.0, 244.0, 20.0},
+                   12.0,
+                   ColorRgba8{230U, 202U, 68U, 255U},
+                   HorizontalTextAlignment::left,
+                   VerticalTextAlignment::retail_center,
+                   TextTransform::uppercase));
+
+    constexpr std::size_t visible_endpoint_characters{23U};
+    auto endpoint = menu.endpoint();
+    if (endpoint.size() > visible_endpoint_characters) {
+        endpoint.remove_prefix(endpoint.size() - visible_endpoint_characters);
+    }
+    const auto displayed_endpoint = endpoint.empty() ? std::string_view{"IP:PORT OR HOSTNAME"}
+                                                     : endpoint;
+    list.push(text(displayed_endpoint,
+                   "fonts/A750-Sans-Medium.ttf",
+                   DrawRect{280.0, 205.0, 244.0, 44.0},
+                   20.0,
+                   menu.endpoint().empty() ? ColorRgba8{151U, 146U, 119U, 255U} : menu_text,
+                   HorizontalTextAlignment::left,
+                   VerticalTextAlignment::retail_center));
+    list.push(text("Example: play.example.net:32887",
+                   "fonts/A750-Sans-Medium.ttf",
+                   DrawRect{280.0, 249.0, 244.0, 16.0},
+                   9.0,
+                   ColorRgba8{151U, 146U, 119U, 255U},
                    HorizontalTextAlignment::left,
                    VerticalTextAlignment::retail_center));
     if (menu.input_focused()) {
-        const auto caret_x =
-            std::min(526.0, 278.0 + static_cast<double>(menu.endpoint().size()) * 11.0);
+        const auto caret_x = std::min(
+            522.0, 281.0 + static_cast<double>(endpoint.size()) * 10.25);
         list.push(sprite(white_pixel,
-                         DrawRect{caret_x, 207.0, 2.0, 36.0},
+                         DrawRect{caret_x, 215.0, 2.0, 28.0},
                          DrawSpace::design_pixels,
                          TextureFilter::nearest,
                          UiTextureAnchor::top_left,
                          1.0,
                          color(menu_text)));
     }
-    append_text_button(list, DrawRect{269.0, 292.0, 262.0, 58.0}, "CONNECT", menu.connect_state());
     append_text_button(
-        list, DrawRect{269.0, 355.0, 262.0, 58.0}, "ADD FAVORITE", menu.favourite_state(), 22.0);
+        list, DrawRect{269.0, 292.0, 127.0, 58.0}, "CONNECT", menu.connect_state(), 25.0);
+    append_text_button(list,
+                       DrawRect{404.0, 292.0, 127.0, 58.0},
+                       "FAVORITE",
+                       menu.favourite_state(),
+                       18.0);
     append_back_item(list, 248.0, 32.0, 26.0, menu.back_state());
     if (!menu.error().empty()) {
         auto error = text(menu.error(),
                           "fonts/A750-Sans-Medium.ttf",
-                          DrawRect{250.0, 360.0, 300.0, 45.0},
-                          13.0,
-                          ColorRgba8{255U, 130U, 100U, 255U},
+                          DrawRect{249.0, 352.0, 302.0, 28.0},
+                          11.0,
+                          menu.message_is_error() ? ColorRgba8{255U, 130U, 100U, 255U}
+                                                  : ColorRgba8{188U, 231U, 116U, 255U},
                           HorizontalTextAlignment::center,
-                          VerticalTextAlignment::top);
+                          VerticalTextAlignment::retail_center);
         error.maximum_lines = 2U;
         error.line_spacing_pixels = 2.0;
         list.push(std::move(error));

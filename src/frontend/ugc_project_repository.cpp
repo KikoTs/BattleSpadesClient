@@ -87,6 +87,43 @@ constexpr std::array modes{
 
 } // namespace
 
+namespace {
+[[nodiscard]] std::optional<bool> revival_publication_current(const std::filesystem::path& sidecar) {
+    auto path = sidecar;
+    path += ".publication.json";
+    std::error_code error;
+    if (std::filesystem::is_symlink(path, error) || !std::filesystem::is_regular_file(path, error) ||
+        std::filesystem::file_size(path, error) > 16384U || error) return std::nullopt;
+    try {
+        std::ifstream input{path, std::ios::binary};
+        const auto receipt = nlohmann::json::parse(input);
+        const auto& files = receipt.at("files");
+        if (!files.is_array() || files.size() < 3U || files.size() > 4U) return std::nullopt;
+        std::set<std::string> expected;
+        std::set<std::string> allowed;
+        for (const auto extension : {".ugc", ".vxl", ".txt", ".png"}) {
+            auto sibling = sidecar;
+            sibling.replace_extension(extension);
+            allowed.insert(sibling.filename().string());
+            if (std::string_view{extension} != ".png" || std::filesystem::exists(sibling))
+                expected.insert(sibling.filename().string());
+        }
+        bool current = true;
+        for (const auto& file : files) {
+            const auto name = file.at("filename").get<std::string>();
+            if (allowed.erase(name) != 1U) return std::nullopt;
+            expected.erase(name);
+            const auto sibling = sidecar.parent_path() / name;
+            if (!std::filesystem::is_regular_file(sibling) || std::filesystem::is_symlink(sibling) ||
+                std::filesystem::file_size(sibling) != file.at("size").get<std::uintmax_t>() ||
+                std::to_string(std::filesystem::last_write_time(sibling).time_since_epoch().count()) !=
+                    file.at("modified_ticks").get<std::string>()) current = false;
+        }
+        return expected.empty() && current;
+    } catch (...) { return std::nullopt; }
+}
+} // namespace
+
 UgcProjectScanResult scan_ugc_projects(const std::filesystem::path& maps_root) {
     UgcProjectScanResult result;
     std::error_code code;
@@ -105,6 +142,10 @@ UgcProjectScanResult scan_ugc_projects(const std::filesystem::path& maps_root) {
          !code && iterator != end && result.maps.size() < maximum_projects;
          iterator.increment(code)) {
         const auto& entry = *iterator;
+        if (entry.is_symlink(code)) {
+            result.warnings.push_back(entry.path().filename().string() + ": linked projects are not supported");
+            continue;
+        }
         if (!entry.is_regular_file(code) || code || entry.path().extension() != ".ugc") {
             code.clear();
             continue;
@@ -159,6 +200,10 @@ UgcProjectScanResult scan_ugc_projects(const std::filesystem::path& maps_root) {
                         : project_modified(document)
                             ? UgcLocalMapState::changed_since_publish
                             : UgcLocalMapState::published;
+            if (has_vxl) {
+                if (const auto current = revival_publication_current(entry.path()))
+                    map.state = *current ? UgcLocalMapState::published : UgcLocalMapState::changed_since_publish;
+            }
             result.maps.push_back(std::move(map));
         } catch (const std::exception& exception) {
             result.warnings.push_back(entry.path().filename().string() + ": " + exception.what());
@@ -195,6 +240,7 @@ bool delete_ugc_project(const std::filesystem::path& maps_root,
         constexpr std::array extensions{
             std::string_view{".ugc"}, std::string_view{".vxl"},
             std::string_view{".txt"}, std::string_view{".png"},
+            std::string_view{".ugc.publication.json"},
         };
         bool removed{};
         for (const auto extension : extensions) {

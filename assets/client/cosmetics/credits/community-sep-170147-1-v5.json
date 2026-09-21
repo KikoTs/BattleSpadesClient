@@ -1,0 +1,60 @@
+{
+  "name": "M60",
+  "source": "https://gamebanana.com/mods/170147",
+  "archives": [
+    {
+      "archive": "170147\\208356-m60_7.zip",
+      "extracted": "170147\\files-208356",
+      "sha256": "500eeacd31c739d943733d3f9960a236eaf722fd4dbca7630f60ae108401e708",
+      "listing": [
+        "SMG/Magazine.kv6",
+        "SMG/Sight1.kv6",
+        "SMG/Sight2.kv6",
+        "SMG/Sounds/",
+        "SMG/Sounds/Fire1.wav",
+        "SMG/Sounds/Fire2.wav",
+        "SMG/Sounds/Fire3.wav",
+        "SMG/Sounds/Fire4.wav",
+        "SMG/Sounds/FireFar.wav",
+        "SMG/Sounds/FireLocal1.wav",
+        "SMG/Sounds/FireLocal2.wav",
+        "SMG/Sounds/FireLocal3.wav",
+        "SMG/Sounds/FireLocal4.wav",
+        "SMG/Sounds/FireMedium1.wav",
+        "SMG/Sounds/FireMedium2.wav",
+        "SMG/Sounds/FireMedium3.wav",
+        "SMG/Sounds/FireMedium4.wav",
+        "SMG/Weapon.kv6",
+        "SMG/WeaponNoMagazine.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "no special group",
+      "_aAuthors": [
+        {
+          "_sRole": "Voxel Modeler ",
+          "_sName": "SpongePierre"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

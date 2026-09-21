@@ -51,6 +51,7 @@ target_include_directories(
 target_link_libraries(aos_assets PUBLIC BattleSpades::BuildOptions)
 aos_enable_strict_warnings(aos_assets)
 
+add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/angelscript" "${PROJECT_BINARY_DIR}/third_party/angelscript")
 add_library(
     aos_world
     STATIC
@@ -62,6 +63,7 @@ add_library(
         world/disguise_models.cpp
         world/gameplay_debug_lab.cpp
         world/kv6_model.cpp
+        world/cosmetic_preview.cpp
         world/prefab_placement.cpp
         world/ugc_prefab_control.cpp
         world/player_inventory.cpp
@@ -82,6 +84,9 @@ add_library(
         world/footstep_audio.cpp
         world/remote_character_audio.cpp
         world/weapon_fire_sound.cpp
+        world/weapon_presentation.cpp
+        world/scripted_weapon.cpp
+        world/weapon_variants.cpp
         world/weapon_runtime.cpp
         world/weapon_state.cpp
         world/tutorial_lessons.cpp
@@ -106,7 +111,7 @@ add_library(
 )
 add_library(BattleSpades::World ALIAS aos_world)
 target_include_directories(aos_world PUBLIC "${PROJECT_SOURCE_DIR}/include")
-target_link_libraries(aos_world PUBLIC BattleSpades::BuildOptions)
+target_link_libraries(aos_world PUBLIC BattleSpades::BuildOptions PRIVATE nlohmann_json::nlohmann_json aos_angelscript)
 aos_enable_strict_warnings(aos_world)
 
 add_library(
@@ -184,6 +189,7 @@ add_library(
         frontend/pause_menu.cpp
         frontend/player_progression.cpp
         frontend/player_profile_menu.cpp
+        frontend/inventory_menu.cpp
         frontend/player_profile_presentation.cpp
         frontend/player_name_projection.cpp
         frontend/quick_play_menu.cpp
@@ -275,6 +281,18 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     find_package(ZLIB REQUIRED)
     find_package(unofficial-enet CONFIG REQUIRED)
 
+    # Native HTML/CSS-style menus share the existing renderer and asset tree.
+    # Pin the release archive; no browser process or runtime download is used.
+    include(FetchContent)
+    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
+    FetchContent_Declare(rmlui
+        URL https://codeload.github.com/mikke89/RmlUi/tar.gz/refs/tags/6.3
+        URL_HASH SHA256=d977298bb6147610e5984d5db85ddf284020d655a8713913f6982074f1dbdede
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(rmlui)
+
     add_library(
         aos_asset_install
         STATIC
@@ -352,10 +370,15 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_local_host
         STATIC
             platform/local_server_process.cpp
+            platform/relay_host_tunnel.cpp
     )
     add_library(BattleSpades::LocalHost ALIAS aos_local_host)
     target_include_directories(aos_local_host PUBLIC "${PROJECT_SOURCE_DIR}/include")
-    target_link_libraries(aos_local_host PUBLIC BattleSpades::BuildOptions)
+    target_link_libraries(
+        aos_local_host
+        PUBLIC BattleSpades::BuildOptions
+        PRIVATE unofficial-sodium::sodium nlohmann_json::nlohmann_json
+    )
     if(WIN32)
         target_link_libraries(aos_local_host PRIVATE ws2_32)
     endif()
@@ -439,6 +462,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     aos_enable_strict_warnings(aos_protocol168_deployable_live_smoke)
 
+    add_executable(aos_protocol168_local_gameplay_smoke
+        "${PROJECT_SOURCE_DIR}/tools/protocol168_local_gameplay_smoke.cpp")
+    target_link_libraries(aos_protocol168_local_gameplay_smoke PRIVATE
+        BattleSpades::NetworkEnet BattleSpades::Frontend)
+    aos_enable_strict_warnings(aos_protocol168_local_gameplay_smoke)
+
     add_executable(
         aos_protocol168_movement_parity
         "${PROJECT_SOURCE_DIR}/tools/protocol168_movement_parity.cpp"
@@ -495,6 +524,14 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::NetworkEnet
     )
     aos_enable_strict_warnings(aos_local_server_host_smoke)
+    add_executable(aos_cosmetic_replication_smoke "${PROJECT_SOURCE_DIR}/tools/cosmetic_replication_smoke.cpp")
+    target_link_libraries(aos_cosmetic_replication_smoke PRIVATE BattleSpades::LocalHost BattleSpades::NativeSteam BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_cosmetic_replication_smoke)
+
+    add_executable(aos_social_lobby_live_smoke "${PROJECT_SOURCE_DIR}/tools/social_lobby_live_smoke.cpp")
+    target_link_libraries(aos_social_lobby_live_smoke PRIVATE
+        BattleSpades::LocalHost BattleSpades::NativeSteam BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_social_lobby_live_smoke)
 
     add_executable(
         aos_ugc_local_server_host_smoke
@@ -619,6 +656,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         STATIC
             frontend/native_texture_preloader.cpp
             frontend/ugc_preview_writer.cpp
+            frontend/inventory_session.cpp
+            frontend/scripted_weapon_images.cpp
+            frontend/inventory_view.cpp
+            frontend/cosmetic_icons.cpp
             frontend/native_frontend_module.cpp
     )
     add_library(BattleSpades::FrontendNative ALIAS aos_frontend_native)
@@ -647,8 +688,15 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::LocalHost
             BattleSpades::NetworkEnet
             BattleSpades::World
+            unofficial-sodium::sodium
+            RmlUi::RmlUi
     )
     aos_enable_strict_warnings(aos_frontend_native)
+    if(MSVC)
+        # native_frontend_module is intentionally a composition boundary and
+        # Debug codegen can exceed COFF's default section count.
+        target_compile_options(aos_frontend_native PRIVATE /bigobj)
+    endif()
 
     # Shader binaries are checked in because shaderc's compiler toolchain need not
     # match the application ABI. Keeping them beside their source also makes a
@@ -761,6 +809,17 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             "${CMAKE_COMMAND}" -E copy_directory
             "${PROJECT_SOURCE_DIR}/assets/client"
             "$<TARGET_FILE_DIR:BattleSpadesClient>/assets/client"
+        # The executable is also a supported developer launch point. Keep the
+        # external UTF-8 packs next to it so launching from out/build behaves
+        # exactly like a staged or installed client.
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_directory
+            "${PROJECT_SOURCE_DIR}/config/localization"
+            "$<TARGET_FILE_DIR:BattleSpadesClient>/localization"
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different
+            "${PROJECT_SOURCE_DIR}/config/ui-layout.json"
+            "$<TARGET_FILE_DIR:BattleSpadesClient>/ui-layout.json"
         VERBATIM
     )
     if(WIN32)

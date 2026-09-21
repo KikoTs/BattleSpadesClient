@@ -1,11 +1,11 @@
-$input a_position, a_color0, a_color1, a_color2, a_texcoord0
+$input a_position, a_color0, a_color1, a_color2, a_texcoord0, a_texcoord1
 $output v_color0, v_surface, v_world, v_shade, v_shadow, v_placed, v_retail_uv, v_retail_meta
 
 #include <bgfx_shader.sh>
 
 uniform vec4 u_cameraPosition;
 uniform vec4 u_fogParams;
-/** World -> shadow-map clip space for the sun's single cascade. */
+/** World -> shadow texture coordinates, including the backend's depth/Y convention. */
 uniform mat4 u_shadowMatrix;
 // x: shading mode. 0 = passthrough (colour already carries its shade),
 // 1 = classic (reproduce the baked retail tables per pixel),
@@ -16,6 +16,12 @@ void main()
 {
     gl_Position = mul(u_modelViewProj, vec4(a_position, 1.0));
     v_color0 = a_color0;
+    if (u_lightParams.x > 0.5 && u_lightParams.x < 1.5 && a_color2.a > 0.5)
+    {
+        // vxl.pyd sub_100051C0 writes truncated RGB bytes BEFORE interpolation.
+        // The VXL light byte is baked illumination, not gl_Vertex.w's flare bypass.
+        v_color0.rgb = floor(a_color0.rgb * 255.0 * a_texcoord1 + 0.0001) / 255.0;
+    }
 
     // Detached voxel components, projectiles and the viewmodel all live in
     // local mesh space, so both fog and lighting must be evaluated after the
@@ -34,6 +40,11 @@ void main()
     else if (face == 3) { normal = vec3( 0.0,  1.0,  0.0); }
     else if (face == 4) { normal = vec3( 0.0,  0.0, -1.0); }
     else                { normal = vec3( 0.0,  0.0,  1.0); }
+    if (u_lightParams.x > 0.5 && u_lightParams.x < 1.5 &&
+        a_color2.a > 0.1 && a_color2.a < 0.5)
+    {
+        normal = a_texcoord0.xyz;
+    }
     normal = normalize(mul(u_model[0], vec4(normal, 0.0)).xyz);
 
     float occlusion = a_color1.y * 255.0 + 0.5;
@@ -75,5 +86,7 @@ void main()
 
     // Light from placed blocks, baked per vertex by the mesher and interpolated
     // across the face for free.
-    v_placed = a_color2.rgb;
+    // Retail fog is radial distance computed per vertex, including homogeneous w=1.
+    vec3 fog_offset = v_world - u_cameraPosition.xyz;
+    v_placed = vec4(a_color2.rgb, sqrt(dot(fog_offset, fog_offset) + 1.0));
 }

@@ -1,5 +1,7 @@
 # Custom Match Frontend Recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This note records the retail evidence behind the renderer-neutral Custom Match
 lobby-list implementation. Retail coordinates use an 800x600 bottom-left
 canvas; native draw geometry is the equivalent top-left canvas.

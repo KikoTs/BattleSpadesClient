@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace battlespades::frontend {
@@ -137,6 +138,8 @@ private:
     UgcEditorDiscoveryState discovery_state_{UgcEditorDiscoveryState::offline};
     ui::FocusNavigator focus_{};
     std::optional<ui::WidgetId> hovered_{};
+    std::optional<ui::WidgetId> pressed_control_{};
+    std::optional<std::string> pressed_lobby_id_{};
     bool pointer_down_{};
 };
 
@@ -217,6 +220,10 @@ public:
     static constexpr std::size_t maximum_title_code_units{19U};
 
     UgcEditorLobbyModel();
+    void set_host_authority(bool host) noexcept;
+    [[nodiscard]] bool apply_configuration(const UgcEditorConfiguration& configuration);
+    void set_members(std::vector<std::pair<std::string, bool>> members);
+    [[nodiscard]] const std::vector<std::pair<std::string, bool>>& members() const noexcept;
 
     [[nodiscard]] const UgcEditorConfiguration& configuration() const noexcept;
     [[nodiscard]] std::span<const UgcEditorLobbyControl> controls() const noexcept;
@@ -248,16 +255,22 @@ private:
     void rebuild_focus() noexcept;
 
     UgcEditorConfiguration configuration_{};
+    bool host_authority_{true};
+    std::vector<std::pair<std::string, bool>> members_{};
     std::array<UgcEditorSettingDefinition, setting_count> settings_{};
     std::array<UgcEditorLobbyControl, control_count> controls_{};
     ui::FocusNavigator focus_{};
     std::optional<ui::WidgetId> hovered_{};
+    std::optional<ui::WidgetId> pressed_control_{};
+    int pressed_direction_{};
     bool pointer_down_{};
     bool title_editing_{};
     std::string title_before_edit_{};
 };
 
 [[nodiscard]] std::span<const std::string_view> ugc_editor_maps() noexcept;
+/** Shared arrow geometry for pointer input and rendering, in UI subpixels. */
+[[nodiscard]] ui::Rect ugc_editor_setting_arrow(ui::Rect row, int direction) noexcept;
 [[nodiscard]] std::span<const std::string_view> ugc_editor_modes() noexcept;
 [[nodiscard]] std::span<const std::string_view> ugc_editor_mode_labels() noexcept;
 [[nodiscard]] std::span<const std::string_view> ugc_editor_prefab_labels() noexcept;

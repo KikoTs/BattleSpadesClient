@@ -19,6 +19,9 @@
 
 namespace battlespades::network {
 
+/** A fresh UUID for one client instance or retryable social operation. */
+[[nodiscard]] std::string new_revival_social_id();
+
 enum class RevivalSocialRequestKind : std::uint8_t {
     sync,
     presence_offline,
@@ -32,6 +35,15 @@ enum class RevivalSocialRequestKind : std::uint8_t {
 /** One immutable HTTPS operation. Player actions use the priority lane. */
 struct RevivalSocialRequest final {
     std::uint64_t generation{};
+    /**
+     * Process-local enqueue order assigned by RevivalSocialClient.
+     *
+     * This is deliberately not sent to AoSPlay.  It prevents a sync that was
+     * already in flight when a priority mutation began from overwriting the
+     * newer friend/lobby snapshot when the two worker lanes finish out of
+     * order.
+     */
+    std::uint64_t submission_sequence{};
     RevivalSocialRequestKind kind{RevivalSocialRequestKind::sync};
     bool priority{};
     std::string coalesce_key;
@@ -54,6 +66,7 @@ struct RevivalSocialFriend final {
     std::string friendship_status;
     std::string direction;
     std::string current_lobby_id;
+    std::string current_server_id;
 
     [[nodiscard]] friend bool operator==(const RevivalSocialFriend&,
                                          const RevivalSocialFriend&) = default;
@@ -86,9 +99,12 @@ struct RevivalSocialLobby final {
     std::string owner_id;
     std::string name;
     std::string privacy{"invite"};
+    std::string lobby_type{"normal"};
+    std::size_t member_count{};
     std::string state{"idle"};
     std::string revision;
     std::string server_id;
+    std::string start_id;
     std::size_t maximum_members{24U};
     nlohmann::json settings{nlohmann::json::object()};
     std::vector<RevivalSocialLobbyMember> members;
@@ -120,10 +136,16 @@ struct RevivalSocialSnapshot final {
 struct RevivalSocialResult final {
     RevivalSocialRequest request;
     RevivalSocialSnapshot snapshot;
+    std::vector<RevivalSocialFriend> found_players;
+    /** Compatibility alias for callers built around the former exact lookup. */
     std::optional<RevivalSocialFriend> found_player;
     std::string error_code;
     std::string error;
     long http_status{};
+    /** Distinguish an authoritative empty collection/lobby from an omitted field. */
+    bool has_friends{};
+    bool has_lobby{};
+    bool has_invitations{};
 
     [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
 };

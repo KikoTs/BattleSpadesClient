@@ -1,5 +1,7 @@
 # Playtester channel audit — 2026-08-24
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Source: the complete 2026-08-05 through 2026-08-11 playtester export supplied
 by the project owner. This is a current-state audit, not a copy of the old bug
 list. `G:/AoSRevival/BattleSpades` was inspected only as a read-only protocol

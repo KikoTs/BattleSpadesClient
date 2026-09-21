@@ -1,5 +1,7 @@
 # Create Match frontend recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This note records the retail evidence used by the renderer-neutral Create Match reconstruction. Coordinates below are expressed in the new client's top-left 800x600 canvas; retail Python used a bottom-left origin.
 
 ## Recovered route and panel hierarchy

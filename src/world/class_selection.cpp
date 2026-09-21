@@ -116,18 +116,16 @@ ClassSelection make_class_selection(
             selection.prefabs.push_back(requested);
         }
     }
-    for (const auto value : allowed) {
-        if (selection.prefabs.size() == 3U) break;
-        const std::string name{value};
-        if (std::ranges::find(selection.prefabs, name) == selection.prefabs.end()) {
-            selection.prefabs.push_back(name);
-        }
-    }
     return selection;
 }
 
 ClassSelection default_class_selection(std::uint8_t class_id) {
-    return make_class_selection(class_id, {}, {});
+    std::vector<std::string> prefabs;
+    for (const auto value : class_prefab_options(class_id)) {
+        if (prefabs.size() == 3U) break;
+        prefabs.emplace_back(value);
+    }
+    return make_class_selection(class_id, {}, prefabs);
 }
 
 } // namespace battlespades::world

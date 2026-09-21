@@ -1,0 +1,82 @@
+{
+  "name": "Armalite AR-30A1 Acog",
+  "source": "https://gamebanana.com/mods/170403",
+  "archives": [
+    {
+      "archive": "170403\\365517-armalite_ar-30_a1_acog_by_krothen.zip",
+      "extracted": "170403\\files-365517",
+      "sha256": "4719cdeea6518447a918f32b45fd572ba5269e55c8ae3af83176ac5837b49848",
+      "listing": [
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/",
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/Killfeed/",
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/Killfeed/a-Rifle.png",
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/Killfeed/Thumbs.db",
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/RifleSight.png",
+        "Armalite AR-30 A1 Acog by Krothen/Gfx/Thumbs.db",
+        "Armalite AR-30 A1 Acog by Krothen/Models/",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/Casing.kv6",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/Magazine.kv6",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/Scope.kv6",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/Weapon.kv6",
+        "Armalite AR-30 A1 Acog by Krothen/Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Armalite AR-30 A1 Acog by Krothen/Readme.txt",
+        "Armalite AR-30 A1 Acog by Krothen/Scripts/",
+        "Armalite AR-30 A1 Acog by Krothen/Scripts/Skin/",
+        "Armalite AR-30 A1 Acog by Krothen/Scripts/Skin/Rifle/",
+        "Armalite AR-30 A1 Acog by Krothen/Scripts/Skin/Rifle/ThirdPerson.as",
+        "Armalite AR-30 A1 Acog by Krothen/Scripts/Skin/Rifle/View.as",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/Fire.wav",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/FireStereo.wav",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/Reload.wav",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Armalite AR-30 A1 Acog by Krothen/Sounds/Weapons/Rifle/Rifle.wav"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripter",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1616620",
+          "_sName": "Krothen",
+          "_sProfileUrl": "https://gamebanana.com/members/1616620",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5a281e4f56066.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

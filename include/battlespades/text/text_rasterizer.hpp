@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +16,8 @@ namespace battlespades::text {
 enum class TextCase : std::uint8_t {
     preserve,
     ascii_uppercase,
+    /** Unicode simple-uppercase mapping used by localized UI labels. */
+    unicode_uppercase,
 };
 
 enum class TextErrorCode : std::uint8_t {
@@ -52,6 +55,8 @@ struct TextRasterizerConfig final {
     std::filesystem::path font_asset;
     std::uint32_t default_pixel_height{16U};
     TextRasterizerLimits limits{};
+    /** Render the font's .notdef glyph for unsupported scalars in live UI text. */
+    bool allow_missing_glyphs{false};
 };
 
 /** Already-localized UTF-8 input. Localization lookup remains upstream. */
@@ -159,6 +164,16 @@ public:
     [[nodiscard]] std::string_view font_asset_id() const noexcept;
     [[nodiscard]] std::uint64_t font_fingerprint() const noexcept;
 
+    /**
+     * Returns true only when every visible Unicode scalar has a real glyph.
+     *
+     * This is intentionally separate from rasterization so the frontend can
+     * select a locale fallback face before HarfBuzz turns a missing character
+     * into glyph zero (the visible square/question-mark failure mode).
+     */
+    [[nodiscard]] bool supports_text(std::string_view utf8,
+                                     TextCase text_case = TextCase::preserve) const;
+
     /** Validates and normalizes input without touching FreeType mutable state. */
     [[nodiscard]] TextCacheKeyResult cache_key(const TextRasterRequest& request) const;
 
@@ -172,5 +187,10 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+/** Prefer complete coverage; otherwise retain the first ready face for .notdef fallback. */
+[[nodiscard]] TextRasterizer* select_text_font(
+    std::span<TextRasterizer* const> candidates, std::string_view utf8,
+    TextCase text_case = TextCase::preserve);
 
 } // namespace battlespades::text

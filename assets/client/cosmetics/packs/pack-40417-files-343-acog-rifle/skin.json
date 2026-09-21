@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "pack-40417-files-343-acog-rifle",
+  "name": "ACOG with script (OpenSpades)",
+  "source": "https://gamebanana.com/mods/40417",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "ReflexSight.png": "ReflexSight.png",
+    "Scope.kv6": "Scope.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Fallback/OpenSpades/Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Fallback/OpenSpades/Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Scope.kv6": "Scope.kv6",
+    "Sounds/Weapons/Rifle/Fire.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/Fire.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Gfx/RifleSight.png": "ReflexSight.png"
+  },
+  "hashes": {
+    "ReflexSight.png": "ef7d30c949c47a66034e6ae5ac7c61d1b71cbb56c83cad8aafb41abbb20b5a58",
+    "Scope.kv6": "664482eaa4fc0f466cdee07ffed7056bf6ed2807ea3a7d423e03b78493744ba0",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "ec56b57a7c0e910264baa45b64df134f23dccc4b5dba58788c88199f7730b561",
+    "Scripts/Skin/Rifle/View.as": "ba54989f93f8023ec10db57c63327ddd063c561bf84f67108b97c45af374ce88",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/Rifle/WeaponNoMagazine.kv6": "2af2cc5bbef5a580e1fa494ae210bf694cbf2a3d8c96ef946732a65d15723f77",
+    "Fallback/OpenSpades/Models/Weapons/Rifle/Magazine.kv6": "68cf8d8af10bb910a0cadfc5e20163ea21a41dcd3bf8b228def92eac4ae60e46",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/Fire.opus.ogg": "dcd71d6de4394927e0fd624bb0c8eca81c409c241ef7849d552736788443aff3",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg": "4e5eb02ba3617b3db4a6f68ea25ae24d86ad07ed5b3533f763e21c582d764784",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "11cbdc88329fce64819b3a26e306a1b4a338c2adc70be8d982bded9eba33c82f",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "548bcff3184496fba2d53b16649551ee60938bcc3b320fbb663e7fb035206c2f",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models, Scripts and sprite",
+          "_idRow": "1583766",
+          "_sName": "Brk",
+          "_sProfileUrl": "https://gamebanana.com/members/1583766",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/596cdde066934.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": []
+}

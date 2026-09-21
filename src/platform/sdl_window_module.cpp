@@ -493,13 +493,14 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
             break;
         case SDL_EVENT_MOUSE_WHEEL:
             if (impl_->belongs_to_window(source.wheel.windowID)) {
+                const float direction = source.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0F : 1.0F;
                 impl_->events.push_back(WindowEvent{
                     .type = WindowEventType::mouse_wheel,
                     .timestamp_ns = source.wheel.timestamp,
                     .mouse_x = source.wheel.mouse_x,
                     .mouse_y = source.wheel.mouse_y,
-                    .mouse_delta_x = source.wheel.x,
-                    .mouse_delta_y = source.wheel.y,
+                    .mouse_delta_x = source.wheel.x * direction,
+                    .mouse_delta_y = source.wheel.y * direction,
                 });
             }
             break;
@@ -752,6 +753,14 @@ bool SdlWindowModule::set_text_input_enabled(bool enabled) {
     }
     impl_->last_error.clear();
     return true;
+}
+
+std::string SdlWindowModule::clipboard_text() {
+    if (impl_->window == nullptr || impl_->owner_thread != std::this_thread::get_id()) {
+        return {};
+    }
+    const auto text = std::unique_ptr<char, decltype(&SDL_free)>{SDL_GetClipboardText(), SDL_free};
+    return text ? std::string{text.get()} : std::string{};
 }
 
 std::string_view SdlWindowModule::last_error() const noexcept {

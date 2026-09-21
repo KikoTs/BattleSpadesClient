@@ -1,0 +1,75 @@
+{
+  "name": "Navy SEAL — Woodland Camo / NVG Folded Up",
+  "source": "https://gamebanana.com/mods/170868",
+  "archives": [
+    {
+      "archive": "170868\\209007-seal_pack.7z",
+      "extracted": "170868\\files-209007",
+      "sha256": "5e8d99d53033670c02dc655b8b192e0e71306d493c6da3f88f230a176a04a97b",
+      "listing": [
+        "Seal pack/Player/Woodland Camo/Arm.kv6",
+        "Seal pack/Player/Desert Camo/Arm.kv6",
+        "Seal pack/Player/Woodland Camo/Arms.kv6",
+        "Seal pack/Player/Desert Camo/Arms.kv6",
+        "Seal pack/Player/Woodland Camo/Dead.kv6",
+        "Seal pack/Player/Desert Camo/Dead.kv6",
+        "Seal pack/Player/Woodland Camo/Head.kv6",
+        "Seal pack/Player/Woodland Camo/NVG Folded Up/Balaclava/Head.kv6",
+        "Seal pack/Player/Woodland Camo/NVG Folded Up/Head.kv6",
+        "Seal pack/Player/Woodland Camo/Boonie/Head.kv6",
+        "Seal pack/Player/Woodland Camo/Balaclava/Head.kv6",
+        "Seal pack/Player/Desert Camo/Head.kv6",
+        "Seal pack/Player/Desert Camo/NVG Folded Up/Balaclava/Head.kv6",
+        "Seal pack/Player/Desert Camo/NVG Folded Up/Head.kv6",
+        "Seal pack/Player/Desert Camo/Balaclava/Head.kv6",
+        "Seal pack/Player/Woodland Camo/Leg.kv6",
+        "Seal pack/Player/Desert Camo/Leg.kv6",
+        "Seal pack/Player/Woodland Camo/LegCrouch.kv6",
+        "Seal pack/Player/Desert Camo/LegCrouch.kv6",
+        "Seal pack/Player/Woodland Camo/Torso.kv6",
+        "Seal pack/Player/Desert Camo/Torso.kv6",
+        "Seal pack/Player/Woodland Camo/TorsoCrouch.kv6",
+        "Seal pack/Player/Desert Camo/TorsoCrouch.kv6",
+        "Seal pack/Player/Woodland Camo/UpperArm.kv6",
+        "Seal pack/Player/Desert Camo/UpperArm.kv6",
+        "Seal pack/Player/Woodland Camo/NVG Folded Up/Balaclava/",
+        "Seal pack/Player/Woodland Camo/NVG Folded Up/",
+        "Seal pack/Player/Woodland Camo/Boonie/",
+        "Seal pack/Player/Woodland Camo/Balaclava/",
+        "Seal pack/Player/Woodland Camo/",
+        "Seal pack/Player/Desert Camo/NVG Folded Up/Balaclava/",
+        "Seal pack/Player/Desert Camo/NVG Folded Up/",
+        "Seal pack/Player/Desert Camo/Balaclava/",
+        "Seal pack/Player/Desert Camo/",
+        "Seal pack/Player/",
+        "Seal pack/"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "design and modeling",
+          "_sName": "e5scott"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

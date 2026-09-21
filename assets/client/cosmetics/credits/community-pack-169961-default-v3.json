@@ -1,0 +1,60 @@
+{
+  "name": "MaschinenPistole 40",
+  "source": "https://gamebanana.com/mods/169961",
+  "archive": [
+    {
+      "archive": "169961\\206155-mp_40.rar",
+      "extracted": "169961\\files-206155",
+      "sha256": "cd1d4d470b6e6aa920f8c462c77c34972ee35eb5fa15ffe6f504d7b03e27de5c",
+      "listing": [
+        "MP 40",
+        "MP 40/Sight2.kv6",
+        "MP 40/Sight3.kv6",
+        "MP 40/Tracer.kv6",
+        "MP 40/Weapon.kv6",
+        "MP 40/WeaponNoMagazine.kv6",
+        "MP 40/WeaponNoMagazine-old.kv6",
+        "MP 40/Casing.kv6",
+        "MP 40/Magazine.kv6",
+        "MP 40/Sight1.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Remade for OS",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "SiruGouser"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

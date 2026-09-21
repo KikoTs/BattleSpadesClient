@@ -1,0 +1,50 @@
+{
+  "name": "new dead v1",
+  "source": "https://gamebanana.com/mods/169599",
+  "archive": [
+    {
+      "archive": "169599\\212294-new_playerdead_by_islan337.rar",
+      "extracted": "169599\\files-212294",
+      "sha256": "318ddc83e70ca8b4e02e329962cae035b9dfd4bff96172f0fa0746cec37f0284",
+      "listing": [
+        "new playerdead by islan337/creditos.txt",
+        "new playerdead by islan337/kv6/playerdead.kv6",
+        "new playerdead by islan337/kv6",
+        "new playerdead by islan337"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "islan337",
+      "_aAuthors": [
+        {
+          "_sRole": "mod",
+          "_idRow": "1408047",
+          "_sName": "Isl",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/59bae3ac0d172.gif",
+          "_sProfileUrl": "https://gamebanana.com/members/1408047",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/59ba86bc55b70.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -27,14 +27,17 @@ constexpr std::array<float, 3U> crouched_right_leg_adjust{-0.25F, -0.3F, 0.0F};
 
 [[nodiscard]] std::optional<ChunkMesh>
 load_mesh(const std::filesystem::path& root, std::string_view path,
-          VxlColor team_color, std::uint8_t inverse_scale, std::string& error) {
+          VxlColor team_color, std::uint8_t inverse_scale, std::string& error,
+          std::optional<std::array<std::uint8_t,3U>> palette = std::nullopt,
+          const Kv6Model* replacement = nullptr) {
     std::string detail;
-    auto model = Kv6Model::load_file(root / path, &detail);
+    auto model = replacement ? std::optional<Kv6Model>{*replacement} : Kv6Model::load_file(root / path, &detail);
     if (!model.has_value()) {
         error = "failed to load " + std::string{path} + ": " + detail;
         return std::nullopt;
     }
     *model = model->inverse_scaled(inverse_scale);
+    if (palette) model->apply_cosmetic_palette(*palette);
     model->apply_default_color(team_color);
     auto mesh = model->mesh();
     if (mesh.empty()) {
@@ -87,7 +90,10 @@ class_part_preview_origin(const ClassBodyPartDefinition& part) noexcept {
 ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
                                        std::uint8_t class_id,
                                        VxlColor team_color,
-                                       std::uint8_t inverse_scale) {
+                                       std::uint8_t inverse_scale,
+                                       std::optional<std::array<std::uint8_t,3U>> palette,
+                                       const Kv6Model* head_override,
+                                       const ClassModelOverrides* body_override) {
     const auto* definition = find_class_definition(class_id);
     if (definition == nullptr) {
         return {std::nullopt, "class id is outside the retail catalog"};
@@ -111,11 +117,45 @@ ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
     initialize_bounds(result.crouching_left_leg_preview);
     initialize_bounds(result.crouching_right_leg_preview);
     std::string error;
+    const auto replacement=[&](std::string_view role)->const Kv6Model* {
+        if(!body_override)return nullptr;
+        const auto it=body_override->find(std::string{role});return it==body_override->end()?nullptr:&it->second;
+    };
+    const auto fit=[&](ChunkMesh& mesh,const Kv6Model* model,std::string_view parent,std::string_view role){
+        if(!model)return;
+        const auto original=Kv6Model::load_file(asset_root/parent);if(!original)return;
+        float scale=static_cast<float>(original->size_z())/static_cast<float>(model->size_z());
+        const auto a=original->pivot(),b=model->pivot();
+        std::array<float,3> from{(static_cast<float>(model->size_x())-1)*.5F-b[0],-((static_cast<float>(model->size_z())-1)*.5F-b[2]),(static_cast<float>(model->size_y())-1)*.5F-b[1]};
+        const std::array<float,3> to{(static_cast<float>(original->size_x())-1)*.5F-a[0],-((static_cast<float>(original->size_z())-1)*.5F-a[2]),(static_cast<float>(original->size_y())-1)*.5F-a[1]};
+        if(body_override->open_spades){
+            // Fit the original attachment frame, not the total bounding box:
+            // antennas, helmets and backpacks must retain their authored extent.
+            if(role.starts_with("arm_")){
+                scale=static_cast<float>(original->size_y())/12.F;
+                constexpr std::array<std::uint8_t,6> faces{0,1,5,4,2,3};
+                for(auto& v:mesh.vertices){const auto y=v.y;v.y=v.z;v.z=-y;v.face=faces[v.face];}
+                from={0.F,-.5F,5.5F};
+            }else{
+                const float height=role=="head"?6.F:role=="torso"?9.F:role=="torso_crouch"?7.F:role=="leg_crouch"?8.F:12.F;
+                scale=static_cast<float>(original->size_z())/height;
+                from=role=="head"?std::array<float,3>{0,3,0}:role=="torso"?std::array<float,3>{0,-4.5F,0}:role=="torso_crouch"?std::array<float,3>{0,-2.5F,-3}:role=="leg_crouch"?std::array<float,3>{0,-2.5F,1.5F}:std::array<float,3>{0,-5.5F,.5F};
+            }
+        }
+        for(auto& v:mesh.vertices){v.x=(v.x-from[0])*scale+to[0];v.y=(v.y-from[1])*scale+to[1];v.z=(v.z-from[2])*scale+to[2];}
+        mesh.minimum.fill(std::numeric_limits<float>::max());mesh.maximum.fill(std::numeric_limits<float>::lowest());
+        for(const auto& v:mesh.vertices){const std::array xyz{v.x,v.y,v.z};for(std::size_t i=0;i<3;++i){mesh.minimum[i]=std::min(mesh.minimum[i],xyz[i]);mesh.maximum[i]=std::max(mesh.maximum[i],xyz[i]);}}
+    };
     for (const auto& part : definition->body_parts) {
-        auto mesh = load_mesh(asset_root, part.model_asset, team_color, inverse_scale, error);
+        const bool hat = part.part == BodyPart::head && head_override;
+        const char* role=part.part==BodyPart::head?"head":part.part==BodyPart::torso?"torso":part.part==BodyPart::crouched_torso?"torso_crouch":part.part==BodyPart::crouched_leg?"leg_crouch":part.part==BodyPart::left_leg||part.part==BodyPart::right_leg?"leg":"";
+        const auto* source=hat?head_override:replacement(role);
+        auto mesh = load_mesh(asset_root, part.model_asset, team_color, inverse_scale, error,
+                              source ? std::nullopt : palette, source);
         if (!mesh.has_value()) {
             return {std::nullopt, std::move(error)};
         }
+        if(!hat)fit(*mesh,source,part.model_asset,role);
         // Arms_Collision is a physics hull, not visible character geometry.
         // Retail builds the visible upper/lower arms from the class arm KV6s.
         if (part.part == BodyPart::head || part.part == BodyPart::torso ||
@@ -161,14 +201,24 @@ ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
         result.body_parts.push_back(
             ClassModelPart{std::move(*mesh), part.authored_offset, part.body_anchor});
     }
+    std::size_t arm_index=0;
+    if(const auto* combined=replacement("arms");combined&&!replacement("arm_upper")&&!replacement("arm_lower")){
+        auto model=*combined;model.apply_default_color(team_color);auto mesh=model.mesh();
+        for(auto& v:mesh.vertices){const auto y=v.y;v.x=v.x*.1F+.05F;v.y=v.z*.1F-.075F;v.z=-y*.1F+.25F;}
+        result.combined_arms=std::move(mesh);
+    }
     for (const auto path : definition->first_person_arm_assets) {
+        if(result.combined_arms)break;
         if (path.empty()) {
             continue; // zombies intentionally render hands from the equipped tool.
         }
-        auto mesh = load_mesh(asset_root, path, team_color, inverse_scale, error);
+        const auto role=arm_index++==0?"arm_upper":"arm_lower";
+        const auto* source=replacement(role);
+        auto mesh = load_mesh(asset_root, path, team_color, inverse_scale, error, source?std::nullopt:palette,source);
         if (!mesh.has_value()) {
             return {std::nullopt, std::move(error)};
         }
+        fit(*mesh,source,path,role);
         result.first_person_arms.push_back(std::move(*mesh));
     }
     if (result.standing_preview.empty()) {

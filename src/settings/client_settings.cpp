@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -176,6 +177,18 @@ constexpr std::array<NamedCode, 12U> remaining_keyboard_codes{{
     return std::clamp(value, 0.0, 1.0);
 }
 
+[[nodiscard]] bool valid_language(std::string_view value) noexcept {
+    return !value.empty() && value.size() <= 32U &&
+           std::ranges::all_of(value, [](unsigned char character) {
+               return std::isalnum(character) != 0 || character == '-';
+           });
+}
+
+[[nodiscard]] bool valid_audio_device(std::string_view value) noexcept {
+    return value.size() <= 512U && std::ranges::none_of(value,
+        [](unsigned char byte) { return byte < 0x20U || byte == 0x7FU; });
+}
+
 [[nodiscard]] Resolution normalized_resolution(Resolution value) noexcept {
     value.width = std::clamp(value.width, minimum_resolution_width, maximum_resolution_dimension);
     value.height =
@@ -340,6 +353,10 @@ ClientSettings normalize_settings(const ClientSettings& source) noexcept {
         normalized_unit_value(source.main.master_volume, defaults.main.master_volume);
     result.main.music_volume =
         normalized_unit_value(source.main.music_volume, defaults.main.music_volume);
+    result.main.language = valid_language(source.main.language) ? source.main.language
+                                                                : defaults.main.language;
+    result.main.audio_device = valid_audio_device(source.main.audio_device)
+                                   ? source.main.audio_device : std::string{};
     result.graphics.resolution = normalized_resolution(source.graphics.resolution);
     result.graphics.graphics_api = valid_graphics_api(source.graphics.graphics_api)
                                        ? source.graphics.graphics_api
@@ -394,6 +411,12 @@ SettingsValidationResult validate_settings(const ClientSettings& settings) {
     if (!unit_value_valid(settings.main.master_volume) ||
         !unit_value_valid(settings.main.music_volume)) {
         return {false, "volume must be finite and between 0 and 1"};
+    }
+    if (!valid_language(settings.main.language)) {
+        return {false, "language must be a BCP-47-style locale tag"};
+    }
+    if (!valid_audio_device(settings.main.audio_device)) {
+        return {false, "audio device must be at most 512 bytes with no control characters"};
     }
     if (settings.graphics.resolution.width < minimum_resolution_width ||
         settings.graphics.resolution.height < minimum_resolution_height ||

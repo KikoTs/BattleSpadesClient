@@ -1,9 +1,11 @@
 #include "battlespades/frontend/loading_presentation.hpp"
+#include "battlespades/frontend/menu_status.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -176,10 +178,90 @@ void append_text_button(ui::DrawList& list, DrawRect bounds, std::string_view la
     if (key == "INITIALISING_MAP") {
         return "Initializing map " + map + "...";
     }
+    if (key == "ERROR_TIMEOUT") return "The server stopped responding. Go back to retry.";
+    if (key == "LOAD_FAILED" || key == "ASSET_PRELOAD_FAILED")
+        return "Unable to load this match. Go back to retry.";
     return std::string{key};
 }
 
+void append_scores(ui::DrawList& list, const MatchLoadingSnapshot& snapshot) {
+    using namespace loading_layout;
+    list.push(sprite("png/high/white.png", content, DrawSpace::design_pixels,
+        TextureAnchor::top_left, 1.0, color({0U, 0U, 0U, 125U})));
+    const auto count = snapshot.score_rows.size();
+    const auto maximum = count > MatchLoadingModel::visible_score_rows
+        ? count - MatchLoadingModel::visible_score_rows : 0U;
+    const auto first = std::min(snapshot.score_scroll, maximum);
+    const auto end = std::min(count, first + MatchLoadingModel::visible_score_rows);
+    for (auto index = first; index < end; ++index) {
+        const auto& row = snapshot.score_rows[index];
+        const DrawRect bounds{score_rows.x,
+            score_rows.y + static_cast<double>(index - first) * score_row_height,
+            score_rows.width, score_row_height};
+        if (row.section) {
+            constexpr double cap{8.0};
+            list.push(sprite("png/ui/common_elements/header/red_header_left.png",
+                {bounds.x, bounds.y, cap, bounds.height}));
+            list.push(sprite("png/ui/common_elements/header/red_header_center.png",
+                {bounds.x + cap, bounds.y, bounds.width - cap * 2.0, bounds.height}));
+            list.push(sprite("png/ui/common_elements/header/red_header_right.png",
+                {bounds.x + bounds.width - cap, bounds.y, cap, bounds.height}));
+            list.push(text(row.label_key, {bounds.x + 13.0, bounds.y, bounds.width - 53.0, bounds.height},
+                16.0, HorizontalTextAlignment::left, cream, "fonts/Edo.ttf", TextTransform::uppercase));
+            const DrawRect button{bounds.x + bounds.width - 31.0, bounds.y + 4.0, 19.0, 19.0};
+            list.push(sprite("png/ui/common_elements/buttons/button_square.png", button));
+            list.push(sprite(row.expanded ? "png/ui/common_elements/collapse_minus.png"
+                                         : "png/ui/common_elements/collapse_plus.png", button));
+        } else {
+            list.push(sprite("png/high/white.png", bounds, DrawSpace::design_pixels,
+                TextureAnchor::top_left, 1.0, color(index % 2U == 0U
+                    ? ColorRgba8{87U, 83U, 74U, 150U} : ColorRgba8{54U, 51U, 44U, 150U})));
+            list.push(text(row.label_key, {bounds.x + 13.0, bounds.y, 322.0, bounds.height}, 12.0));
+            list.push(text(row.value, {bounds.x + 343.0, bounds.y, bounds.width - 353.0, bounds.height}, 12.0));
+        }
+    }
+    list.push(sprite("png/high/white.png", score_track, DrawSpace::design_pixels,
+        TextureAnchor::top_left, 1.0, color({74U, 67U, 4U, 255U})));
+    const auto arrow = [&](DrawRect bounds, std::string_view image, bool enabled) {
+        const auto tint = enabled ? color() : ColorModulation{white, 600U, 1'000U};
+        list.push(sprite("png/ui/common_elements/buttons/button_square.png", bounds,
+            DrawSpace::design_pixels, TextureAnchor::top_left, 1.0, tint));
+        list.push(sprite(image, bounds, DrawSpace::design_pixels, TextureAnchor::top_left, 1.0, tint));
+    };
+    arrow(score_up, "png/ui/common_elements/scroll_bar/scroll_bar_arrow_up.png", first > 0U);
+    arrow(score_down, "png/ui/common_elements/scroll_bar/scroll_bar_arrow_down.png", first < maximum);
+    const auto thumb = score_thumb(snapshot);
+    list.push(sprite("png/ui/common_elements/scroll_bar/scroll_bar_top.png",
+        {thumb.x, thumb.y, thumb.width, 16.0}));
+    if (thumb.height > 32.0) list.push(sprite("png/ui/common_elements/scroll_bar/scroll_bar_mid.png",
+        {thumb.x, thumb.y + 16.0, thumb.width, thumb.height - 32.0}));
+    list.push(sprite("png/ui/common_elements/scroll_bar/scroll_bar_bottom.png",
+        {thumb.x, thumb.y + thumb.height - 16.0, thumb.width, 16.0}));
+}
+
 } // namespace
+
+bool MatchLoadingModel::handle_score_click(double x, double y) {
+    using namespace loading_layout;
+    if (tabs_[selected_tab_] != LoadingTab::scores) return false;
+    if (contains(score_up, x, y)) { (void)scroll_scores(-1); return true; }
+    if (contains(score_down, x, y)) { (void)scroll_scores(1); return true; }
+    if (contains(score_track, x, y)) {
+        const auto thumb = score_thumb(snapshot());
+        if (y < thumb.y) (void)scroll_scores(-static_cast<int>(visible_score_rows));
+        else if (y >= thumb.y + thumb.height) (void)scroll_scores(static_cast<int>(visible_score_rows));
+        return true;
+    }
+    if (!contains(score_rows, x, y)) return false;
+    const auto rows = snapshot().score_rows;
+    const auto index = score_scroll_ + static_cast<std::size_t>((y - score_rows.y) / score_row_height);
+    if (index >= rows.size() || !rows[index].section) return false;
+    const auto group = *rows[index].section;
+    score_expanded_[group] = !score_expanded_[group];
+    tab_cycle_interrupted_ = true;
+    (void)scroll_scores(0); // Collapsing the last page must clamp to the new content length.
+    return true;
+}
 
 ui::DrawList BootLoadingPresentation::build(const BootLoadingSnapshot& snapshot,
                                             const LoadingPresentationContext& context) const {
@@ -263,13 +345,13 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
     // game_loading_tab_bg and the map image share 1064x475 @0.64 centered at
     // (400,313) BO.
     list.push(sprite(loading_screen_assets::loading_tab_background,
-                     {59.52, 135.0, 680.96, 304.0},
+                     loading_layout::content,
                      DrawSpace::design_pixels,
                      TextureAnchor::center,
                      0.64));
     if (!snapshot.textures.map_image_asset.empty()) {
         list.push(sprite(snapshot.textures.map_image_asset,
-                         {59.52, 135.0, 680.96, 304.0},
+                         loading_layout::content,
                          DrawSpace::design_pixels,
                          TextureAnchor::center,
                          0.64,
@@ -279,38 +361,41 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
     }
     if (snapshot.tabs[snapshot.selected_tab] == LoadingTab::mode &&
         !snapshot.textures.infographic_asset.empty()) {
-        // Retail resizes the loaded 1024x530 infographic to 650x305 keeping
-        // its original center anchor.
+        // The source is 1024x475. Keep its aspect ratio and every caption
+        // plate inside the content frame, above the progress/start band.
         list.push(sprite(snapshot.textures.infographic_asset,
-                         {72.3, 151.6, 650.0, 305.0},
+                         {75.0, 137.5, 650.0, 301.513671875},
                          DrawSpace::design_pixels,
                          TextureAnchor::center,
                          0.64,
                          color(),
                          SpriteSizing::stretch,
                          TextureFilter::linear));
-        list.push(text(snapshot.mode_key,
-                       {80.0, 139.0, 320.0, 50.0},
-                       38.0,
-                       HorizontalTextAlignment::center,
-                       white,
-                       "fonts/Spades.ttf",
-                       TextTransform::uppercase));
+        constexpr std::array<DrawRect, 3U> captions{{
+            {110.0, 373.0, 168.0, 34.0}, {320.0, 380.0, 168.0, 34.0},
+            {538.0, 374.0, 168.0, 38.0}}};
+        for (std::size_t index{}; index < captions.size(); ++index) {
+            auto caption = text(snapshot.infographic_captions[index], captions[index], 16.0,
+                HorizontalTextAlignment::center, white, "fonts/Spades.ttf", TextTransform::uppercase);
+            caption.layout = ui::TextLayout::bounded_wrapped_lines;
+            caption.maximum_lines = 2U;
+            list.push(std::move(caption));
+        }
     }
+    if (snapshot.tabs[snapshot.selected_tab] == LoadingTab::scores) append_scores(list, snapshot);
 
-    // Tab frames 224x42, stride 224 + UI_CONTROL_SPACING(4); the Edo 16pt
-    // label centers 48px right of the frame center.
-    constexpr double tab_width{224.0};
+    // Resolve retail's texture anchor exactly once. Hit targets use these
+    // same bounds; the Map tab must not escape the content frame's left edge.
     for (std::size_t index = 0U; index < snapshot.tabs.size(); ++index) {
-        const auto x = 7.0 + 228.0 * static_cast<double>(index);
+        const auto bounds = loading_layout::tab(index);
         const auto selected = index == snapshot.selected_tab;
         list.push(sprite(selected ? "png/ui/settings/tab_frames/generic_tab_active.png"
                                   : "png/ui/settings/tab_frames/generic_tab_inactive.png",
-                         {x, 99.0, tab_width, 42.0},
+                         bounds,
                          DrawSpace::design_pixels,
                          TextureAnchor::center));
         list.push(text(tab_key(snapshot.tabs[index]),
-                       {x + 48.0, 99.0, tab_width, 42.0},
+                       bounds,
                        16.0,
                        HorizontalTextAlignment::center,
                        selected ? gold : cream,
@@ -337,22 +422,18 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
             TextFit::shrink_to_fit,
             color(white)});
     }
-    // Status: Spades 24 centered in the recovered {405..720} band.
-    list.push(text(retail_status(snapshot),
-                   {405.0, 550.0, 315.0, 30.0},
-                   24.0,
-                   HorizontalTextAlignment::center,
-                   cream,
-                   "fonts/Spades.ttf"));
+    append_menu_status(list, {220.0, 541.0, 516.0, 33.0}, {}, retail_status(snapshot),
+        snapshot.state == MatchLoadingState::failed || snapshot.state == MatchLoadingState::timed_out
+            ? ColorRgba8{220U, 112U, 81U, 255U} : gold);
     // Retail large navbar BACK affordance, bottom-left strip.
     list.push(text("BACK",
-                   {54.0, 541.0, 135.0, 32.0},
+                   loading_layout::back,
                    20.0,
                    HorizontalTextAlignment::left,
                    cream,
                    "fonts/Spades.ttf",
                    TextTransform::uppercase));
-    append_text_button(list, {492.0, 449.0, 246.0, 58.0}, "START", snapshot.start_enabled,
+    append_text_button(list, loading_layout::start, "START", snapshot.start_enabled,
                        context.start_glow);
     // Progress bar draws last, over everything: the retail screenshot shows
     // a row of bullet sprites inside {66,451,414,50} — gold for the filled

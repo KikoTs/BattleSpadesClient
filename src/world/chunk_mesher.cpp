@@ -264,14 +264,17 @@ constexpr std::array<std::uint8_t, 4U> retail_noise_corner{{0U, 1U, 3U, 2U}};
 }
 
 /**
- * Reconstructs gl_Vertex.w from the VXL light byte at one face corner.
+ * Reconstructs the RGB multiplier from the VXL light byte at one face corner.
  *
  * vxl.pyd sub_10030B60 averages the current voxel and the three occupied
  * neighbours sharing that corner on the face's solid side. The stored byte is
  * divided by 127 and saturated before averaging. VxlMap exposes the same value
  * as `2 * byte - 1`, so `(alpha + 1) / 254` is the exact inverse conversion.
+ *
+ * sub_100051C0 truncates base RGB * this value into three vertex colour bytes.
+ * gl_Vertex.w stays zero unless a placed flare explicitly changes it.
  */
-[[nodiscard]] float retail_directional_influence(
+[[nodiscard]] float retail_baked_light(
     const VxlMap& map, std::uint32_t x, std::uint32_t y, std::uint32_t z,
     const FaceGeometry& geometry, std::array<std::int32_t, 2U> uv) noexcept {
     const auto sample = [&](std::int32_t du, std::int32_t dv) -> std::optional<float> {
@@ -288,6 +291,7 @@ constexpr std::array<std::uint8_t, 4U> retail_noise_corner{{0U, 1U, 3U, 2U}};
                                      static_cast<std::uint32_t>(sample_y),
                                      static_cast<std::uint32_t>(sample_z));
         if (!color.has_value() || color->alpha == 0U) {
+            if (du == 0 && dv == 0) return 0.0F;
             return std::nullopt;
         }
         return std::min(1.0F,
@@ -402,10 +406,26 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                 if (!map.solid(x, y, z)) {
                     continue;
                 }
+                // Buried voxels emit no geometry. Skip their colour, damage,
+                // emissive and AO work before rebuilding an edited column slab.
+                std::uint8_t visible_faces{};
+                for (std::uint8_t face{}; face < face_table.size(); ++face) {
+                    const auto& normal = face_table[face].normal;
+                    if (!occluder(map, static_cast<std::int64_t>(x) + normal[0U],
+                                  static_cast<std::int64_t>(y) + normal[1U],
+                                  static_cast<std::int64_t>(z) + normal[2U])) {
+                        visible_faces |= static_cast<std::uint8_t>(1U << face);
+                    }
+                }
+                if (visible_faces == 0U) {
+                    continue;
+                }
                 const auto stored = map.color(x, y, z);
-                auto base = stored.has_value() && stored->alpha != 0U
-                                ? *stored
-                                : config_.bed_water_color;
+                const bool empty_bed = z == VxlMap::height - 1U && stored.has_value() &&
+                    stored->red == 0U && stored->green == 0U && stored->blue == 0U && stored->alpha == 0U;
+                // Alpha is baked light, not opacity. A dark authored block
+                // keeps its RGB; only the synthetic empty water bed uses the fallback.
+                auto base = stored.has_value() && !empty_bed ? *stored : config_.bed_water_color;
                 const auto appearance =
                     palette_is_empty(config_.emissive)
                         ? std::nullopt
@@ -434,14 +454,13 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                 const auto ao_codes = retail_ao_codes(map, x, y, z);
                 const auto edge_codes = retail_edge_codes(map, x, y, z);
                 for (std::uint8_t face{}; face < face_table.size(); ++face) {
+                    if ((visible_faces & (1U << face)) == 0U) {
+                        continue;
+                    }
                     const auto& geometry = face_table[face];
                     const auto air_x = static_cast<std::int64_t>(x) + geometry.normal[0U];
                     const auto air_y = static_cast<std::int64_t>(y) + geometry.normal[1U];
                     const auto air_z = static_cast<std::int64_t>(z) + geometry.normal[2U];
-                    if (occluder(map, air_x, air_y, air_z)) {
-                        continue;
-                    }
-
                     std::array<std::uint8_t, 4U> occlusion{};
                     for (std::size_t corner{}; corner < occlusion.size(); ++corner) {
                         occlusion[corner] = corner_occlusion(
@@ -456,7 +475,7 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                         const auto ao_uv = retail_atlas_uv(ao_codes[retail_face], retail_corner);
                         const auto edge_uv =
                             retail_atlas_uv(edge_codes[retail_face], retail_corner);
-                        const auto directional_influence = retail_directional_influence(
+                        const auto baked_light = retail_baked_light(
                             map, x, y, z, geometry, geometry.corner_uv[corner]);
                         // Sample placed lights at the vertex, one voxel out
                         // along the face normal. Sampling at the surface itself
@@ -504,13 +523,13 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                             face,
                             occlusion[corner],
                             retail_noise_corner[retail_corner],
-                            static_cast<std::uint8_t>(std::clamp(
-                                std::lround(directional_influence * 255.0F), 0L, 255L)),
+                            0U,
                             static_light,
                             ao_uv.u,
                             ao_uv.v,
                             edge_uv.u,
                             edge_uv.v,
+                            baked_light,
                         };
                         result.vertices.push_back(vertex);
                         for (std::size_t axis{}; axis < 3U; ++axis) {

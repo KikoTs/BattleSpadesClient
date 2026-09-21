@@ -1,4 +1,5 @@
 #include "battlespades/frontend/loading_screen.hpp"
+#include "battlespades/core/utf8.hpp"
 
 #include <algorithm>
 #include <array>
@@ -68,6 +69,7 @@ infographic_name(std::string_view mode, bool classic, std::string_view skin) noe
     if (is("CTF", "CTF_TITLE") && classic) {
         return "infographic_classic_ctf";
     }
+    if (mode == "CLASSIC_CTF_TITLE") return "infographic_classic_ctf";
     if (is("DEM", "DEMOLITION_TITLE")) {
         return "infographic_dem";
     }
@@ -130,6 +132,103 @@ infographic_name(std::string_view mode, bool classic, std::string_view skin) noe
     return normalized_identity(value);
 }
 
+[[nodiscard]] std::string canonical_mode(std::string_view value) {
+    return resolve_server_mode(value).code;
+}
+
+[[nodiscard]] std::array<std::string, 3U> mode_captions(std::string_view mode) {
+    const auto code = canonical_mode(mode);
+    std::string prefix{"TDM"};
+    if (code == "zom") prefix = "ZOM";
+    else if (code == "ctf" || code == "cctf") prefix = "CTF";
+    else if (code == "dem") prefix = "DEM";
+    else if (code == "dia") prefix = "DIA";
+    else if (code == "oc" || code == "occ") prefix = "OCC";
+    else if (code == "vip") prefix = "VIP";
+    else if (code == "tc") prefix = "TC";
+    else if (code == "mh") prefix = "MH";
+    else if (code == "ugc") prefix = "UGC";
+    return {prefix + "_INFOGRAPHIC_TEXT1", prefix + "_INFOGRAPHIC_TEXT2",
+            prefix + "_INFOGRAPHIC_TEXT3"};
+}
+
+/** Recovered from retail scoreTypesDisplay.py and constants_gamemode.py.
+ * The protocol transmits the mode/friendly-fire filter, not score values. */
+[[nodiscard]] std::vector<LoadingScoreRow> score_rows(
+    std::string_view mode, const std::array<bool, 2U>& expanded, bool friendly_fire) {
+    struct Score final { std::string_view key; std::string_view value; };
+    static constexpr std::array generic{
+        Score{"Headshot", "+150"}, Score{"Melee", "+150"},
+        Score{"Kill", "+100"}, Score{"Assist", "+50"},
+        Score{"Death Revenge", "+50"}, Score{"Payback", "+50"},
+        Score{"Reloading Kill", "+50"}, Score{"Defend", "+50"},
+        Score{"Suicide", "-100"}};
+    static constexpr std::array tdm{Score{"Distraction", "+50"}};
+    static constexpr std::array zom{
+        Score{"Survive", "+50 every 10 seconds"},
+        Score{"Last Man Standing", "+150 every 5 seconds"},
+        Score{"Kill Survivor", "+100"}, Score{"LMS Zombie Kill", "+50"}};
+    static constexpr std::array tc{
+        Score{"Controlled Territories", "+35 every 5 seconds"}, Score{"Contest hill", "+25 every 5 seconds"},
+        Score{"Claim Territory", "+150"}, Score{"Control Territory", "+100"},
+        Score{"Defend Territory", "+100"}, Score{"Assault Territory", "+50"}};
+    static constexpr std::array dia{
+        Score{"Carry diamond", "+50 every 5 seconds"}, Score{"Diamond Escort", "+10 every 5 seconds"},
+        Score{"Capture", "+100"}, Score{"Uncover Diamond", "+10"},
+        Score{"Diamond Distraction", "+100"}, Score{"Carrier Defend", "+100"},
+        Score{"Diamond Defend", "+50"}, Score{"Diamond Assault", "+50"},
+        Score{"Intercept Carrier", "+50"}};
+    static constexpr std::array vip{
+        Score{"VIP Survive", "+50 every 10 seconds"}, Score{"VIP Escort", "+10 every 5 seconds"},
+        Score{"Kill Enemy VIP", "10% of VIP Score"}, Score{"VIP Distraction", "+50"},
+        Score{"VIP Kill", "+100"}, Score{"VIP Defend", "+150"}};
+    static constexpr std::array dem{
+        Score{"Destroy Base", "+25 every 50 blocks"}, Score{"Repair Base", "+50 every 50 blocks"},
+        Score{"Defend Base", "+100"}, Score{"Assault Base", "+50"}};
+    static constexpr std::array ctf{
+        Score{"Carry Flag", "+50 every 5 seconds"}, Score{"Flag Escort", "+10 every 5 seconds"},
+        Score{"Capture Flag", "+10"}, Score{"First to Claim Flag", "+100"},
+        Score{"Flag Distraction", "+100"}, Score{"Flag Defend", "+50"},
+        Score{"Close to Flag", "+50"}, Score{"Flag Assault", "+50"},
+        Score{"Flag Carrier Defend", "+100"}, Score{"Flag Intercept", "+50"}};
+    static constexpr std::array occ{
+        Score{"Occupy", "+50 every 5 seconds"}, Score{"Carry Bomb", "+50 every 5 seconds"},
+        Score{"BOOM!", "+50"}, Score{"Bomb Distraction", "+100"},
+        Score{"Carrier Defend", "+100"}, Score{"Bomb Defend", "+50"},
+        Score{"Close to Bomb", "+100"}, Score{"Survive Blast", "+50"},
+        Score{"Intercept Carrier", "+50"}};
+    static constexpr std::array mh{
+        Score{"Occupy", "+150 every 5 seconds"}, Score{"First to Hill", "+250"},
+        Score{"Claim Hill", "+150"}, Score{"Control Hill", "+100"},
+        Score{"Defend Hill", "+100"}, Score{"Assault Hill", "+50"}, Score{"Contest Hill", "+50"}};
+    const auto code = canonical_mode(mode);
+    std::span<const Score> specific;
+    if (code == "tdm") specific = tdm;
+    else if (code == "zom") specific = zom;
+    else if (code == "tc") specific = tc;
+    else if (code == "dia") specific = dia;
+    else if (code == "vip") specific = vip;
+    else if (code == "dem") specific = dem;
+    else if (code == "ctf" || code == "cctf") specific = ctf;
+    else if (code == "oc" || code == "occ") specific = occ;
+    else if (code == "mh") specific = mh;
+    std::vector<LoadingScoreRow> rows;
+    const auto append = [&](std::span<const Score> values) {
+        for (const auto& score : values) rows.push_back(
+            {std::string{score.key}, std::string{score.value}, std::nullopt, false});
+    };
+    if (!specific.empty()) {
+        rows.push_back({"MODE_SPECIFIC_SCORE_TYPES", {}, 0U, expanded[0]});
+        if (expanded[0]) append(specific);
+    }
+    rows.push_back({"GENERIC_SCORE_TYPES", {}, 1U, expanded[1]});
+    if (expanded[1]) {
+        append(generic);
+        if (friendly_fire) rows.push_back({"Team Kill", "-100", std::nullopt, false});
+    }
+    return rows;
+}
+
 } // namespace
 
 BootLoadingSnapshot boot_loading_snapshot(const assets::PreloadSnapshot& preload) noexcept {
@@ -158,21 +257,50 @@ void MatchLoadingModel::begin(std::string expected_map,
     preload_ = {};
     last_observed_progress_ = 0.0;
     no_progress_remaining_ = no_progress_timeout_seconds;
+    score_expanded_ = {true, true};
+    score_scroll_ = 0U;
+    friendly_fire_ = false;
+    infographic_captions_ = mode_captions(mode_key_);
+    if (!mode_key_.empty()) rebuild_tabs(canonical_mode(mode_key_) == "ugc");
 }
 
 void MatchLoadingModel::initial_info(std::string map_name,
                                      std::string mode_key,
                                      bool classic,
                                      std::string texture_skin,
-                                     bool map_creator) {
+                                     bool map_creator,
+                                     bool friendly_fire) {
     map_name_ = std::move(map_name);
     mode_key_ = std::move(mode_key);
     classic_ = classic;
     texture_skin_ = std::move(texture_skin);
+    friendly_fire_ = friendly_fire;
+    infographic_captions_ = mode_captions(mode_key_);
+    score_expanded_ = {true, true};
+    score_scroll_ = 0U;
     state_ = MatchLoadingState::checking_map;
     status_key_ = "CHECKING_MAP";
     rebuild_tabs(map_creator);
     observe_progress();
+}
+
+void MatchLoadingModel::set_status(std::string status) {
+    status_key_ = std::move(status);
+}
+
+void MatchLoadingModel::set_infographic_captions(std::array<std::string, 3U> captions) {
+    for (std::size_t index{}; index < captions.size(); ++index) {
+        // BattleSpades sends its short wire code; these three stock aliases
+        // use different localization prefixes in the retail string catalog.
+        for (const auto [wire, catalog] : {std::pair{"OC_INFOGRAPHIC_", "OCC_INFOGRAPHIC_"},
+                                         std::pair{"CCTF_INFOGRAPHIC_", "CTF_INFOGRAPHIC_"},
+                                         std::pair{"NOR_INFOGRAPHIC_", "TDM_INFOGRAPHIC_"}}) {
+            if (captions[index].starts_with(wire))
+                captions[index].replace(0U, std::string_view{wire}.size(), catalog);
+        }
+        if (!captions[index].empty()) infographic_captions_[index] =
+            core::utf8_code_point_prefix(captions[index], 256U);
+    }
 }
 
 void MatchLoadingModel::receiving_packs() noexcept {
@@ -241,7 +369,8 @@ void MatchLoadingModel::tick(double delta_seconds) noexcept {
         state_ == MatchLoadingState::timed_out) {
         return;
     }
-    const auto progress = snapshot().overall_progress;
+    const auto progress = clamp_progress((map_progress_ + sync_progress_ +
+        clamp_progress(preload_.progress)) / 3.0);
     if (progress > last_observed_progress_ + 1.0e-9) {
         last_observed_progress_ = progress;
         no_progress_remaining_ = no_progress_timeout_seconds;
@@ -269,7 +398,31 @@ bool MatchLoadingModel::select_tab(std::size_t selected) noexcept {
     }
     selected_tab_ = selected;
     tab_cycle_interrupted_ = true;
+    score_scroll_ = 0U;
     return true;
+}
+
+bool MatchLoadingModel::scroll_scores(int rows) {
+    if (tabs_[selected_tab_] != LoadingTab::scores) return false;
+    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_).size();
+    const auto max_scroll = count > visible_score_rows ? count - visible_score_rows : 0U;
+    const auto next = static_cast<std::size_t>(std::clamp(
+        static_cast<long long>(score_scroll_) + rows, 0LL, static_cast<long long>(max_scroll)));
+    tab_cycle_interrupted_ = true;
+    const auto changed = next != score_scroll_;
+    score_scroll_ = next;
+    return changed;
+}
+
+bool MatchLoadingModel::set_score_scroll(double fraction) {
+    if (tabs_[selected_tab_] != LoadingTab::scores || !std::isfinite(fraction)) return false;
+    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_).size();
+    const auto maximum = count > visible_score_rows ? count - visible_score_rows : 0U;
+    const auto next = static_cast<std::size_t>(std::round(clamp_progress(fraction) * maximum));
+    tab_cycle_interrupted_ = true;
+    const auto changed = score_scroll_ != next;
+    score_scroll_ = next;
+    return changed;
 }
 
 MatchLoadingSnapshot MatchLoadingModel::snapshot() const {
@@ -291,7 +444,8 @@ MatchLoadingSnapshot MatchLoadingModel::snapshot() const {
         assets,
         overall,
         no_progress_remaining_,
-        state_ == MatchLoadingState::ready};
+        state_ == MatchLoadingState::ready,
+        infographic_captions_, score_rows(mode_key_, score_expanded_, friendly_fire_), score_scroll_};
 }
 
 void MatchLoadingModel::rebuild_tabs(bool map_creator) {
@@ -299,7 +453,7 @@ void MatchLoadingModel::rebuild_tabs(bool map_creator) {
     tabs_.push_back(LoadingTab::map);
     if (map_name_ != "Training" && !map_name_.empty()) {
         tabs_.push_back(LoadingTab::mode);
-        if (!map_creator && mode_key_ != "MAP_CREATOR") {
+        if (!map_creator && canonical_mode(mode_key_) != "ugc") {
             tabs_.push_back(LoadingTab::scores);
         }
     }
@@ -307,7 +461,8 @@ void MatchLoadingModel::rebuild_tabs(bool map_creator) {
 }
 
 void MatchLoadingModel::observe_progress() noexcept {
-    const auto progress = snapshot().overall_progress;
+    const auto progress = state_ == MatchLoadingState::ready ? 1.0 :
+        clamp_progress((map_progress_ + sync_progress_ + clamp_progress(preload_.progress)) / 3.0);
     if (progress > last_observed_progress_ + 1.0e-9) {
         last_observed_progress_ = progress;
         no_progress_remaining_ = no_progress_timeout_seconds;
@@ -333,10 +488,11 @@ LoadingTextureSelection select_loading_textures(std::string_view map_name,
     if (found != map_images.end() && !identity.empty()) {
         map_asset = found->asset;
     }
+    const auto resolved_mode = resolve_server_mode(mode_key, classic);
     return LoadingTextureSelection{
         "png/ui/game_loading/map_images/" + map_asset + ".png",
         "png/ui/game_loading/mode_infographics/" +
-            std::string{infographic_name(mode_key, classic, texture_skin)} + ".png",
+            std::string{infographic_name(resolved_mode.title_key, resolved_mode.classic, texture_skin)} + ".png",
     };
 }
 
@@ -386,7 +542,10 @@ std::string resolve_server_map_preview_asset(std::string_view map_name) {
 ServerModePresentation resolve_server_mode(std::string_view mode_code, bool classic) {
     auto code = normalized_identity(mode_code);
     if (code.empty()) code = "tdm";
-    if (code == "cctf") classic = true;
+    if (code == "territorycontrol") code = "tc";
+    if (code == "tutorial") code = "tut";
+    if (code == "zombie") code = "zom";
+    if (code == "cctf" || code == "classicctftitle") classic = true;
     struct Mode final {
         std::string_view code;
         std::string_view title;
@@ -412,7 +571,14 @@ ServerModePresentation resolve_server_mode(std::string_view mode_code, bool clas
         Mode{"tut", "TUTORIAL_MODE_TITLE", "TUTORIAL_DESCRIPTION"},
         Mode{"ugc", "MAP_CREATOR", "UGC_DESCRIPTION"},
     };
-    const auto found = std::ranges::find(modes, code, &Mode::code);
+    // Exact advertised codes win over title aliases. NOR shares Arena's title,
+    // but must not intercept the explicit "arena" code before its own row.
+    auto found = std::ranges::find(modes, code, &Mode::code);
+    if (found == modes.end()) {
+        found = std::ranges::find_if(modes, [&code](const Mode& mode) {
+            return normalized_identity(mode.title) == code;
+        });
+    }
     if (found == modes.end()) {
         return ServerModePresentation{"tdm", "TDM_TITLE", "TDM_DESCRIPTION", false};
     }

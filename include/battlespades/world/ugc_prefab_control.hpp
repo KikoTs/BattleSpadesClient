@@ -59,6 +59,8 @@ public:
     void reset() noexcept;
 
     void set_input(UgcPrefabControlInput input, bool held) noexcept;
+    /** Stop held nudges/carving on menus or focus loss, retaining the blueprint. */
+    void clear_inputs() noexcept;
 
     /** Advance repeat/rotation/nudge/carve state using the live camera forward vector. */
     void tick(double dt, const Vec3& camera_forward) noexcept;
@@ -84,7 +86,6 @@ private:
     static constexpr std::size_t input_count{12U};
 
     [[nodiscard]] bool input(UgcPrefabControlInput value) const noexcept;
-    void clear_inputs() noexcept;
     void apply_camera_relative_rotation(std::uint8_t camera_relative_yaw) noexcept;
     void rotate(std::int32_t yaw, std::int32_t pitch, std::int32_t roll) noexcept;
     void recenter_anchor() noexcept;

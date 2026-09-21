@@ -1,0 +1,153 @@
+Honey Badger
+Original authors: Ace_Of_Dead, DaLemon
+https://gamebanana.com/mods/170213
+
+{
+  "id": "honey-badger",
+  "name": "Honey Badger",
+  "archive": "3_honeybadger.rar",
+  "archive_sha256": "254148035c1290f0c3f8f62ef8cab29f62a9ab63623a578cc46084e6b78d52f2",
+  "source": "https://gamebanana.com/mods/170213",
+  "credits": [
+    {
+      "group": "Key Authors",
+      "authors": [
+        {
+          "name": "Ace_Of_Dead",
+          "role": "Creator",
+          "url": "https://gamebanana.com/members/1302104"
+        }
+      ]
+    },
+    {
+      "group": "Original Authors",
+      "authors": [
+        {
+          "name": "DaLemon",
+          "role": "Sight,Alternate models Owner ",
+          "url": "https://gamebanana.com/members/1456656"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "dca1c7de544eed556be16ae5e6ecc11c5bc70500a07ea888ddd8d90a16e797ae"
+}
+
+--- SMG/Scripts/Skin/SMG/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ */
+ 
+ namespace spades {
+	class ThirdPersonSMGSkin: 
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin {
+		private float sprintState;
+--- SMG/Scripts/Skin/SMG/View.as ---
+/*
+ Copyright (c) 2013 OpenSpades Developers
+ Modified by Paratrooper 2015
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ ( at your option ) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http:// www.gnu.org/licenses/>.
+ 
+ */
+ 
+namespace spades {
+	class ViewSMGSkin: 
+				
+--- AlternateHoneyBadger/Scripts/Skin/SMG/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ */
+ 
+ namespace spades {
+	class ThirdPersonSMGSkin: 
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin {
+		private float sprintState;
+--- AlternateHoneyBadger/Scripts/Skin/SMG/View.as ---
+/*
+ Copyright (c) 2013 OpenSpades Developers
+ Modified by Paratrooper 2015
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ ( at your option ) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http:// www.gnu.org/licenses/>.
+ 
+ */
+ 
+namespace spades {
+	class ViewSMGSkin: 
+				

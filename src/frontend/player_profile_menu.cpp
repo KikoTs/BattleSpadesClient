@@ -46,6 +46,7 @@ const std::array definitions{
     PlayerProfileTabDefinition{PlayerProfileTab::game_modes, "GAME_MODES", game_mode_filters},
     PlayerProfileTabDefinition{PlayerProfileTab::classes, "CLASSES", class_filters},
     PlayerProfileTabDefinition{PlayerProfileTab::equipment, "EQUIPMENT", equipment_filters},
+    PlayerProfileTabDefinition{PlayerProfileTab::inventory, "INVENTORY", {}},
 };
 
 [[nodiscard]] constexpr std::size_t index(PlayerProfileTab tab) noexcept {
@@ -214,7 +215,7 @@ bool PlayerProfileMenuModel::complete(PlayerProfileRequest request, PlayerProfil
     pending_request_.reset();
     request_taken_ = false;
     state_ = PlayerProfileLoadState::ready;
-    selected_tab_ = PlayerProfileTab::player_stats;
+    if (selected_tab_ != PlayerProfileTab::inventory) selected_tab_ = PlayerProfileTab::player_stats;
     selected_filters_[index(selected_tab_)] = 0U;
     filter_open_ = false;
     first_visible_row_ = 0U;
@@ -251,7 +252,7 @@ void PlayerProfileMenuModel::reload(std::uint64_t account_id) noexcept {
 
 void PlayerProfileMenuModel::rebuild_display_rows() {
     displayed_rows_.clear();
-    if (!data_.has_value()) {
+    if (!data_.has_value() || selected_tab_ == PlayerProfileTab::inventory) {
         return;
     }
     const auto tab_index = index(selected_tab_);

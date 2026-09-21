@@ -199,6 +199,16 @@ int run_client(int argc, char* argv[]) {
 
         battlespades::frontend::NativeFrontendConfig frontend_config;
         frontend_config.executable_directory = executable_path->parent_path();
+        const auto packaged_client_assets =
+            executable_path->parent_path() / "assets" / "client";
+        const auto developer_client_assets =
+            std::filesystem::path{AOS_DEVELOPER_ASSET_ROOT}.parent_path() / "client";
+        std::error_code client_assets_error;
+        frontend_config.client_asset_root =
+            std::filesystem::is_directory(packaged_client_assets, client_assets_error) &&
+                    !client_assets_error
+                ? packaged_client_assets
+                : developer_client_assets;
         frontend_config.asset_root = resources.paths->assets.root;
         frontend_config.shader_root = resources.paths->shaders.root;
         frontend_config.player_name = "Player";
@@ -208,13 +218,13 @@ int run_client(int argc, char* argv[]) {
         frontend_config.tutorial_map_path =
             std::filesystem::path{"../BattleSpades/maps/Training.vxl"};
         frontend_config.tutorial_debug_tool = options.tutorial_debug_tool;
+        frontend_config.tutorial_debug_cosmetic = options.tutorial_debug_cosmetic;
         frontend_config.tutorial_debug_aim = options.tutorial_debug_aim;
         frontend_config.startup_endpoint = options.startup_endpoint;
         frontend_config.debug_vfx = options.debug_vfx;
         frontend_config.debug_vfx_age = options.debug_vfx_age;
         frontend_config.debug_ui = options.debug_ui;
-        frontend_config.localization_path =
-            executable_path->parent_path() / "localization.json";
+        frontend_config.localization_path = executable_path->parent_path() / "localization";
         frontend_config.ui_layout_path =
             executable_path->parent_path() / "ui-layout.json";
         frontend_config.ui_layout_editor = options.ui_layout_editor;

@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace battlespades::frontend {
@@ -571,6 +572,9 @@ public:
     /** Updates the original framed ammunition/tool-count widget. */
     void set_ammo_state(std::string image_asset, std::int32_t current,
                         std::optional<std::int32_t> reserve, bool visible) noexcept;
+    /** Block/drag-line cost above stock/capacity; red when placement is invalid. */
+    void set_block_cost_state(std::int32_t cost, bool can_place,
+                              ui::ColorRgba8 tint, bool visible) noexcept;
     /**
      * Replaces the weapon-ammo row with retail's selected-prefab preview.
      *
@@ -606,6 +610,7 @@ public:
     void set_disguise_active(bool active) noexcept;
     /** WorldUpdate state bit 0x01, drawn with TOOL_IMAGES[PARACHUTE_TOOL]. */
     void set_parachute_active(bool active) noexcept;
+    void set_ability_hint(std::string text) { ability_hint_ = std::move(text); }
     /** Top-centre HeadCount readouts and the countdown between them. */
     void set_team_scores(GameHudTeamScore left, GameHudTeamScore right,
                          bool visible) noexcept;
@@ -722,6 +727,7 @@ public:
     [[nodiscard]] bool jetpack_visible() const noexcept { return jetpack_visible_; }
     [[nodiscard]] bool disguise_active() const noexcept { return disguise_active_; }
     [[nodiscard]] bool parachute_active() const noexcept { return parachute_active_; }
+    [[nodiscard]] const std::string& ability_hint() const noexcept { return ability_hint_; }
     [[nodiscard]] const GameHudTeamScore& left_team_score() const noexcept {
         return left_team_score_;
     }
@@ -813,6 +819,7 @@ private:
     bool jetpack_visible_{};
     bool disguise_active_{};
     bool parachute_active_{};
+    std::string ability_hint_;
     GameHudTeamScore left_team_score_{};
     GameHudTeamScore right_team_score_{hud_layout::Team::team2, 0, 0, false};
     bool team_scores_visible_{};
@@ -856,6 +863,8 @@ struct GameHudPresentationContext final {
     /** Shaped Edo width used for CHAT_BIG line splitting and frame sizing. */
     std::function<double(std::string_view text, double font_size_pixels)>
         measure_big_text{};
+    /** Spectators have no local health, inventory, or equipment to display. */
+    bool player_widgets_visible{true};
 };
 
 /**

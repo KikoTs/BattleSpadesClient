@@ -1,4 +1,5 @@
 #include "battlespades/frontend/ugc_loadout_presentation.hpp"
+#include "battlespades/frontend/main_menu.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,7 +20,6 @@ using ui::TextDrawCommand;
 constexpr ColorRgba8 menu_color{244U, 236U, 187U, 255U};
 constexpr ColorRgba8 selected_color{232U, 207U, 78U, 255U};
 constexpr ColorRgba8 button_text_color{20U, 20U, 20U, 255U};
-constexpr ColorRgba8 flat_join_background{112U, 216U, 224U, 255U};
 constexpr ColorRgba8 black{0U, 0U, 0U, 255U};
 constexpr ColorRgba8 row_grey{57U, 53U, 44U, 255U};
 constexpr ColorRgba8 row_dark_grey{24U, 21U, 14U, 255U};
@@ -220,13 +220,18 @@ void append_objectives_panel(ui::DrawList& list,
 
 ui::DrawList UgcLoadoutPresentation::build(
     const UgcLoadoutMenuModel& menu, ui::PixelExtent window) const {
-    static_cast<void>(window);
     ui::DrawList list;
     list.reserve(160U);
 
     if (!menu.in_game()) {
-        list.push(sprite("png/high/white.png", {0.0, 0.0, 800.0, 600.0},
-                         flat_join_background));
+        const auto width = static_cast<double>(window.width);
+        const auto height = static_cast<double>(window.height);
+        const auto cover = std::max(width / 768.0, height / 576.0);
+        auto background = sprite(std::string{main_menu_assets::background},
+            {(width - 768.0 * cover) * 0.5, (height - 576.0 * cover) * 0.5,
+             768.0 * cover, 576.0 * cover});
+        background.space = DrawSpace::window_pixels;
+        list.push(std::move(background));
         list.push(sprite("png/ui/common_elements/frames/ui_frame_large.png",
                          {25.0, 5.0, 750.0, 589.0}));
     } else {
@@ -236,7 +241,7 @@ ui::DrawList UgcLoadoutPresentation::build(
         // SelectUGC stretches this 326x74 footer independently in x/y to fill
         // the in-game class frame behind its Back control.
         list.push(sprite("png/ui/ugc_tools/ugc_select_bg.png",
-                         {275.5, 512.0, 679.0, 59.0}));
+                         {60.5, 512.0, 679.0, 59.0}));
     }
 
     const bool constructs = menu.library() == UgcLoadoutLibrary::constructs;
@@ -288,13 +293,13 @@ ui::DrawList UgcLoadoutPresentation::build(
                 ? "png/ui/ugc_tools/pf_blueprint_bg_default.png"
                 : "png/ui/ugc_tools/gdata_blueprint_bg_default.png",
             bounds));
-        // Both source tables render 330px square portraits at scale 0.3.
-        const double preview_size = 99.0;
-        const double offset_x = constructs ? 1.5 : 0.0;
+        // Keep the original square portraits inside their blueprint cards;
+        // a fixed 99px image overflows the narrower seven-column construct grid.
+        const double preview_size = std::min(99.0, bounds.width - 8.0);
         const double offset_y = constructs ? -5.0 : 13.0;
         list.push(sprite(
             visible[index].preview_asset,
-            {bounds.x + bounds.width * 0.5 - preview_size * 0.5 + offset_x,
+            {bounds.x + bounds.width * 0.5 - preview_size * 0.5,
              bounds.y + bounds.height * 0.5 - preview_size * 0.5 + offset_y,
              preview_size, preview_size}));
         if (menu.selected(visible[index].choice)) {

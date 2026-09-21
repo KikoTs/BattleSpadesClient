@@ -84,6 +84,31 @@ void delete_uses_opaque_filename_and_rejects_traversal() {
            "delete must remove sidecar, VXL, metadata and preview siblings");
 }
 
+void publication_receipt_survives_rescan_and_detects_later_edits() {
+    TemporaryDirectory temporary;
+    write(temporary.root / "Map.ugc", R"({"title":"Published", "tags":["tdm"]})");
+    write(temporary.root / "Map.vxl", "vxl");
+    write(temporary.root / "Map.txt", "metadata");
+    std::string files;
+    for (const auto name : {"Map.ugc", "Map.vxl", "Map.txt"}) {
+        const auto path = temporary.root / name;
+        if (!files.empty()) files += ',';
+        files += "{\"filename\":\"" + std::string{name} + "\",\"size\":" +
+            std::to_string(std::filesystem::file_size(path)) + ",\"modified_ticks\":\"" +
+            std::to_string(std::filesystem::last_write_time(path).time_since_epoch().count()) + "\"}";
+    }
+    write(temporary.root / "Map.ugc.publication.json", "{\"files\":[" + files + "]}");
+    expect(scan_ugc_projects(temporary.root).maps[0].state == UgcLocalMapState::published,
+        "a successful archive receipt must survive a menu rescan");
+    write(temporary.root / "Map.vxl", "later edited vxl");
+    expect(scan_ugc_projects(temporary.root).maps[0].state == UgcLocalMapState::changed_since_publish,
+        "a later map save must become changed-since-publish");
+    files.replace(files.find("Map.ugc"), 7U, "../outside.ugc");
+    write(temporary.root / "Map.ugc.publication.json", "{\"files\":[" + files + "]}");
+    expect(scan_ugc_projects(temporary.root).maps[0].state == UgcLocalMapState::unpublished,
+        "an invalid receipt must not direct the catalog outside the project");
+}
+
 } // namespace
 
 int main() {
@@ -91,7 +116,8 @@ int main() {
         scan_recovers_triplets_and_isolates_bad_sidecars();
         missing_vxl_is_visible_but_not_publishable();
         delete_uses_opaque_filename_and_rejects_traversal();
-        std::cout << "3/3 tests passed\n";
+        publication_receipt_survives_rescan_and_detects_later_edits();
+        std::cout << "4/4 tests passed\n";
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';

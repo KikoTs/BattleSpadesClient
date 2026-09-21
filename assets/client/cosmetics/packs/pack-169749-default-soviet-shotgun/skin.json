@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "id": "pack-169749-default-soviet-shotgun",
+  "name": "OpenSpades: Winter Warfare — Soviet Shotgun",
+  "source": "https://gamebanana.com/mods/169749",
+  "class": "ViewShotgunSkin",
+  "category": "Shotgun",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Shotgun/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Shotgun/Pump.kv6": "Models/Weapons/Shotgun/Pump.kv6",
+    "Models/Weapons/Shotgun/Weapon.kv6": "Models/Weapons/Shotgun/Weapon.kv6",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "Models/Weapons/Shotgun/WeaponNoPump.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/Shotgun/Sight1.kv6": "Fallback/OpenSpades/Models/Weapons/Shotgun/Sight1.kv6",
+    "Models/Weapons/Shotgun/Sight2.kv6": "Fallback/OpenSpades/Models/Weapons/Shotgun/Sight2.kv6",
+    "Sounds/Weapons/Shotgun/FireLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireLocal.opus.ogg",
+    "Sounds/Weapons/Shotgun/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireFar.opus.ogg",
+    "Sounds/Weapons/Shotgun/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireStereo.opus.ogg",
+    "Sounds/Weapons/Shotgun/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Shotgun/CockLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/CockLocal.opus.ogg",
+    "Sounds/Weapons/Shotgun/V2AmbienceSmall.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Shotgun/V2AmbienceLarge.opus": "Fallback/OpenSpades/Sounds/Weapons/Shotgun/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Shotgun/Pump.kv6": "8baf0c4890f09156e1d4c6e11f7986d2e1b3a0f11fa0122c7759d6c75393d536",
+    "Models/Weapons/Shotgun/Weapon.kv6": "613abb68dc7e7cd7589fb9c4f1e84c63fc444642016b80b5df7ac5af955f7f80",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "613abb68dc7e7cd7589fb9c4f1e84c63fc444642016b80b5df7ac5af955f7f80",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/Shotgun/Sight1.kv6": "db078911d405db5e89c16c764bab7d879a54b14c48b69c3748814070cf861d71",
+    "Fallback/OpenSpades/Models/Weapons/Shotgun/Sight2.kv6": "bbb2f52cf57a91b70dea21745f5f2c005ea71418edb81c0becbf62dd29044f90",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireLocal.opus.ogg": "a8a85857c72346d4000ce9de159c96d35e970ceec5332e04f0d47f8ca51f3313",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireFar.opus.ogg": "c0676771121d37c6ba56abad7a4f26e024873052524f395741ea3c346ff824cd",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/FireStereo.opus.ogg": "0de01ca53ef2956398967233373b8bba57235f6bfae1ffd7cbf906a246d97a32",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/ReloadLocal.opus.ogg": "2c0fb3909ec0b6fad2d08182bf34aa2f2d5f2e2937b897068890fc770a9aea52",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/CockLocal.opus.ogg": "20bde27ce8783701a5bbef8d482adfeae303380de89222b7e0981b21ed37d65b",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/V2AmbienceSmall.opus.ogg": "11a3d24a5ddb6d4f995194665f0bf50543b1bea4775c05e7874547997c03918f",
+    "Fallback/OpenSpades/Sounds/Weapons/Shotgun/V2AmbienceLarge.opus.ogg": "5403789969969cd2884b3a362743ffcfaa37c3afc17168189cf13b3f763bd58b",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/Shotgun/View.as": "0b0d2e640f7370726b183fd4d7105b70c4f4b3a195798b856fa86d7ee85a737c"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\"><img alt=\"Creative Commons License\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\"></a><br>OpenSpades: Winter Warfare by Foxxy. is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\">Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Created everything",
+          "_idRow": "1285881",
+          "_sName": "Foxxy.",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/5a6d601d12779.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1285881",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/6141701f58ade.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default Shotgun script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

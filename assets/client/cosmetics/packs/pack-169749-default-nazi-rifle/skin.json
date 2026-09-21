@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "pack-169749-default-nazi-rifle",
+  "name": "OpenSpades: Winter Warfare — Nazi Rifle",
+  "source": "https://gamebanana.com/mods/169749",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/Rifle/Sight1.kv6": "Fallback/OpenSpades/Models/Weapons/Rifle/Sight1.kv6",
+    "Models/Weapons/Rifle/Sight2.kv6": "Fallback/OpenSpades/Models/Weapons/Rifle/Sight2.kv6",
+    "Sounds/Weapons/Rifle/FireLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Rifle/Magazine.kv6": "ee53b232e702cc162434e01923c9713d936ef659fd00f8dc329c9517b8f4fe04",
+    "Models/Weapons/Rifle/Weapon.kv6": "3b9390b6090d2e64b326e298f3013ca5b314af515e3d1af7538535a6fd06a110",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "67bf679c5a6d3f83ca7da1c54b243ecb339bd357d007ab3fa1feeb9bdd374497",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/Rifle/Sight1.kv6": "93c018d89fd576e14c82637cb8deefd42c04fdc193b26bc98e85785d0db10760",
+    "Fallback/OpenSpades/Models/Weapons/Rifle/Sight2.kv6": "f513ca3fba44e3991be1639ff3887c8f5e17c6848e20575f150c0540183244b6",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "c5d1f04e6c50c89472f300a00b0817352b0149f4645baf77c469c9120dca203b",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg": "9de3cde7dbc14e8be28e784d76f44eac7594320f19b348549b52523bd30e9b90",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "c9df3a4987d3bcc4931d4e71ca0c5599546c461dd0a7a28325d0622021a15a44",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "ba0041da6ac2f62670bd951dab3f26b8d7f33d2979134fb7358a8f6e0cdcb849",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "e3d859a921b273794be7c884c79960f466a9e76bc648bb4ad82161b0519efc6e",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "fea31c4c6736dbc8ec16f5f516f7c2cc923a472efeae100d9947b24ee7603255",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/Rifle/View.as": "80c1517cdfc47495e8432e17b0ba749dceebbfc84b82f89c83e8f95c3355e2ad"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\"><img alt=\"Creative Commons License\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\"></a><br>OpenSpades: Winter Warfare by Foxxy. is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\" target=\"_blank\">Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Created everything",
+          "_idRow": "1285881",
+          "_sName": "Foxxy.",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/5a6d601d12779.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1285881",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/6141701f58ade.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default Rifle script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

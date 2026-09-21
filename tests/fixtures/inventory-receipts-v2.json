@@ -1,0 +1,848 @@
+[
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111110",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "supply-v1",
+    "catalog_digest": "fd384484898c98fc63180f3e4d52953399bac62d95dcaf4e4633a2c6fc42ab84",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "officer-profile-badge-v1",
+      "kind": "profile_badge",
+      "rarity": "legendary",
+      "name": "Officer Service Badge",
+      "description": "An earned cosmetic finish. Original shape and team markings are preserved.",
+      "slots": [
+        "profile_badge"
+      ],
+      "asset": "png/ui/kill_types/grave.png",
+      "sha256": "edb9be8b724ba308c2dbd153d4814b828c74ffbefc36adc9738c1ac7e3e0be3d",
+      "palette": [
+        203,
+        168,
+        61
+      ],
+      "minimum_content_version": 1,
+      "enabled": true,
+      "author": "AoS Revival",
+      "license": "Requires the original game assets; no original assets are redistributed.",
+      "fallback": "original"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      4
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "e0b808ef6799da34d9657d83534fd9e14a74b521fb32088732650f82aff534bd",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0101010101010101010101010101010101010101010101010101010101010101",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "5c717d966a8bc7916cb556b3642a3afc2429c56581b20d7f2888250d5aef51dd",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111111",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "weapons-v2",
+    "catalog_digest": "e5c379624a96edce398ef67d171fee656c0b51fe8ca776fefdb61fdb07101b2e",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-aeon-awp-v2",
+      "kind": "weapon_model",
+      "rarity": "legendary",
+      "name": "AEON AWP",
+      "description": "AEON AWP appearance. Uses the parent weapon's damage, ammunition and handling.",
+      "slots": [
+        "weapon:18:view",
+        "weapon:18:world",
+        "weapon:19:view",
+        "weapon:19:world"
+      ],
+      "asset": "client/cosmetics/models/aeon-awp.kv6",
+      "sha256": "a4b11ea05f438eddf623bb22ccb50340e2c533125895b3c5f6c427d5267ba652",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 2,
+      "enabled": true,
+      "author": "iSkyte., PTrooper",
+      "license": "Original terms retained in client/cosmetics/credits/aeon-awp.txt",
+      "source": "https://gamebanana.com/mods/319882",
+      "fallback": "original",
+      "parents": [
+        {
+          "tool": 18,
+          "asset": "kv6/sniper.kv6",
+          "scale": 0.2222222222222222,
+          "pivot": [
+            6.75,
+            76.5,
+            18
+          ]
+        },
+        {
+          "tool": 19,
+          "asset": "kv6/sniper2.kv6",
+          "scale": 0.2222222222222222,
+          "pivot": [
+            6.75,
+            76.5,
+            15.75
+          ]
+        }
+      ],
+      "crate_family": "weapons"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "5566ef488e82b1a034aeebf18537be3dfd88846a36adf1bbbcd3b1547faf7d91",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0202020202020202020202020202020202020202020202020202020202020202",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "65c57643f7b4c3af957f33d5dbead31b17eae7e39c237d07fab7ac8f3f5ab1b8",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111112",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "characters-v2",
+    "catalog_digest": "8db43accf5c49d17c97ecc545fafdb6aca96cfef3cba4569f3830392ac468193",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "officer-character-skin-uniform-v2",
+      "kind": "character_skin",
+      "rarity": "legendary",
+      "name": "Officer Uniform",
+      "description": "A complete uniform finish for the equipped class: body, head, legs and arms. Team markings stay visible.",
+      "slots": [
+        "class:0:body",
+        "class:1:body",
+        "class:2:body",
+        "class:3:body",
+        "class:4:body",
+        "class:5:body",
+        "class:6:body",
+        "class:7:body",
+        "class:8:body",
+        "class:9:body",
+        "class:10:body",
+        "class:11:body",
+        "class:12:body",
+        "class:13:body",
+        "class:14:body",
+        "class:15:body",
+        "class:16:body",
+        "class:17:body"
+      ],
+      "asset": "kv6/Character_Engineer_Body.kv6",
+      "sha256": "2974260a66429976e4cc59d2404b4fb91ffbc6c9cc4fffd37abb93b88149733f",
+      "palette": [
+        203,
+        168,
+        61
+      ],
+      "minimum_content_version": 2,
+      "enabled": true,
+      "author": "AoS Revival",
+      "license": "Requires the original game assets; no original assets are redistributed.",
+      "fallback": "original",
+      "crate_family": "characters"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "5460f6c22a1a3348e7c48fb511088120d1547a288ac5da61f4bfd92faff8c420",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0303030303030303030303030303030303030303030303030303030303030303",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "fd5d8e0b3599a78ef3774307ffb263c32546dc1709260a6dd9226615b01e8d3c",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111113",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "cosmetics-v2",
+    "catalog_digest": "3ba5a37ddbe4b647c9c7f63ce54b61fc7b5c33fd94d2573e47c1b4c028c410bc",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "officer-profile-badge-v1",
+      "kind": "profile_badge",
+      "rarity": "legendary",
+      "name": "Officer Service Badge",
+      "description": "An earned cosmetic finish. Original shape and team markings are preserved.",
+      "slots": [
+        "profile_badge"
+      ],
+      "asset": "png/ui/kill_types/grave.png",
+      "sha256": "edb9be8b724ba308c2dbd153d4814b828c74ffbefc36adc9738c1ac7e3e0be3d",
+      "palette": [
+        203,
+        168,
+        61
+      ],
+      "minimum_content_version": 1,
+      "enabled": true,
+      "author": "AoS Revival",
+      "license": "Requires the original game assets; no original assets are redistributed.",
+      "fallback": "original"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      3
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "01ce9c1c096517bea7037aa8e7448d5029af4aa462a485e140127e72c954a0e0",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0404040404040404040404040404040404040404040404040404040404040404",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "298bbbdf408a33e7f435a847293709594334a0eef18e0373142443d6029ea916",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111114",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "weapons-v3",
+    "catalog_digest": "58a350fd095d1a7ce5921c33c8fd5112c7757f08e79dd364ea072d47a6bf77e0",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-aeon-awp-v2",
+      "kind": "weapon_model",
+      "rarity": "legendary",
+      "name": "AEON AWP",
+      "description": "AEON AWP appearance. Uses the parent weapon's damage, ammunition and handling.",
+      "slots": [
+        "weapon:18:view",
+        "weapon:18:world",
+        "weapon:19:view",
+        "weapon:19:world"
+      ],
+      "asset": "client/cosmetics/models/aeon-awp.kv6",
+      "sha256": "a4b11ea05f438eddf623bb22ccb50340e2c533125895b3c5f6c427d5267ba652",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 2,
+      "enabled": true,
+      "author": "iSkyte., PTrooper",
+      "license": "Original terms retained in client/cosmetics/credits/aeon-awp.txt",
+      "source": "https://gamebanana.com/mods/319882",
+      "fallback": "original",
+      "parents": [
+        {
+          "tool": 18,
+          "asset": "kv6/sniper.kv6",
+          "scale": 0.2222222222222222,
+          "pivot": [
+            6.75,
+            76.5,
+            18
+          ]
+        },
+        {
+          "tool": 19,
+          "asset": "kv6/sniper2.kv6",
+          "scale": 0.2222222222222222,
+          "pivot": [
+            6.75,
+            76.5,
+            15.75
+          ]
+        }
+      ],
+      "crate_family": "weapons",
+      "scripted_skin": "client/cosmetics/packs/pack-legacy-aeon-awp-rifle/skin.json",
+      "resource_pack": "pack-legacy-aeon-awp-rifle"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "5f8b0d9a72ccbae058224a87436f968265d741ebdef9ec9b1a447dfa54dfc01c",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0505050505050505050505050505050505050505050505050505050505050505",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "330687a4957d5aca424722254a816d727cd9116609678d53f47596e98f381d80",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111115",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "characters-v3",
+    "catalog_digest": "6ebc437632942c84c894613fbadeb343fb9e48396bdbc1cd942109884118bc9b",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-170855-kv6-v3",
+      "name": "SWAT player reskin for AoS",
+      "kind": "character_skin",
+      "rarity": "uncommon",
+      "description": "Complete imported character with articulated retail joints and original team markings.",
+      "slots": [
+        "class:0:body",
+        "class:1:body",
+        "class:2:body",
+        "class:3:body",
+        "class:5:body",
+        "class:6:body",
+        "class:7:body",
+        "class:8:body",
+        "class:9:body",
+        "class:10:body",
+        "class:11:body",
+        "class:12:body",
+        "class:13:body",
+        "class:16:body",
+        "class:17:body"
+      ],
+      "asset": "client/cosmetics/imported/community-170855-kv6-v3/head.kv6",
+      "sha256": "393a7794bee5ab7afea5646b5d1350792b0528a11564668aef2872483b33fe93",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 3,
+      "enabled": true,
+      "author": "FBalazs",
+      "source": "https://gamebanana.com/mods/170855",
+      "license": "Original terms retained in client/cosmetics/credits/community-170855-kv6-v3.json",
+      "fallback": "original",
+      "crate_family": "characters",
+      "character_parts": {
+        "head": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/head.kv6",
+          "sha256": "393a7794bee5ab7afea5646b5d1350792b0528a11564668aef2872483b33fe93"
+        },
+        "torso": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/torso.kv6",
+          "sha256": "af79591060c369c437d86108cf136c963a07e14450b49d6cb8b9a69d18f0aff8"
+        },
+        "leg": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/leg.kv6",
+          "sha256": "0df6ff54fdce8b34046302b96533e457c3b22d58bad794300283ac729f8678e2"
+        },
+        "torso_crouch": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/torso_crouch.kv6",
+          "sha256": "f3ab345c3153c00059fe8976a434d7fe51b5fe589d075ad70b35dc87e7c5a5d1"
+        },
+        "leg_crouch": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/leg_crouch.kv6",
+          "sha256": "188139e75baee77a3dffd64b04a3fec03a52369236654f614a6dbd8ab3430b9f"
+        },
+        "dead": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/dead.kv6",
+          "sha256": "ad8837d974e52592cadc5abc003734ed28830d948f5c4049ecec6b2edb44bee9"
+        },
+        "arms": {
+          "asset": "client/cosmetics/imported/community-170855-kv6-v3/arms.kv6",
+          "sha256": "fe5f53b5c7790cd8f98a93717c1d18536bd92b853799b76b68379f8b9cd2944c"
+        }
+      },
+      "character_format": "OpenSpades"
+    },
+    "pity_after": [
+      10,
+      40,
+      100
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      38,
+      0,
+      0,
+      0
+    ],
+    "guarantee_banked": true,
+    "roll_digest": "d956cbcea019be33846793e952ddce19d7b080a54198cb08918cb5ac695f9682",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0606060606060606060606060606060606060606060606060606060606060606",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "52f65d80bfcd5fc9e12a301bc07cf06f3ac674956caf93a54bdc377494926f11",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111116",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "cosmetics-v3",
+    "catalog_digest": "84f6e4ea9c80eeaa7cbfb984d26ec70d7e1f356ea7d7c66e51bef128cea94192",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-169599-dead-v3",
+      "name": "new dead v1",
+      "kind": "tombstone",
+      "rarity": "uncommon",
+      "description": "new dead v1 appearance; original gameplay stats and hitboxes.",
+      "slots": [
+        "tombstone"
+      ],
+      "asset": "client/cosmetics/imported/community-169599-dead-v3/model.kv6",
+      "sha256": "e7ab13221d7ee74771043cdc122b3d5c263c366b9e6d08e5834dfe4a8a3e2b51",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 3,
+      "enabled": true,
+      "author": "Isl",
+      "source": "https://gamebanana.com/mods/169599",
+      "license": "Original terms retained in client/cosmetics/credits/community-169599-dead-v3.json",
+      "fallback": "original",
+      "crate_family": "cosmetics"
+    },
+    "pity_after": [
+      10,
+      40,
+      100
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      10,
+      0,
+      0,
+      0
+    ],
+    "guarantee_banked": true,
+    "roll_digest": "7c320c737abb6c448274667d27e44ca9f91f5d40cd7e2ee5c68767bf159cc131",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0707070707070707070707070707070707070707070707070707070707070707",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "3248ef04c6511f48bdd7251153fa7bad22f4157ce813dacf1037a6f20b61a56c",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111117",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "weapons-v4",
+    "catalog_digest": "b1813bd3df80748e356c354db06ff13cba8a044241d0a4c10748706c2ee915b4",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-aeon-l115a3-v2",
+      "kind": "weapon_model",
+      "rarity": "legendary",
+      "name": "AEON L115A3",
+      "description": "AEON L115A3 appearance. Uses the parent weapon's damage, ammunition and handling.",
+      "slots": [
+        "weapon:18:view",
+        "weapon:18:world",
+        "weapon:19:view",
+        "weapon:19:world"
+      ],
+      "asset": "client/cosmetics/models/aeon-l115a3.kv6",
+      "sha256": "ed417c8def9f82278fb3803abaef3cb5bb6c1e684a7f609e5507581b5dd4b645",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 2,
+      "enabled": true,
+      "author": "iSkyte., 1Shot_1Kill",
+      "license": "Original terms retained in client/cosmetics/credits/aeon-l115a3.txt",
+      "source": "https://gamebanana.com/mods/319083",
+      "fallback": "original",
+      "parents": [
+        {
+          "tool": 18,
+          "asset": "kv6/sniper.kv6",
+          "scale": 0.6181818181818182,
+          "pivot": [
+            2.4264705882352944,
+            27.5,
+            6.470588235294118
+          ]
+        },
+        {
+          "tool": 19,
+          "asset": "kv6/sniper2.kv6",
+          "scale": 0.6181818181818182,
+          "pivot": [
+            2.4264705882352944,
+            27.5,
+            5.661764705882353
+          ]
+        }
+      ],
+      "crate_family": "weapons"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      3
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "cd621e1f4a49453b227785a9ee1da2071164824687c78a54dee0080f12c64185",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0808080808080808080808080808080808080808080808080808080808080808",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "529809e7b308f87cea4148cc461d778ec7375ad56438734ade1835ca476db061",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111118",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "characters-v4",
+    "catalog_digest": "40bc6c0641d28405e0cca30bbbcc948ee641e6f62f9c7bbb3fda89ff907ab6a0",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-170866-files-210006-v3",
+      "name": "OpenSpades Player skin",
+      "kind": "character_skin",
+      "rarity": "legendary",
+      "description": "Complete imported character with articulated retail joints and original team markings.",
+      "slots": [
+        "class:0:body",
+        "class:1:body",
+        "class:2:body",
+        "class:3:body",
+        "class:5:body",
+        "class:6:body",
+        "class:7:body",
+        "class:8:body",
+        "class:9:body",
+        "class:10:body",
+        "class:11:body",
+        "class:12:body",
+        "class:13:body",
+        "class:16:body",
+        "class:17:body"
+      ],
+      "asset": "client/cosmetics/imported/community-170866-files-210006-v3/head.kv6",
+      "sha256": "0bf3885e46c73b3e64a7fe197aba252bce396f169d9139d4f99e7b9e54558d33",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 3,
+      "enabled": true,
+      "author": "JTRA Stormy",
+      "source": "https://gamebanana.com/mods/170866",
+      "license": "Original terms retained in client/cosmetics/credits/community-170866-files-210006-v3.json",
+      "fallback": "original",
+      "crate_family": "characters",
+      "character_parts": {
+        "head": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/head.kv6",
+          "sha256": "0bf3885e46c73b3e64a7fe197aba252bce396f169d9139d4f99e7b9e54558d33"
+        },
+        "torso": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/torso.kv6",
+          "sha256": "783b02d3bb0b12d63e84ba24b2ba4ea82fe0a73f106e25262c032d407fbc4548"
+        },
+        "leg": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/leg.kv6",
+          "sha256": "1cce66ef260967fae8ccd7e4bdeeaa72b0d30f704ce49c322ac527aea8964cc7"
+        },
+        "torso_crouch": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/torso_crouch.kv6",
+          "sha256": "acb64450f255f9c08fa5c855c7ce6e5b292e6d13764fd4215b2c46c6401ea7ff"
+        },
+        "leg_crouch": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/leg_crouch.kv6",
+          "sha256": "e995ac55791ba48ac42bf4bd96031c537370dd55664131095b44b83b00864a27"
+        },
+        "arm_upper": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/arm_upper.kv6",
+          "sha256": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+        },
+        "arm_lower": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/arm_lower.kv6",
+          "sha256": "db6efb87a1617e6dadfed05fe0b5346403cfa14cf3adfdbfaebf0c99901c1f7e"
+        },
+        "dead": {
+          "asset": "client/cosmetics/imported/community-170866-files-210006-v3/dead.kv6",
+          "sha256": "83ae1293c189715a67db529a0ec982827f117100901c17afcb46ca3001b4ecbf"
+        }
+      },
+      "character_format": "OpenSpades"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      3
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "95074ba72fe49534894f501de7a4d58545ba7cce2ba85c18f89198224f6ca7a7",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0909090909090909090909090909090909090909090909090909090909090909",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "817239faadd76b8f9c1ec0ab18f6eaf096616bf19b888e1a3e0c1875ef12d4bd",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-111111111119",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "cosmetics-v4",
+    "catalog_digest": "06dc150ee27da5f88e1860b2bacc95b842f9025b39a74644c53ddd71701f48d1",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-health-crate-v3",
+      "name": "Sans & Papyrus health crate",
+      "kind": "prop_model",
+      "rarity": "legendary",
+      "description": "Sans & Papyrus health crate appearance; original gameplay stats and hitboxes.",
+      "slots": [
+        "entity:4"
+      ],
+      "asset": "client/cosmetics/imported/community-entrega-para-sans-and-papyrus-sans-papyrus-health-crate-v3/healthcrate-kv6.kv6",
+      "sha256": "5792b37ffa7571f0c7f76b9be459f6eda8027f224b79f89c07856c9f49f7c9a4",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 3,
+      "enabled": true,
+      "author": "See original archive",
+      "source": "User-provided archive",
+      "license": "Original terms retained in client/cosmetics/credits/community-entrega-para-sans-and-papyrus-sans-papyrus-health-crate-v3.json",
+      "fallback": "original",
+      "crate_family": "cosmetics",
+      "character_parts": {
+        "healthcrate.kv6": {
+          "asset": "client/cosmetics/imported/community-entrega-para-sans-and-papyrus-sans-papyrus-health-crate-v3/healthcrate-kv6.kv6",
+          "sha256": "5792b37ffa7571f0c7f76b9be459f6eda8027f224b79f89c07856c9f49f7c9a4"
+        }
+      }
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "47916d0a3e4f28f36883ceae0aee2b30804f5751cd1fdc3d289b375a6a3b985a",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "77145ff212baa769d5c43493066a3d375e6d7ea12b5a7ac20ad45cdeda133fe8",
+    "algorithm": "aos-crate-v1"
+  },
+  {
+    "schema_version": 1,
+    "crate_id": "11111111-1111-4111-8111-1111111111110",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "catalog_version": "supply-v4",
+    "catalog_digest": "67454bd82cc0d79e1369710f55c002090095c41a45a69adb15d55a5fb3f9a94e",
+    "opened_at": "2026-09-06T00:00:00.000Z",
+    "item": {
+      "id": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+      "name": "Silver Side-Charging M4 (OpenSpades)",
+      "kind": "weapon_model",
+      "rarity": "legendary",
+      "description": "Silver Side-Charging M4 (OpenSpades) appearance; original gameplay stats and hitboxes.",
+      "slots": [
+        "weapon:7:view",
+        "weapon:7:world",
+        "weapon:38:view",
+        "weapon:38:world",
+        "weapon:60:view",
+        "weapon:60:world"
+      ],
+      "asset": "client/cosmetics/imported/community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3/model.kv6",
+      "sha256": "4755c8d267f01949d87e56a5209e76acf5156adb64519b30ea9db2239deb85f6",
+      "palette": [
+        255,
+        255,
+        255
+      ],
+      "minimum_content_version": 3,
+      "enabled": true,
+      "author": "TheRedCyndaquil23, PTrooper",
+      "source": "https://gamebanana.com/mods/170214",
+      "license": "Original terms retained in client/cosmetics/credits/community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3.json",
+      "fallback": "original",
+      "crate_family": "weapons",
+      "parents": [
+        {
+          "tool": 7,
+          "asset": "kv6/smg.kv6",
+          "scale": 0.21008403361344538,
+          "pivot": [
+            4.76,
+            78.53999999999999,
+            21.419999999999998
+          ]
+        },
+        {
+          "tool": 38,
+          "asset": "kv6/classic_smg.kv6",
+          "scale": 0.21008403361344538,
+          "pivot": [
+            4.76,
+            78.53999999999999,
+            21.419999999999998
+          ]
+        },
+        {
+          "tool": 60,
+          "asset": "kv6/assaultRifle.kv6",
+          "scale": 0.4369747899159664,
+          "pivot": [
+            5.721153846153846,
+            59.5,
+            17.16346153846154
+          ]
+        }
+      ],
+      "key": "pack-170214-files-208187-reflexsight3-pak-unpacked-smg",
+      "scripted_skin": "client/cosmetics/packs/pack-170214-files-208187-reflexsight3-pak-unpacked-smg/skin.json",
+      "animation": "Original OpenSpades skin script",
+      "resource_pack": "pack-170214-files-208187-reflexsight3-pak-unpacked-smg"
+    },
+    "pity_after": [
+      0,
+      0,
+      0
+    ],
+    "pity_before": [
+      9,
+      39,
+      99
+    ],
+    "candidate_counts": [
+      0,
+      0,
+      0,
+      0,
+      8
+    ],
+    "guarantee_banked": false,
+    "roll_digest": "0177166e8ea4654edd411d8bc7a6dbd1f3e4227cc2176186fce3d9a03a42ec0d",
+    "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+    "seed": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+    "client_nonce": "abababababababababababababababababababababababababababababababab",
+    "commitment": "4d9275d1ddaeae29c4f537a4e3f0e8bf05179969da8f4975a066134d6e3d029b",
+    "algorithm": "aos-crate-v1"
+  }
+]

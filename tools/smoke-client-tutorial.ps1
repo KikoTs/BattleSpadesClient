@@ -56,7 +56,9 @@ param(
     # Deterministically equip any retail tool without relying on F4/wheel
     # focus. Tool 5 is useful for block-line/palette visual verification.
     [ValidateRange(-1, 64)]
-    [int] $TutorialToolId = -1
+    [int] $TutorialToolId = -1,
+    [string] $TutorialCosmetic = '',
+    [switch] $TutorialAim
 )
 
 Set-StrictMode -Version Latest
@@ -405,6 +407,8 @@ $vk9 = 0x39
 
 [BattleSpades.TutorialSmoke.NativeMethods]::EnablePhysicalPixelCoordinates()
 $arguments = @('--run-forever', '--pace')
+if ($TutorialCosmetic) { $arguments += @('--tutorial-cosmetic', $TutorialCosmetic) }
+if ($TutorialAim) { $arguments += '--tutorial-aim' }
 if (-not [string]::IsNullOrWhiteSpace($ShaderQuality)) {
     $arguments += @('--shader-quality', $ShaderQuality)
 }

@@ -34,6 +34,9 @@ int main(int argc, char** argv) {
     LiveProtocol168Connection connection;
     Protocol168SessionConfig primary_config;
     primary_config.player_name = "NativeLiveSmoke";
+    // Select the complete loadout before spawning, just like SelectClass.
+    // Changing it after auto-join correctly kills the old life on local servers.
+    primary_config.auto_join = false;
     if (!connection.start(
             EnetProtocol168Config{argv[1], static_cast<std::uint16_t>(parsed_port), 30'000U},
             primary_config)) {
@@ -94,21 +97,16 @@ int main(int argc, char** argv) {
     std::size_t own_shot_feedback{};
     std::size_t own_prefab_cells{};
     std::int32_t loop{};
-    const auto* local = bootstrap->roster.player(bootstrap->local_player_id);
-    if (local == nullptr) {
-        std::cerr << "bootstrap omitted the local player\n";
-        return 1;
-    }
     std::vector<std::string> requested_prefabs;
-    if (test_prefab && local->class_id == 1U) {
-        requested_prefabs = {"prefab_caltrop", "prefab_supertower",
-                             "prefab_superbridge"};
+    if (test_prefab && primary_config.class_id == 1U) {
+        // An intentional single non-default choice must survive normalization.
+        requested_prefabs = {"prefab_caltrop"};
     }
     const auto selection = requested_prefabs.empty()
                                ? battlespades::world::default_class_selection(
-                                     local->class_id)
+                                     primary_config.class_id)
                                : battlespades::world::make_class_selection(
-                                     local->class_id, {}, requested_prefabs);
+                                     primary_config.class_id, {}, requested_prefabs);
     SetClassLoadoutPacket loadout;
     loadout.player_id = bootstrap->local_player_id;
     loadout.class_id = selection.class_id;
@@ -116,8 +114,29 @@ int main(int argc, char** argv) {
     loadout.loadout = selection.loadout;
     loadout.prefabs = selection.prefabs;
     loadout.ugc_tools = selection.ugc_tools;
-    if (!connection.send(encode_packet(loadout))) {
+    if (!connection.send(encode_packet(loadout)) ||
+        !connection.send(encode_protocol168_new_player_connection(primary_config))) {
         std::cerr << "failed to send class transaction\n";
+        return 1;
+    }
+    const auto spawn_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{8};
+    while (std::chrono::steady_clock::now() < spawn_deadline &&
+           bootstrap->roster.player(bootstrap->local_player_id) == nullptr) {
+        for (const auto& packet : connection.take_inbound()) {
+            if (!packet.empty() && std::to_integer<std::uint8_t>(packet.front()) ==
+                                       CreatePlayerPacket::id) {
+                if (!bootstrap->roster.apply(packet)) {
+                    std::cerr << "invalid CreatePlayer in join transaction\n";
+                    return 1;
+                }
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    const auto* local = bootstrap->roster.player(bootstrap->local_player_id);
+    if (local == nullptr || local->class_id != selection.class_id ||
+        local->prefabs != selection.prefabs) {
+        std::cerr << "server did not preserve the selected class and exact construct list\n";
         return 1;
     }
     auto active_tool = selection.loadout.empty() ? std::uint8_t{}
@@ -142,9 +161,12 @@ int main(int argc, char** argv) {
     const auto prefab_x = std::clamp(spawn_x <= 498 ? spawn_x + 8 : spawn_x - 12,
                                      1, 506);
     const auto prefab_y = std::clamp(spawn_y, 1, 506);
+    // The recovered 11-voxel caltrop's bottom contact is local (2,2,2).
+    // Sampling the corner instead can float it above sloped terrain and the
+    // authoritative attachment check then correctly rejects this smoke.
     const auto surface = bootstrap->map->surface_z(
-        static_cast<std::uint32_t>(prefab_x),
-        static_cast<std::uint32_t>(prefab_y));
+        static_cast<std::uint32_t>(prefab_x + 2),
+        static_cast<std::uint32_t>(prefab_y + 2));
     const auto prefab_z = static_cast<std::int16_t>(surface >= 3U ? surface - 3U
                                                                   : surface);
     std::int32_t observer_loop{};
@@ -307,7 +329,10 @@ int main(int argc, char** argv) {
         observer_status.phase != LiveProtocol168Phase::ready ||
         world_updates == 0U ||
         own_shot_feedback == 0U || (test_prefab && own_prefab_cells == 0U)) {
-        std::cerr << (status.error.empty() ? "live weapon feedback was not observed" : status.error)
+        std::cerr << (status.error.empty()
+                         ? own_shot_feedback == 0U ? "live weapon feedback was not observed"
+                                                   : "live prefab placement was not observed"
+                         : status.error)
                   << '\n';
         return 1;
     }

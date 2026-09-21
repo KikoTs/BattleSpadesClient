@@ -96,6 +96,7 @@ struct TerrainApplyResult final {
 /**
  * Apply one wire Damage(37), including the native BlockManager expansion for
  * spades, zombie hands, drill bores, and compact deployable explosions.
+ * Legacy turret rockets use rounded centres and seeded radius-three falloff.
  * The server intentionally sends one packet for these shapes; treating it as
  * a single voxel leaves collision and rendering permanently desynchronized.
  */

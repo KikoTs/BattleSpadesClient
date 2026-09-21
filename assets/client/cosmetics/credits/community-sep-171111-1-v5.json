@@ -1,0 +1,70 @@
+{
+  "name": "Usp — UspNoSuppressor",
+  "source": "https://gamebanana.com/mods/171111",
+  "archives": [
+    {
+      "archive": "171111\\518305-uspnosuppressor.rar",
+      "extracted": "171111\\files-518305",
+      "sha256": "864c5bd45eaf61a8b7c717f15e51e4f8829e72df369d1c43f87f75a828f19f87",
+      "listing": [
+        "How to install.txt",
+        "UspNoSuppressor.pak"
+      ]
+    },
+    {
+      "archive": "171111\\518306-uspsuppressor.rar",
+      "extracted": "171111\\files-518306",
+      "sha256": "306edff3214f2734a46d76c65598c5394c6c6871f2511cf9856d6b410e62b978",
+      "listing": [
+        "How to install.txt",
+        "UspSuppressor.pak"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Model",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1773911",
+          "_sName": "Nuceto",
+          "_sProfileUrl": "https://gamebanana.com/members/1773911",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/60075cb236bc6.png",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Animations",
+      "_aAuthors": [
+        {
+          "_sRole": "Desert Eagle Script",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

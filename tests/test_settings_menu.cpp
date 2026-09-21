@@ -75,6 +75,7 @@ template <typename Effect>
         {1'280U, 720U},
         {1'920U, 1'080U},
     };
+    environment.languages = {{"en", "English"}, {"ru", "Русский"}};
     return environment;
 }
 
@@ -84,18 +85,28 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 5U, "Main must expose exactly five recovered rows");
+    expect(view.rows.size() == 9U,
+           "Main must expose the existing rows and local skin/movement preferences");
     const std::vector expected{
+        SettingsRowId::language,
         SettingsRowId::master_volume,
         SettingsRowId::music_volume,
         SettingsRowId::fullscreen,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
+        SettingsRowId::show_skins,
+        SettingsRowId::show_other_skins,
+        SettingsRowId::weapon_motion,
     };
     for (std::size_t index{}; index < expected.size(); ++index) {
         expect(view.rows[index].id == expected[index], "Main row order changed");
-        expect(view.rows[index].visible, "all five Main rows must fit without scrolling");
+        if(index<6U)expect(view.rows[index].visible, "existing Main rows must remain visible");
     }
+    expect(row(view, SettingsRowId::language).value_text == "English" &&
+               menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::language)) &&
+               menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}) &&
+               session.draft().main.language == "ru",
+           "language selector must stage the locale id while displaying its native name");
     expect(view.panel_bounds == Rect{152, 133, 494, 293},
            "content frame must retain its converted retail bounds");
     expect(view.viewport_bounds == Rect{162, 143, 474, 273},
@@ -574,6 +585,37 @@ void favorite_server_is_transient_and_commits_only_on_done() {
            "Done must emit the separate server-browser favourite command");
 }
 
+void skin_preferences_are_reachable_live_and_cancelable() {
+    auto environment=full_environment();
+    environment.context=SettingsMenuContext::in_game;
+    SettingsSession session;
+    SettingsMenuModel menu{session,environment};
+    for(const auto id:{SettingsRowId::show_other_skins,SettingsRowId::show_skins,SettingsRowId::weapon_motion}){
+        expect(menu.set_focus(SettingsMenuTarget::for_row(id)),"skin preference must be focusable in game");
+        expect(row(menu.presentation(),id).visible,"focusing lower Main settings must scroll them into view");
+        expect(menu.handle(InputEvent{InputAction::activate,InputPhase::pressed}),"skin toggle must activate");
+        const auto effects=menu.take_effects();
+        const auto* preview=find_effect<SettingsPreviewEffect>(effects);
+        expect(preview&&preview->source==id,"skin toggle must emit a live preview");
+    }
+    expect(!session.draft().main.show_skins&&!session.draft().main.show_other_skins&&!session.draft().main.weapon_motion,
+           "all three preferences must stage independently");
+    menu.activate_cancel();
+    expect(session.draft().main.show_skins&&session.draft().main.show_other_skins&&session.draft().main.weapon_motion,
+           "Cancel must restore all three preferences");
+    expect(find_effect<SettingsRestoreCommand>(menu.take_effects())!=nullptr,"Cancel must restore live appearance");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::show_other_skins)),"mine-only control must remain reachable");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate,InputPhase::pressed}));
+    static_cast<void>(menu.take_effects());
+    menu.activate_done();
+    const auto effects=menu.take_effects();
+    const auto* commit=find_effect<SettingsCommitCommand>(effects);
+    expect(commit&&commit->changed&&!commit->restart_required&&!commit->resolution_changed,
+           "skin preferences must apply without restarting the renderer");
+    expect(session.committed().main.show_skins&&!session.committed().main.show_other_skins,
+           "Done must persist mine-only without switching off own skin");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -583,6 +625,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"skin_preferences_are_reachable_live_and_cancelable",skin_preferences_are_reachable_live_and_cancelable},
         {"main_inventory_and_geometry_match_retail", main_inventory_and_geometry_match_retail},
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",
          graphics_capabilities_and_wheel_scrolling_are_deterministic},

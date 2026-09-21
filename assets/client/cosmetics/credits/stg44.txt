@@ -1,0 +1,143 @@
+StG 44
+Original authors: Lauchin, DaLemon, PTrooper
+https://gamebanana.com/mods/169827
+
+{
+  "id": "stg44",
+  "name": "StG 44",
+  "archive": "sgt44.zip",
+  "archive_sha256": "b0a6f6996cfc9fd6af29c6f0ff18c91a3ddae809c19c894016abed75d950f397",
+  "source": "https://gamebanana.com/mods/169827",
+  "credits": [
+    {
+      "group": "Key Authors",
+      "authors": [
+        {
+          "name": "Lauchin",
+          "role": "Modeler",
+          "url": null
+        }
+      ]
+    },
+    {
+      "group": "Special Thanks",
+      "authors": [
+        {
+          "name": "DaLemon",
+          "role": "Model and Sound",
+          "url": null
+        },
+        {
+          "name": "PTrooper",
+          "role": "Scripts",
+          "url": null
+        }
+      ]
+    },
+    {
+      "group": "Scripts",
+      "authors": [
+        {
+          "name": "PTrooper",
+          "role": "Script Creator",
+          "url": "https://gamebanana.com/members/1415230"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "cb627e9cecb147b88e9c18125e683f5798e20e87304e4235042b45a80c1f2cb3"
+}
+
+--- Scripts/Skin/SMG/Raygun.as ---
+/*
+ Confidental! Not for public use.
+ 
+ */
+ 
+ namespace spades {
+ 	class Ray {
+ 		float rayPos = 2.f;
+ 		Vector3 rayOrigin;
+ 		Vector3 rayDir;
+ 		
+ 		void Update(float dt) {
+ 			rayPos += dt * 2.f;
+ 		}
+ 	}
+ 
+ 	class RayRenderer {
+ 		Renderer@ r;
+ 		AudioDevice@ a;
+ 		
+ 		AudioChunk@ fireSound;
+ 		AudioChunk@ fireLocalSound;
+ 		
+ 		Ray@[]@ rays;
+--- Scripts/Skin/SMG/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ */
+ 
+ namespace spades {
+	class ThirdPersonSMGSkin: 
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin {
+		private float sprintState;
+--- Scripts/Skin/SMG/View.as ---
+/*
+ Copyright (c) 2013 OpenSpades Developers
+ Modified by Paratrooper 2015
+ 
+ This file is part of OpenSpades.
+ 
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ ( at your option ) any later version.
+ 
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http:// www.gnu.org/licenses/>.
+ 
+ */
+ 
+namespace spades {
+	class ViewSMGSkin: 
+				

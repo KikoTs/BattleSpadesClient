@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "id": "pack-legacy-kar98-rifle",
+  "name": "Kar98",
+  "source": "https://gamebanana.com/mods/170226",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "How to install.txt": "How to install.txt",
+    "Models/Weapons/Rifle/1.kv6": "Models/Weapons/Rifle/1.kv6",
+    "Models/Weapons/Rifle/11.kv6": "Models/Weapons/Rifle/11.kv6",
+    "Models/Weapons/Rifle/2.kv6": "Models/Weapons/Rifle/2.kv6",
+    "Models/Weapons/Rifle/22.kv6": "Models/Weapons/Rifle/22.kv6",
+    "Models/Weapons/Rifle/BoltHandle.kv6": "Models/Weapons/Rifle/BoltHandle.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/ScopeModel.kv6": "Models/Weapons/Rifle/ScopeModel.kv6",
+    "Models/Weapons/Rifle/Sight.kv6": "Models/Weapons/Rifle/Sight.kv6",
+    "Scripts/Skin/BasicViewWeapon.as": "Scripts/Skin/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "How to install.txt": "6b15b795268d5b5ffe7c6b0619b7c7d753b7c552a8791075496c4144f988b1aa",
+    "Models/Weapons/Rifle/1.kv6": "43ea7a1f865d86b1dccc2bae7a53f6f70abbb51480751f896d1b144a0937965b",
+    "Models/Weapons/Rifle/11.kv6": "43ea7a1f865d86b1dccc2bae7a53f6f70abbb51480751f896d1b144a0937965b",
+    "Models/Weapons/Rifle/2.kv6": "517bd7a969b3f745204b63ba67d684f2a8919c9c11698574c7c661d68238450f",
+    "Models/Weapons/Rifle/22.kv6": "517bd7a969b3f745204b63ba67d684f2a8919c9c11698574c7c661d68238450f",
+    "Models/Weapons/Rifle/BoltHandle.kv6": "4b77c60d65dac968ab7c83b7d110fd871a07b0695fded557bfd8ce40a21044af",
+    "Models/Weapons/Rifle/Magazine.kv6": "ed8b6a647ef2e99f767cba22b6fbd7fd9109ebebe3a196072acb8d2401b3aae8",
+    "Models/Weapons/Rifle/ScopeModel.kv6": "1457d0af8a5fd16e8cb4f05a74b081b6e6e009afafeed1bd320a936e14ee1a4e",
+    "Models/Weapons/Rifle/Sight.kv6": "e4595eb84eaa1c5cb393399041ffacf63ee4101405476c329cd2aba13626f38e",
+    "Scripts/Skin/BasicViewWeapon.as": "89756ab7d4151a216ddaece3d63b167223159d030cb0bad417bc5214bbf1df84",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "8423360f73de39bec28107cbf4aee140ca653e9d04c9bf2b8fb9e7fbe1b8592b",
+    "Scripts/Skin/Rifle/View.as": "282c2013c53a35b4ab37451301918ca70b5a038486f1ba96c180a9b42ca7504d",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "1973af5f01aff977b5d4936b5895fa901770effaae46e6d5f56ee27fcca7b3f7",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg": "000fba6ee40c4d7578900faa30b927cb8829f0110fde38be3dd5673fe2d52340",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "7514848393e932ac379db97a333889ced99f74d353b67792712aad4729c0c16e",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "8c42c0f26676877b3a2c88fbac04888c01b9d30b5ca0db7e4760e2cd038cd1a0",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "0b1849bce9ee313cd9058c9d512ba44cf3d78de29c7206ce231e37f2400f24c7",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "cee82f4281c4cc70e59630c93494dd7a94a808622747e90223a8ee7ab5d45c98",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "group": "Author",
+      "authors": [
+        {
+          "name": "Nuceto",
+          "role": "Modeler/Scripter",
+          "url": "https://gamebanana.com/members/1773911"
+        }
+      ]
+    }
+  ],
+  "missing": [
+    "Gfx/scope1.png",
+    "Gfx/scope2.png",
+    "Gfx/scope3.png"
+  ],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "OpenSpades base resources"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireLocal.wav",
+      "source": "OpenSpades r33: Sounds/Weapons/Rifle/FireLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireFar.wav",
+      "source": "OpenSpades r33: Sounds/Weapons/Rifle/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+      "source": "OpenSpades r33: Sounds/Weapons/Rifle/ReloadLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceSmall.opus",
+      "source": "OpenSpades r33: Sounds/Weapons/Rifle/V2AmbienceSmall.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceLarge.opus",
+      "source": "OpenSpades r33: Sounds/Weapons/Rifle/V2AmbienceLarge.opus"
+    }
+  ]
+}

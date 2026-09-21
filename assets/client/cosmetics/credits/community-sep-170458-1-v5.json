@@ -1,0 +1,52 @@
+{
+  "name": "OpenSpades Beretta BM59 Rifle folding buttstock",
+  "source": "https://gamebanana.com/mods/170458",
+  "archives": [
+    {
+      "archive": "170458\\209962-rifle_3.rar",
+      "extracted": "170458\\files-209962",
+      "sha256": "7fad376a3ac11df4530aaf73d4b9a3e3c6256e5ebbf3328f94a0a3a1e463a1e9",
+      "listing": [
+        "Rifle/Casing.kv6",
+        "Rifle/Magazine.kv6",
+        "Rifle/Sight1.kv6",
+        "Rifle/Sight2.kv6",
+        "Rifle/Tracer.kv6",
+        "Rifle/Weapon.kv6",
+        "Rifle/WeaponNoMagazine.kv6",
+        "Rifle"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "W",
+      "_aAuthors": [
+        {
+          "_idRow": "1427178",
+          "_sName": "JTRA Stormy",
+          "_sProfileUrl": "https://gamebanana.com/members/1427178",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -1,4 +1,5 @@
 #include "battlespades/frontend/player_profile_presentation.hpp"
+#include "battlespades/frontend/inventory_menu.hpp"
 
 #include <algorithm>
 #include <array>
@@ -240,14 +241,18 @@ void append_scrollbar(ui::DrawList& list,
                          color(),
                          SpriteSizing::stretch,
                          TextureFilter::nearest));
-        list.push(sprite(player_profile_presentation_assets::scrollbar_mid,
-                         {bounds.x + 1.0, thumb_top + cap, 20.0, thumb_length - cap * 2.0},
-                         DrawSpace::design_pixels,
-                         TextureAnchor::center,
-                         0.6,
-                         color(),
-                         SpriteSizing::stretch,
-                         TextureFilter::nearest));
+        // At the minimum thumb size the two caps touch. A zero-height middle
+        // is not a drawable quad and would reject the entire frontend frame.
+        if (thumb_length > cap * 2.0) {
+            list.push(sprite(player_profile_presentation_assets::scrollbar_mid,
+                             {bounds.x + 1.0, thumb_top + cap, 20.0, thumb_length - cap * 2.0},
+                             DrawSpace::design_pixels,
+                             TextureAnchor::center,
+                             0.6,
+                             color(),
+                             SpriteSizing::stretch,
+                             TextureFilter::nearest));
+        }
         list.push(sprite(player_profile_presentation_assets::scrollbar_bottom,
                          {bounds.x + 1.0, thumb_top + thumb_length - cap, 20.0, cap},
                          DrawSpace::design_pixels,
@@ -321,7 +326,11 @@ void append_progress(ui::DrawList& list, DrawRect row, const PlayerProfileRow& v
     }
     fraction = std::clamp(fraction, 0.0, 1.0);
     solid(list, bar, level_behind);
-    solid(list, {bar.x, bar.y, bar.width * fraction, bar.height}, level_front);
+    // New players and exact level boundaries have an empty bar. Keep the
+    // background and labels while omitting its non-drawable zero-width fill.
+    if (fraction > 0.0) {
+        solid(list, {bar.x, bar.y, bar.width * fraction, bar.height}, level_front);
+    }
     if (value.level_details.has_value()) {
         const auto& details = *value.level_details;
         const auto margin = column_width / 24.0;
@@ -450,11 +459,11 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
                      color(white, context.background_opacity_per_mille),
                      SpriteSizing::cover));
     list.push(sprite(player_profile_presentation_assets::outer_frame,
-                     layout.outer_frame,
+                     model.selected_tab() == PlayerProfileTab::inventory ? DrawRect{28.0,28.0,744.0,543.0} : layout.outer_frame,
                      DrawSpace::design_pixels,
                      TextureAnchor::center));
     list.push(sprite(player_profile_presentation_assets::content_frame,
-                     layout.content_frame,
+                     model.selected_tab() == PlayerProfileTab::inventory ? DrawRect{50.0,137.0,700.0,343.0} : layout.content_frame,
                      DrawSpace::design_pixels,
                      TextureAnchor::center));
     list.push(text("PLAYER_PROFILE",
@@ -465,10 +474,10 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
                    player_profile_presentation_assets::title_font,
                    TextTransform::uppercase));
 
-    constexpr double tab_width{110.0};
+    constexpr double tab_width{96.0};
     constexpr double tab_height{24.0};
     constexpr double tab_start{155.0};
-    constexpr double tab_end{531.0};
+    constexpr double tab_end{551.0};
     const auto tabs = player_profile_tab_definitions();
     for (std::size_t tab = 0U; tab < tabs.size(); ++tab) {
         const auto x = tab_start + static_cast<double>(tab) * (tab_end - tab_start) /
@@ -477,16 +486,18 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
         const auto selected = static_cast<std::size_t>(model.selected_tab()) == tab;
         list.push(sprite(selected ? player_profile_presentation_assets::tab_active
                                   : player_profile_presentation_assets::tab_inactive,
-                         {image_center - 56.0, 102.0, 112.0, 33.0},
+                         {image_center - 48.0, 102.0, 96.0, 33.0},
                          DrawSpace::design_pixels,
                          TextureAnchor::center));
         list.push(text(tabs[tab].label_key,
                        {x, 106.0, tab_width, tab_height},
-                       18.0,
+                       16.0,
                        selected ? gold : cream,
                        HorizontalTextAlignment::center,
                        player_profile_presentation_assets::tab_font));
     }
+
+    if (model.selected_tab() == PlayerProfileTab::inventory) return list;
 
     const auto summary = model.selected_tab() == PlayerProfileTab::player_stats;
     const auto rows = model.displayed_rows();

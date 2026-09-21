@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-169760-1",
+  "name": "Uzi SMG",
+  "source": "https://gamebanana.com/mods/169760",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/SMG.png": "Gfx/SMG.png",
+    "Models/Weapons/SMG/MAgazine.kv6": "Models/Weapons/SMG/MAgazine.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Scripts/Skin/SMG/ThirdPerson.as": "Scripts/Skin/SMG/ThirdPerson.as",
+    "Scripts/Skin/SMG/View.as": "Scripts/Skin/SMG/View.as",
+    "Sounds/Weapons/SMG/Fire.wav": "Sounds/Weapons/SMG/Fire.wav.ogg",
+    "Sounds/Weapons/SMG/Reload.wav": "Sounds/Weapons/SMG/Reload.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/MAgazine.kv6",
+    "Gfx/smg.png": "Gfx/SMG.png"
+  },
+  "hashes": {
+    "Gfx/SMG.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Models/Weapons/SMG/MAgazine.kv6": "7e594acdb8d12289fd39b97bf1e51edfcc14f0713b8753877a906552b5cf541e",
+    "Models/Weapons/SMG/Weapon.kv6": "b6757af5b18a197581435feb0d6e6d80d2409df530162d7ea0cfeaa27a866821",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "5034712ca4853ab881208f163e6ac5e8bc577c1b90cbd7bf28b255d3237967c3",
+    "Scripts/Skin/SMG/ThirdPerson.as": "a9be9aa30205f2cae792616bba40b25a9e5138b73b49cad41ce41e32b5724d8c",
+    "Scripts/Skin/SMG/View.as": "6215786ab2ee384af927f5361c0d5ff5a07dff94cf2ab82c6e2545c52f392fcb",
+    "Sounds/Weapons/SMG/Fire.wav.ogg": "e5dc9c6ac70c57534dc94d21b208b0b0d070541e19a034c0caa48ab205499068",
+    "Sounds/Weapons/SMG/Reload.wav.ogg": "b44c05c9d0524a04d7bda0f33228270c546ff892e54c187ec745dae23dd5ba0f",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "6215786ab2ee384af927f5361c0d5ff5a07dff94cf2ab82c6e2545c52f392fcb",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Scripter/Desing",
+      "_aAuthors": [
+        {
+          "_sRole": "scripter/Design",
+          "_idRow": "1753013",
+          "_sName": "Martinserna577",
+          "_sProfileUrl": "https://gamebanana.com/members/1753013",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": ".kv6 file",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_sName": "Lucrack101"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

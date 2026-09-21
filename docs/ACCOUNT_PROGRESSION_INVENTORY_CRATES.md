@@ -1,15 +1,16 @@
 # Account Progression, Inventory, and Earned Crates
 
-Status: implementation specification, not yet implemented  
+Status: initial implementation tested locally; broader contract and rollout gates remain
 Contract version: `progression-v1`  
 Document copies: `G:/AoSRevival/BattleSpadesClient/docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
 and `G:/AoSRevival/aos_revival/docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
 
 This document is the shared contract between the native BattleSpades client and
 the AoSPlay backend. The two copies must remain byte-for-byte identical while
-the feature is being built. The dedicated BattleSpades game-server repository
-is outside this documentation change and must not be modified as part of the
-client/backend implementation.
+the feature is being built. Current native integration is described in
+[the Inventory guide](../../BattleSpadesClient/docs/INVENTORY.md), which separates
+implemented client behavior and release acceptance from the broader target contract below. The user-authorized server
+implementation adds HTTP participation evidence while preserving Protocol 168.
 
 ## 1. Product goal
 

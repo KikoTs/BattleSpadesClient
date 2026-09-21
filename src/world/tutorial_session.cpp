@@ -436,7 +436,7 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
     pitch_ = std::atan2(player_.orientation.z, horizontal) / degrees_to_radians;
     pitch_ = std::clamp(pitch_, -pitch_limit_degrees, pitch_limit_degrees);
     if (config_.network_authoritative) {
-        authoritative_jump_anchor_ = config_.initial_position;
+        last_authoritative_position_ = config_.initial_position;
         player_.velocity = config_.initial_velocity;
         player_.crouch = config_.initial_crouch;
         player_.wade = config_.initial_wade;
@@ -520,6 +520,7 @@ bool TutorialWorldSession::action_held(TutorialAction action) const noexcept {
 }
 
 void TutorialWorldSession::clear_input() noexcept {
+    reload_aim_tool_.reset();
     held_.fill(false);
     jump_requested_ = false;
     primary_held_ = false;
@@ -593,6 +594,7 @@ void TutorialWorldSession::apply_look_delta(double delta_x, double delta_y) noex
 }
 
 void TutorialWorldSession::tick() {
+    update_reload_aim();
     sprint_pullout_remaining_ = std::max(0.0, sprint_pullout_remaining_ - config_.fixed_dt);
     // GameScene.update drives the sight ramp from the same fixed 60 Hz
     // schedule as the simulation, never from the render loop. Advancing it
@@ -615,21 +617,27 @@ void TutorialWorldSession::tick() {
                                quantized_orientation_component(player_.orientation.z)};
     }
 
-    apply_crouch_request(player_, action_held(TutorialAction::crouch), map_.get());
+    apply_crouch_request(player_, action_held(TutorialAction::crouch), map_.get(),
+                         player_collision_bodies_,
+                         action_held(TutorialAction::hover) && player_.jetpack == 4U);
 
     PlayerInputState sampled_input;
     sampled_input.forward = action_held(TutorialAction::forward);
     sampled_input.backward = action_held(TutorialAction::backward);
     sampled_input.left = action_held(TutorialAction::left);
     sampled_input.right = action_held(TutorialAction::right);
-    sampled_input.jump =
-        config_.network_authoritative ? action_held(TutorialAction::jump) : jump_requested_;
+    // Combat packs consume sustained SPACE for ignition and thrust. Keeping
+    // only the ordinary tutorial jump edge made offline packs stop after one
+    // frame and prevented them from ever reaching their ignition delay.
+    sampled_input.jump = (config_.network_authoritative || player_.jetpack != 0U)
+        ? action_held(TutorialAction::jump) : jump_requested_;
     sampled_input.crouch = action_held(TutorialAction::crouch);
     sampled_input.sneak = action_held(TutorialAction::sneak);
     sampled_input.sprint = action_held(TutorialAction::sprint);
     sampled_input.hover = action_held(TutorialAction::hover);
     jump_requested_ = false;
     auto input = sampled_input;
+    const auto current_aim = player_.orientation;
     if (config_.network_authoritative) {
         // Character records/sends ClientData after its native movement frame.
         // Directional movement and jump use the observed packet-L-1 button
@@ -639,12 +647,52 @@ void TutorialWorldSession::tick() {
         input.crouch = sampled_input.crouch;
         input.hover = sampled_input.hover;
         network_latched_input_ = sampled_input;
+        // Mouse look is immediate for rendering and shooting, while retail
+        // movement consumes the preceding ClientData orientation with its
+        // locomotion buttons. Preserve both phases in the replay journal.
+        player_.orientation = network_latched_orientation_.value_or(current_aim);
+        network_latched_orientation_ = current_aim;
     }
     last_simulated_input_ = input;
-    const auto movement_frame_position = player_.position;
+    last_simulated_orientation_ = player_.orientation;
+    last_simulated_jetpack_damage_ = std::exchange(jetpack_damage_pending_, false);
+    if (alive()) {
+        advance_jetpack_prediction(jetpack_prediction_, player_.jetpack, input,
+                                  config_.fixed_dt, last_simulated_jetpack_damage_,
+                                  !player_.airborne || player_.wade);
+    } else {
+        const double fuel_at_death = jetpack_prediction_.fuel;
+        jetpack_prediction_ = {};
+        jetpack_prediction_.fuel = fuel_at_death;
+    }
+    player_.jetpack_active = jetpack_prediction_.physics_active;
+    player_.jetpack_passive = player_.jetpack == 2U && player_.jetpack_active;
+    last_simulated_jetpack_active_ = player_.jetpack_active;
+    // BattleSpades' explicit Z deployment extension. The recovered mover's
+    // parachute gravity is retail; the original server's deploy trigger is
+    // unavailable. Predict the same airborne edge that our authority accepts.
+    last_simulated_parachute_pressed_ = input.hover && !parachute_deploy_last_held_;
+    parachute_deploy_last_held_ = input.hover;
+    if (!alive() || !player_.parachute || !player_.airborne || player_.wade) {
+        player_.parachute_active = false;
+        player_.parachute_pending = false;
+    } else {
+        if (last_simulated_parachute_pressed_) player_.parachute_pending = true;
+        if (player_.parachute_pending &&
+            (!config_.flight_profile.descending_parachute_only || player_.velocity.z >= 0.0)) {
+            player_.parachute_active = true;
+            player_.parachute_pending = false;
+        }
+    }
+    last_simulated_parachute_active_ = player_.parachute_active;
     const auto movement = step_player(
         player_, input, map_.get(), config_.fixed_dt, movement_class_,
         player_collision_bodies_, config_.gravity);
+    if (!player_.airborne || player_.wade) {
+        player_.parachute_active = false;
+        player_.parachute_pending = false;
+    }
+    player_.orientation = current_aim;
     movement_events_.jumped = movement_events_.jumped || movement.jumped;
     movement_events_.climbed = movement_events_.climbed || movement.climbed;
     movement_events_.landed = movement_events_.landed || movement.landed;
@@ -654,23 +702,6 @@ void TutorialWorldSession::tick() {
             std::max(movement_events_.landing_damage, movement.landing_damage);
     } else if (movement.landing_damage < 0 && movement_events_.landing_damage == 0) {
         movement_events_.landing_damage = movement.landing_damage;
-    }
-    if (config_.network_authoritative && movement.jumped && !movement.climbed) {
-        // Character.update_alive restores the complete cached owner-row
-        // network_position on a grounded jump while retaining the native
-        // launch velocity and airborne state. A simultaneous one-block climb
-        // is the exception: retail boxclipmove owns that displacement, and
-        // replacing it with the flat launch anchor creates a backward/downward
-        // correction exactly when jumping onto a voxel edge. The ACK
-        // monotonicity guard in note_authoritative_snapshot prevents an
-        // out-of-order row from becoming a visible flat-ground launch teleport.
-        constexpr double jump_anchor_guard_squared{0.25 * 0.25};
-        const auto dx = authoritative_jump_anchor_.x - movement_frame_position.x;
-        const auto dy = authoritative_jump_anchor_.y - movement_frame_position.y;
-        const auto dz = authoritative_jump_anchor_.z - movement_frame_position.z;
-        player_.position = dx * dx + dy * dy + dz * dz <= jump_anchor_guard_squared
-                               ? authoritative_jump_anchor_
-                               : movement_frame_position;
     }
 
     if (server_movement_bounds_.has_value()) {
@@ -689,6 +720,7 @@ void TutorialWorldSession::tick() {
     } else {
         update_combat();
     }
+    update_reload_aim();
 
     // The spawn lane is the (0,0) origin, so lane-local x is world x.
     if (!config_.network_authoritative &&
@@ -776,7 +808,14 @@ void TutorialWorldSession::set_secondary_held(bool held) noexcept {
     // press edge. Retail ADS is therefore a toggle, not a hold-to-aim state.
     // Iron sights and magnified scopes take the identical path: they differ in
     // magnification and transition rate, not in how they are entered.
-    if (pressed && aims_down_sights(behavior)) {
+    if (weapon_reload_remaining()>0.0) {
+        update_reload_aim();
+    } else if (action_held(TutorialAction::sprint)) {
+        // Starting sprint already exits ADS. Also reject subsequent aim
+        // presses until sprint ends, without losing the physical button state
+        // or bypassing the tool-owned secondary actions below.
+        zoomed_ = false;
+    } else if (pressed && aims_down_sights(behavior)) {
         zoomed_ = !zoomed_;
     } else if (!aims_down_sights(behavior)) {
         zoomed_ = false;
@@ -809,8 +848,23 @@ void TutorialWorldSession::set_weapon_custom_held(bool held) noexcept {
 }
 
 WeaponStateResult TutorialWorldSession::request_reload() noexcept {
-    return debug_full_loadout_ ? sandbox_inventory_.weapons().request_reload()
-                               : WeaponStateResult::invalid_tool;
+    const auto result=debug_full_loadout_ ? sandbox_inventory_.weapons().request_reload()
+                                        : WeaponStateResult::invalid_tool;
+    if(result==WeaponStateResult::accepted)update_reload_aim();
+    return result;
+}
+
+void TutorialWorldSession::update_reload_aim() noexcept {
+    const auto selected=selected_tool_id();
+    if(weapon_reload_remaining()>0.0){
+        reload_aim_tool_=selected;
+        zoomed_=false;
+    }else if(reload_aim_tool_){
+        const auto* weapon=selected?find_weapon_definition(*selected):nullptr;
+        zoomed_=selected==reload_aim_tool_&&secondary_held_&&!action_held(TutorialAction::sprint)&&
+            weapon&&aims_down_sights(weapon_secondary_behavior(*weapon));
+        reload_aim_tool_.reset();
+    }
 }
 
 void TutorialWorldSession::restock_ammunition() noexcept {
@@ -829,6 +883,15 @@ void TutorialWorldSession::restock_blocks() noexcept {
     if (debug_full_loadout_) {
         sandbox_inventory_.restock_blocks();
         blocks_remaining_ = static_cast<int>(sandbox_inventory_.blocks());
+    }
+}
+
+void TutorialWorldSession::restock_jetpack_fuel() noexcept {
+    jetpack_prediction_.fuel = 100.0;
+    if (!network_predictions_.empty()) {
+        last_jetpack_fuel_loop_ = network_predictions_.back().loop;
+        network_predictions_.back().jetpack.fuel = 100.0;
+        network_predictions_.back().jetpack_restocked = true;
     }
 }
 
@@ -1642,9 +1705,10 @@ void TutorialWorldSession::step_entity_behaviour(LocalEntity& entity,
             sandbox_inventory_.restock_blocks();
             blocks_remaining_ = static_cast<int>(sandbox_inventory_.blocks());
             break;
+        case 6U: // JETPACK_CRATE
+            restock_jetpack_fuel();
+            break;
         default:
-            // JETPACK_CRATE: there is no local jetpack fuel model to refill, so
-            // it is consumed for the sound and nothing else.
             break;
         }
         entity.alive = false;
@@ -1779,11 +1843,17 @@ void TutorialWorldSession::step_entity_behaviour(LocalEntity& entity,
 }
 
 void TutorialWorldSession::step_turret(LocalEntity& entity, const EntityDefinition& definition) {
-    const auto muzzle = Vec3{entity.position.x, entity.position.y, entity.position.z - 1.0};
+    if (definition.parts.size() < 3U) {
+        return;
+    }
+    const auto muzzle = entity_presentation_position(entity, definition.parts[2U]);
     const auto dx = player_.position.x - muzzle.x;
     const auto dy = player_.position.y - muzzle.y;
     const auto dz = player_.position.z - muzzle.z;
     const auto distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (distance <= 1e-9) {
+        return;
+    }
 
     // A sticky target is held out to the tracking range but only ACQUIRED
     // inside the shorter detection range, so a turret does not snap onto
@@ -1804,8 +1874,8 @@ void TutorialWorldSession::step_turret(LocalEntity& entity, const EntityDefiniti
     }
 
     const auto horizontal = std::hypot(dx, dy);
-    const auto desired_yaw = std::atan2(-dy, -dx) / degrees_to_radians;
-    const auto desired_pitch = std::atan2(dz, horizontal) / degrees_to_radians;
+    const auto desired_yaw = std::atan2(dx, dy) / degrees_to_radians;
+    const auto desired_pitch = -std::atan2(dz, horizontal) / degrees_to_radians;
     const auto aim = step_turret_aim(entity.aim_yaw,
                                      entity.aim_pitch,
                                      desired_yaw,
@@ -1829,7 +1899,10 @@ void TutorialWorldSession::step_turret(LocalEntity& entity, const EntityDefiniti
     TutorialProjectile rocket;
     rocket.id = next_projectile_id_++;
     rocket.tool_id = 12U;
-    rocket.position = muzzle;
+    rocket.position = {muzzle.x + dx / distance, muzzle.y + dy / distance,
+                       muzzle.z + dz / distance};
+    rocket.spawn_position = rocket.position;
+    rocket.autonomous_source = true;
     rocket.velocity = {dx / distance * turret_rocket_speed,
                        dy / distance * turret_rocket_speed,
                        dz / distance * turret_rocket_speed};
@@ -1977,6 +2050,9 @@ bool TutorialWorldSession::drop_carried_objective(const WeaponAction& action) {
 
 void TutorialWorldSession::handle_player_death() {
     death_pending_ = false;
+    player_.parachute_active = false;
+    player_.parachute_pending = false;
+    parachute_deploy_last_held_ = false;
     // Character.set_dead calls the selected tool's on_unset before the corpse
     // lifecycle continues. A soft input release is not enough for minigun
     // spin, reload ownership, cooked throws, or queued burst edges.
@@ -2362,26 +2438,25 @@ void TutorialWorldSession::mark_dirty(std::uint32_t x, std::uint32_t y) {
     // Chunk faces sample neighbor solidity, so edits on a 16-block seam must
     // also re-mesh the adjacent chunk.
     const auto push = [this](std::uint32_t chunk_x, std::uint32_t chunk_y) {
-        for (const auto& existing : dirty_chunks_) {
-            if (existing.x == chunk_x && existing.y == chunk_y) {
-                return;
-            }
-        }
+        const auto index = chunk_y * dirty_chunk_columns + chunk_x;
+        if (dirty_chunk_membership_[index]) return;
         dirty_chunks_.push_back(ChunkKey{chunk_x, chunk_y});
+        dirty_chunk_membership_.set(index);
     };
-    const std::uint32_t chunk_x = x / 16U;
-    const std::uint32_t chunk_y = y / 16U;
+    if (x >= VxlMap::width || y >= VxlMap::depth) return;
+    const std::uint32_t chunk_x = x / dirty_chunk_edge;
+    const std::uint32_t chunk_y = y / dirty_chunk_edge;
     push(chunk_x, chunk_y);
-    if (x % 16U == 0U && x > 0U) {
+    if (x % dirty_chunk_edge == 0U && x > 0U) {
         push(chunk_x - 1U, chunk_y);
     }
-    if (x % 16U == 15U && x + 1U < VxlMap::width) {
+    if (x % dirty_chunk_edge == dirty_chunk_edge - 1U && x + 1U < VxlMap::width) {
         push(chunk_x + 1U, chunk_y);
     }
-    if (y % 16U == 0U && y > 0U) {
+    if (y % dirty_chunk_edge == 0U && y > 0U) {
         push(chunk_x, chunk_y - 1U);
     }
-    if (y % 16U == 15U && y + 1U < VxlMap::depth) {
+    if (y % dirty_chunk_edge == dirty_chunk_edge - 1U && y + 1U < VxlMap::depth) {
         push(chunk_x, chunk_y + 1U);
     }
 }
@@ -2393,6 +2468,7 @@ TutorialAttackEvents TutorialWorldSession::take_attack_events() noexcept {
 }
 
 std::vector<ChunkKey> TutorialWorldSession::take_dirty_chunks() {
+    dirty_chunk_membership_.reset();
     return std::exchange(dirty_chunks_, {});
 }
 
@@ -2588,6 +2664,15 @@ void TutorialWorldSession::debug_cycle_class(int direction) noexcept {
     zoomed_ = false;
     static_cast<void>(
         sandbox_inventory_.spawn_as(classes[index].class_id, PlayerLoadoutScope::all_weapons));
+    movement_class_ = movement_config_for_class(classes[index].class_id,
+                                               config_.movement_speed_scale);
+    // The developer arsenal contains handheld tools only. Movement equipment
+    // still comes from the selected class's original default equipment slot.
+    std::vector<std::uint8_t> equipment;
+    for (const auto item : default_class_items(classes[index])) {
+        if (item <= 255U) equipment.push_back(static_cast<std::uint8_t>(item));
+    }
+    sync_movement_equipment(equipment);
     blocks_remaining_ = static_cast<int>(sandbox_inventory_.blocks());
     if (selected.has_value()) {
         static_cast<void>(
@@ -2597,6 +2682,7 @@ void TutorialWorldSession::debug_cycle_class(int direction) noexcept {
 }
 
 void TutorialWorldSession::reset_tool_transition_state() noexcept {
+    reload_aim_tool_.reset();
     // Character.on_unset stops the old tool's animations and held inputs.
     // Reset the shared presentation clock as well, otherwise F4/wheel/number
     // changes replay the outgoing recoil, melee or throw pose on new hands.
@@ -2704,6 +2790,10 @@ bool TutorialWorldSession::zoomed() const noexcept {
     return zoomed_;
 }
 
+double TutorialWorldSession::weapon_reload_remaining() const noexcept {
+    return debug_full_loadout_ ? sandbox_inventory_.weapons().reload_remaining() : reload_remaining_;
+}
+
 bool TutorialWorldSession::magnified_scope() const noexcept {
     if (!zoomed_) {
         return false;
@@ -2716,7 +2806,13 @@ bool TutorialWorldSession::magnified_scope() const noexcept {
 
 double TutorialWorldSession::zoom_target() const noexcept {
     const auto selected = selected_tool_id();
+    if(zoomed_&&selected&&skin_zoom_&&skin_zoom_->first==*selected)return skin_zoom_->second;
     return selected.has_value() ? zoom_target_multiplier(*selected, zoomed_) : 0.0;
+}
+
+void TutorialWorldSession::set_skin_zoom(std::uint8_t tool,std::optional<double> target) noexcept {
+    if(target&&std::isfinite(*target))skin_zoom_=std::pair{tool,std::clamp(*target,0.,1.6)};
+    else skin_zoom_.reset();
 }
 
 double TutorialWorldSession::zoom_level() const noexcept {
@@ -2776,7 +2872,9 @@ std::uint64_t TutorialWorldSession::spawn_entity(std::uint8_t type,
                                                  std::uint8_t team,
                                                  std::uint8_t face) {
     const auto* definition = find_entity_definition(type);
-    if (definition == nullptr || definition->category == EntityCategory::unportable) {
+    if (definition == nullptr || definition->category == EntityCategory::unportable ||
+        face > 5U || !std::isfinite(position.x) || !std::isfinite(position.y) ||
+        !std::isfinite(position.z)) {
         return 0U;
     }
     // Budget in PARTS: a turret costs three slots and a UGC marker two, so a
@@ -3223,6 +3321,7 @@ void TutorialWorldSession::set_server_health(double health) noexcept {
         return;
     }
     const bool was_alive = alive();
+    if (health < health_) jetpack_damage_pending_ = true;
     // WorldUpdate carries a signed 16-bit pool and SetHP carries an unsigned
     // byte. Both are server authority; capping them at the tutorial's 100 HP
     // erased custom-mode health before the HUD could apply class durability.
@@ -3232,14 +3331,25 @@ void TutorialWorldSession::set_server_health(double health) noexcept {
         // local attack/movement latches here both leaks actions past death and
         // risks the offline handle_player_death path creating a duplicate.
         clear_input();
+        // A corpse has its own presentation; live fuel and ignition clocks
+        // must not keep running or be revived by a delayed active owner row.
+        const double fuel_at_death = jetpack_prediction_.fuel;
+        jetpack_prediction_ = {};
+        jetpack_prediction_.fuel = fuel_at_death;
+        player_.jetpack_passive = false;
+        player_.parachute_active = false;
+        player_.parachute_pending = false;
+        parachute_deploy_last_held_ = false;
         sandbox_inventory_.weapons().on_unset();
         network_latched_input_ = {};
+        network_latched_orientation_.reset();
         last_simulated_input_ = {};
         death_pending_ = false;
         disguise_active_ = false;
     } else if (!was_alive && alive()) {
         death_pending_ = false;
         network_latched_input_ = {};
+        network_latched_orientation_.reset();
         last_simulated_input_ = {};
         movement_events_ = {};
     }
@@ -3543,19 +3653,31 @@ void TutorialWorldSession::apply_authoritative_transform(Vec3 position,
     player_.burdened = false;
     player_.jetpack_active = false;
     player_.jetpack_passive = false;
+    jetpack_prediction_ = {};
+    jetpack_damage_pending_ = false;
+    jetpack_replay_required_ = false;
+    last_simulated_jetpack_active_ = false;
+    parachute_deploy_last_held_ = false;
+    last_simulated_parachute_active_ = false;
+    last_simulated_parachute_pressed_ = false;
+    last_jetpack_fuel_loop_ = std::numeric_limits<std::int32_t>::min();
+    last_movement_state_loop_ = std::numeric_limits<std::int32_t>::min();
     player_.parachute_active = false;
+    player_.parachute_pending = false;
     disguise_active_ = false;
     // CreatePlayer starts a fresh native Player generation. Its initialized
     // airborne bit is false; boxclipmove owns the first transition even for a
     // deliberately elevated spawn.
     player_.airborne = false;
     network_latched_input_ = {};
+    network_latched_orientation_.reset();
     last_simulated_input_ = {};
+    last_simulated_orientation_ = orientation;
     network_predictions_.clear();
     jump_requested_ = false;
     movement_events_ = {};
-    authoritative_jump_anchor_ = position;
-    authoritative_jump_anchor_loop_ = std::numeric_limits<std::int32_t>::min();
+    last_authoritative_position_ = position;
+    last_authoritative_position_loop_ = std::numeric_limits<std::int32_t>::min();
     last_reconciled_loop_ = std::numeric_limits<std::int32_t>::min();
     network_interpolated_position_ = position;
     position_lerp_timer_ = 0.0;
@@ -3568,12 +3690,12 @@ void TutorialWorldSession::note_authoritative_snapshot(std::int32_t acknowledged
                                                        Vec3 position) noexcept {
     // Self WorldUpdates are sequenced but unreliable. A duplicate row can be
     // rebuilt after the authority has advanced while retaining the same pong
-    // stamp; it must not move the cached launch anchor for that already-seen
-    // input frame.
-    if (acknowledged_loop <= authoritative_jump_anchor_loop_)
+    // stamp; retain only a strictly newer diagnostic authority position.
+    // Movement never rewinds to this cached row during a jump.
+    if (acknowledged_loop <= last_authoritative_position_loop_)
         return;
-    authoritative_jump_anchor_loop_ = acknowledged_loop;
-    authoritative_jump_anchor_ = position;
+    last_authoritative_position_loop_ = acknowledged_loop;
+    last_authoritative_position_ = position;
 }
 
 void TutorialWorldSession::record_network_prediction(std::int32_t client_loop) {
@@ -3583,6 +3705,12 @@ void TutorialWorldSession::record_network_prediction(std::int32_t client_loop) {
     sample.loop = client_loop;
     sample.state = player_;
     sample.consumed_input = last_simulated_input_;
+    sample.consumed_orientation = last_simulated_orientation_;
+    sample.consumed_jetpack_active = last_simulated_jetpack_active_;
+    sample.consumed_jetpack_damage = last_simulated_jetpack_damage_;
+    sample.consumed_parachute_active = last_simulated_parachute_active_;
+    sample.parachute_deploy_pressed = last_simulated_parachute_pressed_;
+    sample.jetpack = jetpack_prediction_;
     sample.movement_class = movement_class_;
     sample.collision_bodies = player_collision_bodies_;
     if (!network_predictions_.empty() && network_predictions_.back().loop == client_loop) {
@@ -3642,27 +3770,27 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
     // Character.apply_player_network_correction tests the complete position
     // distance against 0.01 squared. It does not independently reconcile a
     // velocity wobble, nor discard small components of an accepted vector.
-    if (error_squared <= 0.01)
+    if (error_squared <= 0.01 && !jetpack_replay_required_)
         return true;
+    jetpack_replay_required_ = false;
 
     const auto current_before = player_;
     auto replayed = found->state;
     replayed.position = position;
     replayed.velocity = velocity;
 
-    // WorldUpdate's current ability state is authoritative across the replay.
-    // These are not inferred from historical class ids or stale input rows.
-    replayed.burdened = player_.burdened;
-    replayed.jetpack = player_.jetpack;
-    replayed.jetpack_active = player_.jetpack_active;
-    replayed.jetpack_passive = player_.jetpack_passive;
-    replayed.parachute = player_.parachute;
-    replayed.parachute_active = player_.parachute_active;
+    // An owner row describes this old ACK, not every later movement frame.
+    // Replaying today's active pack across a historical release/activation
+    // fabricates thrust and turns a small correction into a vertical snap.
     found->state = replayed;
 
     // Retail snaps errors over four blocks and drops the history. A semantic
     // teleport must never be replayed through walls or concealed by the eye.
     if (error_squared > 16.0) {
+        // Owner WorldUpdate corrects position/velocity, not mouse look. The
+        // acknowledged sample can be many frames older than the current aim.
+        replayed.orientation = current_before.orientation;
+        replayed.jetpack_active = current_before.jetpack_active;
         player_ = replayed;
         network_interpolated_position_ = replayed.position;
         position_lerp_timer_ = 0.0;
@@ -3671,10 +3799,18 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
     }
 
     for (auto iterator = std::next(found); iterator != network_predictions_.end(); ++iterator) {
-        // Look is local and immediate; every replayed movement frame consumes
-        // the orientation that was originally sent with that frame.
-        replayed.orientation = iterator->state.orientation;
-        apply_crouch_request(replayed, iterator->consumed_input.crouch, map_.get());
+        const auto recorded_aim = iterator->state.orientation;
+        const auto recorded_state = iterator->state;
+        replayed.burdened = recorded_state.burdened;
+        replayed.jetpack = recorded_state.jetpack;
+        replayed.jetpack_active = iterator->consumed_jetpack_active;
+        replayed.jetpack_passive = recorded_state.jetpack_passive;
+        replayed.parachute = recorded_state.parachute;
+        replayed.parachute_active = iterator->consumed_parachute_active;
+        replayed.orientation = iterator->consumed_orientation;
+        apply_crouch_request(replayed, iterator->consumed_input.crouch, map_.get(),
+                             iterator->collision_bodies,
+                             iterator->consumed_input.hover && replayed.jetpack == 4U);
         static_cast<void>(step_player(replayed,
                                       iterator->consumed_input,
                                       map_.get(),
@@ -3682,6 +3818,10 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
                                       iterator->movement_class,
                                       iterator->collision_bodies,
                                       config_.gravity));
+        replayed.orientation = recorded_aim;
+        replayed.jetpack_active = recorded_state.jetpack_active;
+        replayed.parachute_active = recorded_state.parachute_active;
+        replayed.parachute_pending = recorded_state.parachute_pending;
         iterator->state = replayed;
     }
 
@@ -3689,6 +3829,14 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
                               replayed.position.y - current_before.position.y,
                               replayed.position.z - current_before.position.z};
     conceal_authoritative_correction(position_delta);
+    replayed.orientation = current_before.orientation;
+    replayed.burdened = current_before.burdened;
+    replayed.jetpack = current_before.jetpack;
+    replayed.jetpack_active = current_before.jetpack_active;
+    replayed.jetpack_passive = current_before.jetpack_passive;
+    replayed.parachute = current_before.parachute;
+    replayed.parachute_active = current_before.parachute_active;
+    replayed.parachute_pending = current_before.parachute_pending;
     player_ = replayed;
     return true;
 }
@@ -3766,17 +3914,166 @@ bool TutorialWorldSession::apply_server_tool(std::uint8_t tool_id) noexcept {
 
 void TutorialWorldSession::apply_server_movement_state(std::uint8_t action_flags,
                                                        std::uint8_t state_flags,
-                                                       std::uint8_t pickup_id) noexcept {
+                                                       std::uint8_t pickup_id,
+                                                       std::optional<std::int32_t> acknowledged_loop) noexcept {
     if (!config_.network_authoritative)
         return;
-    const bool activation_held = player_.jetpack == 4U ? action_held(TutorialAction::hover)
-                                                       : action_held(TutorialAction::jump);
-    player_.jetpack_active = (action_flags & 0x04U) != 0U && activation_held;
-    player_.parachute_active = player_.parachute && (state_flags & 0x01U) != 0U;
+    if (acknowledged_loop.has_value()) {
+        if (*acknowledged_loop <= last_movement_state_loop_) return;
+        last_movement_state_loop_ = *acknowledged_loop;
+    }
+    const bool active = alive() && (action_flags & 0x04U) != 0U;
+    const auto found = acknowledged_loop.has_value() ? std::ranges::find(
+        network_predictions_, *acknowledged_loop, &NetworkPredictionSample::loop) : network_predictions_.end();
+    if (alive() && found != network_predictions_.end()) {
+        // The advertised bit precedes native thrust by three recurrences.
+        // Compare it to the same ACK's resource state, never today's key.
+        if (found->jetpack.advertised_active != active) {
+            found->jetpack.advertised_active = active;
+            found->jetpack.activation_defer = active ? 2U : 0U;
+            found->jetpack.physics_active = false;
+            found->jetpack.exhaustion_tail = 0U;
+            found->jetpack.requires_release = !active && found->jetpack.fuel <= 0.0;
+            replay_jetpack_prediction(*acknowledged_loop);
+        }
+    } else if (alive() && (!acknowledged_loop.has_value() || network_predictions_.empty())) {
+        // Bootstrap has no input journal. An already-active row represents
+        // existing flight, rather than a locally observed activation edge.
+        const bool held = player_.jetpack == 4U ? action_held(TutorialAction::hover)
+                                               : action_held(TutorialAction::jump);
+        jetpack_prediction_.advertised_active = active && held && jetpack_prediction_.fuel > 0.0 &&
+                                                !jetpack_prediction_.requires_release;
+        jetpack_prediction_.physics_active = jetpack_prediction_.advertised_active;
+        jetpack_prediction_.activation_defer = 0U;
+        player_.jetpack_active = jetpack_prediction_.physics_active;
+        player_.jetpack_passive = player_.jetpack == 2U && player_.jetpack_active;
+    }
+    const bool parachute_active = alive() && player_.parachute && (state_flags & 0x01U) != 0U;
+    if (found != network_predictions_.end()) {
+        // An older closed row must not cancel a newer local deployment. Start
+        // at its ACK and replay the subsequent key edges and landing states.
+        replay_parachute_prediction(*acknowledged_loop, parachute_active);
+    } else if (!acknowledged_loop.has_value() || network_predictions_.empty()) {
+        player_.parachute_active = parachute_active;
+    }
     disguise_active_ = (state_flags & 0x02U) != 0U;
     sandbox_inventory_.set_carried_pickup(pickup_id);
     if (pickup_id == 0xFFU)
         player_.burdened = false;
+}
+
+void TutorialWorldSession::apply_server_jetpack_fuel(
+    double fuel, std::optional<std::int32_t> acknowledged_loop) noexcept {
+    if (!config_.network_authoritative || !alive() || !std::isfinite(fuel)) return;
+    if (acknowledged_loop.has_value()) {
+        if (*acknowledged_loop <= last_jetpack_fuel_loop_) return;
+        last_jetpack_fuel_loop_ = *acknowledged_loop;
+    }
+    fuel = std::clamp(fuel, 0.0, 100.0);
+    const auto found = acknowledged_loop.has_value() ? std::ranges::find(
+        network_predictions_, *acknowledged_loop, &NetworkPredictionSample::loop) : network_predictions_.end();
+    if (found != network_predictions_.end()) {
+        // Preserve the exact recurrence when the only difference is the
+        // packet's 1/64 quantization; rounding must not move fuel exhaustion.
+        if (std::abs(found->jetpack.fuel - fuel) > 1.0 / 64.0) {
+            found->jetpack.fuel = fuel;
+            replay_jetpack_prediction(*acknowledged_loop);
+        }
+    } else if (!acknowledged_loop.has_value() || network_predictions_.empty()) {
+        jetpack_prediction_.fuel = fuel;
+    }
+}
+
+void TutorialWorldSession::advance_jetpack_prediction(
+    JetpackPredictionState& state, std::uint8_t pack,
+    const PlayerInputState& input, double dt, bool damaged, bool grounded) noexcept {
+    // Same consumed-input recurrence as server.Player._update_jetpack. The
+    // owner predicts it without waiting for an active WorldUpdate to travel
+    // back: wire action 0x04 advertises ignition before native thrust begins.
+    if (pack == 0U || pack > 4U) { state = {}; return; }
+    const auto& profile = config_.flight_profile;
+    const double refill_delay = pack == 3U ? 0.5 : (pack == 4U ? 0.1 : 2.0);
+    state.refill_delay_remaining = damaged ? refill_delay :
+        std::max(0.0, state.refill_delay_remaining - dt);
+    const bool held = pack == 4U ? input.hover : input.jump;
+    state.idle_seconds = held || state.advertised_active || state.physics_active
+        ? 0.0 : state.idle_seconds + dt;
+    if (held && state.requires_release && state.exhaustion_tail > 0U) {
+        state.advertised_active = false;
+        state.physics_active = true;
+        state.activation_defer = 0U;
+        --state.exhaustion_tail;
+        state.fuel = 0.0;
+        return;
+    }
+    const bool previously_active = state.advertised_active;
+    if (previously_active && state.activation_defer > 0U) {
+        state.physics_active = false;
+        --state.activation_defer;
+    } else {
+        state.physics_active = previously_active;
+    }
+    bool newly_activated{};
+    if (held) {
+        state.held_seconds += dt;
+        const double delay = pack == 4U ? 0.1 : 0.25;
+        const double cost = pack == 4U ? 0.0 : 10.0;
+        if (!previously_active && !state.requires_release &&
+            state.held_seconds >= delay && state.fuel >= std::max(cost, 1.0)) {
+            state.advertised_active = true;
+            state.fuel -= cost;
+            state.physics_active = false;
+            state.activation_defer = 2U;
+            state.exhaustion_tail = 0U;
+            newly_activated = true;
+        }
+    } else {
+        state.held_seconds = 0.0;
+        state.advertised_active = false;
+        state.physics_active = false;
+        state.activation_defer = 0U;
+        state.exhaustion_tail = 0U;
+        state.requires_release = false;
+    }
+    if (!newly_activated && (state.advertised_active || state.physics_active)) {
+        state.fuel = std::max(0.0, state.fuel - profile.drain[pack] * dt);
+        if (state.fuel <= 0.0) {
+            state.advertised_active = false;
+            state.requires_release = true;
+            state.activation_defer = 0U;
+            state.exhaustion_tail = state.physics_active ? 1U : 0U;
+        }
+    }
+    if (!state.advertised_active && !state.physics_active && state.refill_delay_remaining <= 0.0 &&
+        (pack == 4U || !profile.grounded_refill_only ||
+         (grounded && state.idle_seconds + 1e-9 >= profile.refill_idle_seconds))) {
+        state.fuel = std::min(100.0, state.fuel + profile.refill[pack] * dt);
+    }
+}
+
+void TutorialWorldSession::replay_jetpack_prediction(std::int32_t acknowledged_loop) noexcept {
+    const auto found = std::ranges::find(network_predictions_, acknowledged_loop,
+                                        &NetworkPredictionSample::loop);
+    if (found == network_predictions_.end()) return;
+    auto state = found->jetpack;
+    found->state.jetpack_active = state.physics_active;
+    found->state.jetpack_passive = found->state.jetpack == 2U && state.physics_active;
+    for (auto iterator = std::next(found); iterator != network_predictions_.end(); ++iterator) {
+        advance_jetpack_prediction(state, iterator->state.jetpack, iterator->consumed_input,
+                                  config_.fixed_dt, iterator->consumed_jetpack_damage,
+                                  !std::prev(iterator)->state.airborne || std::prev(iterator)->state.wade);
+        if (iterator->jetpack_restocked) state.fuel = 100.0;
+        if (iterator->consumed_jetpack_active != state.physics_active) {
+            jetpack_replay_required_ = true;
+        }
+        iterator->consumed_jetpack_active = state.physics_active;
+        iterator->state.jetpack_active = state.physics_active;
+        iterator->state.jetpack_passive = iterator->state.jetpack == 2U && state.physics_active;
+        iterator->jetpack = state;
+    }
+    jetpack_prediction_ = state;
+    player_.jetpack_active = state.physics_active;
+    player_.jetpack_passive = player_.jetpack == 2U && state.physics_active;
 }
 
 void TutorialWorldSession::apply_server_pickup_burden(bool burdened) noexcept {
@@ -3784,8 +4081,40 @@ void TutorialWorldSession::apply_server_pickup_burden(bool burdened) noexcept {
         player_.burdened = burdened;
 }
 
+void TutorialWorldSession::replay_parachute_prediction(
+    std::int32_t acknowledged_loop, bool active) noexcept {
+    const auto found = std::ranges::find(network_predictions_, acknowledged_loop,
+                                        &NetworkPredictionSample::loop);
+    if (found == network_predictions_.end()) return;
+    found->state.parachute_active = active && found->state.parachute;
+    auto previous = found;
+    for (auto next = std::next(found); next != network_predictions_.end(); ++next) {
+        active = previous->state.parachute_active;
+        bool pending = previous->state.parachute_pending;
+        if (!next->state.parachute || !previous->state.airborne || previous->state.wade) {
+            active = false;
+            pending = false;
+        } else {
+            if (next->parachute_deploy_pressed) pending = true;
+            if (pending && (!config_.flight_profile.descending_parachute_only ||
+                            previous->state.velocity.z >= 0.0)) {
+                active = true;
+                pending = false;
+            }
+        }
+        if (next->consumed_parachute_active != active) jetpack_replay_required_ = true;
+        next->consumed_parachute_active = active;
+        next->state.parachute_active = active && next->state.airborne && !next->state.wade;
+        next->state.parachute_pending = pending && next->state.airborne && !next->state.wade;
+        previous = next;
+    }
+    player_.parachute_active = alive() && player_.parachute && previous->state.parachute_active;
+    player_.parachute_pending = alive() && player_.parachute && previous->state.parachute_pending;
+}
+
 void TutorialWorldSession::sync_movement_equipment(std::span<const std::uint8_t> loadout) noexcept {
     // Protocol ids 66..69 map to world.pyd's compact 1..4 pack enum.
+    const auto previous_pack = player_.jetpack;
     player_.jetpack = 0U;
     player_.parachute = false;
     for (const auto item : loadout) {
@@ -3799,8 +4128,18 @@ void TutorialWorldSession::sync_movement_equipment(std::span<const std::uint8_t>
         player_.jetpack_active = false;
         player_.jetpack_passive = false;
     }
-    if (!player_.parachute)
+    if (player_.jetpack != previous_pack) {
+        player_.jetpack_active = false;
+        player_.jetpack_passive = false;
+        jetpack_prediction_ = {};
+        jetpack_replay_required_ = false;
+        last_jetpack_fuel_loop_ = std::numeric_limits<std::int32_t>::min();
+        last_movement_state_loop_ = std::numeric_limits<std::int32_t>::min();
+    }
+    if (!player_.parachute) {
         player_.parachute_active = false;
+        player_.parachute_pending = false;
+    }
 }
 
 void TutorialWorldSession::apply_server_class(std::uint8_t class_id,

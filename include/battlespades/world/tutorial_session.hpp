@@ -2,6 +2,7 @@
 
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/footstep_audio.hpp"
+#include "battlespades/world/flight_profile.hpp"
 #include "battlespades/world/local_entity.hpp"
 #include "battlespades/world/player_inventory.hpp"
 #include "battlespades/world/player_movement.hpp"
@@ -13,6 +14,7 @@
 #include "battlespades/world/weapon_catalog.hpp"
 
 #include <array>
+#include <bitset>
 #include <cstdint>
 #include <deque>
 #include <limits>
@@ -87,6 +89,8 @@ struct TutorialProjectile final {
     Vec3 spawn_position{};
     Vec3 velocity{};
     double presentation_age{};
+    /** Autonomous launchers have no first-person weapon muzzle. */
+    bool autonomous_source{};
     double remaining{};
     /**
      * Seconds for which retail's contact-only ``drill_loop`` remains live.
@@ -160,6 +164,7 @@ struct TutorialSessionConfig final {
     std::vector<std::string> initial_prefabs;
     std::vector<std::uint8_t> initial_ugc_tools;
     std::optional<std::uint8_t> initial_tool;
+    FlightProfile flight_profile;
 };
 
 struct TutorialDiagnostics final {
@@ -231,6 +236,8 @@ public:
     /** Apply Restock(69) type 3 using retail's per-tool partial crate top-up. */
     void restock_from_ammo_crate() noexcept;
     void restock_blocks() noexcept;
+    void restock_jetpack_fuel() noexcept;
+    [[nodiscard]] double jetpack_fuel() const noexcept { return jetpack_prediction_.fuel; }
     /** Apply the local player's current TeamInfiniteBlocks authority bit. */
     void set_infinite_blocks(bool enabled) noexcept { infinite_blocks_ = enabled; }
     [[nodiscard]] bool infinite_blocks() const noexcept { return infinite_blocks_; }
@@ -322,6 +329,7 @@ public:
      */
     [[nodiscard]] MovementStepResult take_movement_events() noexcept;
     [[nodiscard]] const ToolAmmoState* selected_ammo() const noexcept;
+    [[nodiscard]] double weapon_reload_remaining() const noexcept;
     /** True for either a non-magnified sight or a magnified sniper scope. */
     [[nodiscard]] bool zoomed() const noexcept;
     /** True only for the sniper-family magnified scope behavior. */
@@ -334,6 +342,8 @@ public:
      * a multiplier of 1.0 is already a 2x view.
      */
     [[nodiscard]] double zoom_target() const noexcept;
+    /** Local presentation preference, scoped to the held tool; never changes weapon stats. */
+    void set_skin_zoom(std::uint8_t tool, std::optional<double> target) noexcept;
     /**
      * Retail `zoom_level`: where the ramp has actually reached.
      *
@@ -620,7 +630,11 @@ public:
      */
     void apply_server_movement_state(std::uint8_t action_flags,
                                      std::uint8_t state_flags,
-                                     std::uint8_t pickup_id) noexcept;
+                                     std::uint8_t pickup_id,
+                                     std::optional<std::int32_t> acknowledged_loop = std::nullopt) noexcept;
+    /** Decoded 0..100 fuel, advanced through retained frames after this ACK. */
+    void apply_server_jetpack_fuel(
+        double fuel, std::optional<std::int32_t> acknowledged_loop = std::nullopt) noexcept;
     /** Apply PickPickup(70)'s authoritative burdensome byte. */
     void apply_server_pickup_burden(bool burdened) noexcept;
     /** Apply the server-normalized class movement profile after respawn. */
@@ -634,6 +648,7 @@ private:
     void handle_stage_entered();
     void update_combat();
     void update_weapon_sandbox();
+    void update_reload_aim() noexcept;
     void process_weapon_action(const WeaponAction& action);
     void spawn_projectile(const WeaponAction& action, const WeaponDefinition& weapon);
     void update_projectiles();
@@ -680,10 +695,37 @@ private:
     void sync_movement_equipment(std::span<const std::uint8_t> loadout) noexcept;
     void conceal_authoritative_correction(Vec3 position_delta) noexcept;
 
+    struct JetpackPredictionState final {
+        double fuel{100.0};
+        double held_seconds{};
+        double refill_delay_remaining{};
+        double idle_seconds{};
+        bool advertised_active{};
+        bool physics_active{};
+        bool requires_release{};
+        std::uint8_t activation_defer{};
+        std::uint8_t exhaustion_tail{};
+    };
+    void advance_jetpack_prediction(JetpackPredictionState& state,
+                                          std::uint8_t pack,
+                                          const PlayerInputState& input,
+                                          double dt, bool damaged, bool grounded) noexcept;
+    void replay_jetpack_prediction(std::int32_t acknowledged_loop) noexcept;
+    void replay_parachute_prediction(std::int32_t acknowledged_loop, bool active) noexcept;
+
     struct NetworkPredictionSample final {
         std::int32_t loop{};
         PlayerMovementState state{};
         PlayerInputState consumed_input{};
+        Vec3 consumed_orientation{};
+        /** Thrust consumed before the frame's fuel drain can deactivate it. */
+        bool consumed_jetpack_active{};
+        bool consumed_jetpack_damage{};
+        bool consumed_parachute_active{};
+        bool parachute_deploy_pressed{};
+        JetpackPredictionState jetpack{};
+        /** A restock received after this frame survives older ACK replay. */
+        bool jetpack_restocked{};
         MovementClassConfig movement_class{};
         std::vector<PlayerCollisionBody> collision_bodies;
     };
@@ -704,8 +746,20 @@ private:
     MovementStepResult movement_events_{};
     /** Retail sends current flags after simulating the preceding held frame. */
     PlayerInputState network_latched_input_{};
+    std::optional<Vec3> network_latched_orientation_;
     /** Input actually consumed by the most recently completed native step. */
     PlayerInputState last_simulated_input_{};
+    bool last_simulated_jetpack_active_{};
+    bool parachute_deploy_last_held_{};
+    bool last_simulated_parachute_active_{};
+    bool last_simulated_parachute_pressed_{};
+    JetpackPredictionState jetpack_prediction_{};
+    bool jetpack_damage_pending_{};
+    bool last_simulated_jetpack_damage_{};
+    bool jetpack_replay_required_{};
+    std::int32_t last_jetpack_fuel_loop_{std::numeric_limits<std::int32_t>::min()};
+    std::int32_t last_movement_state_loop_{std::numeric_limits<std::int32_t>::min()};
+    Vec3 last_simulated_orientation_{};
     /** Exact bounded movement journal used by owner WorldUpdate replay. */
     std::deque<NetworkPredictionSample> network_predictions_;
     double yaw_{};
@@ -720,9 +774,9 @@ private:
      */
     Vec3 network_interpolated_position_{};
     double position_lerp_timer_{};
-    /** Latest ACK-ordered owner row; Character restores it on jump launch. */
-    Vec3 authoritative_jump_anchor_{};
-    std::int32_t authoritative_jump_anchor_loop_{std::numeric_limits<std::int32_t>::min()};
+    /** Latest ACK-ordered owner row retained for diagnostics only. */
+    Vec3 last_authoritative_position_{};
+    std::int32_t last_authoritative_position_loop_{std::numeric_limits<std::int32_t>::min()};
     /** Last owner ACK whose state was applied; duplicate unreliable rows are inert. */
     std::int32_t last_reconciled_loop_{std::numeric_limits<std::int32_t>::min()};
 
@@ -732,8 +786,10 @@ private:
     bool custom_edge_{};
     bool custom_held_{};
     bool zoomed_{};
+    std::optional<std::uint8_t> reload_aim_tool_;
     /** Ramped sight state; 0 is hip fire. Advanced on the fixed tick only. */
     double zoom_level_{};
+    std::optional<std::pair<std::uint8_t,double>> skin_zoom_;
     bool machine_gun_deployed_{};
     /** Last server-authoritative WorldUpdate disguise bit for action gating. */
     bool disguise_active_{};
@@ -753,6 +809,12 @@ private:
     bool climb_gate_reported_{};
     TutorialAttackEvents attack_events_{};
     std::vector<ChunkKey> dirty_chunks_;
+    static constexpr std::uint32_t dirty_chunk_edge{16U};
+    static constexpr std::uint32_t dirty_chunk_columns{
+        (VxlMap::width + dirty_chunk_edge - 1U) / dirty_chunk_edge};
+    static constexpr std::uint32_t dirty_chunk_rows{
+        (VxlMap::depth + dirty_chunk_edge - 1U) / dirty_chunk_edge};
+    std::bitset<dirty_chunk_columns * dirty_chunk_rows> dirty_chunk_membership_;
     std::vector<FallingComponent> falling_components_;
     std::vector<TerrainImpactEvent> terrain_impacts_;
     std::vector<WeaponAction> weapon_actions_;

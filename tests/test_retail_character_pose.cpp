@@ -120,6 +120,25 @@ void zombie_tools_own_their_visible_hands() {
                 "remote Zombie left hand must keep its authored attachment");
 }
 
+void hidden_or_unavailable_weapon_keeps_observer_class_arms() {
+    const auto visible = evaluate_retail_third_person_pose(17U, 1U, 1.0e9, 0U, 30.0);
+    const auto hidden = evaluate_retail_third_person_pose(17U, 1U, 1.0e9, 0U, 30.0, false);
+    expect(visible.tool_part_count == 1U && hidden.tool_part_count == 0U,
+           "authority may hide the held weapon while the observer keeps the character body");
+    expect(hidden.draws_player_arms,
+           "retail class arms must remain visible when can_display_weapon clears");
+    for (std::size_t index{}; index < hidden.arms.size(); ++index) {
+        expect_near(hidden.arms[index].pitch_degrees, visible.arms[index].pitch_degrees,
+                    "hiding the tool must preserve the existing class arm pose");
+    }
+    const auto missing = evaluate_retail_third_person_pose(17U, 0U);
+    expect(missing.draws_player_arms && missing.tool_part_count == 0U,
+           "missing held-tool geometry must not remove valid class arms");
+    const auto zombie = evaluate_retail_third_person_pose(24U, 2U, 1.0e9, 0U, 0.0, false);
+    expect(!zombie.draws_player_arms && zombie.tool_part_count == 0U,
+           "ZombieHandTool keeps its own visibility and never fabricates a class arm rig");
+}
+
 void minigun_barrel_keeps_its_authored_third_person_offset() {
     const auto minigun = evaluate_retail_third_person_pose(8U, 2U);
     expect_near(minigun.tool_anchor.z, 0.5, "minigun must retain the shared tool anchor");
@@ -247,6 +266,7 @@ int main() {
         arm_chain_matches_character_reset_tp_arms();
         display_vectors_match_retail_draw_axis_order();
         zombie_tools_own_their_visible_hands();
+        hidden_or_unavailable_weapon_keeps_observer_class_arms();
         minigun_barrel_keeps_its_authored_third_person_offset();
         muzzle_attachments_match_retail_weapon_subclasses();
         root_yaw_matches_retail_orientation_basis();

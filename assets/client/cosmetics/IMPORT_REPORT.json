@@ -1,0 +1,2674 @@
+[
+  {
+    "id": 169599,
+    "name": "new dead v1",
+    "source": "https://gamebanana.com/mods/169599",
+    "game": "Ace of Spades",
+    "category": "General",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/54db94cb63d09.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54db94e790af1.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54db94e97b5d6.jpg"
+    ],
+    "assets": 2,
+    "entries": [
+      {
+        "source": 169599,
+        "id": "community-169599-dead-v3",
+        "name": "new dead v1",
+        "status": "Death model",
+        "details": "Original dead-player model.",
+        "summary": "Original dead-player model."
+      }
+    ]
+  },
+  {
+    "id": 169613,
+    "name": "Headshot PDEAD v1",
+    "source": "https://gamebanana.com/mods/169613",
+    "game": "Ace of Spades",
+    "category": "General",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/54ddefc974d82.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54dfcbc8089d7.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54dfcbca71d92.jpg"
+    ],
+    "assets": 2,
+    "entries": [
+      {
+        "source": 169613,
+        "id": "community-169613-dead-v3",
+        "name": "Headshot PDEAD v1",
+        "status": "Death model",
+        "details": "Original dead-player model.",
+        "summary": "Original dead-player model."
+      }
+    ]
+  },
+  {
+    "id": 169631,
+    "name": "[AoS Steam] TF2 Lv1 Sentry",
+    "source": "https://gamebanana.com/mods/169631",
+    "game": "Ace of Spades",
+    "category": "General",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/541343ba8899f.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5413445c5dbc1.jpg",
+      "https://images.gamebanana.com/img/ss/mods/541344604faec.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 169631,
+        "id": "community-169631-tf2-level-1-sentry-v3",
+        "name": "TF2 Level 1 Sentry",
+        "status": "World object",
+        "details": "Entity 8; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      }
+    ]
+  },
+  {
+    "id": 169665,
+    "name": "New Intel and Capture point models!",
+    "source": "https://gamebanana.com/mods/169665",
+    "game": "Ace of Spades",
+    "category": "Full Packs",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/56f4464d4f8ed.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4469aa14cf.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4469aa6b63.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4469ab9f1a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4469aafcac.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4469ace742.jpg"
+    ],
+    "assets": 5,
+    "entries": [
+      {
+        "source": 169665,
+        "id": "community-169665-backpack-intel-v3",
+        "name": "Backpack intel",
+        "status": "World object",
+        "details": "Entity 16; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      },
+      {
+        "source": 169665,
+        "id": "community-169665-brand-new-intel-v3",
+        "name": "Brand new intel",
+        "status": "World object",
+        "details": "Entity 16; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      },
+      {
+        "source": 169665,
+        "id": "community-169665-new-capture-point-v3",
+        "name": "New capture point",
+        "status": "World object",
+        "details": "Entity 1, 25; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      },
+      {
+        "source": 169665,
+        "id": "community-169665-tf2-capture-point-v3",
+        "name": "TF2 Capture point",
+        "status": "World object",
+        "details": "Entity 1, 25; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      },
+      {
+        "source": 169665,
+        "id": "community-169665-tf2-intel-v3",
+        "name": "TF2 intel",
+        "status": "World object",
+        "details": "Entity 16; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      }
+    ]
+  },
+  {
+    "id": 169706,
+    "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter",
+    "source": "https://gamebanana.com/mods/169706",
+    "game": "Ace of Spades",
+    "category": "Full Packs",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/57041d0f12585.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57041d1533e55.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57041d1510e6e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57041d15be410.jpg"
+    ],
+    "assets": 60,
+    "entries": [
+      {
+        "source": 169706,
+        "id": "community-pack-169706-files-205934-tommygun-smg-v3",
+        "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter",
+        "status": "Scripted weapon",
+        "details": "SMG; 77 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      },
+      {
+        "source": 169706,
+        "id": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+        "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — Black&White",
+        "status": "Scripted weapon",
+        "details": "SMG; 77 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      },
+      {
+        "source": 169706,
+        "id": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+        "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — Gold",
+        "status": "Scripted weapon",
+        "details": "SMG; 77 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      },
+      {
+        "source": 169706,
+        "id": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+        "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — US Camo",
+        "status": "Scripted weapon",
+        "details": "SMG; 77 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 169749,
+    "name": "OpenSpades: Winter Warfare",
+    "source": "https://gamebanana.com/mods/169749",
+    "game": "Ace of Spades",
+    "category": "Full Packs",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/548d1b1b9c36f.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1b928c4e2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1b9bf112a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bb9986d2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bbdbb061.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bc2c4d70.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bc76402a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bcc165bc.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bd09b3db.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bd430113.jpg",
+      "https://images.gamebanana.com/img/ss/mods/548d1bd7c4c7e.jpg"
+    ],
+    "assets": 140,
+    "entries": [
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-nazi-rifle-v3",
+        "name": "OpenSpades: Winter Warfare — Nazi Rifle",
+        "status": "Scripted weapon",
+        "details": "Rifle; 12 resources. OpenSpades default Rifle script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-nazi-smg-v3",
+        "name": "OpenSpades: Winter Warfare — Nazi SMG",
+        "status": "Scripted weapon",
+        "details": "SMG; 22 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-nazi-shotgun-v3",
+        "name": "OpenSpades: Winter Warfare — Nazi Shotgun",
+        "status": "Scripted weapon",
+        "details": "Shotgun; 13 resources. OpenSpades default Shotgun script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-soviet-rifle-v3",
+        "name": "OpenSpades: Winter Warfare — Soviet Rifle",
+        "status": "Scripted weapon",
+        "details": "Rifle; 12 resources. OpenSpades default Rifle script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-soviet-smg-v3",
+        "name": "OpenSpades: Winter Warfare — Soviet SMG",
+        "status": "Scripted weapon",
+        "details": "SMG; 22 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-pack-169749-default-soviet-shotgun-v3",
+        "name": "OpenSpades: Winter Warfare — Soviet Shotgun",
+        "status": "Scripted weapon",
+        "details": "Shotgun; 13 resources. OpenSpades default Shotgun script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      },
+      {
+        "source": 169749,
+        "id": "community-169749-winter-warfare-bonus-boris-v3",
+        "name": "Winter Warfare / Bonus / Boris",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 169749,
+        "id": "community-169749-winter-warfare-bonus-resistance-v3",
+        "name": "Winter Warfare / Bonus / Resistance",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Cap/Black/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Cap/Team Colored/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 1/Black/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 1/Team Colored/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 2/Black/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 2/Team Colored/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 3/Black/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 3/Team Colored/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 4/Black/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Nazi/Player Variation (Selection)/Head (Selection)/Helmet/Variation 4/Team Colored/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "id": "community-169749-winter-warfare-nazi-player-variation-selection-v3",
+        "name": "Winter Warfare / Nazi / Player Variation (Selection)",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 169749,
+        "id": "community-169749-winter-warfare-nazi-player-variation-selection-required-v3",
+        "name": "Winter Warfare / Nazi / Player Variation (Selection) / REQUIRED",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Helmet/Helmet (Green)/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Helmet/Helmet (Team Colored)/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Brown)/Ear Flaps Deployed/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Brown)/Ear Flaps Folded/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Navy Blue)/Ear Flaps Deployed/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Navy Blue)/Ear Flaps Folded/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Team Colored)/Ear Flaps Deployed/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "name": "files-213309/Winter Warfare/Soviet/Player Variation (Selection)/Head (Selection)/Ushanka/Ushanka (Team Colored)/Ear Flaps Folded/Player",
+        "status": "Variant parts",
+        "details": "Separate head/body choices retained in source archive.",
+        "summary": "Separate head/body choices retained in source archive."
+      },
+      {
+        "source": 169749,
+        "id": "community-169749-winter-warfare-soviet-player-variation-selection-required-v3",
+        "name": "Winter Warfare / Soviet / Player Variation (Selection) / REQUIRED",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 169961,
+    "name": "MaschinenPistole 40",
+    "source": "https://gamebanana.com/mods/169961",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/56efeed28f880.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56efeeda75d90.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56efeedabb4be.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56efeedb0d532.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 169961,
+        "id": "community-pack-169961-default-v3",
+        "name": "MaschinenPistole 40",
+        "status": "Scripted weapon",
+        "details": "SMG; 25 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      }
+    ]
+  },
+  {
+    "id": 170127,
+    "name": "Openspades G3A3",
+    "source": "https://gamebanana.com/mods/170127",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55d512bf1daa9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d512d41f8ff.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d51c0685adc.jpg"
+    ],
+    "assets": 6,
+    "entries": [
+      {
+        "source": 170127,
+        "id": "community-pack-170127-default-v3",
+        "name": "Openspades G3A3",
+        "status": "Scripted weapon",
+        "details": "SMG; 22 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      }
+    ]
+  },
+  {
+    "id": 170159,
+    "name": "FN P90",
+    "source": "https://gamebanana.com/mods/170159",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5415e3da08212.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5415e3ef12f66.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5415e3f2b9d56.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5415e3f5dc83a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5415e3f9b314c.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54174d48842d4.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 170159,
+        "id": "community-170159-fn-p90-v3",
+        "name": "FN P90",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; authored sight model included.",
+        "summary": "Original model with native B&S hands and handling."
+      }
+    ]
+  },
+  {
+    "id": 170191,
+    "name": "[AoS/OpenSpades/AoS Steam] Heckler & Koch HK416",
+    "source": "https://gamebanana.com/mods/170191",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/53c037d888477.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53c03849cfdb6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53c0384e3e519.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f517a3350ef.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f517a80818b.jpg"
+    ],
+    "assets": 11,
+    "entries": [
+      {
+        "source": 170191,
+        "id": "community-pack-170191-default-v3",
+        "name": "[AoS/OpenSpades/AoS Steam] Heckler & Koch HK416",
+        "status": "Scripted weapon",
+        "details": "SMG; 22 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      }
+    ]
+  },
+  {
+    "id": 170205,
+    "name": "AK-74 \"Apocalyptic\"",
+    "source": "https://gamebanana.com/mods/170205",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/540759e083e74.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54064fd5109ad.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54064fd59ceef.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54064fdb71916.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54064fdc74068.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 170205,
+        "id": "community-pack-170205-default-v3",
+        "name": "AK-74 \"Apocalyptic\"",
+        "status": "Scripted weapon",
+        "details": "SMG; 22 resources. OpenSpades default SMG script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      }
+    ]
+  },
+  {
+    "id": 170209,
+    "name": "M4A4 | Desert Strike",
+    "source": "https://gamebanana.com/mods/170209",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5713dadb02f39.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5713dae311992.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5713dae3bdaab.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5713dae3e0a1f.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5713dae3e682b.jpg"
+    ],
+    "assets": 32,
+    "entries": [
+      {
+        "source": 170209,
+        "id": "community-pack-170209-files-205847-smg-v3",
+        "name": "M4A4 | Desert Strike",
+        "status": "Scripted weapon",
+        "details": "SMG; 49 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170214,
+    "name": "Silver Side-Charging M4 (OpenSpades)",
+    "source": "https://gamebanana.com/mods/170214",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5709b73aac82f.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5623f728e6839.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5623f72d012cf.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5623f73068eb2.jpg"
+    ],
+    "assets": 129,
+    "entries": [
+      {
+        "source": 170214,
+        "name": "Silver Side-Charging M4 (OpenSpades)",
+        "status": "Incomplete optional script",
+        "details": "Models/Weapons/Rifle/Scope1.kv6, Models/Weapons/Rifle/Scope2.kv6, Models/Weapons/Rifle/WeaponMove2.kv6",
+        "summary": "An optional rifle variant lacks parts. The main SMG variant is available."
+      },
+      {
+        "source": 170214,
+        "id": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+        "name": "Silver Side-Charging M4 (OpenSpades)",
+        "status": "Scripted weapon",
+        "details": "SMG; 126 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170502,
+    "name": "Ghillie Suit+sniper",
+    "source": "https://gamebanana.com/mods/170502",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/54955b08142a5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5495592eefdf4.jpg",
+      "https://images.gamebanana.com/img/ss/mods/549559303bda0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54955aede0e90.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54955aef5ebd2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54955af0796ac.jpg",
+      "https://images.gamebanana.com/img/ss/mods/54955af1841bf.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170502,
+        "id": "community-170502-ghillie-sniper-v3",
+        "name": "Ghillie sniper",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; authored sight model included.",
+        "summary": "Original model with native B&S hands and handling."
+      },
+      {
+        "source": 170502,
+        "id": "community-170502-ghillie-sniper-marksman-scout-v3",
+        "name": "Ghillie Suit+sniper — Scout",
+        "status": "Character",
+        "details": "5 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      }
+    ]
+  },
+  {
+    "id": 170609,
+    "name": "Openspades M14 EBR \"Scoped\"",
+    "source": "https://gamebanana.com/mods/170609",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55db415a62003.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55db4220bdac3.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55db42258fba7.jpg"
+    ],
+    "assets": 6,
+    "entries": [
+      {
+        "source": 170609,
+        "id": "community-pack-170609-default-v3",
+        "name": "Openspades M14 EBR \"Scoped\"",
+        "status": "Scripted weapon",
+        "details": "Rifle; 13 resources. OpenSpades default Rifle script; model-only archive",
+        "summary": "OpenSpades base animation with imported model parts."
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170614,
+    "name": "Openspades .950 JDJ",
+    "source": "https://gamebanana.com/mods/170614",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55dd1081c5d46.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55dd1086af113.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55dd108f3c927.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55dd10947b461.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 170614,
+        "id": "community-pack-170614-default-v3",
+        "name": "Openspades .950 JDJ",
+        "status": "Scripted weapon",
+        "details": "Rifle; 11 resources. OpenSpades default Rifle script; model-only archive The model-only scope obscures the firing axis with the default Rifle script. Use the supplied Kar98 crosshair during ADS; retain original model parts and default Rifle reload.",
+        "summary": "OpenSpades base animation with imported model parts. Uses a repaired scope view."
+      }
+    ]
+  },
+  {
+    "id": 170854,
+    "name": "Stalker Player Skins",
+    "source": "https://gamebanana.com/mods/170854",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/516c778dcb4a9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/516c7799471bb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/516c779a77d2f.jpg"
+    ],
+    "assets": 26,
+    "entries": [
+      {
+        "source": 170854,
+        "id": "community-170854-files-225199-v3",
+        "name": "Stalker Player Skins",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170854,
+        "id": "community-170854-veterans-and-rookies-zip-exoskeleton-v3",
+        "name": "Veterans_and_Rookies / Exoskeleton",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170854,
+        "id": "community-170854-veterans-and-rookies-zip-rookie-stalkers-v3",
+        "name": "Veterans_and_Rookies / Rookie Stalkers",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 170855,
+    "name": "SWAT player reskin for AoS",
+    "source": "https://gamebanana.com/mods/170855",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/507c471c3422a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/507c472225426.jpg",
+      "https://images.gamebanana.com/img/ss/mods/507c4723792ae.jpg",
+      "https://images.gamebanana.com/img/ss/mods/507c472797af9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/507c4729ed93f.jpg",
+      "https://images.gamebanana.com/img/ss/mods/507c472be42e3.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170855,
+        "id": "community-170855-kv6-v3",
+        "name": "SWAT player reskin for AoS",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 170858,
+    "name": "Custom Player skin packs",
+    "source": "https://gamebanana.com/mods/170858",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/50b939987aa80.jpg",
+      "https://images.gamebanana.com/img/ss/mods/50b939ac3ac6b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/50b939baa754a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/50b939c68a224.jpg",
+      "https://images.gamebanana.com/img/ss/mods/50b939d0bee07.jpg"
+    ],
+    "assets": 73,
+    "entries": [
+      {
+        "source": 170858,
+        "id": "community-170858-allied-troop-v3",
+        "name": "Allied troop",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-allied-troop-ver-2-v3",
+        "name": "Allied troop / [Ver. 2]",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-armageddon-astronaut-v3",
+        "name": "Armageddon Astronaut",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-armageddon-astronaut-without-helmet-v3",
+        "name": "Armageddon Astronaut / [Without Helmet]",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-astronaut-v3",
+        "name": "Astronaut",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-nazi-v3",
+        "name": "Nazi",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-officer-alternative-v3",
+        "name": "Officer / Alternative",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170858,
+        "id": "community-170858-officer-v3",
+        "name": "Officer",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 170864,
+    "name": "Player Reskin",
+    "source": "https://gamebanana.com/mods/170864",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/4e9305f0eb848.jpg",
+      "https://images.gamebanana.com/img/ss/mods/4e93077560855.jpg",
+      "https://images.gamebanana.com/img/ss/mods/4e93077ab8c90.jpg"
+    ],
+    "assets": 7,
+    "entries": [
+      {
+        "source": 170864,
+        "id": "community-170864-files-238230-v3",
+        "name": "Player Reskin",
+        "status": "Character",
+        "details": "7 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 170866,
+    "name": "OpenSpades Player skin",
+    "source": "https://gamebanana.com/mods/170866",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/558fccb935a3e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/558fca3a10bdb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/558fcc384d0c8.jpg",
+      "https://images.gamebanana.com/img/ss/mods/558fcc8c9d927.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 170866,
+        "id": "community-170866-files-210006-v3",
+        "name": "OpenSpades Player skin",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 170869,
+    "name": "Battlefield 4 Assault Class",
+    "source": "https://gamebanana.com/mods/170869",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/545dd1390b22b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a5ae322218e1.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a5ae322e5719.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a5ae321d7c03.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd26b41f05.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd26f229a5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd271e28ad.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd27534351.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd2774f7f7.jpg",
+      "https://images.gamebanana.com/img/ss/mods/545dd278f1ce4.jpg"
+    ],
+    "assets": 28,
+    "entries": [
+      {
+        "source": 170869,
+        "id": "community-170869-bf4-assault-class-ch-assault-v3",
+        "name": "BF4 Assault Class / CH Assault",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170869,
+        "id": "community-170869-bf4-assault-class-ru-assault-v3",
+        "name": "BF4 Assault Class / RU Assault",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      },
+      {
+        "source": 170869,
+        "id": "community-170869-bf4-assault-class-us-assault-v3",
+        "name": "BF4 Assault Class / US Assault",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": 171014,
+    "name": "Crowbar for OS",
+    "source": "https://gamebanana.com/mods/171014",
+    "game": "Ace of Spades",
+    "category": "Spade",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/56f417d603849.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4191779776.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f41917853b5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f4191787440.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f41917850ba.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56f419179c170.jpg"
+    ],
+    "assets": 1,
+    "entries": [
+      {
+        "source": 171014,
+        "id": "community-171014-crowbar-v3",
+        "name": "Crowbar",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; native tool pose.",
+        "summary": "Original model with native B&S hands and handling."
+      }
+    ]
+  },
+  {
+    "id": 171086,
+    "name": "[B&S] Half Life 2 Rebel Ammo cache",
+    "source": "https://gamebanana.com/mods/171086",
+    "game": "Ace of Spades",
+    "category": "Capture Point",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55ddf0866b442.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55ddf08fbbf84.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55ddf099092a4.jpg"
+    ],
+    "assets": 0,
+    "entries": [],
+    "notes": "Archive contains only empty directories."
+  },
+  {
+    "id": 40417,
+    "name": "ACOG with script (OpenSpades)",
+    "source": "https://gamebanana.com/mods/40417",
+    "game": "Ace of Spades",
+    "category": "Other/Misc",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/596ca782d4ead.webp",
+      "https://images.gamebanana.com/img/ss/mods/596ca79848e12.webp",
+      "https://images.gamebanana.com/img/ss/mods/596ca7dec0090.webp"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 40417,
+        "id": "community-pack-40417-files-343-acog-rifle-v3",
+        "name": "ACOG with script (OpenSpades)",
+        "status": "Scripted weapon",
+        "details": "Rifle; 13 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "ak47_for_smg",
+    "name": "ak47_for_smg.rar",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 7,
+    "entries": [
+      {
+        "source": "ak47_for_smg",
+        "id": "community-ak47-for-smg-ak47-v3",
+        "name": "AK47",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; native tool pose.",
+        "summary": "Original model with native B&S hands and handling."
+      }
+    ]
+  },
+  {
+    "id": "awp_78cfd",
+    "name": "AWP",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 14,
+    "entries": [
+      {
+        "source": "awp_78cfd",
+        "id": "community-pack-awp-78cfd-rifle-v3",
+        "name": "AWP",
+        "status": "Scripted weapon",
+        "details": "Rifle; 17 resources. Original aim, recoil and reload script. The supplied sight image is an all-black translucent rectangle and the aimed model obscures the eye. Use the supplied Kar98 crosshair during ADS; retain authored hip, fire and reload animations.",
+        "summary": "Original OpenSpades weapon and hand animations. Uses a repaired scope view."
+      }
+    ]
+  },
+  {
+    "id": "axe_960ef",
+    "name": "Axe",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 8,
+    "entries": [
+      {
+        "source": "axe_960ef",
+        "id": "community-pack-axe-960ef-spade-v3",
+        "name": "Axe",
+        "status": "Scripted weapon",
+        "details": "Spade; 10 resources. Original aim, recoil and reload script.",
+        "summary": "OpenSpades hand and melee animation."
+      }
+    ]
+  },
+  {
+    "id": "deuce_remastered",
+    "name": "Deuce Remastered",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 13,
+    "entries": [
+      {
+        "source": "deuce_remastered",
+        "id": "community-deuce-remastered-deuce-remastered-new-deuce-v3",
+        "name": "Deuce Remastered / New Deuce",
+        "status": "Character",
+        "details": "8 parts; classes 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17.",
+        "summary": "Complete character for all supported classes."
+      }
+    ]
+  },
+  {
+    "id": "entrega_para_sans_and_papyrus",
+    "name": "Sans & Papyrus",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 159,
+    "entries": [
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-smg-v3",
+        "name": "Sans & Papyrus SMG",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; authored sight model included.",
+        "summary": "Original model with native B&S hands and handling."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-shotgun-v3",
+        "name": "Sans & Papyrus shotgun",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; authored sight model included.",
+        "summary": "Original model with native B&S hands and handling."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-rpg-v3",
+        "name": "Sans & Papyrus RPG",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; authored sight model included.",
+        "summary": "Original model with native B&S hands and handling."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-riot-shield-v3",
+        "name": "Sans & Papyrus riot shield",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; native tool pose.",
+        "summary": "Original model with native B&S hands and handling."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-entrega-para-sans-and-papyru-6f2061-v3",
+        "name": "Sans & Papyrus — Engineer",
+        "status": "Character",
+        "details": "5 parts; classes 2, 12.",
+        "summary": "Complete character for Rocketeer, Engineer."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-entrega-para-sans-and-papyru-482647-v3",
+        "name": "Sans & Papyrus — Soldier",
+        "status": "Character",
+        "details": "5 parts; classes 0.",
+        "summary": "Complete character for Soldier."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-ammo-crate-v3",
+        "name": "Sans & Papyrus ammo crate",
+        "status": "World object",
+        "details": "Entity 3; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      },
+      {
+        "source": "entrega_para_sans_and_papyrus",
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-health-crate-v3",
+        "name": "Sans & Papyrus health crate",
+        "status": "World object",
+        "details": "Entity 4; native interaction and movement.",
+        "summary": "Replaces the original object and keeps its normal interactions."
+      }
+    ]
+  },
+  {
+    "id": "pala",
+    "name": "pala.rar",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 1,
+    "entries": [
+      {
+        "source": "pala",
+        "id": "community-pala-pala-2-0-v3",
+        "name": "Pala 2.0",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; native tool pose.",
+        "summary": "Original model with native B&S hands and handling."
+      }
+    ]
+  },
+  {
+    "id": "saf_9458b",
+    "name": "SAF character pack",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 108,
+    "entries": [
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-alternate-sniper-v3",
+        "name": "SAF / CAMO / Alternate Sniper",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-assault-v3",
+        "name": "SAF / CAMO / Assault",
+        "status": "Character",
+        "details": "8 parts; classes 0.",
+        "summary": "Complete character for Soldier."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-heavy-v3",
+        "name": "SAF / CAMO / Heavy",
+        "status": "Character",
+        "details": "8 parts; classes 2, 12.",
+        "summary": "Complete character for Rocketeer, Engineer."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-scout-v3",
+        "name": "SAF / CAMO / Scout",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-shotgun-v3",
+        "name": "SAF / CAMO / Shotgun",
+        "status": "Character",
+        "details": "8 parts; classes 3, 16.",
+        "summary": "Complete character for Miner, Specialist."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-camo-sniper-v3",
+        "name": "SAF / CAMO / Sniper",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-alternate-sniper-v3",
+        "name": "SAF / DEFAULT / Alternate Sniper",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-assault-v3",
+        "name": "SAF / DEFAULT / Assault",
+        "status": "Character",
+        "details": "8 parts; classes 0.",
+        "summary": "Complete character for Soldier."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-heavy-v3",
+        "name": "SAF / DEFAULT / Heavy",
+        "status": "Character",
+        "details": "8 parts; classes 2, 12.",
+        "summary": "Complete character for Rocketeer, Engineer."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-scout-v3",
+        "name": "SAF / DEFAULT / Scout",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-shotgun-v3",
+        "name": "SAF / DEFAULT / Shotgun",
+        "status": "Character",
+        "details": "8 parts; classes 3, 16.",
+        "summary": "Complete character for Miner, Specialist."
+      },
+      {
+        "source": "saf_9458b",
+        "id": "community-saf-9458b-saf-default-sniper-v3",
+        "name": "SAF / DEFAULT / Sniper",
+        "status": "Character",
+        "details": "8 parts; classes 1.",
+        "summary": "Complete character for Scout."
+      }
+    ]
+  },
+  {
+    "id": "shotgun_a10ea",
+    "name": "Pump-action shotgun",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 12,
+    "entries": [
+      {
+        "source": "shotgun_a10ea",
+        "id": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+        "name": "Pump-action shotgun",
+        "status": "Scripted weapon",
+        "details": "Shotgun; 13 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "skin_rare_spade_a_stick",
+    "name": "skin_rare_spade_a_stick.zip",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 1,
+    "entries": [
+      {
+        "source": "skin_rare_spade_a_stick",
+        "id": "community-skin-rare-spade-a-stick-a-stick-v3",
+        "name": "A stick",
+        "status": "Native weapon",
+        "details": "Original KV6 with native hands; native tool pose.",
+        "summary": "Original model with native B&S hands and handling."
+      }
+    ]
+  },
+  {
+    "id": "smg-ak47-paratrooper-v100_0a4ef",
+    "name": "AK-47 Paratrooper",
+    "source": "User-provided archive",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 54,
+    "entries": [
+      {
+        "source": "smg-ak47-paratrooper-v100_0a4ef",
+        "id": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+        "name": "AK-47 Paratrooper",
+        "status": "Scripted weapon",
+        "details": "SMG; 69 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-aeon-awp",
+    "name": "AEON AWP",
+    "source": "https://gamebanana.com/mods/319882",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 45,
+    "entries": [
+      {
+        "source": "legacy-aeon-awp",
+        "id": "community-aeon-awp-v2",
+        "name": "AEON AWP",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-bren",
+    "name": "Bren Gun",
+    "source": "https://gamebanana.com/mods/344131",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 13,
+    "entries": [
+      {
+        "source": "legacy-bren",
+        "id": "community-bren-v2",
+        "name": "Bren Gun",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-honey-badger",
+    "name": "Honey Badger",
+    "source": "https://gamebanana.com/mods/170213",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 70,
+    "entries": [
+      {
+        "source": "legacy-honey-badger",
+        "id": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+        "name": "Honey Badger — Alternate",
+        "status": "Scripted weapon",
+        "details": "SMG; 49 resources. Original aim, recoil and reload script.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      },
+      {
+        "source": "legacy-honey-badger",
+        "id": "community-honey-badger-v2",
+        "name": "Honey Badger",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-kar98",
+    "name": "Kar98",
+    "source": "https://gamebanana.com/mods/170226",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 24,
+    "entries": [
+      {
+        "source": "legacy-kar98",
+        "id": "community-kar98-v2",
+        "name": "Kar98",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-mp5k",
+    "name": "MP5K",
+    "source": "https://gamebanana.com/mods/487866",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 34,
+    "entries": [
+      {
+        "source": "legacy-mp5k",
+        "id": "community-mp5k-v2",
+        "name": "MP5K",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": "legacy-stg44",
+    "name": "StG 44",
+    "source": "https://gamebanana.com/mods/169827",
+    "game": "User archive",
+    "category": "Mixed",
+    "screenshots": [],
+    "assets": 36,
+    "entries": [
+      {
+        "source": "legacy-stg44",
+        "id": "community-stg44-v2",
+        "name": "StG 44",
+        "status": "Scripted weapon",
+        "details": "Existing owned appearance upgraded to original OpenSpades animation.",
+        "summary": "Original OpenSpades weapon and hand animations."
+      }
+    ]
+  },
+  {
+    "id": 315714,
+    "name": "OS|Rifolver",
+    "source": "https://gamebanana.com/mods/315714",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/616f6f0a595e9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/61211549b6794.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6121154fb5444.jpg"
+    ],
+    "assets": 32,
+    "entries": [
+      {
+        "source": 315714,
+        "id": "community-sep-315714-1-v5",
+        "name": "Rifolver",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170218,
+    "name": "[OS] Classic Gun",
+    "source": "https://gamebanana.com/mods/170218",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/6080866227f40.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60808676eed23.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6080867700b00.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6080871a5328f.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170218,
+        "id": "community-sep-170218-1-v5",
+        "name": "Classic pistol — Black",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 169760,
+    "name": "[OS]Uzi SMG",
+    "source": "https://gamebanana.com/mods/169760",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/60203789c0dc5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/602037b1c1b9e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/602037b1c71c7.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 169760,
+        "id": "community-sep-169760-1-v5",
+        "name": "Uzi SMG",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 171111,
+    "name": "Usp",
+    "source": "https://gamebanana.com/mods/171111",
+    "game": "Ace of Spades",
+    "category": "Pistol",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/6022ed86c8b0e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6022edadc3a6d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6022edb823831.jpg"
+    ],
+    "assets": 105,
+    "entries": [
+      {
+        "source": 171111,
+        "id": "community-sep-171111-1-v5",
+        "name": "Usp — UspNoSuppressor",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 171111,
+        "id": "community-sep-171111-2-v5",
+        "name": "Usp — UspSuppressor",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 169759,
+    "name": "[OS] Vector",
+    "source": "https://gamebanana.com/mods/169759",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/603ad34fcd730.jpg",
+      "https://images.gamebanana.com/img/ss/mods/603ad355aa866.jpg",
+      "https://images.gamebanana.com/img/ss/mods/603ad35c79a61.jpg"
+    ],
+    "assets": 24,
+    "entries": [
+      {
+        "source": 169759,
+        "id": "community-sep-169759-1-v5",
+        "name": "Vector",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170222,
+    "name": "[OS] Usp with Skin",
+    "source": "https://gamebanana.com/mods/170222",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/6057c0cf92891.jpg",
+      "https://images.gamebanana.com/img/ss/mods/605237d112604.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6052390c12ea4.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6057c0df3bd56.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6057c0f5dfb5b.jpg"
+    ],
+    "assets": 60,
+    "entries": [
+      {
+        "source": 170222,
+        "id": "community-sep-170222-1-v5",
+        "name": "Usp with Skin — UspSilencerSKINXD",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170222,
+        "id": "community-sep-170222-2-v5",
+        "name": "Usp with Skin — UspNOSilencerSKINXD",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 171110,
+    "name": "Glock Custom",
+    "source": "https://gamebanana.com/mods/171110",
+    "game": "Ace of Spades",
+    "category": "Pistol",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/60181aa0473c6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181ab70457a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181abcd7397.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181ac6e00e2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181add9b536.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181af2b74f5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/60181b0781870.jpg"
+    ],
+    "assets": 98,
+    "entries": [
+      {
+        "source": 171110,
+        "id": "community-sep-171110-1-v5",
+        "name": "Glock Custom — GlockCustom",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 171110,
+        "id": "community-sep-171110-2-v5",
+        "name": "Glock Custom — GlockCustomDotSight",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170227,
+    "name": "[OS] classic Gun",
+    "source": "https://gamebanana.com/mods/170227",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/6017e8035172b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6017e8192c528.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6017e8198f810.jpg",
+      "https://images.gamebanana.com/img/ss/mods/6017e8198ee25.jpg"
+    ],
+    "assets": 14,
+    "entries": [
+      {
+        "source": 170227,
+        "id": "community-sep-170227-1-v5",
+        "name": "Classic pistol — Silver",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170633,
+    "name": "PTrooper Remmington 870 MCS (Desert Digital)",
+    "source": "https://gamebanana.com/mods/170633",
+    "game": "Ace of Spades",
+    "category": "Shotgun",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/600ef68c6fdcf.jpg",
+      "https://images.gamebanana.com/img/ss/mods/600ef56500fe2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/600ef569abd30.jpg"
+    ],
+    "assets": 16,
+    "entries": [
+      {
+        "source": 170633,
+        "id": "community-sep-170633-1-v5",
+        "name": "PTrooper Remmington 870 MCS (Desert Digital) — PTrooperShotgun",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170633,
+        "id": "community-sep-170633-2-v5",
+        "name": "PTrooper Remmington 870 MCS (Desert Digital) — PTrooperShotgunPngSight",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 171049,
+    "name": "Laptop valorant intel xd",
+    "source": "https://gamebanana.com/mods/171049",
+    "game": "Ace of Spades",
+    "category": "Intel",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5f87d20609140.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5f87d20de8dcb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5f87d20dec7f6.jpg"
+    ],
+    "assets": 1,
+    "entries": [
+      {
+        "source": 171049,
+        "id": "community-sep-171049-laptop-intel-v5",
+        "name": "Valorant laptop intel",
+        "status": "World object",
+        "details": "Original model and native interaction",
+        "summary": "Original model and native interaction"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170241,
+    "name": "SVT 40 WW2 (New) [OS]",
+    "source": "https://gamebanana.com/mods/170241",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5ea3deb7a539a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5ea3dec2e3035.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5ea3dec30b7b0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5ea3dec35cd4e.jpg"
+    ],
+    "assets": 35,
+    "entries": [
+      {
+        "source": 170241,
+        "id": "community-sep-170241-1-v5",
+        "name": "SVT 40 WW2 (New) [OS]",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 169996,
+    "name": "[OS]M4A1",
+    "source": "https://gamebanana.com/mods/169996",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5e14f6526c19e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5e14f6594d147.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5e14f659ca4d5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5e14f65f8ff44.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5e14f663c3874.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 169996,
+        "id": "community-sep-169996-1-v5",
+        "name": "M4A1",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170269,
+    "name": "[OS] S&W Model 29 for Rifle",
+    "source": "https://gamebanana.com/mods/170269",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5be87cb81a1f6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87cbe17a3d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87cc597353.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87cef7c3b2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87cff05d7d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87d05afc19.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87d2bd8fe8.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87d32400f0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be87d4880990.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5be882af37106.jpg"
+    ],
+    "assets": 19,
+    "entries": [
+      {
+        "source": 170269,
+        "id": "community-sep-170269-1-v5",
+        "name": "S&W Model 29 for Rifle",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Rifle animation fitted to supplied model parts",
+        "summary": "OpenSpades base Rifle animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170403,
+    "name": "Armalite AR-30A1 Acog",
+    "source": "https://gamebanana.com/mods/170403",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5a2972e8c57b2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a2971e9647c0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a2971ecc32da.jpg"
+    ],
+    "assets": 15,
+    "entries": [
+      {
+        "source": 170403,
+        "id": "community-sep-170403-1-v5",
+        "name": "Armalite AR-30A1 Acog",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170563,
+    "name": "M14 Remastered",
+    "source": "https://gamebanana.com/mods/170563",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5a1937e185cfb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a1937ec42420.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a1937ef33776.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a1937f1b6fcc.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a1937f41b733.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5a1937f665b29.jpg"
+    ],
+    "assets": 70,
+    "entries": [
+      {
+        "source": 170563,
+        "id": "community-sep-170563-1-v5",
+        "name": "M14 Remastered",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170563,
+        "name": "M14 Remastered — 0.0.12b",
+        "status": "Duplicate appearance",
+        "details": "Preserved compatibility archive; same model set as community-sep-170563-1-v5"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170815,
+    "name": "SILVER KNIGHT [OPENSPADES]",
+    "source": "https://gamebanana.com/mods/170815",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/59923f376c3ef.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59923f5b67ea6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59923f5b77521.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59923f5b7e739.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59923f5bb3219.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170815,
+        "id": "community-sep-170815-default-v5",
+        "name": "Silver Knight",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170189,
+    "name": "FN-P90",
+    "source": "https://gamebanana.com/mods/170189",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/596152358cfc7.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59615274cfd75.jpg",
+      "https://images.gamebanana.com/img/ss/mods/59615270dae89.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5961526fad11e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5961527053b62.jpg",
+      "https://images.gamebanana.com/img/ss/mods/596152711aed2.jpg"
+    ],
+    "assets": 87,
+    "entries": [
+      {
+        "source": 170189,
+        "id": "community-sep-170189-1-v5",
+        "name": "FN-P90 — P90 Asiimov/xP90Asiimov",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170189,
+        "id": "community-sep-170189-2-v5",
+        "name": "FN-P90 — P90 Default/xP90",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170097,
+    "name": "Lewis Gun WW2",
+    "source": "https://gamebanana.com/mods/170097",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/58c40867f2290.jpg",
+      "https://images.gamebanana.com/img/ss/mods/58c40893829e3.jpg",
+      "https://images.gamebanana.com/img/ss/mods/58c40899daac0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/58c4089e2be1c.jpg"
+    ],
+    "assets": 9,
+    "entries": [
+      {
+        "source": 170097,
+        "id": "community-sep-170097-1-v5",
+        "name": "Lewis Gun WW2",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base SMG animation fitted to supplied model parts",
+        "summary": "OpenSpades base SMG animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170512,
+    "name": "M1 Garand WW2",
+    "source": "https://gamebanana.com/mods/170512",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5cb3c441eea96.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5cb66783ed774.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5cb667887940c.jpg"
+    ],
+    "assets": 7,
+    "entries": [
+      {
+        "source": 170512,
+        "id": "community-sep-170512-1-v5",
+        "name": "M1 Garand WW2",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Rifle animation fitted to supplied model parts",
+        "summary": "OpenSpades base Rifle animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170500,
+    "name": "GEWEHR 43 WW2",
+    "source": "https://gamebanana.com/mods/170500",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5cb24274442eb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5cb24273e064e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5cb24276612c5.jpg"
+    ],
+    "assets": 7,
+    "entries": [
+      {
+        "source": 170500,
+        "id": "community-sep-170500-1-v5",
+        "name": "GEWEHR 43 WW2",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Rifle animation fitted to supplied model parts",
+        "summary": "OpenSpades base Rifle animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170592,
+    "name": "CZ 750 S1 M1 Sniper",
+    "source": "https://gamebanana.com/mods/170592",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5899e5b6c2fd8.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5899e5bd38588.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5899e5c0890f4.jpg"
+    ],
+    "assets": 20,
+    "entries": [
+      {
+        "source": 170592,
+        "id": "community-sep-170592-1-v5",
+        "name": "CZ 750 S1 M1 Sniper",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Rifle animation fitted to supplied model parts",
+        "summary": "OpenSpades base Rifle animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170187,
+    "name": "Mp18 Bf1 --OpenSpades--",
+    "source": "https://gamebanana.com/mods/170187",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/582cf08ea58ed.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09724dd2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09881aae.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09aaee28.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09bc846d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09c13fe4.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09d201b1.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cf09d55af4.jpg"
+    ],
+    "assets": 18,
+    "entries": [
+      {
+        "source": 170187,
+        "id": "community-sep-170187-1-v5",
+        "name": "Mp18 Bf1 --OpenSpades--",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base SMG animation fitted to supplied model parts",
+        "summary": "OpenSpades base SMG animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170554,
+    "name": "M107A1 - Desert Ops",
+    "source": "https://gamebanana.com/mods/170554",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/583e0fe4730e8.jpg",
+      "https://images.gamebanana.com/img/ss/mods/583e0facdb0f7.jpg",
+      "https://images.gamebanana.com/img/ss/mods/583e0fb58302c.jpg",
+      "https://images.gamebanana.com/img/ss/mods/583e0fbb83c37.jpg",
+      "https://images.gamebanana.com/img/ss/mods/583e0fc30bcf4.jpg",
+      "https://images.gamebanana.com/img/ss/mods/583e0fcccdc16.jpg"
+    ],
+    "assets": 54,
+    "entries": [
+      {
+        "source": 170554,
+        "id": "community-sep-170554-1-v5",
+        "name": "M107A1 - Desert Ops",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170562,
+    "name": "Lee_Enfield Bf1 --OpenSpades--",
+    "source": "https://gamebanana.com/mods/170562",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/582cdcd7ed4ae.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cde481f2a7.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cde48cf908.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cde4b4d0b0.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cde4ec5dfa.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cdf1f652ac.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cdf1fa8131.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582cdf2032c28.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170562,
+        "name": "Lee_Enfield Bf1 --OpenSpades--",
+        "status": "Already installed",
+        "details": "community-lee-enfield-v2"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 169726,
+    "name": "World War 1 Skin Pack",
+    "source": "https://gamebanana.com/mods/169726",
+    "game": "Ace of Spades",
+    "category": "Full Packs",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/582f1f653c6be.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582f1fdcd46fa.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582f1fdd2dc0c.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582f1fe6ca4dc.jpg",
+      "https://images.gamebanana.com/img/ss/mods/582f1fe9a7ae2.jpg"
+    ],
+    "assets": 62,
+    "entries": [
+      {
+        "source": 169726,
+        "id": "community-lee-enfield-v2",
+        "name": "Lee-Enfield",
+        "status": "Existing item upgraded",
+        "details": "Same original Lee-Enfield model; original item and owned copies gain the complete OpenSpades animation and parts."
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-2-v5",
+        "name": "World War 1 Skin Pack — SMG",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base SMG animation fitted to supplied model parts",
+        "summary": "OpenSpades base SMG animation fitted to supplied model parts"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-3-v5",
+        "name": "World War 1 Skin Pack — Shotgun",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Shotgun animation fitted to supplied model parts",
+        "summary": "OpenSpades base Shotgun animation fitted to supplied model parts"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-4-v5",
+        "name": "World War 1 Skin Pack — Spade",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Spade animation fitted to supplied model parts",
+        "summary": "OpenSpades base Spade animation fitted to supplied model parts"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-back-up-v5",
+        "name": "WW1 — back-up",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-british-v5",
+        "name": "WW1 — british",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-german-v5",
+        "name": "WW1 — german",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-russian-v5",
+        "name": "WW1 — russian",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 169726,
+        "id": "community-sep-169726-ww1-grenade-v5",
+        "name": "WW1 grenade",
+        "status": "Native weapon",
+        "details": "Native B&S handling and equipped character hands",
+        "summary": "Native B&S handling and equipped character hands"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170082,
+    "name": "MaschinenPistole-40",
+    "source": "https://gamebanana.com/mods/170082",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/57c014bec424a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57c01503950ae.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57c01503aa2b9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57c01503ad6b5.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57c01503b7d07.jpg",
+      "https://images.gamebanana.com/img/ss/mods/57c01503b8dd4.jpg"
+    ],
+    "assets": 16,
+    "entries": [
+      {
+        "source": 170082,
+        "id": "community-sep-170082-1-v5",
+        "name": "MaschinenPistole-40",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170208,
+    "name": "AKU-12",
+    "source": "https://gamebanana.com/mods/170208",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/576173029b13a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5761739c43e4e.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5761739c75b19.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5761739c7876b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5761739c82c5e.jpg"
+    ],
+    "assets": 56,
+    "entries": [
+      {
+        "source": 170208,
+        "id": "community-sep-170208-1-v5",
+        "name": "AKU-12",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170204,
+    "name": "FN-SCAR",
+    "source": "https://gamebanana.com/mods/170204",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/571c0750f0e7b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07613744d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c0763761dd.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c076393fe3.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07639af58.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b12d877.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b76068d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b402c8c.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b412997.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b46e0ac.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b6025c2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b808632.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b837e8d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b936598.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07b991c13.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07ba8bb97.jpg",
+      "https://images.gamebanana.com/img/ss/mods/571c07bbe51bd.jpg"
+    ],
+    "assets": 326,
+    "entries": [
+      {
+        "source": 170204,
+        "id": "community-sep-170204-1-v5",
+        "name": "FN-SCAR — Reflex Sight/Black",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170204,
+        "id": "community-sep-170204-2-v5",
+        "name": "FN-SCAR — Reflex Sight/Default",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170204,
+        "id": "community-sep-170204-3-v5",
+        "name": "FN-SCAR — Sniper/Full Auto (SMG Replacement)/Black",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170204,
+        "id": "community-sep-170204-4-v5",
+        "name": "FN-SCAR — Sniper/Full Auto (SMG Replacement)/Default",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170204,
+        "id": "community-sep-170204-5-v5",
+        "name": "FN-SCAR — Sniper/Semi Auto (Rifle Replacement)/Black",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      },
+      {
+        "source": 170204,
+        "id": "community-sep-170204-6-v5",
+        "name": "FN-SCAR — Sniper/Semi Auto (Rifle Replacement)/Default",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170458,
+    "name": "OpenSpades Beretta BM59 Rifle folding buttstock",
+    "source": "https://gamebanana.com/mods/170458",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55923e48f1057.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e58a177a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e5de8c3a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e6417f3a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e6b9636d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e70d79e8.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e777344a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55923e7c78687.jpg"
+    ],
+    "assets": 7,
+    "entries": [
+      {
+        "source": 170458,
+        "id": "community-sep-170458-1-v5",
+        "name": "OpenSpades Beretta BM59 Rifle folding buttstock",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Rifle animation fitted to supplied model parts",
+        "summary": "OpenSpades base Rifle animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170865,
+    "name": "Openspades SWAT player model pack",
+    "source": "https://gamebanana.com/mods/170865",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55d69b6569410.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d37d5d81605.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d4174ef2102.jpg"
+    ],
+    "assets": 13,
+    "entries": [
+      {
+        "source": 170865,
+        "id": "community-sep-170865-goggles-goggles-down-balaclava-v5",
+        "name": "SWAT — Goggles / Goggles down / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170865,
+        "id": "community-sep-170865-goggles-goggles-down-v5",
+        "name": "SWAT — Goggles / Goggles down",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170865,
+        "id": "community-sep-170865-goggles-goggles-up-balaclava-v5",
+        "name": "SWAT — Goggles / Goggles up / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170865,
+        "id": "community-sep-170865-goggles-goggles-up-v5",
+        "name": "SWAT — Goggles / Goggles up",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170865,
+        "id": "community-sep-170865-plain-balaclava-v5",
+        "name": "SWAT — Plain / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170865,
+        "id": "community-sep-170865-plain-v5",
+        "name": "SWAT — Plain",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170868,
+    "name": "Openspades Navy Seal player model pack",
+    "source": "https://gamebanana.com/mods/170868",
+    "game": "Ace of Spades",
+    "category": "Players",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55d7b8e8586ad.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74e9a8d8e2.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74e9fa924d.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74ea4b632b.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74ea9dbbaf.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74eb4eac4a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55d74eba61113.jpg"
+    ],
+    "assets": 25,
+    "entries": [
+      {
+        "source": 170868,
+        "id": "community-sep-170868-desert-camo-balaclava-v5",
+        "name": "Navy SEAL — Desert Camo / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-desert-camo-v5",
+        "name": "Navy SEAL — Desert Camo",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-desert-camo-nvg-folded-up-balaclava-v5",
+        "name": "Navy SEAL — Desert Camo / NVG Folded Up / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-desert-camo-nvg-folded-up-v5",
+        "name": "Navy SEAL — Desert Camo / NVG Folded Up",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-woodland-camo-balaclava-v5",
+        "name": "Navy SEAL — Woodland Camo / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-woodland-camo-boonie-v5",
+        "name": "Navy SEAL — Woodland Camo / Boonie",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-woodland-camo-v5",
+        "name": "Navy SEAL — Woodland Camo",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-woodland-camo-nvg-folded-up-balaclava-v5",
+        "name": "Navy SEAL — Woodland Camo / NVG Folded Up / Balaclava",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      },
+      {
+        "source": 170868,
+        "id": "community-sep-170868-woodland-camo-nvg-folded-up-v5",
+        "name": "Navy SEAL — Woodland Camo / NVG Folded Up",
+        "status": "Character",
+        "details": "Articulated OpenSpades body and matching first-person sleeves/gloves",
+        "summary": "Articulated OpenSpades body and matching first-person sleeves/gloves"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170145,
+    "name": "Dark Desert Camouflage M4",
+    "source": "https://gamebanana.com/mods/170145",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/55e1da26a869a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55e1daae57937.jpg",
+      "https://images.gamebanana.com/img/ss/mods/55e1dacddd9cc.jpg"
+    ],
+    "assets": 43,
+    "entries": [
+      {
+        "source": 170145,
+        "id": "community-sep-170145-1-v5",
+        "name": "Dark Desert Camouflage M4",
+        "status": "Scripted weapon",
+        "details": "SideX15 M4 animation from the installed M4A4 pack, fitted to the supplied compatible M4 components",
+        "summary": "SideX15 M4 animation from the installed M4A4 pack, fitted to the supplied compatible M4 components"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170779,
+    "name": "(OPENSPADES) Double Barrels",
+    "source": "https://gamebanana.com/mods/170779",
+    "game": "Ace of Spades",
+    "category": "Shotgun",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/56065b1f7b744.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065c82c99e9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065c8e4de57.jpg"
+    ],
+    "assets": 8,
+    "entries": [
+      {
+        "source": 170779,
+        "id": "community-sep-170779-1-v5",
+        "name": "Double Barrels",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base Shotgun animation fitted to supplied model parts",
+        "summary": "OpenSpades base Shotgun animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170147,
+    "name": "(OPENSPADES) M60",
+    "source": "https://gamebanana.com/mods/170147",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/56065e7d33628.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065e9a0de81.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065ea57e5f6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065eb14e8f6.jpg",
+      "https://images.gamebanana.com/img/ss/mods/56065ebab2102.jpg"
+    ],
+    "assets": 18,
+    "entries": [
+      {
+        "source": 170147,
+        "id": "community-sep-170147-1-v5",
+        "name": "M60",
+        "status": "Scripted weapon",
+        "details": "OpenSpades base SMG animation fitted to supplied model parts",
+        "summary": "OpenSpades base SMG animation fitted to supplied model parts"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170216,
+    "name": "[OpenSpades/AoS/AoS Steam] SIG SG 552 Tactical",
+    "source": "https://gamebanana.com/mods/170216",
+    "game": "Ace of Spades",
+    "category": "SMG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/5419fd4744bfc.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5419fdc16c822.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5419fdc420e11.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5419fdc862d8a.jpg",
+      "https://images.gamebanana.com/img/ss/mods/5419fdc7b242a.jpg"
+    ],
+    "assets": 22,
+    "entries": [
+      {
+        "source": 170216,
+        "id": "community-sep-170216-1-v5",
+        "name": "SIG SG 552 Tactical",
+        "status": "Scripted weapon",
+        "details": "Original OpenSpades skin script",
+        "summary": "Original OpenSpades skin script"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 171104,
+    "name": "[AoS Steam] RPG-7",
+    "source": "https://gamebanana.com/mods/171104",
+    "game": "Ace of Spades",
+    "category": "RPG",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/53f50efa0d791.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f50f5fa2fc9.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f50f6326fcc.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 171104,
+        "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-rpg-v3",
+        "name": "RPG-7",
+        "status": "Already installed",
+        "details": "Identical original model retained under existing item community-entrega-para-sans-and-papyrus-sans-papyrus-rpg-v3"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170516,
+    "name": "[AoS Steam] Browning M1911",
+    "source": "https://gamebanana.com/mods/170516",
+    "game": "Ace of Spades",
+    "category": "Rifle",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/53f51c25e35b3.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f51c745fc06.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f51c77bce9f.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 170516,
+        "id": "community-sep-170516-browning-m1911-v5",
+        "name": "Browning M1911",
+        "status": "Native weapon",
+        "details": "Native B&S handling and equipped character hands",
+        "summary": "Native B&S handling and equipped character hands"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  },
+  {
+    "id": 170950,
+    "name": "[AoS Steam] HD Grenade",
+    "source": "https://gamebanana.com/mods/170950",
+    "game": "Ace of Spades",
+    "category": "Grenade",
+    "screenshots": [
+      "https://images.gamebanana.com/img/ss/mods/53f51e5bebd7c.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f51e8cb39eb.jpg",
+      "https://images.gamebanana.com/img/ss/mods/53f51e8fe53f4.jpg"
+    ],
+    "assets": 4,
+    "entries": [
+      {
+        "source": 170950,
+        "id": "community-sep-170950-hd-grenade-v5",
+        "name": "HD Grenade",
+        "status": "Native weapon",
+        "details": "Native B&S handling and equipped character hands",
+        "summary": "Native B&S handling and equipped character hands"
+      }
+    ],
+    "notes": "Rechecked against the September archive batch. Original installed item IDs retained."
+  }
+]

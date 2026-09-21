@@ -16,6 +16,7 @@ enum class PlayerProfileTab : std::uint8_t {
     game_modes,
     classes,
     equipment,
+    inventory,
 };
 
 enum class PlayerProfileLoadState : std::uint8_t {
@@ -94,7 +95,7 @@ struct PlayerProfileEffect final {
  */
 class PlayerProfileMenuModel final {
 public:
-    static constexpr std::size_t tab_count{4U};
+    static constexpr std::size_t tab_count{5U};
     static constexpr std::size_t summary_visible_rows{12U};
     static constexpr std::size_t statistic_visible_rows{13U};
     // Compatibility alias for callers that only need the largest row count.

@@ -157,6 +157,9 @@ enum class TextLayout : std::uint8_t {
      * requested line spacing.
      */
     retail_wrapped_lines,
+    /** Top-aligned wrapping at the authored size, capped by maximum_lines.
+     * Overflow ends in an ellipsis instead of shrinking the entire notice. */
+    bounded_wrapped_lines,
 };
 
 /**

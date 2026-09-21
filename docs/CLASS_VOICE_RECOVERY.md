@@ -1,5 +1,7 @@
 # Class voice-over recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 ## Implemented multiplayer observer path (2026-08-05)
 
 Remote-character audio is now wired end to end in the C++ client. The protocol
@@ -56,7 +58,7 @@ Retail's whole vocal system is **one table with 16 slots per class**, of which *
 
 Source of truth: `G:/AoSRevival/aceofspades_source/shared/constants.py:5610-5935` (`CLASS_SOUNDS`, closing at `:5935` with `A2412 = CLASS_SOUNDS` at `:5936`). Vendored identically on the server at `G:/AoSRevival/BattleSpades/shared/constants.py:6231`.
 
-**Nothing was dropped.** All 51 unique specs expand to **374 distinct `.ogg` files, 0 missing**, verified against all three asset roots (`assets/original/sounds`, `dist/bin/assets/original/sounds`, `out/install/native-release/bin/assets/original/sounds` — 941 files each, flat, no subdirectories). There is no equivalent of the weapon table's one known hole (`snowcan_reload`, `tests/test_weapon_audio_map.cpp:39`).
+The recovery counted **51 unique specs and 374 distinct `.ogg` files** and checked the then-existing source/staged asset roots. That historical result does not verify a current install; regenerate and verify staged assets before release. There is no equivalent of the weapon table's one known hole (`snowcan_reload`, `tests/test_weapon_audio_map.cpp:39`).
 
 Chance and repeat behaviour are per-slot constants, identical across every class, so they are factored out of the table:
 
@@ -409,7 +411,7 @@ Factor the slot decision (reuse-by-speaker / reclaim / steal-furthest) into a pu
 
 **9. Do not touch `AL_PITCH` in this change.** `openal_frontend_audio.cpp:571` pins it to 1.0 inside the shared `Impl::play` used by every existing one-shot (weapon shoot/reload, menu, footsteps). VO needs exactly 1.0. Editing that path to add foley jitter would silently re-pitch already-shipped weapon audio; same caution for `AL_ROLLOFF_FACTOR` / `AL_MAX_DISTANCE` (`:573-579`), which currently encode the retail hearing behaviour for all cues.
 
-**10. No asset sync step is needed.** All three roots — `assets/original/sounds`, `dist/bin/assets/original/sounds`, `out/install/native-release/bin/assets/original/sounds` — already carry the full 941-file tree, and all 401 referenced samples (374 vocal + 27 foley) resolve in every one of them.
+**10. Verify the current asset installation.** The original investigation resolved 401 referenced samples (374 vocal + 27 foley). A retained source or staged tree may differ, and old install output was removed during cleanup. Follow the asset importer and runbook instead of assuming those three historical roots still exist.
 
 **11. Minor.** `sound_group_stems` rejects ranges wider than 33 (`sound_groups.hpp:44`). Our widest is 16 (`vo_zombiegroan_001-016`), so it is fine, but the guard exists.
 

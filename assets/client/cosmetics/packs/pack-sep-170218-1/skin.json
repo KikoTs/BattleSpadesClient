@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170218-1",
+  "name": "Classic pistol — Black",
+  "source": "https://gamebanana.com/mods/170218",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/semi.png": "Gfx/semi.png",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "sounds/Weapons/Rifle/Fire.wav": "sounds/Weapons/Rifle/Fire.wav.ogg",
+    "sounds/Weapons/Rifle/Reload.wav": "sounds/Weapons/Rifle/Reload.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/Fire.wav": "sounds/Weapons/Rifle/Fire.wav.ogg",
+    "Sounds/Weapons/Rifle/Reload.wav": "sounds/Weapons/Rifle/Reload.wav.ogg"
+  },
+  "hashes": {
+    "Gfx/semi.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Models/Weapons/Rifle/Magazine.kv6": "c8e2d45436d1f5b9485c48e6bbd064617b57b1436b88388e89a9ee23dc9d2eea",
+    "Models/Weapons/Rifle/Weapon.kv6": "77645613b1534a333d30ada904ac7b472ac043f23be132d0f13f5e2042cd02c9",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "fe90ff42e54f22401142dc430087c9595a1bca6926e27e2d565341c3653fc8eb",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "f3dd40e98f4488a30e5fbb9e563ee065a9dbfbb5312c7fe118c795d4b0a9c1c9",
+    "Scripts/Skin/Rifle/View.as": "60df1a2f62cf91c375de68e6b4b29b7c214062768e983b42498234830f97690f",
+    "sounds/Weapons/Rifle/Fire.wav.ogg": "f6dc4a228c705fc98ed3a8712dcdb4840fc6d18e49da697007e1afc624c10337",
+    "sounds/Weapons/Rifle/Reload.wav.ogg": "3469094311ac1888779fdf25062d97f984c96d399562af1f1538bd483f7cb3f7",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "25264a10109b4015f557893cea2a851ce035f05122765f1014ec4d23923aec45",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Modelear/Script",
+      "_aAuthors": [
+        {
+          "_sRole": "Modelear/Script",
+          "_idRow": "1753013",
+          "_sName": "Martinserna577",
+          "_sProfileUrl": "https://gamebanana.com/members/1753013",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Keep the actual weapon and hands visible for iron-sight ADS; replace the empty full-screen sight image with the native aiming mark.",
+    "Aligned pistol ADS to the supplied model sight height and centre."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

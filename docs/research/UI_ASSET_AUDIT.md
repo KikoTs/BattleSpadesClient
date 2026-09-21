@@ -1,5 +1,7 @@
 # Retail frontend UI asset audit
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This audit identifies the assets and recovered behavior needed for the first
 native `SelectMenu` render. It covers the immutable asset mirror in
 `assets/original` and the canonical recovered client in

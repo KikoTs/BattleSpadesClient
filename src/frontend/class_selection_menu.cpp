@@ -9,7 +9,7 @@ namespace battlespades::frontend {
 namespace {
 
 [[nodiscard]] bool inside(ui::Point point, int x, int y, int width, int height) {
-    return point.x > x && point.x < x + width && point.y > y && point.y < y + height;
+    return point.x >= x && point.x < x + width && point.y >= y && point.y < y + height;
 }
 
 } // namespace
@@ -29,10 +29,6 @@ void ClassSelectionMenuModel::configure(std::span<const std::uint8_t> available_
     if (world::find_class_definition(classes_.front()) == nullptr) {
         classes_.front() = 0U;
     }
-    if (std::ranges::find(classes_, current_class) == classes_.end() &&
-        world::find_class_definition(current_class) != nullptr) {
-        classes_.push_back(current_class);
-    }
     team_ = team;
     const auto found = std::ranges::find(classes_, current_class);
     class_index_ =
@@ -41,7 +37,26 @@ void ClassSelectionMenuModel::configure(std::span<const std::uint8_t> available_
     reveal_selected_class();
     option_indices_.fill(0U);
     reset_prefabs();
+    class_loadouts_.clear();
+    hovered_.reset();
     pending_audio_cue_.reset();
+}
+
+void ClassSelectionMenuModel::restore_loadout(
+    std::span<const std::uint8_t> loadout, std::span<const std::string> prefabs) {
+    const auto* definition = world::find_class_definition(selected_class());
+    if (definition == nullptr) return;
+    for (std::size_t group{}; group < option_indices_.size(); ++group) {
+        const auto options = definition->item_groups[group];
+        const auto found = std::ranges::find_if(options, [loadout](std::uint16_t item) {
+            return std::ranges::find(loadout, item) != loadout.end();
+        });
+        if (found != options.end()) {
+            option_indices_[group] = static_cast<std::size_t>(found - options.begin());
+        }
+    }
+    auto restored = world::make_class_selection(selected_class(), option_indices_, prefabs);
+    if (!restored.prefabs.empty()) prefabs_ = std::move(restored.prefabs);
 }
 
 std::span<const std::uint8_t> ClassSelectionMenuModel::classes() const noexcept {
@@ -62,6 +77,20 @@ std::size_t ClassSelectionMenuModel::selected_class_index() const noexcept {
 
 std::size_t ClassSelectionMenuModel::classes_per_page() const noexcept {
     return classes_.size() > 4U ? 5U : 4U;
+}
+
+ClassSelectionCardLayout ClassSelectionMenuModel::card_layout() const noexcept {
+    // selectClass.py and HorizontalListSelection.item_info: <=4 classes use
+    // large cards; the five-card strip is only for longer server rosters.
+    return classes_per_page() == 4U
+               ? ClassSelectionCardLayout{81, 132, 136, 167, 108, 110, 1.0, 1.1}
+               : ClassSelectionCardLayout{85, 131, 107, 134, 104, 88, 0.8, 0.88};
+}
+
+ui::Rect ClassSelectionMenuModel::class_card_bounds(std::size_t visible_index) const noexcept {
+    const auto layout = card_layout();
+    return {layout.x + static_cast<int>(visible_index) * layout.interval,
+            layout.y, layout.size, layout.size};
 }
 
 std::size_t ClassSelectionMenuModel::visible_class_offset() const noexcept {
@@ -107,7 +136,7 @@ std::optional<ClassSelectionAction> ClassSelectionMenuModel::click(ui::Point poi
     const auto offset = visible_class_offset();
     const auto visible = std::min(classes_per_page(), classes_.size() - offset);
     for (std::size_t index{}; index < visible; ++index) {
-        if (inside(point, 85 + static_cast<int>(index) * 134, 131, 107, 107)) {
+        if (class_card_bounds(index).contains(point)) {
             select_class(offset + index);
             pending_audio_cue_ = ClassSelectionAudioCue::scroll;
             return std::nullopt;
@@ -130,7 +159,7 @@ std::optional<ClassSelectionAction> ClassSelectionMenuModel::click(ui::Point poi
         return std::nullopt;
     for (std::size_t group{}; group < option_indices_.size(); ++group) {
         const auto options = definition->item_groups[group];
-        for (std::size_t option{}; option < options.size(); ++option) {
+        for (std::size_t option{}; option < std::min<std::size_t>(options.size(), 6U); ++option) {
             if (inside(point,
                        171 + static_cast<int>(option) * 45,
                        294 + static_cast<int>(group) * 53,
@@ -143,7 +172,7 @@ std::optional<ClassSelectionAction> ClassSelectionMenuModel::click(ui::Point poi
         }
     }
     const auto options = world::class_prefab_options(selected_class());
-    for (std::size_t index{}; index < options.size(); ++index) {
+    for (std::size_t index{}; index < std::min<std::size_t>(options.size(), 12U); ++index) {
         const auto column = static_cast<int>(index % 3U);
         const auto row = static_cast<int>(index / 3U);
         if (!inside(point, 469 + column * 41, 313 + row * 43, 38, 38)) {
@@ -152,8 +181,12 @@ std::optional<ClassSelectionAction> ClassSelectionMenuModel::click(ui::Point poi
         const std::string name{options[index]};
         const auto found = std::ranges::find(prefabs_, name);
         if (found != prefabs_.end()) {
-            prefabs_.erase(found);
-        } else if (prefabs_.size() < 3U) {
+            // Retail TableSelection allows one to three constructs.
+            if (prefabs_.size() > 1U) prefabs_.erase(found);
+        } else {
+            // At capacity, replace the oldest choice exactly as retail's
+            // HorizontalListSelection.on_item_selected does.
+            if (prefabs_.size() >= 3U) prefabs_.erase(prefabs_.begin());
             prefabs_.push_back(name);
         }
         pending_audio_cue_ = ClassSelectionAudioCue::scroll;
@@ -208,10 +241,21 @@ void ClassSelectionMenuModel::select_visible_class(std::size_t visible_index) no
 void ClassSelectionMenuModel::select_class(std::size_t index) noexcept {
     if (index >= classes_.size())
         return;
+    if (index == class_index_) {
+        reveal_selected_class();
+        return;
+    }
+    class_loadouts_[selected_class()] = {option_indices_, prefabs_};
     class_index_ = index;
     reveal_selected_class();
-    option_indices_.fill(0U);
-    reset_prefabs();
+    const auto saved = class_loadouts_.find(selected_class());
+    if (saved != class_loadouts_.end()) {
+        option_indices_ = saved->second.options;
+        prefabs_ = saved->second.prefabs;
+    } else {
+        option_indices_.fill(0U);
+        reset_prefabs();
+    }
 }
 
 void ClassSelectionMenuModel::reveal_selected_class() noexcept {

@@ -1,5 +1,7 @@
 # Placement and jetpack presentation integration
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 This note covers the isolated client-side parity helpers. It intentionally does
 not change `src/frontend/native_frontend_module.cpp`; that composition root must
 wire the helpers at its existing packet/audio/render boundaries.

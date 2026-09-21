@@ -1,0 +1,51 @@
+{
+  "name": "RPG-7",
+  "source": "https://gamebanana.com/mods/171104",
+  "archives": [
+    {
+      "archive": "171104\\214820-rpg-7.zip",
+      "extracted": "171104\\files-214820",
+      "sha256": "c8fa0cafbe7921b09224df909008c74c364fe7301e936de04e3ec0ab6e3d33fe",
+      "listing": [
+        "RPG-7/kv6/",
+        "RPG-7/kv6/rpg.kv6",
+        "RPG-7/kv6/rpg_sight.kv6",
+        "RPG-7/png/",
+        "RPG-7/png/ui/",
+        "RPG-7/png/ui/weapons/",
+        "RPG-7/png/ui/weapons/rpg.png",
+        "RPG-7/RPG-7.jpg",
+        "RPG-7/RPG-7.png",
+        "RPG-7/RPG-7.vsd"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "1Shot1Kill"
+        }
+      ]
+    }
+  ],
+  "license": "1. Any modifications of my mods that will be distributed will need my permission and credit. \r\n2. Any of my mods that will be re-distributed will need my permission and credit. \r\n3. Do not use adf.ly or any other advert links to link to my mods.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

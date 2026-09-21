@@ -4,6 +4,7 @@
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
 #include "battlespades/render/render_views.hpp"
+#include "battlespades/render/shadow_projection.hpp"
 #include "chunk_vertex_layout.hpp"
 
 #include <bgfx/bgfx.h>
@@ -45,6 +46,28 @@ struct SkydomeVertex final {
 };
 
 static_assert(sizeof(SkydomeVertex) == 36U);
+
+[[nodiscard]] bool valid_mesh_upload(const world::ChunkMesh& mesh) noexcept {
+    if (mesh.vertices.empty() || mesh.indices.empty()) {
+        return mesh.vertices.empty() && mesh.indices.empty();
+    }
+    if (mesh.vertices.size() > UINT32_MAX / sizeof(world::ChunkVertex) ||
+        mesh.indices.size() > UINT32_MAX / sizeof(std::uint32_t) ||
+        mesh.indices.size() % 3U != 0U) return false;
+    for (std::size_t axis{}; axis < 3U; ++axis) {
+        if (!std::isfinite(mesh.minimum[axis]) || !std::isfinite(mesh.maximum[axis]) ||
+            mesh.minimum[axis] > mesh.maximum[axis]) return false;
+    }
+    return std::ranges::all_of(mesh.indices, [&](auto index) { return index < mesh.vertices.size(); }) &&
+           std::ranges::all_of(mesh.vertices, [](const auto& vertex) {
+               return std::isfinite(vertex.x) && std::isfinite(vertex.y) && std::isfinite(vertex.z) &&
+                      std::isfinite(vertex.ao_u) && std::isfinite(vertex.ao_v) &&
+                      std::isfinite(vertex.edge_u) && std::isfinite(vertex.edge_v) &&
+                      std::isfinite(vertex.retail_baked_light) &&
+                      vertex.retail_baked_light >= 0.0F && vertex.retail_baked_light <= 1.0F &&
+                      vertex.face < 6U && vertex.occlusion < 4U && vertex.noise_corner < 4U;
+           });
+}
 
 [[nodiscard]] std::vector<std::uint8_t> read_binary(const std::filesystem::path& path);
 
@@ -454,7 +477,7 @@ struct WorldRenderer::Impl final {
             false,
             1U,
             bgfx::TextureFormat::D16,
-            BGFX_TEXTURE_RT | BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC |
+            BGFX_TEXTURE_RT |
                 BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_COMPARE_LEQUAL);
         if (!bgfx::isValid(texture)) {
             return false;
@@ -479,6 +502,7 @@ struct WorldRenderer::Impl final {
     bgfx::UniformHandle skydome_sampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle skydome_uv_time = BGFX_INVALID_HANDLE;
     std::array<std::uint8_t, 3U> fog_bytes{default_fog_color};
+    std::array<std::uint8_t, 3U> retail_fog_bytes{default_fog_color};
     std::array<float, 4U> fog_color{default_fog_color[0U] / 255.0F,
                                     default_fog_color[1U] / 255.0F,
                                     default_fog_color[2U] / 255.0F,
@@ -512,8 +536,13 @@ struct WorldRenderer::Impl final {
     bgfx::UniformHandle particle_mode = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle particle_glow_lut_texture = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle particle_smoke_lut_texture = BGFX_INVALID_HANDLE;
-    std::array<bgfx::TextureHandle, world::particle_atlas_count> particle_textures{
-        {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
+    std::array<bgfx::TextureHandle, world::particle_atlas_count> particle_textures = [] {
+        std::array<bgfx::TextureHandle, world::particle_atlas_count> handles;
+        // Handle zero is valid and may belong to another renderer. Initialize
+        // every slot, including atlases added after this renderer was written.
+        handles.fill(BGFX_INVALID_HANDLE);
+        return handles;
+    }();
     /** Neutral, Blue and Green retail LaserAttachment textures, in enum order. */
     std::array<bgfx::TextureHandle, 3U> laser_beam_textures{
         {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
@@ -611,6 +640,22 @@ struct WorldRenderer::Impl final {
             slot.indices = BGFX_INVALID_HANDLE;
         }
         slot.resident = false;
+    }
+
+    [[nodiscard]] bool create_model_slot(const world::ChunkMesh& mesh, ModelSlot& replacement) {
+        if (mesh.empty()) return true;
+        replacement.vertices = bgfx::createVertexBuffer(
+            bgfx::copy(mesh.vertices.data(), static_cast<std::uint32_t>(
+                mesh.vertices.size() * sizeof(world::ChunkVertex))), layout);
+        replacement.indices = bgfx::createIndexBuffer(
+            bgfx::copy(mesh.indices.data(), static_cast<std::uint32_t>(
+                mesh.indices.size() * sizeof(std::uint32_t))), BGFX_BUFFER_INDEX32);
+        if (!bgfx::isValid(replacement.vertices) || !bgfx::isValid(replacement.indices)) {
+            release_model_slot(replacement);
+            return false;
+        }
+        replacement.resident = true;
+        return true;
     }
 
     [[nodiscard]] bool fail(std::string message) {
@@ -739,6 +784,10 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
     if (impl_->initialized) {
         return impl_->fail("world renderer is already initialized");
     }
+    struct InitializationRollback final {
+        WorldRenderer* renderer;
+        ~InitializationRollback() { if (renderer != nullptr) renderer->shutdown(); }
+    } rollback{this};
     const auto* directory = shader_directory();
     if (directory[0U] == '\0') {
         return impl_->fail("the selected bgfx backend has no world shader variant");
@@ -1047,6 +1096,7 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
     impl_->asset_root = asset_root;
     impl_->initialized = true;
     impl_->last_error.clear();
+    rollback.renderer = nullptr;
     return true;
 }
 
@@ -1321,10 +1371,15 @@ std::string_view WorldRenderer::skydome_name() const noexcept {
 
 void WorldRenderer::set_fog_color(std::array<std::uint8_t, 3U> color) noexcept {
     impl_->fog_bytes = color;
+    impl_->retail_fog_bytes = color;
     impl_->fog_color = {color[0U] / 255.0F, color[1U] / 255.0F, color[2U] / 255.0F, 1.0F};
     // The scene owner chooses authority: live official maps install their
     // locally measured horizon, while UGC/unknown maps pass through StateData.
     impl_->atmosphere.fog_color = color;
+}
+
+void WorldRenderer::set_retail_fog_color(std::array<std::uint8_t, 3U> color) noexcept {
+    impl_->retail_fog_bytes = color;
 }
 
 void WorldRenderer::set_retail_lighting(const RetailTerrainLighting& lighting) noexcept {
@@ -1438,28 +1493,22 @@ bool WorldRenderer::upload_chunk(const world::ChunkMesh& mesh) {
     if (mesh.key.x >= 32U || mesh.key.y >= 32U) {
         return impl_->fail("chunk key outside the 32x32 world grid");
     }
+    if (!valid_mesh_upload(mesh)) return impl_->fail("invalid chunk mesh coordinates, bounds or indices");
+    Impl::ModelSlot replacement;
+    if (!impl_->create_model_slot(mesh, replacement)) {
+        return impl_->fail("bgfx could not create chunk terrain buffers");
+    }
+    // Keep the resident mesh until both replacement buffers are available.
+    // Invalid updates and resource pressure must not erase working terrain.
     auto& slot = impl_->chunks[mesh.key.x + static_cast<std::size_t>(mesh.key.y) * 32U];
     impl_->release_chunk(slot);
     slot.minimum = mesh.minimum;
     slot.maximum = mesh.maximum;
-    if (mesh.vertices.empty() || mesh.indices.empty()) {
-        // An empty mesh stays non-resident; nothing to draw for this chunk.
-        return true;
-    }
-    const auto* vertex_memory =
-        bgfx::copy(mesh.vertices.data(),
-                   static_cast<std::uint32_t>(mesh.vertices.size() * sizeof(world::ChunkVertex)));
-    slot.vertices = bgfx::createVertexBuffer(vertex_memory, impl_->layout);
-    const auto* index_memory =
-        bgfx::copy(mesh.indices.data(),
-                   static_cast<std::uint32_t>(mesh.indices.size() * sizeof(std::uint32_t)));
-    slot.indices = bgfx::createIndexBuffer(index_memory, BGFX_BUFFER_INDEX32);
-    if (!bgfx::isValid(slot.vertices) || !bgfx::isValid(slot.indices)) {
-        impl_->release_chunk(slot);
-        return impl_->fail("bgfx could not create chunk terrain buffers");
-    }
-    slot.resident = true;
-    ++impl_->resident_count;
+    slot.vertices = replacement.vertices;
+    slot.indices = replacement.indices;
+    slot.resident = replacement.resident;
+    if (slot.resident) ++impl_->resident_count;
+    impl_->last_error.clear();
     return true;
 }
 
@@ -1487,24 +1536,15 @@ bool WorldRenderer::set_view_model_mesh(std::uint32_t slot, const world::ChunkMe
     if (slot >= view_model_slot_count) {
         return impl_->fail("viewmodel slot out of range");
     }
-    auto& target = impl_->view_model_slots[slot];
-    impl_->release_model_slot(target);
-    if (mesh.vertices.empty() || mesh.indices.empty()) {
-        return true;
-    }
-    const auto* vertex_memory =
-        bgfx::copy(mesh.vertices.data(),
-                   static_cast<std::uint32_t>(mesh.vertices.size() * sizeof(world::ChunkVertex)));
-    target.vertices = bgfx::createVertexBuffer(vertex_memory, impl_->layout);
-    const auto* index_memory =
-        bgfx::copy(mesh.indices.data(),
-                   static_cast<std::uint32_t>(mesh.indices.size() * sizeof(std::uint32_t)));
-    target.indices = bgfx::createIndexBuffer(index_memory, BGFX_BUFFER_INDEX32);
-    if (!bgfx::isValid(target.vertices) || !bgfx::isValid(target.indices)) {
-        impl_->release_model_slot(target);
+    if (!valid_mesh_upload(mesh)) return impl_->fail("invalid viewmodel mesh coordinates, bounds or indices");
+    Impl::ModelSlot replacement;
+    if (!impl_->create_model_slot(mesh, replacement)) {
         return impl_->fail("bgfx could not create viewmodel buffers");
     }
-    target.resident = true;
+    auto& target = impl_->view_model_slots[slot];
+    impl_->release_model_slot(target);
+    target = replacement;
+    impl_->last_error.clear();
     return true;
 }
 
@@ -1521,24 +1561,15 @@ bool WorldRenderer::set_world_model_mesh(std::uint32_t slot, const world::ChunkM
     if (slot >= world_model_slot_count) {
         return impl_->fail("world-model slot out of range");
     }
-    auto& target = impl_->world_model_slots[slot];
-    impl_->release_model_slot(target);
-    if (mesh.empty()) {
-        return true;
-    }
-    const auto* vertex_memory =
-        bgfx::copy(mesh.vertices.data(),
-                   static_cast<std::uint32_t>(mesh.vertices.size() * sizeof(world::ChunkVertex)));
-    target.vertices = bgfx::createVertexBuffer(vertex_memory, impl_->layout);
-    const auto* index_memory =
-        bgfx::copy(mesh.indices.data(),
-                   static_cast<std::uint32_t>(mesh.indices.size() * sizeof(std::uint32_t)));
-    target.indices = bgfx::createIndexBuffer(index_memory, BGFX_BUFFER_INDEX32);
-    if (!bgfx::isValid(target.vertices) || !bgfx::isValid(target.indices)) {
-        impl_->release_model_slot(target);
+    if (!valid_mesh_upload(mesh)) return impl_->fail("invalid world-model mesh coordinates, bounds or indices");
+    Impl::ModelSlot replacement;
+    if (!impl_->create_model_slot(mesh, replacement)) {
         return impl_->fail("bgfx could not create world-model buffers");
     }
-    target.resident = true;
+    auto& target = impl_->world_model_slots[slot];
+    impl_->release_model_slot(target);
+    target = replacement;
+    impl_->last_error.clear();
     return true;
 }
 
@@ -1618,9 +1649,11 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                       0U,
                       static_cast<std::uint16_t>(drawable.width),
                       static_cast<std::uint16_t>(drawable.height));
-    const auto sky_clear_rgba = (static_cast<std::uint32_t>(impl_->fog_bytes[0U]) << 24U) |
-                                (static_cast<std::uint32_t>(impl_->fog_bytes[1U]) << 16U) |
-                                (static_cast<std::uint32_t>(impl_->fog_bytes[2U]) << 8U) | 0xFFU;
+    const auto& active_fog = impl_->profile.enhanced_lighting
+        ? impl_->fog_bytes : impl_->retail_fog_bytes;
+    const auto sky_clear_rgba = (static_cast<std::uint32_t>(active_fog[0U]) << 24U) |
+                                (static_cast<std::uint32_t>(active_fog[1U]) << 16U) |
+                                (static_cast<std::uint32_t>(active_fog[2U]) << 8U) | 0xFFU;
     bgfx::setViewClear(
         world_view_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, sky_clear_rgba, 1.0F, 0U);
     // Sequential keeps the translucent water plane after every opaque chunk.
@@ -1662,9 +1695,9 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const auto planes = frustum_planes(view_projection);
 
     const std::array<float, 4U> camera_uniform{eye.x, eye.y, eye.z, 0.0F};
-    const std::array<float, 4U> fog_uniform{impl_->fog_color[0U],
-                                            impl_->fog_color[1U],
-                                            impl_->fog_color[2U],
+    const std::array<float, 4U> fog_uniform{active_fog[0U] / 255.0F,
+                                            active_fog[1U] / 255.0F,
+                                            active_fog[2U] / 255.0F,
                                             static_cast<float>(camera.fog_distance)};
 
     // Terrain shading mode. KV6 models, effect cubes and the viewmodel bake
@@ -1763,7 +1796,9 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     }
 
     // ---- Sun shadow cascade -------------------------------------------------
-    // One orthographic cascade centred ahead of the camera. The extent is a
+    impl_->stats = {};
+    impl_->stats.chunks_resident = impl_->resident_count;
+    // One orthographic cascade centred on the camera. The extent is a
     // fraction of the draw distance rather than the whole map: at 512 blocks
     // wide a map-covering cascade would put several blocks in every shadow
     // texel and lose all contact detail, which is the whole point of shadows.
@@ -1776,56 +1811,19 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     bx::mtxIdentity(shadow_matrix.data());
     std::array<float, 16U> identity_shadow{};
     bx::mtxIdentity(identity_shadow.data());
+    float shadow_bias = 0.0F;
     if (shadows_ready) {
         const float extent =
             std::clamp(static_cast<float>(camera.fog_distance) * 0.55F, 32.0F, 160.0F);
-        // Centre the cascade ahead of the eye so the budget is spent on what
-        // the player is looking at rather than behind them.
-        // Centred on the EYE, not ahead of it. Biasing the cascade along the
-        // view forward spends its budget on what the player is looking at, but
-        // it also swings the whole shadow volume every time they turn, which
-        // reads as shadows lurching across the ground. A stable volume matters
-        // far more than an optimally placed one.
-        //
-        // Then quantised to whole shadow-map texels: without this the cascade
-        // slides by a fraction of a texel each frame as the player walks, every
-        // shadow edge re-rasterises to a different pixel, and the result
-        // shimmers. Snapping makes the map's sample grid world-stationary.
-        const float texel_world_size =
-            (extent * 2.0F) / static_cast<float>(impl_->shadow_resolution);
-        const auto snap = [texel_world_size](double value) {
-            return static_cast<float>(std::floor(value / texel_world_size) * texel_world_size);
-        };
-        const std::array<float, 3U> focus{
-            snap(camera.eye[0U]), snap(camera.eye[1U]), snap(camera.eye[2U])};
-        // Place the light far enough back that nothing in the scene is clipped
-        // out of the near plane and left unable to cast.
-        const float distance = extent * 2.0F;
-        const auto& sun = atmosphere.sun_direction;
-        const bx::Vec3 light_eye{focus[0U] + sun[0U] * distance,
-                                 focus[1U] + sun[1U] * distance,
-                                 focus[2U] + sun[2U] * distance};
-        const bx::Vec3 at{focus[0U], focus[1U], focus[2U]};
-        // Canonical space is z-down, so "up" for the light basis is -z. A sun
-        // pointing almost straight down would make that degenerate, so fall
-        // back to a horizontal reference in that case.
-        const bool nearly_vertical = std::abs(sun[2U]) > 0.995F;
-        const bx::Vec3 up =
-            nearly_vertical ? bx::Vec3{0.0F, 1.0F, 0.0F} : bx::Vec3{0.0F, 0.0F, -1.0F};
-        std::array<float, 16U> light_view{};
-        std::array<float, 16U> light_projection{};
-        bx::mtxLookAt(light_view.data(), light_eye, at, up, bx::Handedness::Right);
-        bx::mtxOrtho(light_projection.data(),
-                     -extent,
-                     extent,
-                     -extent,
-                     extent,
-                     0.1F,
-                     distance * 2.0F + static_cast<float>(world::VxlMap::height),
-                     0.0F,
-                     bgfx::getCaps()->homogeneousDepth,
-                     bx::Handedness::Right);
-        bx::mtxMul(shadow_matrix.data(), light_view.data(), light_projection.data());
+        const auto* caps = bgfx::getCaps();
+        const auto shadow = sun_shadow_projection(
+            camera.eye, atmosphere.sun_direction,
+            {static_cast<float>(world::VxlMap::width),
+             static_cast<float>(world::VxlMap::depth),
+             static_cast<float>(world::VxlMap::height)},
+            extent, impl_->shadow_resolution, caps->homogeneousDepth, caps->originBottomLeft);
+        shadow_matrix = shadow.world_to_texture;
+        shadow_bias = sun_shadow_depth_bias(shadow.depth_span);
 
         const auto cascade_view = shadow_view_id_base;
         bgfx::setViewName(cascade_view, "BattleSpades sun cascade");
@@ -1833,7 +1831,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         bgfx::setViewFrameBuffer(cascade_view, impl_->shadow_target);
         bgfx::setViewClear(cascade_view, BGFX_CLEAR_DEPTH, 0U, 1.0F, 0U);
         bgfx::setViewMode(cascade_view, bgfx::ViewMode::Default);
-        bgfx::setViewTransform(cascade_view, light_view.data(), light_projection.data());
+        bgfx::setViewTransform(cascade_view, shadow.view.data(), shadow.projection.data());
         bgfx::touch(cascade_view);
 
         // Depth only, and deliberately unculled. Culling one winding here would
@@ -1846,11 +1844,17 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             if (!slot.resident) {
                 continue;
             }
+            if (!sun_shadow_intersects(shadow_matrix, slot.minimum, slot.maximum,
+                    3.0F / static_cast<float>(impl_->shadow_resolution))) {
+                ++impl_->stats.shadow_chunks_culled;
+                continue;
+            }
             bgfx::setTransform(identity_shadow.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
             bgfx::setIndexBuffer(slot.indices);
             bgfx::setState(caster_state);
             bgfx::submit(cascade_view, impl_->shadow_program);
+            ++impl_->stats.shadow_chunks_submitted;
         }
         for (const auto& draw : world_models) {
             if (draw.slot >= world_model_slot_count || draw.opacity < 0.999F) {
@@ -1870,10 +1874,10 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const std::array<float, 4U> shadow_params{
         shadows_ready ? 1.0F : 0.0F,
         shadows_ready ? 1.0F / static_cast<float>(impl_->shadow_resolution) : 0.0F,
-        0.0016F,
+        shadow_bias,
         // Filter radius in texels, and the soft-path switch in one component:
         // zero selects the single hardware tap, anything above it selects the
-        // rotated ring. Encoding both keeps the uniform at four floats.
+        // fixed disc. Encoding both keeps the uniform at four floats.
         impl_->profile.shadow_pcf_taps > 1U ? impl_->profile.shadow_softness : 0.0F};
 
     // Interiors darken over roughly six blocks of depth below cover, bottoming
@@ -2040,6 +2044,13 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     // direction from a fragment toward that viewer in retail's x/y-up/z basis.
     const std::array<float, 4U> retail_view_direction{
         -forward.x, forward.z, -forward.y, 0.0F};
+    const auto retail_to_view = [&](const std::array<float, 3U>& direction) {
+        const auto transformed = to_view(direction[0U], direction[2U], -direction[1U]);
+        return std::array<float, 4U>{transformed[0U], -transformed[2U], transformed[1U], 0.0F};
+    };
+    const auto viewmodel_retail_light0 = retail_to_view(retail.light_direction);
+    const auto viewmodel_retail_light1 = retail_to_view(retail.back_light_direction);
+    static constexpr std::array<float, 4U> viewmodel_retail_eye{0.0F, -1.0F, 0.0F, 0.0F};
 
     const auto push_atmosphere = [&] {
         bgfx::setUniform(impl_->sun_direction_uniform, sun_direction.data());
@@ -2084,8 +2095,6 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     };
     static constexpr std::array<float, 4U> opaque_model{1.0F, 0.0F, 0.0F, 0.0F};
 
-    impl_->stats = {};
-    impl_->stats.chunks_resident = impl_->resident_count;
     const auto fog_limit = static_cast<float>(camera.fog_distance);
     std::array<float, 16U> identity{};
     bx::mtxIdentity(identity.data());
@@ -2097,8 +2106,8 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         const float nearest_x = std::clamp(eye.x, slot.minimum[0U], slot.maximum[0U]) - eye.x;
         const float nearest_y = std::clamp(eye.y, slot.minimum[1U], slot.maximum[1U]) - eye.y;
         const float nearest_z = std::clamp(eye.z, slot.minimum[2U], slot.maximum[2U]) - eye.z;
-        if (std::sqrt(nearest_x * nearest_x + nearest_y * nearest_y + nearest_z * nearest_z) >
-            fog_limit) {
+        if (nearest_x * nearest_x + nearest_y * nearest_y + nearest_z * nearest_z >
+            fog_limit * fog_limit) {
             continue;
         }
         bool culled = false;
@@ -2176,15 +2185,15 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     // Debug/character models share the world camera, depth and fog with the
     // map. They are separate resident slots so animation/replication can
     // update transforms without rebuilding immutable KV6 geometry.
-    // Opaque models establish depth first. Placement ghosts are submitted in
-    // a second pass, so a player in front occludes the green preview while a
-    // preview in front blends over the player. Submission-order blending did
-    // the opposite whenever the player happened to be appended later.
-    for (std::uint32_t pass{}; pass < 2U; ++pass) {
-        const bool translucent_pass = pass == 1U;
+    // Placement ghosts show one nearest surface, not accumulating alpha from
+    // every rear wall and concave layer in arbitrary KV6 order. Establish that
+    // depth after opaque geometry, then blend only the surface that owns it.
+    for (std::uint32_t pass{}; pass < 3U; ++pass) {
+        const bool translucent_pass = pass != 0U;
         for (const auto& draw : world_models) {
             const bool translucent = draw.opacity < 0.999F;
-            if (translucent != translucent_pass || draw.slot >= world_model_slot_count) {
+            if (translucent != translucent_pass || draw.slot >= world_model_slot_count ||
+                !(draw.opacity > 0.0F)) {
                 continue;
             }
             const auto& slot = impl_->world_model_slots[draw.slot];
@@ -2204,8 +2213,10 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 0.0F};
             bgfx::setUniform(impl_->model_opacity_uniform, model_opacity.data());
             push_atmosphere();
-            const auto state = translucent
-                                   ? (BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LESS |
+            const auto state = pass == 1U
+                                   ? (BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA)
+                                   : translucent
+                                   ? (BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_EQUAL |
                                       BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA)
                                    : (BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
                                       BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
@@ -2592,6 +2603,9 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             // These MUST follow push_atmosphere: bgfx takes the last value set
             // before submit, and each one replaces something the world pass
             // expresses in a space this pass is not drawn in.
+            bgfx::setUniform(impl_->retail_light0_direction_uniform, viewmodel_retail_light0.data());
+            bgfx::setUniform(impl_->retail_light1_direction_uniform, viewmodel_retail_light1.data());
+            bgfx::setUniform(impl_->retail_view_direction_uniform, viewmodel_retail_eye.data());
             bgfx::setUniform(impl_->skylight_params_uniform, viewmodel_skylight.data());
             bgfx::setUniform(impl_->sun_direction_uniform, viewmodel_sun_direction.data());
             bgfx::setUniform(impl_->up_axis_uniform, viewmodel_up.data());

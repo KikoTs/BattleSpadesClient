@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170204-5",
+  "name": "FN-SCAR — Sniper/Semi Auto (Rifle Replacement)/Black",
+  "source": "https://gamebanana.com/mods/170204",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/Bullet/9mm.tga": "Gfx/Bullet/9mm.tga.png",
+    "Gfx/Flash/Weapons/Rifle/000.png": "Gfx/Flash/Weapons/Rifle/000.png",
+    "Gfx/Flash/Weapons/Rifle/001.png": "Gfx/Flash/Weapons/Rifle/001.png",
+    "Gfx/Flash/Weapons/Rifle/002.png": "Gfx/Flash/Weapons/Rifle/002.png",
+    "Gfx/Flash/Weapons/Rifle/003.png": "Gfx/Flash/Weapons/Rifle/003.png",
+    "Gfx/Flash/Weapons/Rifle/004.png": "Gfx/Flash/Weapons/Rifle/004.png",
+    "Gfx/Flash/Weapons/Rifle/005.png": "Gfx/Flash/Weapons/Rifle/005.png",
+    "Gfx/Flash/Weapons/Rifle/006.png": "Gfx/Flash/Weapons/Rifle/006.png",
+    "Gfx/Flash/Weapons/Rifle/007.png": "Gfx/Flash/Weapons/Rifle/007.png",
+    "Gfx/Flash/Weapons/Rifle/008.png": "Gfx/Flash/Weapons/Rifle/008.png",
+    "Gfx/Flash/Weapons/Rifle/009.png": "Gfx/Flash/Weapons/Rifle/009.png",
+    "Gfx/Flash/Weapons/Rifle/010.png": "Gfx/Flash/Weapons/Rifle/010.png",
+    "Gfx/Flash/Weapons/Rifle/011.png": "Gfx/Flash/Weapons/Rifle/011.png",
+    "Gfx/Flash/Weapons/Rifle/012.png": "Gfx/Flash/Weapons/Rifle/012.png",
+    "Gfx/Flash/Weapons/Rifle/013.png": "Gfx/Flash/Weapons/Rifle/013.png",
+    "Gfx/Flash/Weapons/Rifle/014.png": "Gfx/Flash/Weapons/Rifle/014.png",
+    "Gfx/Flash/Weapons/Rifle/015.png": "Gfx/Flash/Weapons/Rifle/015.png",
+    "Gfx/Flash/Weapons/Rifle/016.png": "Gfx/Flash/Weapons/Rifle/016.png",
+    "Gfx/Flash/Weapons/Rifle/017.png": "Gfx/Flash/Weapons/Rifle/017.png",
+    "Gfx/Flash/Weapons/Rifle/018.png": "Gfx/Flash/Weapons/Rifle/018.png",
+    "Gfx/Flash/Weapons/Rifle/019.png": "Gfx/Flash/Weapons/Rifle/019.png",
+    "Gfx/Killfeed/a-Rifle.png": "Gfx/Killfeed/a-Rifle.png",
+    "Gfx/Rifle.png": "Gfx/Rifle.png",
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/ChargingHandle.kv6": "Models/Weapons/Rifle/ChargingHandle.kv6",
+    "Models/Weapons/Rifle/MagazineEmpty.kv6": "Models/Weapons/Rifle/MagazineEmpty.kv6",
+    "Models/Weapons/Rifle/MagazineLoaded.kv6": "Models/Weapons/Rifle/MagazineLoaded.kv6",
+    "Models/Weapons/Rifle/SightsFront.kv6": "Models/Weapons/Rifle/SightsFront.kv6",
+    "Models/Weapons/Rifle/Tracer.kv6": "Models/Weapons/Rifle/Tracer.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Scripts/skin/Rifle/ThirdPerson.as": "Scripts/skin/Rifle/ThirdPerson.as",
+    "Scripts/skin/Rifle/View.as": "Scripts/skin/Rifle/View.as",
+    "sounds/Weapons/Rifle/Fire1.wav": "sounds/Weapons/Rifle/Fire1.wav.ogg",
+    "sounds/Weapons/Rifle/Fire2.wav": "sounds/Weapons/Rifle/Fire2.wav.ogg",
+    "sounds/Weapons/Rifle/Fire3.wav": "sounds/Weapons/Rifle/Fire3.wav.ogg",
+    "sounds/Weapons/Rifle/Fire4.wav": "sounds/Weapons/Rifle/Fire4.wav.ogg",
+    "sounds/Weapons/Rifle/FireFar.wav": "sounds/Weapons/Rifle/FireFar.wav.ogg",
+    "sounds/Weapons/Rifle/FireLocal1.wav": "sounds/Weapons/Rifle/FireLocal1.wav.ogg",
+    "sounds/Weapons/Rifle/FireLocal2.wav": "sounds/Weapons/Rifle/FireLocal2.wav.ogg",
+    "sounds/Weapons/Rifle/FireLocal3.wav": "sounds/Weapons/Rifle/FireLocal3.wav.ogg",
+    "sounds/Weapons/Rifle/FireLocal4.wav": "sounds/Weapons/Rifle/FireLocal4.wav.ogg",
+    "sounds/Weapons/Rifle/FireMedium1.wav": "sounds/Weapons/Rifle/FireMedium1.wav.ogg",
+    "sounds/Weapons/Rifle/FireMedium2.wav": "sounds/Weapons/Rifle/FireMedium2.wav.ogg",
+    "sounds/Weapons/Rifle/FireMedium3.wav": "sounds/Weapons/Rifle/FireMedium3.wav.ogg",
+    "sounds/Weapons/Rifle/FireMedium4.wav": "sounds/Weapons/Rifle/FireMedium4.wav.ogg",
+    "sounds/Weapons/Rifle/FireStereo.wav": "sounds/Weapons/Rifle/FireStereo.wav.ogg",
+    "sounds/Weapons/Rifle/RaiseLocal.wav": "sounds/Weapons/Rifle/RaiseLocal.wav.ogg",
+    "sounds/Weapons/Rifle/reload.wav": "sounds/Weapons/Rifle/reload.wav.ogg",
+    "sounds/Weapons/Rifle/reloadLocal.wav": "sounds/Weapons/Rifle/reloadLocal.wav.ogg",
+    "sounds/Weapons/Rifle/ShellDrop1.wav": "sounds/Weapons/Rifle/ShellDrop1.wav.ogg",
+    "sounds/Weapons/Rifle/ShellDrop2.wav": "sounds/Weapons/Rifle/ShellDrop2.wav.ogg",
+    "sounds/Weapons/Rifle/ShellWater.wav": "sounds/Weapons/Rifle/ShellWater.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal1.wav": "sounds/Weapons/Rifle/FireLocal1.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal2.wav": "sounds/Weapons/Rifle/FireLocal2.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal3.wav": "sounds/Weapons/Rifle/FireLocal3.wav.ogg",
+    "Sounds/Weapons/Rifle/FireLocal4.wav": "sounds/Weapons/Rifle/FireLocal4.wav.ogg",
+    "Sounds/Weapons/Rifle/FireFar.wav": "sounds/Weapons/Rifle/FireFar.wav.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.wav": "sounds/Weapons/Rifle/FireStereo.wav.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "sounds/Weapons/Rifle/reloadLocal.wav.ogg",
+    "Gfx/ReflexRound.png": "SharedVariant/ReflexSight.png"
+  },
+  "hashes": {
+    "Gfx/Bullet/9mm.tga.png": "0dc347c4e073f526cfec6c974efcdea55884098cf21ed74f895b772d4f3b8269",
+    "Gfx/Flash/Weapons/Rifle/000.png": "8e6cdf8cb9179fc0e99beeefd0c499a3bb6bdc47e05e40f296b5650bc5b07e3e",
+    "Gfx/Flash/Weapons/Rifle/001.png": "cf484a04777fe4caa676dcf3065cf0bf8f3081fd649f6844c3197d86d071d660",
+    "Gfx/Flash/Weapons/Rifle/002.png": "4f458d60cf3ef0933353c0239ff1adbb60ebecfc5480c4f5790b09a8ba22539b",
+    "Gfx/Flash/Weapons/Rifle/003.png": "73615fd76cd69c82c74e089c9d634ab04ceb7f06371e4d14e205243f7fd7f6c5",
+    "Gfx/Flash/Weapons/Rifle/004.png": "c53ef21ab4e109e82545c9b080960e35999e3ffef3356c7cc49daad5b8772c40",
+    "Gfx/Flash/Weapons/Rifle/005.png": "1b6197d1b9464fcf7f8762a3ce58c161ffdcadbfcc916ccdbe62b58ac0269892",
+    "Gfx/Flash/Weapons/Rifle/006.png": "dfe67dd413328aca78f4a756bd625513e535123fec87e0c21c49a043dd53a56e",
+    "Gfx/Flash/Weapons/Rifle/007.png": "266352c078aaf7c9f86e40de1ebc34e0be656955f0f69748365382824bba7539",
+    "Gfx/Flash/Weapons/Rifle/008.png": "5c83dcca229b89614c9213f77e22011d130ff3a949691625b06a78b721188063",
+    "Gfx/Flash/Weapons/Rifle/009.png": "dc896359ca839b63917ee9975d6924df5bc13fda41ae82ac9cd96ee06dcd04ff",
+    "Gfx/Flash/Weapons/Rifle/010.png": "fa52994d2de41940db67c8b5e8a8528c70add896474af7539c9d091cfd048816",
+    "Gfx/Flash/Weapons/Rifle/011.png": "89f9c9516d60739a572388d8470ce4e565f49d454576f6309fde7110fe247b0d",
+    "Gfx/Flash/Weapons/Rifle/012.png": "7062ee6d345fcdd13d240238197e88886bc173a288adba4ccfe0b8981c38fb1c",
+    "Gfx/Flash/Weapons/Rifle/013.png": "ae0b2c407346dea6a730dbbb486209be530c0a8f58d2e8686eb48ffefd290b09",
+    "Gfx/Flash/Weapons/Rifle/014.png": "d185d46b8685b70fa61f9e10445c6b64e7720cbfe83547e06a4c2976252bcc78",
+    "Gfx/Flash/Weapons/Rifle/015.png": "96078d116091e5174f9473b3622ac1511c28a255e0bc83e70fc4c8168ccac98f",
+    "Gfx/Flash/Weapons/Rifle/016.png": "c6593420a6ee13e574cefa66ebd8381a6021cef7506b79513f6b11a7717448fa",
+    "Gfx/Flash/Weapons/Rifle/017.png": "5353931204445a0217d346c563273b2650f2ed8374715a52a4998d9befcd28b6",
+    "Gfx/Flash/Weapons/Rifle/018.png": "545cad4a7397f220923728c63c352d799444e0fc122f62a742fcd7f292d9b475",
+    "Gfx/Flash/Weapons/Rifle/019.png": "2fef1b71afbed3861bda60be858a4848cd81428d805a01b37720c7bd25b0ef6e",
+    "Gfx/Killfeed/a-Rifle.png": "541b9f9e0de64d52a7c807e7bb76e407c9d72b482d134cd52af83ae5ab310682",
+    "Gfx/Rifle.png": "5ff567784528eaadd361c2d8b8aeb32dd0559c92e3f290e3e04a4d5add125882",
+    "Models/Weapons/Rifle/Casing.kv6": "d09074f327068b1e11d364d8d405bbae81fd86fd324bd0f53c56a92b9f4df50d",
+    "Models/Weapons/Rifle/ChargingHandle.kv6": "57282d2fa24195103d8420cd9b95f030c242af6aefddfa19fe41921518a76357",
+    "Models/Weapons/Rifle/MagazineEmpty.kv6": "156901937a535184b155c2baeec63e82ef2ec4574032a2fbb2b239dcb9450d6a",
+    "Models/Weapons/Rifle/MagazineLoaded.kv6": "29e7e4fc880a66479b3d2074af27f6502adee9a1d3db38979f199f7bd25ea7cf",
+    "Models/Weapons/Rifle/SightsFront.kv6": "cdcda8656220f54813dcc847a5a85cac6e58c1e02bbd3fefd8c6c8790e78d164",
+    "Models/Weapons/Rifle/Tracer.kv6": "cc39de045f631d080c3c29cd0d60d7977a5358ebfeeb1d2d880af968be95674a",
+    "Models/Weapons/Rifle/Weapon.kv6": "cd59a4b9ef026f4228e9a1dcf37309b1bcf66dbee3da4dba4ca98649efac507c",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "df693d6c9d4629826b8c53e210d038995e3b9acaa7aaed4405ac4b187584a094",
+    "Scripts/skin/Rifle/ThirdPerson.as": "5c969106d9915b6abb44c854097252a5b926193359eae643e9e9050e73e4e017",
+    "Scripts/skin/Rifle/View.as": "da975bdfe9321275662aa34ac8549b2a14bb06225b3a10d94f77878eff14de96",
+    "sounds/Weapons/Rifle/Fire1.wav.ogg": "4c323acc86446b9fba6663b217f262f84e03f070df072aa58f92e8e49c04fedb",
+    "sounds/Weapons/Rifle/Fire2.wav.ogg": "dbcc3fda84a51beed74b78049ba9f419c830981194b56815d8bf714f7322851b",
+    "sounds/Weapons/Rifle/Fire3.wav.ogg": "afd1a10fce1812ed741be4c904148641a643e2b5a9e57ac6a6e13bac4a82ab19",
+    "sounds/Weapons/Rifle/Fire4.wav.ogg": "7904619d450964e4bb99d17c9d6996a7c91d0275a369eeccd7bbfc976aea3350",
+    "sounds/Weapons/Rifle/FireFar.wav.ogg": "853f1f08731ac4630e914f8b7ada1c72dc7171c3ee9e47209dbb47a717b494dd",
+    "sounds/Weapons/Rifle/FireLocal1.wav.ogg": "c197d124d994daa55d4bb0766988850dd682543a68df32f1632156f7ba178554",
+    "sounds/Weapons/Rifle/FireLocal2.wav.ogg": "540b71c8e08d17f8c9e00677bc95d3bc18ce0acdc0fb76fbf8b551f98bfc5d9e",
+    "sounds/Weapons/Rifle/FireLocal3.wav.ogg": "a3cce56a2f692fda5a9cd1abc77a4f25f21277a0edf65a8abbee0ebcfdde260e",
+    "sounds/Weapons/Rifle/FireLocal4.wav.ogg": "dbcafb0579fcf33e64c63ea3a8123368e42f31c0799cbd61f965f399eca4ffe6",
+    "sounds/Weapons/Rifle/FireMedium1.wav.ogg": "4dc277cabd540d67bab53f89a58cad77f1d74f8d47c5d737a30babb2fc727171",
+    "sounds/Weapons/Rifle/FireMedium2.wav.ogg": "250a40388c6a1294486007da83c60c7b7db0ebef1a04c4212806a5af16d9bf1d",
+    "sounds/Weapons/Rifle/FireMedium3.wav.ogg": "c86ba6ed560256113cf8c1aa3d1f5e9ee97355b7ca73e53584e39a28084ae89d",
+    "sounds/Weapons/Rifle/FireMedium4.wav.ogg": "9bc74b3cb54a4f5b7a1503f93fa087a98ad82c1dd6682df008a52206a92f81d4",
+    "sounds/Weapons/Rifle/FireStereo.wav.ogg": "d06c2687225adb5de393158bbfec4f8a4d4a894dc10e2ec578c24be7da34b5a5",
+    "sounds/Weapons/Rifle/RaiseLocal.wav.ogg": "a8327b11631f517c94de6e190e62fc31da6dcb9d9f82574087797c8d86b574fb",
+    "sounds/Weapons/Rifle/reload.wav.ogg": "07edc821af10271150e23c8ea1af9148c95be738deab80759db1bb28d7b3b4cf",
+    "sounds/Weapons/Rifle/reloadLocal.wav.ogg": "31b826efbdbcd56b827b4fb43977288d5f3ffaec6d4d454e9db190037411dbfa",
+    "sounds/Weapons/Rifle/ShellDrop1.wav.ogg": "87521090424ba0cfabe0091471330d4121adb8e1da0b9199274c4c44116dc528",
+    "sounds/Weapons/Rifle/ShellDrop2.wav.ogg": "a30c821a2252eec7dae34572816d4fb84b12176f9bf065888269cf3c2c41cf4e",
+    "sounds/Weapons/Rifle/ShellWater.wav.ogg": "21ae4c4f50ae258ab4ea464f11c0fc2e43ee54d367d483f336ad99017528d5f4",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "da975bdfe9321275662aa34ac8549b2a14bb06225b3a10d94f77878eff14de96",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "SharedVariant/ReflexSight.png": "448219c275c3dc891441e3650b9e7084bc15a5e94faa46ad9b5d0c5a0da2fa72"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models/Coding/Photoshop/Sounds",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Source Code.",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "Some of his Codings",
+          "_idRow": "153683",
+          "_sName": "Chameleon",
+          "_sProfileUrl": "https://gamebanana.com/members/153683",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Restored Gfx/ReflexRound.png from another variant in the same FN-SCAR archive."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 2.5,
+    "scope": true
+  }
+}

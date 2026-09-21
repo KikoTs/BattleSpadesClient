@@ -46,9 +46,11 @@ constexpr double inventory_icon_normal{330.0 * 0.40 * 0.5};
 constexpr double inventory_icon_selected{330.0 * 0.90 * 0.5};
 constexpr double inventory_label_offset_normal{1.3 * 38.0 * 0.5};
 constexpr double inventory_label_offset_selected{2.0 * 38.0 * 0.5};
-constexpr double palette_cell_size{14.0};
+// Retail Palette.draw (hud.pyd 0x10030020): 9px swatches, 11px
+// row/column advance, and an 11px selector surrounding the chosen swatch.
+constexpr double palette_cell_size{9.0};
 constexpr double palette_cell_gap{2.0};
-constexpr double palette_border{2.0};
+constexpr double palette_border{1.0};
 constexpr double palette_right_padding{170.0};
 constexpr double palette_bottom_padding{5.0};
 constexpr double palette_ugc_padding{30.0};
@@ -294,27 +296,28 @@ std::string_view retail_score_reason_label(std::uint8_t reason) noexcept {
 }
 
 std::span<const ui::ColorRgba8> retail_block_palette() noexcept {
-    // Four value bands by eight hue columns. Retail's palette is generated
-    // from colours rather than an image; keeping this table stable makes arrow
-    // selection deterministic and, crucially, sends the same RGB that is shown.
-    static constexpr std::array<ui::ColorRgba8, 32U> colors{{
-        {255U, 255U, 255U, 255U}, {255U, 204U, 204U, 255U},
-        {255U, 222U, 153U, 255U}, {255U, 255U, 153U, 255U},
-        {153U, 255U, 153U, 255U}, {153U, 255U, 255U, 255U},
-        {153U, 187U, 255U, 255U}, {221U, 153U, 255U, 255U},
-        {190U, 190U, 190U, 255U}, {221U, 102U, 102U, 255U},
-        {221U, 153U, 68U, 255U},  {221U, 221U, 68U, 255U},
-        {68U, 187U, 68U, 255U},   {68U, 187U, 187U, 255U},
-        {68U, 102U, 221U, 255U},  {153U, 68U, 221U, 255U},
-        {110U, 110U, 110U, 255U}, {159U, 0U, 0U, 255U},
-        {159U, 85U, 0U, 255U},    {159U, 159U, 0U, 255U},
-        {0U, 127U, 0U, 255U},     {0U, 127U, 127U, 255U},
-        {0U, 51U, 159U, 255U},    {85U, 0U, 159U, 255U},
-        {35U, 35U, 35U, 255U},    {96U, 0U, 0U, 255U},
-        {96U, 48U, 0U, 255U},     {96U, 96U, 0U, 255U},
-        {0U, 72U, 0U, 255U},      {0U, 72U, 72U, 255U},
-        {0U, 32U, 96U, 255U},     {48U, 0U, 96U, 255U},
-    }};
+    // Exact swatches from the supplied retail screenshot, row-major: grey,
+    // red, orange, yellow, green, cyan, blue, magenta. Input uses this same
+    // table so a selected colour is the RGB sent to the server.
+    static constexpr std::array<std::uint32_t, 64U> rgb{
+        0x0f0f0fU, 0x2f2f2fU, 0x4f4f4fU, 0x6f6f6fU, 0x8f8f8fU, 0xafafafU, 0xcfcfcfU, 0xefefefU,
+        0x1f0000U, 0x5f0000U, 0x9f0000U, 0xdf0000U, 0xff1f1fU, 0xff5f5fU, 0xff9f9fU, 0xffdfdfU,
+        0x1f0f00U, 0x5f2f00U, 0x9f4f00U, 0xdf6f00U, 0xff8f1fU, 0xffaf5fU, 0xffcf9fU, 0xffefdfU,
+        0x1f1f00U, 0x5f5f00U, 0x9f9f00U, 0xdfdf00U, 0xffff1fU, 0xffff5fU, 0xffff9fU, 0xffffdfU,
+        0x001f00U, 0x005f00U, 0x009f00U, 0x00df00U, 0x1fff1fU, 0x5fff5fU, 0x9fff9fU, 0xdfffdfU,
+        0x001f1fU, 0x005f5fU, 0x009f9fU, 0x00dfdfU, 0x1fffffU, 0x5fffffU, 0x9fffffU, 0xdfffffU,
+        0x00001fU, 0x00005fU, 0x00009fU, 0x0000dfU, 0x1f1fffU, 0x5f5fffU, 0x9f9fffU, 0xdfdfffU,
+        0x1f001fU, 0x5f005fU, 0x9f009fU, 0xdf00dfU, 0xff1fffU, 0xff5fffU, 0xff9fffU, 0xffdfffU,
+    };
+    static constexpr auto colors = [] {
+        std::array<ui::ColorRgba8, rgb.size()> result{};
+        for (std::size_t index{}; index < rgb.size(); ++index) {
+            result[index] = {static_cast<std::uint8_t>((rgb[index] >> 16U) & 0xffU),
+                             static_cast<std::uint8_t>((rgb[index] >> 8U) & 0xffU),
+                             static_cast<std::uint8_t>(rgb[index] & 0xffU), 255U};
+        }
+        return result;
+    }();
     return colors;
 }
 
@@ -678,6 +681,13 @@ void GameHudModel::set_player_score(std::int32_t score, bool visible) noexcept {
 void GameHudModel::set_team(hud_layout::Team team) noexcept {
     team_ = team;
     team_color_ = hud_layout::team_color(team);
+}
+
+void GameHudModel::set_block_cost_state(std::int32_t cost, bool can_place,
+                                        ui::ColorRgba8 tint, bool visible) noexcept {
+    set_ammo_state(std::string{game_hud_assets::block_icon}, cost, std::nullopt, visible);
+    ammo_.image_color = tint;
+    ammo_.enough = can_place;
 }
 
 void GameHudModel::set_palette_state(
@@ -1369,7 +1379,7 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
         // accuracy-driven corner spread. Every authored image remains 16x16:
         // the centre stays on the window centre while the four corner anchors
         // move by the weapon's live accuracy radius.
-        if (model.crosshair_visible()) {
+        if (context.player_widgets_visible && model.crosshair_visible()) {
             const double center_left = window_width * 0.5 - crosshair_size * 0.5;
             const double center_top = window_height * 0.5 - crosshair_size * 0.5;
             const double radius = model.crosshair_radius_pixels();
@@ -1640,276 +1650,289 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             }
         }
 
-        if (model.intel_carried()) {
-            // draw_intel_hud uses centre-anchored 90px art at
-            // (window.width-80, window.height-250) with the minimap, or
-            // (..., window.height-100) without it, in bottom-origin pyglet
-            // coordinates. Green carries blue intel and vice versa.
-            constexpr double intel_size{90.0};
-            constexpr double intel_centre_right_inset{80.0};
-            const auto top =
-                (model.minimap().visible ? 250.0 : 100.0) -
-                intel_size * 0.5;
-            const auto asset = model.intel_carrier_team() == 3U
-                                   ? game_hud_assets::intel_blue
-                                   : game_hud_assets::intel_green;
-            list.push(window_sprite(
-                asset,
-                window_width - intel_centre_right_inset -
-                    intel_size * 0.5,
-                top, intel_size, intel_size));
-        }
+        if (context.player_widgets_visible) {
+            if (model.intel_carried()) {
+                // draw_intel_hud uses centre-anchored 90px art at
+                // (window.width-80, window.height-250) with the minimap, or
+                // (..., window.height-100) without it, in bottom-origin pyglet
+                // coordinates. Green carries blue intel and vice versa.
+                constexpr double intel_size{90.0};
+                constexpr double intel_centre_right_inset{80.0};
+                const auto top =
+                    (model.minimap().visible ? 250.0 : 100.0) -
+                    intel_size * 0.5;
+                const auto asset = model.intel_carrier_team() == 3U
+                                       ? game_hud_assets::intel_blue
+                                       : game_hud_assets::intel_green;
+                list.push(window_sprite(
+                    asset,
+                    window_width - intel_centre_right_inset -
+                        intel_size * 0.5,
+                    top, intel_size, intel_size));
+            }
 
-        // The frame is a fully opaque dark backdrop, so it draws first and
-        // the team-tinted fill sits on top; the fill's transparent 35px
-        // leading inset leaves the frame border visible. hp<100 later scales
-        // the fill about that retail 35px anchor.
-        const auto health_frame = to_window_rect(
-            hud_layout::health_bar_frame(context.window), context.window);
-        const double health_left = health_frame.x;
-        const double health_top = health_frame.y;
-        list.push(window_sprite(game_hud_assets::health_bar_frame, health_left, health_top,
-                                health_frame.width, health_frame.height));
-        // draw_healthbar scales the fill about health_bar.anchor_x = 35 rather
-        // than clipping it, so a wounded bar shrinks toward that inset and the
-        // frame border stays visible on both sides.
-        const auto fill = to_window_rect(
-            hud_layout::health_bar_fill(context.window,
-                                        static_cast<double>(model.health()) / 100.0),
-            context.window);
-        if (fill.width > 0.0) {
-            list.push(window_sprite(
-                game_hud_assets::health_bar, fill.x, fill.y, fill.width, fill.height,
-                ui::ColorModulation{model.team_color(), 1'000U,
-                                    1'000U}));
-        }
-        // The per-class head sits beside the bar, overlapping its left end.
-        // Retail picks class_icons[player.get_class().id][player.team.id], and
-        // our class catalog already carries both team variants. The whole block
-        // is gated on scene.manager.enable_player_score (hud.pyx:1031) -- the
-        // same switch as the SCORE box -- so the two appear together.
-        if (model.player_score_visible() && !model.class_portrait_asset().empty()) {
-            const auto portrait = to_window_rect(
-                hud_layout::class_portrait(context.window,
-                                           model.class_portrait_highly_visible()),
+            // The frame is a fully opaque dark backdrop, so it draws first and
+            // the team-tinted fill sits on top; the fill's transparent 35px
+            // leading inset leaves the frame border visible. hp<100 later scales
+            // the fill about that retail 35px anchor.
+            const auto health_frame = to_window_rect(
+                hud_layout::health_bar_frame(context.window), context.window);
+            const double health_left = health_frame.x;
+            const double health_top = health_frame.y;
+            list.push(window_sprite(game_hud_assets::health_bar_frame, health_left, health_top,
+                                    health_frame.width, health_frame.height));
+            // draw_healthbar scales the fill about health_bar.anchor_x = 35 rather
+            // than clipping it, so a wounded bar shrinks toward that inset and the
+            // frame border stays visible on both sides.
+            const auto fill = to_window_rect(
+                hud_layout::health_bar_fill(context.window,
+                                            static_cast<double>(model.health()) / 100.0),
                 context.window);
-            list.push(window_sprite(model.class_portrait_asset(), portrait.x, portrait.y,
-                                    portrait.width, portrait.height));
-        }
+            if (fill.width > 0.0) {
+                list.push(window_sprite(
+                    game_hud_assets::health_bar, fill.x, fill.y, fill.width, fill.height,
+                    ui::ColorModulation{model.team_color(), 1'000U,
+                                        1'000U}));
+            }
+            // The per-class head sits beside the bar, overlapping its left end.
+            // Retail picks class_icons[player.get_class().id][player.team.id], and
+            // our class catalog already carries both team variants. The whole block
+            // is gated on scene.manager.enable_player_score (hud.pyx:1031) -- the
+            // same switch as the SCORE box -- so the two appear together.
+            if (model.player_score_visible() && !model.class_portrait_asset().empty()) {
+                const auto portrait = to_window_rect(
+                    hud_layout::class_portrait(context.window,
+                                               model.class_portrait_highly_visible()),
+                    context.window);
+                list.push(window_sprite(model.class_portrait_asset(), portrait.x, portrait.y,
+                                        portrait.width, portrait.height));
+            }
 
-        // HUD.draw_healthbar lines 1049-1054 render this independently from
-        // enable_player_score. The server's high_minimap_visibility bit is the
-        // predicate, and the active team's exact StateData colour replaces the
-        // ordinary orange-red BIG_TEXT_COLOR. vip_text_offset is 60.0, making
-        // draw_big_text's bottom-origin anchor y exactly 30 + 60 = 90.
-        if (model.class_portrait_highly_visible()) {
-            append_big_text("You are a V.I.P! Stay safe!",
-                            window_width * 0.5, 90.0, model.team_color());
-        }
+            // HUD.draw_healthbar lines 1049-1054 render this independently from
+            // enable_player_score. The server's high_minimap_visibility bit is the
+            // predicate, and the active team's exact StateData colour replaces the
+            // ordinary orange-red BIG_TEXT_COLOR. vip_text_offset is 60.0, making
+            // draw_big_text's bottom-origin anchor y exactly 30 + 60 = 90.
+            if (model.class_portrait_highly_visible()) {
+                append_big_text("You are a V.I.P! Stay safe!",
+                                window_width * 0.5, 90.0, model.team_color());
+            }
 
-        // InitialInfo.enable_numeric_hp gates this label only. Retail still
-        // draws the frame, fill, and (independently gated) class portrait.
-        if (model.numeric_health_visible()) {
-            const auto passes = hud_layout::health_number_draw_passes(context.window);
-            const auto foreground = model.health_text_color();
-            const ui::ColorRgba8 shadow{64U, 64U, 64U, foreground.alpha};
-            const auto append_health_number =
-                [&list, &context, &model](const hud_layout::RectF& anchor,
-                                          ui::ColorRgba8 color) {
-                    // Retail Label(anchor_y='center') moves its *baseline* down
-                    // by half Font.get_line_height(). A generic centred box
-                    // instead centres the font's line rectangle and placed the
-                    // visible number several pixels too high in the bar.
-                    list.push(ui::TextDrawCommand{
-                        std::to_string(model.displayed_health()),
-                        std::string{game_hud_assets::help_font},
-                        ui::DrawRect{
-                            anchor.x,
-                            hud_layout::to_top_left_y(anchor.y, 0.0,
-                                                     context.window) +
-                                health_line_height * 0.5,
+            // InitialInfo.enable_numeric_hp gates this label only. Retail still
+            // draws the frame, fill, and (independently gated) class portrait.
+            if (model.numeric_health_visible()) {
+                const auto passes = hud_layout::health_number_draw_passes(context.window);
+                const auto foreground = model.health_text_color();
+                const ui::ColorRgba8 shadow{64U, 64U, 64U, foreground.alpha};
+                const auto append_health_number =
+                    [&list, &context, &model](const hud_layout::RectF& anchor,
+                                              ui::ColorRgba8 color) {
+                        // Retail Label(anchor_y='center') moves its *baseline* down
+                        // by half Font.get_line_height(). A generic centred box
+                        // instead centres the font's line rectangle and placed the
+                        // visible number several pixels too high in the bar.
+                        list.push(ui::TextDrawCommand{
+                            std::to_string(model.displayed_health()),
+                            std::string{game_hud_assets::help_font},
+                            ui::DrawRect{
+                                anchor.x,
+                                hud_layout::to_top_left_y(anchor.y, 0.0,
+                                                         context.window) +
+                                    health_line_height * 0.5,
+                                0.0,
+                                0.0,
+                            },
+                            ui::DrawSpace::window_pixels,
+                            hud_layout::health_font_pixels,
                             0.0,
-                            0.0,
-                        },
-                        ui::DrawSpace::window_pixels,
-                        hud_layout::health_font_pixels,
-                        0.0,
-                        1U,
-                        ui::HorizontalTextAlignment::center,
-                        ui::VerticalTextAlignment::baseline,
-                        ui::TextTransform::preserve,
-                        ui::TextFit::none,
-                        ui::ColorModulation{color, 1'000U, 1'000U},
-                    });
+                            1U,
+                            ui::HorizontalTextAlignment::center,
+                            ui::VerticalTextAlignment::baseline,
+                            ui::TextTransform::preserve,
+                            ui::TextFit::none,
+                            ui::ColorModulation{color, 1'000U, 1'000U},
+                        });
+                    };
+                // HUD.draw_healthbar calls draw(), then draw_offset(draw_shadowed).
+                // draw_shadowed itself emits its shadow before its foreground.
+                append_health_number(passes.foreground, foreground);
+                append_health_number(passes.shadow, shadow);
+                append_health_number(passes.offset_foreground, foreground);
+            }
+
+            // The two recovered lower-right widgets are permanent gameplay HUD,
+            // independent of the transient mouse-wheel inventory strip.
+            const auto ammo_rect =
+                to_window_rect(hud_layout::ammo_panel(context.window), context.window);
+            const double ammo_left = ammo_rect.x;
+            const double ammo_top = ammo_rect.y;
+            const auto panel_text_width =
+                [&context](std::string_view text, double font_size) {
+                    if (context.measure_text) {
+                        return context.measure_text(text, font_size);
+                    }
+                    return static_cast<double>(text.size()) * font_size * 0.55;
                 };
-            // HUD.draw_healthbar calls draw(), then draw_offset(draw_shadowed).
-            // draw_shadowed itself emits its shadow before its foreground.
-            append_health_number(passes.foreground, foreground);
-            append_health_number(passes.shadow, shadow);
-            append_health_number(passes.offset_foreground, foreground);
-        }
+            const auto append_panel_text =
+                [&list, &context, &panel_text_width](
+                    std::string current, std::optional<std::string> reserve,
+                    double panel_top, ui::ColorRgba8 current_color) {
+                    constexpr double group_centre_offset{17.0};
+                    constexpr double pair_gap{2.0};
+                    constexpr double current_font_size{26.0};
+                    constexpr double reserve_font_size{18.0};
 
-        // The two recovered lower-right widgets are permanent gameplay HUD,
-        // independent of the transient mouse-wheel inventory strip.
-        const auto ammo_rect =
-            to_window_rect(hud_layout::ammo_panel(context.window), context.window);
-        const double ammo_left = ammo_rect.x;
-        const double ammo_top = ammo_rect.y;
-        const auto panel_text_width =
-            [&context](std::string_view text, double font_size) {
-                if (context.measure_text) {
-                    return context.measure_text(text, font_size);
-                }
-                return static_cast<double>(text.size()) * font_size * 0.55;
-            };
-        const auto append_panel_text =
-            [&list, &context, &panel_text_width](
-                std::string current, std::optional<std::string> reserve,
-                double panel_top, ui::ColorRgba8 current_color) {
-                constexpr double group_centre_offset{17.0};
-                constexpr double pair_gap{2.0};
-                constexpr double current_font_size{26.0};
-                constexpr double reserve_font_size{18.0};
+                    const auto current_width =
+                        panel_text_width(current, current_font_size);
+                    const auto reserve_width =
+                        reserve.has_value()
+                            ? panel_text_width(*reserve, reserve_font_size)
+                            : 0.0;
+                    const auto group_width =
+                        current_width +
+                        (reserve.has_value() ? pair_gap + reserve_width : 0.0);
+                    const auto group_left =
+                        hud_layout::ammo_anchor_x(context.window) +
+                        group_centre_offset - group_width * 0.5;
 
-                const auto current_width =
-                    panel_text_width(current, current_font_size);
-                const auto reserve_width =
-                    reserve.has_value()
-                        ? panel_text_width(*reserve, reserve_font_size)
-                        : 0.0;
-                const auto group_width =
-                    current_width +
-                    (reserve.has_value() ? pair_gap + reserve_width : 0.0);
-                const auto group_left =
-                    hud_layout::ammo_anchor_x(context.window) +
-                    group_centre_offset - group_width * 0.5;
-
-                // Both fonts are drawn at the same bottom-origin y+11
-                // baseline in HUD.draw_ammo_hud. The 1.3 transform applies to
-                // x only, so do not vertically scale or independently centre
-                // either value inside guessed rectangles.
-                const auto baseline_top =
-                    panel_top + ammo_frame_height - 11.0;
-                list.push(ui::TextDrawCommand{
-                    std::move(current),
-                    std::string{game_hud_assets::help_font},
-                    ui::DrawRect{group_left, baseline_top, current_width, 0.0},
-                    ui::DrawSpace::window_pixels,
-                    current_font_size,
-                    0.0,
-                    1U,
-                    ui::HorizontalTextAlignment::left,
-                    ui::VerticalTextAlignment::baseline,
-                    ui::TextTransform::preserve,
-                    ui::TextFit::none,
-                    ui::ColorModulation{current_color, 1'000U, 1'000U},
-                });
-                if (reserve.has_value()) {
+                    // Both fonts are drawn at the same bottom-origin y+11
+                    // baseline in HUD.draw_ammo_hud. The 1.3 transform applies to
+                    // x only, so do not vertically scale or independently centre
+                    // either value inside guessed rectangles.
+                    const auto baseline_top =
+                        panel_top + ammo_frame_height - 11.0;
                     list.push(ui::TextDrawCommand{
-                        std::move(reserve.value()),
+                        std::move(current),
                         std::string{game_hud_assets::help_font},
-                        ui::DrawRect{group_left + current_width + pair_gap,
-                                     baseline_top, reserve_width, 0.0},
+                        ui::DrawRect{group_left, baseline_top, current_width, 0.0},
                         ui::DrawSpace::window_pixels,
-                        reserve_font_size,
+                        current_font_size,
                         0.0,
                         1U,
                         ui::HorizontalTextAlignment::left,
                         ui::VerticalTextAlignment::baseline,
                         ui::TextTransform::preserve,
                         ui::TextFit::none,
-                        ui::ColorModulation{
-                            ui::ColorRgba8{255U, 255U, 255U, 255U},
-                            1'000U, 1'000U},
+                        ui::ColorModulation{current_color, 1'000U, 1'000U},
                     });
-                }
-            };
-        if (model.ammo().visible) {
-            const auto panel_icon_size = 330.0 * model.ammo().image_scale;
-            list.push(window_sprite(game_hud_assets::ammo_frame, ammo_left, ammo_top,
-                                    ammo_rect.width, ammo_rect.height));
-            list.push(window_sprite(
-                model.ammo().image_asset,
-                hud_layout::ammo_anchor_x(context.window) - 50.0 -
-                    panel_icon_size * 0.5,
-                ammo_top + ammo_rect.height * 0.5 - panel_icon_size * 0.5,
-                panel_icon_size, panel_icon_size,
-                model.ammo().image_color.has_value()
-                    ? ui::ColorModulation{*model.ammo().image_color, 1'000U, 1'000U}
-                    : ui::ColorModulation{}));
-            append_panel_text(
-                std::to_string(model.ammo().current),
-                model.ammo().reserve.has_value()
-                    ? std::optional<std::string>{
-                          "/ " + std::to_string(*model.ammo().reserve)}
-                    : std::nullopt,
-                ammo_top,
-                model.ammo().enough
-                    ? hud_layout::enough_ammo_color
-                    : hud_layout::not_enough_ammo_color);
-        }
-
-        // The blocks readout is the same draw_ammo_hud panel at y = 12, so it
-        // reads directly beneath the weapon ammo at the identical x. Its text
-        // colour is the ammo threshold pair, NOT white: red at zero blocks and
-        // yellow above it (draw_tools_hud hud.pyx:829/831).
-        if (model.blocks().visible) {
-            const auto blocks_rect =
-                to_window_rect(hud_layout::blocks_panel(context.window), context.window);
-            list.push(window_sprite(game_hud_assets::ammo_frame, blocks_rect.x,
-                                    blocks_rect.y, blocks_rect.width,
-                                    blocks_rect.height));
-            if (!model.blocks().icon_asset.empty()) {
+                    if (reserve.has_value()) {
+                        list.push(ui::TextDrawCommand{
+                            std::move(reserve.value()),
+                            std::string{game_hud_assets::help_font},
+                            ui::DrawRect{group_left + current_width + pair_gap,
+                                         baseline_top, reserve_width, 0.0},
+                            ui::DrawSpace::window_pixels,
+                            reserve_font_size,
+                            0.0,
+                            1U,
+                            ui::HorizontalTextAlignment::left,
+                            ui::VerticalTextAlignment::baseline,
+                            ui::TextTransform::preserve,
+                            ui::TextFit::none,
+                            ui::ColorModulation{
+                                ui::ColorRgba8{255U, 255U, 255U, 255U},
+                                1'000U, 1'000U},
+                        });
+                    }
+                };
+            if (model.ammo().visible) {
+                const auto panel_icon_size = 330.0 * model.ammo().image_scale;
+                list.push(window_sprite(game_hud_assets::ammo_frame, ammo_left, ammo_top,
+                                        ammo_rect.width, ammo_rect.height));
                 list.push(window_sprite(
-                    model.blocks().icon_asset,
+                    model.ammo().image_asset,
                     hud_layout::ammo_anchor_x(context.window) - 50.0 -
-                        ammo_icon_size * 0.5,
-                    blocks_rect.y + blocks_rect.height * 0.5 - ammo_icon_size * 0.5,
-                    ammo_icon_size, ammo_icon_size,
-                    ui::ColorModulation{
-                        model.team_color(), 1'000U, 1'000U}));
+                        panel_icon_size * 0.5,
+                    ammo_top + ammo_rect.height * 0.5 - panel_icon_size * 0.5,
+                    panel_icon_size, panel_icon_size,
+                    model.ammo().image_color.has_value()
+                        ? ui::ColorModulation{*model.ammo().image_color, 1'000U, 1'000U}
+                        : ui::ColorModulation{}));
+                append_panel_text(
+                    std::to_string(model.ammo().current),
+                    model.ammo().reserve.has_value()
+                        ? std::optional<std::string>{
+                              "/ " + std::to_string(*model.ammo().reserve)}
+                        : std::nullopt,
+                    ammo_top,
+                    model.ammo().enough
+                        ? hud_layout::enough_ammo_color
+                        : hud_layout::not_enough_ammo_color);
             }
-            append_panel_text(
-                std::to_string(model.blocks().count),
-                "/ " + std::to_string(model.blocks().reserve),
-                blocks_rect.y,
-                hud_layout::block_count_color(model.blocks().count));
-        }
 
-        // The vertical yellow-to-red gauge above the lower-right tool icon is
-        // the JETPACK FUEL bar, not health and not weapon heat:
-        // draw_jetpack_hud returns immediately when the class has no jetpack,
-        // which is why most loadouts never show it.
-        if (model.jetpack_visible()) {
-            const auto gauge =
-                to_window_rect(hud_layout::jetpack_gauge(context.window), context.window);
-            list.push(window_sprite(game_hud_assets::jetpack_fuel_frame, gauge.x, gauge.y,
-                                    gauge.width, gauge.height));
-            const auto fuel = to_window_rect(
-                hud_layout::jetpack_fill(context.window, model.jetpack_fuel()),
-                context.window);
-            if (fuel.height > 0.0) {
-                // jetpack_fuel_bar.anchor_y = 0, so the fill grows upward from
-                // the gauge's base as fuel is regained.
-                list.push(window_sprite(game_hud_assets::jetpack_fuel_bar, fuel.x, fuel.y,
-                                        fuel.width, fuel.height));
+            // The blocks readout is the same draw_ammo_hud panel at y = 12, so it
+            // reads directly beneath the weapon ammo at the identical x. Its text
+            // colour is the ammo threshold pair, NOT white: red at zero blocks and
+            // yellow above it (draw_tools_hud hud.pyx:829/831).
+            if (model.blocks().visible) {
+                const auto blocks_rect =
+                    to_window_rect(hud_layout::blocks_panel(context.window), context.window);
+                list.push(window_sprite(game_hud_assets::ammo_frame, blocks_rect.x,
+                                        blocks_rect.y, blocks_rect.width,
+                                        blocks_rect.height));
+                if (!model.blocks().icon_asset.empty()) {
+                    list.push(window_sprite(
+                        model.blocks().icon_asset,
+                        hud_layout::ammo_anchor_x(context.window) - 50.0 -
+                            ammo_icon_size * 0.5,
+                        blocks_rect.y + blocks_rect.height * 0.5 - ammo_icon_size * 0.5,
+                        ammo_icon_size, ammo_icon_size,
+                        ui::ColorModulation{
+                            model.team_color(), 1'000U, 1'000U}));
+                }
+                append_panel_text(
+                    std::to_string(model.blocks().count),
+                    "/ " + std::to_string(model.blocks().reserve),
+                    blocks_rect.y,
+                    hud_layout::block_count_color(model.blocks().count));
             }
-        }
 
-        // draw_disgusie_hud (retail typo preserved in its symbol) and
-        // draw_parachute_hud use identical centered TOOL_IMAGES geometry.
-        // Keep retail order: parachute is submitted after disguise.
-        const auto equipment = to_window_rect(
-            hud_layout::active_equipment_icon(context.window), context.window);
-        if (model.disguise_active()) {
-            list.push(window_sprite(game_hud_assets::disguise_status,
-                                    equipment.x, equipment.y,
-                                    equipment.width, equipment.height));
-        }
-        if (model.parachute_active()) {
-            list.push(window_sprite(game_hud_assets::parachute_status,
-                                    equipment.x, equipment.y,
-                                    equipment.width, equipment.height));
+            // The vertical yellow-to-red gauge above the lower-right tool icon is
+            // the JETPACK FUEL bar, not health and not weapon heat:
+            // draw_jetpack_hud returns immediately when the class has no jetpack,
+            // which is why most loadouts never show it.
+            if (model.jetpack_visible()) {
+                const auto gauge =
+                    to_window_rect(hud_layout::jetpack_gauge(context.window), context.window);
+                list.push(window_sprite(game_hud_assets::jetpack_fuel_frame, gauge.x, gauge.y,
+                                        gauge.width, gauge.height));
+                const auto fuel = to_window_rect(
+                    hud_layout::jetpack_fill(context.window, model.jetpack_fuel()),
+                    context.window);
+                if (fuel.height > 0.0) {
+                    // jetpack_fuel_bar.anchor_y = 0, so the fill grows upward from
+                    // the gauge's base as fuel is regained.
+                    list.push(window_sprite(game_hud_assets::jetpack_fuel_bar, fuel.x, fuel.y,
+                                            fuel.width, fuel.height));
+                }
+            }
+
+            // draw_disgusie_hud (retail typo preserved in its symbol) and
+            // draw_parachute_hud use identical centered TOOL_IMAGES geometry.
+            // Keep retail order: parachute is submitted after disguise.
+            const auto equipment = to_window_rect(
+                hud_layout::active_equipment_icon(context.window), context.window);
+            if (model.disguise_active()) {
+                list.push(window_sprite(game_hud_assets::disguise_status,
+                                        equipment.x, equipment.y,
+                                        equipment.width, equipment.height));
+            }
+            if (model.parachute_active()) {
+                list.push(window_sprite(game_hud_assets::parachute_status,
+                                        equipment.x, equipment.y,
+                                        equipment.width, equipment.height));
+            }
+            if (!model.ability_hint().empty()) {
+                list.push(ui::TextDrawCommand{
+                    model.ability_hint(), std::string{game_hud_assets::help_font},
+                    ui::DrawRect{window_width - 395.0, equipment.y - 26.0, 310.0, 22.0},
+                    ui::DrawSpace::window_pixels, 14.0, 0.0, 1U,
+                    ui::HorizontalTextAlignment::right,
+                    ui::VerticalTextAlignment::retail_center,
+                    ui::TextTransform::preserve, ui::TextFit::shrink_to_fit,
+                });
+            }
+
         }
 
         // TeamProgressBar is mode-owned and separate from HeadCount. Its
@@ -2255,7 +2278,7 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                 metrics.icon_width, metrics.icon_height));
         }
 
-        if (model.player_score_visible()) {
+        if (context.player_widgets_visible && model.player_score_visible()) {
             // score_frame is the one HUD frame loaded with center=False.
             // Its recovered call site supplies the window's top-left, not an
             // offset relative to the lower-right ammunition panel.
@@ -2425,7 +2448,7 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
         // and shows the selected authored-scale entry. Hotkey selection changes the
         // tool without opening this strip, which is the important retail
         // wheel-vs-number distinction.
-        if (model.inventory_visible()) {
+        if (context.player_widgets_visible && model.inventory_visible()) {
             const auto& slots = model.inventory_slots();
             const double count = static_cast<double>(slots.size());
             const double start_x = window_width * 0.5 - count * inventory_slot_stride * 0.5 +
@@ -2486,22 +2509,22 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             }
         }
 
-        if (model.palette().visible) {
+        if (context.player_widgets_visible && model.palette().visible) {
             const auto& palette = model.palette();
             const auto columns = std::max<std::size_t>(1U, palette.columns);
             const auto rows =
                 (palette.colors.size() + columns - 1U) / columns;
             const double stride = palette_cell_size + palette_cell_gap;
-            const double width =
-                static_cast<double>(columns) * stride - palette_cell_gap;
-            const double height =
-                static_cast<double>(rows) * stride - palette_cell_gap;
+            const double width = static_cast<double>(columns) * stride;
+            const double height = static_cast<double>(rows) * stride;
             const double right =
                 palette.ugc_layout ? palette_ugc_padding : palette_right_padding;
             const double bottom =
                 palette.ugc_layout ? palette_ugc_padding : palette_bottom_padding;
             const double origin_x = window_width - right - width;
-            const double origin_y = window_height - bottom - height;
+            // Retail anchors each quad at y = rows*11 + bottom - row*11
+            // in bottom-origin coordinates, so its top includes the 9px cell.
+            const double origin_y = window_height - bottom - height - palette_cell_size;
             for (std::size_t index{}; index < palette.colors.size(); ++index) {
                 const auto column = index % columns;
                 const auto row = index / columns;
@@ -2514,7 +2537,7 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                         palette_cell_size + palette_border * 2.0,
                         palette_cell_size + palette_border * 2.0,
                         ui::ColorModulation{
-                            ui::ColorRgba8{255U, 239U, 0U, 255U},
+                            ui::ColorRgba8{255U, 255U, 255U, 255U},
                             1'000U, 1'000U}));
                 }
                 list.push(window_sprite(

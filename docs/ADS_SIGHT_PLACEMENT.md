@@ -1,5 +1,7 @@
 # ADS sight placement — recovered specification
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Status: **RECOVERED**. This closes `docs/WEAPON_SECONDARY_RECOVERY.md` UNRECOVERABLE
 item 11 in full.
 

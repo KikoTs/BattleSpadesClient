@@ -65,14 +65,16 @@ constexpr ColorRgba8 empty_slot_color{46U, 44U, 35U, 255U};
 }
 
 void append_selected_frame(ui::DrawList& list, DrawRect item,
-                           bool large_class_card) {
-    if (large_class_card) {
+                           double class_frame_scale = 0.0) {
+    if (class_frame_scale > 0.0) {
+        // image.py truncates the authored dimensions when applying .64 at
+        // load time (251x226 -> 160x144), before CustomButton scales them.
+        const double width = 160.0 * class_frame_scale;
+        const double height = 144.0 * class_frame_scale;
         list.push(sprite(
             "png/ui/in_game_menus/select_class/class_selected_frame.png",
-            // Retail scales this frame independently from the 117.6 px class
-            // portrait. Its visible gold border begins about 15 px outside the
-            // 107 px hit target, rather than using the raw texture dimensions.
-            {item.x - 18.0, item.y - 12.0, 137.0, 128.0}));
+            {item.x + (item.width - width) * 0.5,
+             item.y + (item.height - height) * 0.5, width, height}));
         return;
     }
     list.push(sprite(
@@ -171,7 +173,10 @@ std::string class_selection_item_icon(std::uint16_t raw_item_id) {
 
 ui::DrawList ClassSelectionPresentation::build(
     const ClassSelectionMenuModel& menu, ui::PixelExtent window,
-    bool in_game) const {
+    bool in_game, const ClassSelectionAppearance& appearance) const {
+    const auto resolve=[](const auto& icons,auto id,std::string_view fallback){
+        const auto found=icons.find(id);return found==icons.end()?std::string{fallback}:found->second;
+    };
     static_cast<void>(window);
     ui::DrawList list;
     list.reserve(128U);
@@ -198,6 +203,7 @@ ui::DrawList ClassSelectionPresentation::build(
     const auto offset = menu.visible_class_offset();
     const auto visible =
         std::min(menu.classes_per_page(), classes.size() - offset);
+    const auto card_layout = menu.card_layout();
     for (std::size_t display_index{}; display_index < visible;
          ++display_index) {
         const auto class_index = offset + display_index;
@@ -205,30 +211,34 @@ ui::DrawList ClassSelectionPresentation::build(
             world::find_class_definition(classes[class_index]);
         if (definition == nullptr) continue;
         const auto team_index = menu.team() == 3U ? 1U : 0U;
-        const double x = 85.0 + static_cast<double>(display_index) * 134.0;
-        constexpr double top{131.0};
-        constexpr double card_size{107.0};
-        const DrawRect card{x, top, card_size, card_size};
+        const auto bounds = menu.class_card_bounds(display_index);
+        const DrawRect card{static_cast<double>(bounds.x), static_cast<double>(bounds.y),
+                            static_cast<double>(bounds.width), static_cast<double>(bounds.height)};
+        const bool selected_class = class_index == menu.selected_class_index();
+        const bool hovered_class = menu.hovered().has_value() && bounds.contains(*menu.hovered());
+        const double image_size = 147.0 *
+                                  (card_layout.image_scale +
+                                   (selected_class || hovered_class ? 0.22 : 0.0));
         // A malformed/custom class table must not turn a missing optional
         // image into an empty texture request that terminates the frontend.
         if (!definition->team_icon_assets[team_index].empty()) {
             list.push(sprite(
-                std::string{definition->team_icon_assets[team_index]},
-                {x + card_size * 0.5 - 58.8,
-                 top + card_size * 0.5 - 58.8, 117.6, 117.6}));
+                resolve(appearance.class_icons,classes[class_index],definition->team_icon_assets[team_index]),
+                {card.x + (card.width - image_size) * 0.5,
+                 card.y + (card.height - image_size) * 0.5, image_size, image_size}));
         }
-        if (class_index == menu.selected_class_index()) {
-            append_selected_frame(list, card, true);
+        if (selected_class) {
+            append_selected_frame(list, card, card_layout.frame_scale);
         }
         list.push(sprite(
             "png/ui/icons/key" + std::to_string(display_index + 1U) + ".png",
-            {72.0 + static_cast<double>(display_index) * 134.0,
+            {72.0 + static_cast<double>(display_index) * card_layout.interval,
              99.0, 30.0, 30.0}));
         list.push(text(
             std::string{retail_class_display_name(
                 classes[class_index], definition->display_name)},
-            {102.0 + static_cast<double>(display_index) * 134.0,
-             96.0, 100.0, 31.0},
+            {card_layout.name_x + static_cast<double>(display_index) * card_layout.interval,
+             96.0, static_cast<double>(card_layout.name_width), 31.0},
             20.0, HorizontalTextAlignment::center,
             class_index == menu.selected_class_index() ? selected_color
                                                         : menu_color,
@@ -275,13 +285,14 @@ ui::DrawList ClassSelectionPresentation::build(
             list.push(sprite(
                 "png/ui/in_game_menus/select_class/loadout_background.png",
                 item));
-            const auto icon = class_selection_item_icon(options[option]);
+            const auto icon = resolve(appearance.weapon_icons,options[option],class_selection_item_icon(options[option]));
             if (!icon.empty()) {
+                const double inset=icon.starts_with("runtime/cosmetic/")?1.5:4.5;
                 list.push(sprite(icon,
-                                 {item.x + 4.5, item.y + 4.5, 33.0, 33.0}));
+                                 {item.x + inset, item.y + inset, item.width-2*inset, item.height-2*inset}));
             }
             if (option == selected[group]) {
-                append_selected_frame(list, item, false);
+                append_selected_frame(list, item);
             }
         }
     }
@@ -318,15 +329,17 @@ ui::DrawList ClassSelectionPresentation::build(
                          {item.x + 3.0, item.y + 3.0, 32.0, 32.0}));
         if (std::ranges::find(menu.selected_prefabs(), name) !=
             menu.selected_prefabs().end()) {
-            append_selected_frame(list, item, false);
+            append_selected_frame(list, item);
         }
     }
 
     const auto team_index = menu.team() == 3U ? 1U : 0U;
     if (!definition->team_portrait_assets[team_index].empty()) {
-        list.push(sprite(
-            std::string{definition->team_portrait_assets[team_index]},
-            {604.5, 296.0, 111.0, 160.0}));
+        auto portrait=sprite(
+            resolve(appearance.class_portraits,menu.selected_class(),definition->team_portrait_assets[team_index]),
+            {604.5, 296.0, 111.0, 160.0});
+        if(portrait.asset_id.starts_with("runtime/cosmetic/"))portrait.source_pixels=ClassSelectionAppearance::portrait_source;
+        list.push(std::move(portrait));
     }
 
     const DrawRect select_bounds{599.0, 461.0, 124.0, 40.0};

@@ -1,4 +1,5 @@
 #include "battlespades/frontend/native_frontend_module.hpp"
+#include "battlespades/network/cosmetic_appearance.hpp"
 
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/explosion_sound.hpp"
@@ -6,9 +7,11 @@
 #include "battlespades/audio/server_audio_catalog.hpp"
 #include "battlespades/audio/sound_groups.hpp"
 #include "battlespades/core/utf8.hpp"
+#include "battlespades/core/deferred_cleanup.hpp"
 #include "battlespades/frontend/change_team_menu.hpp"
 #include "battlespades/frontend/class_selection_menu.hpp"
 #include "battlespades/frontend/class_selection_presentation.hpp"
+#include "battlespades/frontend/cosmetic_icons.hpp"
 #include "battlespades/frontend/create_match_menu.hpp"
 #include "battlespades/frontend/create_match_presentation.hpp"
 #include "battlespades/frontend/custom_match_menu.hpp"
@@ -39,6 +42,10 @@
 #include "battlespades/frontend/parity_debug_presentation.hpp"
 #include "battlespades/frontend/pause_menu.hpp"
 #include "battlespades/frontend/player_profile_menu.hpp"
+#include "battlespades/frontend/inventory_session.hpp"
+#include "battlespades/frontend/inventory_view.hpp"
+#include "battlespades/frontend/scripted_weapon_images.hpp"
+#include "battlespades/world/cosmetic_preview.hpp"
 #include "battlespades/frontend/player_profile_presentation.hpp"
 #include "battlespades/frontend/player_progression.hpp"
 #include "battlespades/frontend/player_name_projection.hpp"
@@ -72,6 +79,7 @@
 #include "battlespades/network/revival_identity.hpp"
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/platform/relay_host_tunnel.hpp"
 #include "battlespades/platform/native_steam_client.hpp"
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
@@ -99,6 +107,7 @@
 #include "battlespades/world/map_spawn.hpp"
 #include "battlespades/world/minimap_overview.hpp"
 #include "battlespades/world/model_quality.hpp"
+#include "battlespades/world/parachute.hpp"
 #include "battlespades/world/particle_effects.hpp"
 #include "battlespades/world/prefab_placement.hpp"
 #include "battlespades/world/projectile_presentation.hpp"
@@ -115,6 +124,7 @@
 #include "battlespades/world/weapon_fire_sound.hpp"
 #include "battlespades/world/weapon_models.hpp"
 #include "battlespades/world/weapon_zoom.hpp"
+#include "battlespades/world/scripted_weapon.hpp"
 
 #include <algorithm>
 #include <array>
@@ -127,8 +137,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <future>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <locale>
@@ -181,7 +193,9 @@ constexpr std::string_view settings_standard_font{"fonts/A750-Sans-Medium.ttf"};
 constexpr std::string_view settings_bold_font{"fonts/A750-Sans-Bold.ttf"};
 constexpr std::string_view tuffy_font_asset{"fonts/Tuffy_Bold.ttf"};
 constexpr std::string_view mplus_font_asset{"fonts/Gen_Shin_Gothic_Monospace_Bold.ttf"};
+constexpr std::string_view mplus_compact_font_asset{"fonts/mplus.ttf"};
 constexpr std::string_view noto_japanese_font_asset{"fonts/NotoSansJP-SemiBold.ttf"};
+constexpr std::string_view noto_japanese_compact_font_asset{"fonts/NotoSansJP.ttf"};
 constexpr std::array map_transition_retry_delays{
     std::chrono::milliseconds{250},
     std::chrono::milliseconds{500},
@@ -193,7 +207,9 @@ constexpr std::array map_transition_retry_delays{
     std::chrono::milliseconds{5'000},
 };
 constexpr auto map_transition_reconnect_window{std::chrono::seconds{45}};
-constexpr std::uint32_t map_transition_handshake_timeout_ms{5'000U};
+// A distant server's full map bootstrap can exceed five seconds. Allow the
+// ordinary join timeout; the overall reconnect deadline still bounds recovery.
+constexpr std::uint32_t map_transition_handshake_timeout_ms{30'000U};
 
 [[nodiscard]] std::string score_text(double value, unsigned precision = 2U) {
     if (!std::isfinite(value))
@@ -262,17 +278,6 @@ leaderboard_rows(LeaderboardRequest request, const network::AosPlayLeaderboardRe
         stats.emplace(id, RetailProfileScoreValue{value.count, value.score});
     }
     return build_retail_player_profile(source.player_name, stats);
-}
-
-[[nodiscard]] bool complete_server_bundle(const std::filesystem::path& root) {
-#if defined(_WIN32)
-    constexpr std::string_view executable{"BattleSpades.exe"};
-#else
-    constexpr std::string_view executable{"BattleSpades"};
-#endif
-    return std::filesystem::is_regular_file(root / executable) &&
-           std::filesystem::is_directory(root / "_internal") &&
-           std::filesystem::is_directory(root / "maps");
 }
 
 [[nodiscard]] std::optional<std::string> environment_value(const char* name) {
@@ -358,38 +363,7 @@ private:
 
 [[nodiscard]] std::optional<std::filesystem::path>
 newest_server_bundle_below(const std::filesystem::path& root) {
-    if (complete_server_bundle(root))
-        return root;
-    if (complete_server_bundle(root / "server"))
-        return root / "server";
-    std::error_code error;
-    if (!std::filesystem::is_directory(root, error))
-        return std::nullopt;
-    std::optional<std::filesystem::path> best;
-    std::filesystem::file_time_type best_time{};
-    for (const auto& release : std::filesystem::directory_iterator(root, error)) {
-        if (error)
-            break;
-        if (!release.is_directory(error) ||
-            !release.path().filename().string().starts_with("release-dist")) {
-            continue;
-        }
-        for (const auto& candidate : std::filesystem::directory_iterator(release.path(), error)) {
-            if (error)
-                break;
-            if (!candidate.is_directory(error) || !complete_server_bundle(candidate.path())) {
-                continue;
-            }
-            const auto time = candidate.last_write_time(error);
-            if (!best.has_value() || (!error && time > best_time)) {
-                best = candidate.path();
-                best_time = time;
-            }
-            error.clear();
-        }
-        error.clear();
-    }
-    return best;
+    return platform::find_local_server_bundle(root);
 }
 
 [[nodiscard]] std::string bounded_log_tail(const std::filesystem::path& path) {
@@ -674,6 +648,13 @@ settings_api(render::GraphicsBackend backend) noexcept {
 }
 
 [[nodiscard]] std::string humanized_english_text(std::string_view key) {
+    // Only unresolved catalog identifiers need humanizing. Server captions,
+    // player/map names and native status messages are already display text.
+    if (std::any_of(key.begin(), key.end(), [](unsigned char ch) {
+            return !(ch >= 'A' && ch <= 'Z') && !(ch >= '0' && ch <= '9') && ch != '_';
+        })) {
+        return std::string{key};
+    }
     std::string value{key};
     constexpr std::string_view rule_prefix{"RULE_"};
     constexpr std::string_view leaderboard_prefix{"LEADERBOARD_"};
@@ -774,6 +755,9 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"FULLSCREEN", "Fullscreen"},
         {"WINDOWED", "(windowed)"},
         {"INVERT_MOUSE", "Invert Mouse"},
+        {"SHOW_SKINS", "Show skins"},
+        {"SHOW_OTHER_SKINS", "Show other players' skins"},
+        {"WEAPON_MOTION", "Weapon movement"},
         {"FAVORITE", "Favourite"},
         {"RESOLUTION", "Resolution"},
         {"ANTIALIAS", "Anti-alias"},
@@ -823,7 +807,7 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"PALETTE_DOWN", "Palette Down"},
         {"CANCEL_PREFAB_PLACEMENT", "Cancel Construct Placement"},
         {"CARVE_PREFAB", "Carve Construct"},
-        {"HOVER_INPUT", "Jetpack Hover"},
+        {"HOVER_INPUT", "Hover / Parachute"},
         {"SAVE", "Save"},
         {"OPTION_ONLY_IN_PLAY", "This option is only changeable during play"},
         {"SETTINGS_MESSAGE", "Done to confirm changes or Cancel to exit without saving."},
@@ -1064,25 +1048,28 @@ settings_api(render::GraphicsBackend backend) noexcept {
     return humanized_english_text(key);
 }
 
-[[nodiscard]] std::string localise_runtime_parameter(std::string_view value) {
+template <typename Localize>
+[[nodiscard]] std::string localise_runtime_parameter(std::string_view value,
+                                                     Localize&& localize) {
     // Packet 50 may mix localization identifiers with literal player names.
-    // Retail leaves unknown parameter IDs untouched, so do not pass arbitrary
-    // names through english_text's humanising fallback.
-    if (value == "TEAM1_COLOR")
-        return "Blue";
-    if (value == "TEAM2_COLOR")
-        return "Green";
-    if (value == "TEAM_NEUTRAL")
-        return "Neutral";
+    // Retail resolves only recognized IDs and leaves names untouched. The old
+    // native path hard-coded these three values in English, which leaked into
+    // otherwise-correct Cyrillic/Japanese announcements.
+    if (value == "TEAM1_COLOR" || value == "TEAM2_COLOR" || value == "TEAM_NEUTRAL") {
+        return localize(value);
+    }
     return std::string{value};
 }
 
+template <typename Localize>
 [[nodiscard]] std::string format_runtime_message(std::string text,
                                                  const std::vector<std::string>& parameters,
-                                                 bool localise_parameters) {
+                                                 bool localise_parameters,
+                                                 Localize&& localize) {
     for (std::size_t index{}; index < parameters.size(); ++index) {
-        const auto replacement =
-            localise_parameters ? localise_runtime_parameter(parameters[index]) : parameters[index];
+        const auto replacement = localise_parameters
+                                     ? localise_runtime_parameter(parameters[index], localize)
+                                     : parameters[index];
         const auto marker = '{' + std::to_string(index) + '}';
         std::size_t offset{};
         while ((offset = text.find(marker, offset)) != std::string::npos) {
@@ -1213,6 +1200,9 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
     SettingsPresentationSnapshot result;
     result.selected_tab = presentation_tab(menu.active_tab);
     result.in_game = menu.in_game;
+    // In-game Settings is an overlay.  The world is already rendered below
+    // this draw list, so adding the frontend splash here hid live gameplay.
+    result.include_frontend_background = !menu.in_game;
     result.tooltip_key = std::string{menu.tooltip_key};
     result.first_visible_row = menu.scroll_index;
 
@@ -1404,6 +1394,17 @@ struct NativeFrontendModule::Impl final {
     LeaderboardPresentation leaderboard_presentation;
     PlayerProfileMenuModel player_profile_menu;
     PlayerProfilePresentation player_profile_presentation;
+    InventoryMenuModel inventory_menu;
+    std::unique_ptr<InventoryView> inventory_view;
+    bool inventory_markup_failed{};
+    std::unique_ptr<InventorySession> inventory_session;
+    struct InventoryPreviewOutcome { std::string key; std::vector<std::uint8_t> pixels; std::string error; };
+    std::future<InventoryPreviewOutcome> inventory_preview_worker;
+    std::future<void> inventory_preload_worker;
+    std::vector<InventoryCosmetic> inventory_preload_pending;
+    std::string inventory_preview_key;
+    bool inventory_fixture{};
+    bool inventory_autoload{};
     MatchLoadingModel match_loading;
     BootLoadingPresentation boot_loading_presentation;
     MatchLoadingPresentation match_loading_presentation;
@@ -1416,6 +1417,7 @@ struct NativeFrontendModule::Impl final {
     settings::SettingsSession settings_session{};
     std::unique_ptr<settings::TomlSettingsStore> settings_store;
     std::unique_ptr<SettingsMenuModel> settings_menu;
+    bool settings_opened_from_gameplay{};
     SettingsPresentation settings_presentation;
     ResolutionConfirmationModel resolution_confirmation;
     settings::ClientSettings confirmed_settings{settings::retail_default_settings()};
@@ -1462,6 +1464,7 @@ struct NativeFrontendModule::Impl final {
     std::string active_ui_skin{"default"};
     std::map<std::string, CachedTextTexture, std::less<>> text_textures;
     std::uint64_t text_cache_frame{};
+    std::uint64_t last_ui_budget_warning_frame{};
     /**
      * Dynamic gameplay text (diagnostics, live progress) rasterizes a new
      * texture per unique string, so the cache evicts entries the current
@@ -1478,12 +1481,21 @@ struct NativeFrontendModule::Impl final {
     std::string server_browser_status;
     std::optional<ui::Point> server_browser_pointer;
     bool server_browser_pointer_down{};
+    bool loading_scrollbar_dragging{};
+    double loading_scrollbar_grab_offset{};
     struct BrowserRefreshOutcome final {
         ServerBrowserRefreshRequest request;
         network::DiscoveryResult discovery;
     };
     std::future<BrowserRefreshOutcome> browser_refresh_worker;
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
+    struct QuickPlayRefreshOutcome final {
+        QuickPlaySearchIntent request;
+        network::DiscoveryResult discovery;
+    };
+    std::future<QuickPlayRefreshOutcome> quick_play_refresh_worker;
+    std::stop_source quick_play_refresh_stop;
+    std::optional<QuickPlaySearchIntent> pending_quick_play_refresh;
     struct LeaderboardOutcome final {
         LeaderboardRequest request;
         network::AosPlayLeaderboardResult result;
@@ -1515,33 +1527,90 @@ struct NativeFrontendModule::Impl final {
         std::uint64_t generation{};
         std::string server_id;
         network::DiscoveryResult discovery;
+        std::string lobby_id;
+        std::string start_id;
     };
     std::jthread social_join_worker;
     std::atomic_bool social_join_active{};
     std::mutex social_join_mutex;
     std::optional<SocialJoinOutcome> social_join_outcome;
+    std::optional<std::array<std::string, 3U>> social_canceled_join;
     /** Create/accept operations whose success must open the retail Match Lobby. */
     std::optional<std::uint64_t> social_open_match_generation;
+    std::string social_open_match_lobby_id;
+    std::optional<std::string> pending_social_lobby_navigation;
+    std::uint64_t next_background_social_generation{1'000'000'000ULL};
+    std::optional<std::uint64_t> social_leave_generation;
+    std::optional<std::uint64_t> social_start_generation;
+    std::chrono::steady_clock::time_point social_start_deadline{};
+    std::optional<std::uint64_t> social_settings_generation;
+    std::optional<std::uint64_t> social_publish_generation;
+    std::optional<CreateMatchConfiguration> social_pending_start_configuration;
+    std::optional<UgcEditorConfiguration> social_pending_ugc_start;
+    std::optional<std::uint64_t> ugc_discovery_generation;
+    std::optional<std::uint64_t> ugc_settings_generation;
+    std::chrono::steady_clock::time_point ugc_settings_retry_at{};
+    std::chrono::steady_clock::time_point ugc_create_deadline{};
+    bool ugc_leave_after_create{};
+    std::string ugc_social_lobby_id;
+    std::string ugc_social_owner_id;
+    std::optional<ServerConnectRequest> social_pending_owner_connect;
+    std::string social_match_lobby_id;
+    bool social_leave_after_create{};
+    std::string social_match_owner_id;
+    std::string social_pending_start_lobby_id;
+    std::string social_pending_start_id;
+    std::optional<CreateMatchConfiguration> social_start_retry_configuration;
+    std::uint32_t social_start_revision_retries{};
+    std::optional<CreateMatchConfiguration> social_desired_configuration;
+    std::optional<CreateMatchConfiguration> social_sent_configuration;
+    bool social_settings_waiting_for_sync{};
+    std::chrono::steady_clock::time_point social_publish_deadline{};
+    std::chrono::steady_clock::time_point social_publish_retry_at{};
+    std::uint32_t social_publish_attempts{};
+    std::string social_last_joined_server_id;
+    std::string social_joined_lobby_id;
+    std::string social_joined_start_id;
+    std::chrono::steady_clock::time_point social_join_retry_at{};
+    std::string social_chat_lobby_id;
+    std::set<std::string, std::less<>> social_chat_event_ids;
+    std::deque<std::string> social_chat_event_order;
     std::future<network::RevivalAuthResult> identity_worker;
+    std::atomic_bool hosted_results_active{};
+    std::jthread hosted_results_worker;
+    std::chrono::steady_clock::time_point hosted_results_retry_at{};
+    std::future<network::RevivalWorkshopResult> ugc_publish_worker;
+    std::stop_source ugc_publish_stop;
     IdentityOperation identity_operation{IdentityOperation::none};
     bool authenticated_identity{};
     bool enter_main_menu_pending{};
     std::optional<ServerConnectRequest> pending_startup_connection;
+    core::DeferredCleanupQueue host_cleanup;
     struct LocalHostOutcome final {
         std::uint64_t generation{};
         std::unique_ptr<platform::LocalServerProcess> process;
+        std::unique_ptr<platform::RelayHostTunnel> tunnel;
+        std::optional<network::RevivalRelayLobby> relay;
         ServerConnectRequest request;
         std::string error;
+        core::DeferredCleanupQueue::Reservation cleanup{};
     };
     std::future<LocalHostOutcome> local_host_worker;
     std::unique_ptr<platform::LocalServerProcess> owned_local_server;
-    std::shared_ptr<std::atomic_bool> local_host_cancel;
+    std::unique_ptr<platform::RelayHostTunnel> owned_relay_tunnel;
+    std::optional<network::RevivalRelayLobby> owned_relay_lobby;
+    core::DeferredCleanupQueue::Reservation owned_host_cleanup;
+    std::string owned_social_lobby_id;
+    std::string owned_social_start_id;
+    std::shared_ptr<std::stop_source> local_host_cancel;
     std::uint64_t next_local_host_generation{1U};
     std::uint64_t active_local_host_generation{};
     std::set<std::string, std::less<>> favourite_servers;
     std::unique_ptr<FavoriteServerStore> favourite_server_store;
     std::set<std::string, std::less<>> history_servers;
+    core::DeferredCleanupQueue connection_cleanup;
     std::unique_ptr<network::LiveProtocol168Connection> match_connection;
+    core::DeferredCleanupQueue::Reservation match_connection_cleanup;
     std::optional<ServerConnectRequest> active_match_request;
     /** Exact nickname/join-code carried by packet 15 after menu confirmation. */
     std::string active_join_wire_name;
@@ -1573,6 +1642,7 @@ struct NativeFrontendModule::Impl final {
     std::chrono::steady_clock::time_point map_transition_retry_at{};
     std::chrono::steady_clock::time_point map_transition_deadline{};
     std::optional<std::uint8_t> local_player_id;
+    world::LauncherMuzzleTracker launcher_muzzle_tracker;
     /**
      * Initial team/class selection must wait for the server's new local
      * CreatePlayer. Entering the world from the pre-selection lobby replica
@@ -1656,6 +1726,8 @@ struct NativeFrontendModule::Impl final {
     std::unique_ptr<network::Protocol168TerrainReplica> live_terrain_replica;
     /** Packet-30 slices remain invisible until the authoritative packet-29 edge. */
     world::PrefabPlacementTransaction live_prefab_placement;
+    std::string live_prefab_model_name;
+    std::optional<world::Kv6Model> live_prefab_model;
     std::vector<std::vector<std::byte>> deferred_terrain_packets;
     static constexpr std::uint32_t live_chunk_edge{16U};
     static constexpr std::size_t live_chunk_axis{world::VxlMap::width / live_chunk_edge};
@@ -1666,7 +1738,7 @@ struct NativeFrontendModule::Impl final {
      * freeze the game and repeatedly meshed the same chunk.
      */
     std::array<bool, live_chunk_count> live_chunk_remesh_pending{};
-    std::vector<world::ChunkKey> live_chunk_remesh_queue;
+    std::deque<world::ChunkKey> live_chunk_remesh_queue;
     bool live_catchup_packet_sync{};
     std::size_t deferred_terrain_cursor{};
     bool live_catchup_render_sync{};
@@ -1692,6 +1764,7 @@ struct NativeFrontendModule::Impl final {
     struct PendingMeleeSoundHint final {
         std::uint8_t tool_id{};
         audio::SoundPosition position{};
+        std::uint8_t player_id{255U};
     };
     /**
      * Damage(37) precedes its PlaySound(23). Retain a bounded semantic hint so
@@ -1716,6 +1789,8 @@ struct NativeFrontendModule::Impl final {
     std::uint8_t prefab_yaw_override{1U};
     std::string preview_prefab_name;
     std::optional<world::Kv6Model> preview_prefab_model;
+    mutable world::PrefabPlacementPreview preview_prefab_placement;
+    std::string preview_prefab_icon;
     std::optional<std::array<std::int16_t, 3U>> preview_prefab_position;
     std::uint8_t preview_prefab_yaw{};
     std::uint8_t preview_prefab_pitch{};
@@ -1728,6 +1803,10 @@ struct NativeFrontendModule::Impl final {
     bool preview_prefab_meshes_uploaded{};
     /** Tool-41 variant currently uploaded into the two shared ghost slots. */
     std::optional<std::uint8_t> preview_ugc_item_uploaded;
+    std::optional<std::uint8_t> preview_deployable_type_uploaded;
+    world::VxlColor preview_deployable_team_color{};
+    std::string preview_deployable_appearance;
+    std::vector<float> preview_deployable_minimum_y;
     std::uint32_t preview_prefab_color{};
     bool started{false};
     bool audio_started{false};
@@ -1772,7 +1851,9 @@ struct NativeFrontendModule::Impl final {
     ClassSelectionPresentation class_selection_presentation;
     UgcLoadoutMenuModel ugc_loadout_menu;
     UgcLoadoutPresentation ugc_loadout_presentation;
+    core::DeferredCleanupQueue bootstrap_cleanup;
     std::unique_ptr<world::TutorialWorldBootstrap> tutorial_bootstrap;
+    core::DeferredCleanupQueue::Reservation tutorial_bootstrap_cleanup;
     /** Fully meshed and uploaded world waiting behind the retail START gate. */
     std::shared_ptr<world::VxlMap> tutorial_ready_map;
     std::unique_ptr<world::TutorialWorldSession> tutorial_session;
@@ -1889,6 +1970,7 @@ struct NativeFrontendModule::Impl final {
      * identical and there is only one place that can get the lifetime wrong.
      */
     std::map<std::uint64_t, std::uint32_t> entity_part_slots;
+    std::map<std::uint64_t, std::string> entity_part_appearances;
     /**
      * Minimum render-space Y per uploaded entity part.
      *
@@ -1906,7 +1988,7 @@ struct NativeFrontendModule::Impl final {
      * re-voxelising the same KV6 for every entity made the first playable
      * frames spend roughly 25 ms apiece in presentation work.
      */
-    std::map<std::uint64_t, world::ChunkMesh> entity_model_cache;
+    std::map<std::pair<std::uint64_t,std::string>, world::ChunkMesh> entity_model_cache;
     /** Debug spawn menu (F7) visibility. */
     bool entity_menu_visible{};
     /** Training mannequins and live peers share decoded packet-28 state. */
@@ -1933,6 +2015,7 @@ struct NativeFrontendModule::Impl final {
         std::optional<std::uint8_t> attached_jetpack_id;
         /** Class supplied upper/lower arm meshes, independent of held tool. */
         bool arm_meshes_available{};
+        bool combined_arms{};
         bool draws_arms{};
         std::uint8_t tool_id{};
         std::uint8_t class_id{};
@@ -1943,6 +2026,7 @@ struct NativeFrontendModule::Impl final {
         std::uint8_t block_sucker_state{};
         std::int32_t block_sucker_state_world_loop{-1};
         std::uint32_t generation{};
+        std::string body_appearance{}, weapon_appearance{};
         bool primary_was_held{};
         std::int32_t last_primary_world_loop{-1};
         std::int32_t last_snapshot_world_loop{-1};
@@ -1957,9 +2041,25 @@ struct NativeFrontendModule::Impl final {
     /** GPU buffers no longer drawn, released incrementally outside packet handlers. */
     std::set<std::uint32_t> pending_remote_mesh_clears;
     /** CPU meshes are immutable and shared across player generations. */
-    std::map<std::uint64_t, world::ClassModelSet> remote_class_model_cache;
-    std::map<std::uint64_t, world::WeaponModelSet> remote_weapon_model_cache;
+    std::map<std::pair<std::uint64_t,std::string>, world::ClassModelSet> remote_class_model_cache;
+    std::map<std::pair<std::uint64_t,std::string>, world::WeaponModelSet> remote_weapon_model_cache;
+    network::CosmeticAppearances remote_cosmetics;
+
+    [[nodiscard]] const InventoryCosmetic* local_equipped_cosmetic(const std::string& slot) const {
+        return applied_settings.main.skins_visible(true) ? inventory_menu.equipped_item(slot) : nullptr;
+    }
+
+    [[nodiscard]] const InventoryCosmetic* equipped_cosmetic(std::uint8_t player, const std::string& slot) const {
+        if (!applied_settings.main.skins_visible(local_player_id==player)) return nullptr;
+        if (local_player_id==player) return inventory_menu.equipped_item(slot);
+        const auto* item = find_inventory_cosmetic(remote_cosmetics.item(player,slot));
+        return item && item->enabled && std::ranges::find(item->slots,slot)!=item->slots.end() ? item : nullptr;
+    }
     std::map<std::uint64_t, world::ChunkMesh> remote_jetpack_model_cache;
+    // Shared immutable canopies occupy world slots, separate from the hands
+    // and per-player rig so an equipment change cannot erase either.
+    std::array<bool, 2U> parachute_mesh_attempted{};
+    std::array<bool, 2U> parachute_mesh_uploaded{};
     std::map<std::uint32_t, world::DisguiseModelSet> remote_disguise_model_cache;
     /** At most one cold remote rig may allocate GPU buffers in a live tick. */
     std::size_t remote_rig_uploads_remaining{1U};
@@ -2008,6 +2108,22 @@ struct NativeFrontendModule::Impl final {
     std::optional<world::TutorialTool> uploaded_tool;
     std::optional<std::uint8_t> uploaded_sandbox_tool;
     std::uint32_t sandbox_tool_part_count{};
+    std::unique_ptr<world::ScriptedWeapon> scripted_weapon;
+    std::string scripted_cosmetic_id;
+    std::vector<std::string> failed_scripted_skins;
+    std::map<std::size_t,std::uint32_t> scripted_model_slots;
+    ScriptedWeaponImages scripted_images;
+    std::map<std::size_t,audio::SoundHandle> scripted_sounds;
+    std::chrono::steady_clock::time_point scripted_time{};
+    unsigned scripted_shots{};
+    bool scripted_reload_started{},scripted_reload_finished{};
+    float scripted_aim{};
+    world::ScriptedWeaponMotion scripted_motion;
+    std::unique_ptr<world::SkinVariantPreferences> skin_variant_preferences;
+    std::unique_ptr<CosmeticIconCache> cosmetic_icons;
+    std::uint64_t applied_skin_variant_revision{};
+    float scripted_raise{};
+    bool scripted_dig{};
     std::optional<std::uint32_t> sandbox_sight_slot;
     std::optional<std::uint32_t> sandbox_pin_slot;
     std::optional<std::uint32_t> sandbox_arm_upper_slot;
@@ -2100,6 +2216,14 @@ struct NativeFrontendModule::Impl final {
     }
 
     void initialize_social_client() {
+        social_leave_after_create = false;
+        social_open_match_generation.reset();
+        social_open_match_lobby_id.clear();
+        pending_social_lobby_navigation.reset();
+        social_canceled_join.reset();
+        social_chat_lobby_id.clear();
+        social_chat_event_ids.clear();
+        social_chat_event_order.clear();
         auto service = identity_service;
         social_client = std::make_unique<network::RevivalSocialClient>(
             [service](const network::RevivalSocialRequest& request, std::stop_token stop) {
@@ -2154,6 +2278,13 @@ struct NativeFrontendModule::Impl final {
     }
 
     void apply_identity(const network::RevivalAccount& account) {
+        inventory_fixture=false;
+        if (inventory_session) inventory_session->cancel();
+        inventory_menu=InventoryMenuModel{};
+        inventory_autoload=true;
+        uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
+        remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
+        remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
         if (social_client == nullptr ||
             social_client->status(std::chrono::steady_clock::now()).closing) {
             initialize_social_client();
@@ -2190,7 +2321,8 @@ struct NativeFrontendModule::Impl final {
                                       row.presence,
                                       row.friendship_status,
                                       row.direction,
-                                      row.current_lobby_id});
+                                      row.current_lobby_id,
+                                      row.current_server_id});
         }
         result.invitations.reserve(source.invitations.size());
         for (const auto& row : source.invitations) {
@@ -2214,13 +2346,94 @@ struct NativeFrontendModule::Impl final {
         return result;
     }
 
-    /**
-     * Project the AoSPlay lobby into retail BaseSquadLobbyMenu's one true
-     * roster. The Friends screen deliberately never renders a second roster.
-     */
-    void open_social_match_lobby(const network::RevivalSocialSnapshot& source) {
+    [[nodiscard]] static std::optional<std::uint16_t> social_u16(
+        const nlohmann::json& object,
+        std::string_view key) {
+        const auto found = object.find(key);
+        if (found == object.end() || !found->is_number_integer()) return std::nullopt;
+        const auto value = found->get<std::int64_t>();
+        if (value < 0 || value > std::numeric_limits<std::uint16_t>::max()) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint16_t>(value);
+    }
+
+    /** Decode only known Match Lobby fields; the menu model normalizes them. */
+    [[nodiscard]] static CreateMatchConfiguration social_configuration(
+        const network::RevivalSocialLobby& lobby) {
+        CreateMatchConfiguration result;
+        result.privacy = lobby.privacy == "invite"
+                             ? CreateMatchPrivacy::invite_only
+                         : lobby.privacy == "friends"
+                             ? CreateMatchPrivacy::friends_only
+                             : CreateMatchPrivacy::open;
+        result.max_players = static_cast<std::uint16_t>(
+            std::clamp<std::size_t>(lobby.maximum_members, 2U, 24U));
+        const auto& settings = lobby.settings;
+        if (const auto value = social_u16(settings, "retail_playlist_id")) {
+            result.retail_playlist_id = *value;
+        }
+        if (const auto value = social_u16(settings, "match_minutes")) {
+            result.match_minutes = *value;
+        }
+        if (const auto value = social_u16(settings, "bot_count")) {
+            result.bot_count = *value;
+        }
+        if (const auto value = social_u16(settings, "server_port")) {
+            result.server_port = *value;
+        }
+        if (const auto found = settings.find("map_name");
+            found != settings.end() && found->is_string()) {
+            result.map_name = found->get<std::string>();
+        }
+        if (const auto found = settings.find("bot_difficulty");
+            found != settings.end() && found->is_string()) {
+            result.bot_difficulty = found->get<std::string>();
+        }
+        if (const auto found = settings.find("rule_overrides");
+            found != settings.end() && found->is_object()) {
+            for (const auto& [key, value] : found->items()) {
+                if (value.is_string()) result.rule_overrides.emplace(key, value.get<std::string>());
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] static nlohmann::json social_settings(
+        const CreateMatchConfiguration& configuration) {
+        return nlohmann::json{{"retail_playlist_id", configuration.retail_playlist_id},
+                              {"match_minutes", configuration.match_minutes},
+                              {"bot_count", configuration.bot_count},
+                              {"bot_difficulty", configuration.bot_difficulty},
+                              {"server_port", configuration.server_port},
+                              {"map_name", configuration.map_name},
+                              {"rule_overrides", configuration.rule_overrides}};
+    }
+
+    [[nodiscard]] static std::string social_privacy(CreateMatchPrivacy privacy) {
+        switch (privacy) {
+        case CreateMatchPrivacy::invite_only: return "invite";
+        case CreateMatchPrivacy::friends_only: return "friends";
+        case CreateMatchPrivacy::open: return "open";
+        }
+        return "invite";
+    }
+
+    void sync_social_match_lobby(const network::RevivalSocialSnapshot& source,
+                                 bool apply_settings) {
         if (!source.lobby.has_value()) return;
         const auto& lobby = *source.lobby;
+        const bool authority_changed = social_match_lobby_id != lobby.id ||
+                                       social_match_owner_id != lobby.owner_id;
+        if (authority_changed) {
+            social_desired_configuration.reset();
+            social_sent_configuration.reset();
+            social_settings_generation.reset();
+            social_settings_waiting_for_sync = false;
+            apply_settings = true;
+        }
+        social_match_lobby_id = lobby.id;
+        social_match_owner_id = lobby.owner_id;
         std::vector<CreateMatchPlayer> players;
         players.reserve(lobby.members.size());
         std::uint64_t fallback_id{1U};
@@ -2229,48 +2442,267 @@ struct NativeFrontendModule::Impl final {
             const auto first = member.legacy_id.data();
             const auto last = first + member.legacy_id.size();
             const auto converted = std::from_chars(first, last, account_id);
-            if (converted.ec != std::errc{} || converted.ptr != last) {
-                account_id = fallback_id;
-            }
+            if (converted.ec != std::errc{} || converted.ptr != last) account_id = fallback_id;
             ++fallback_id;
+            const auto assigned = member.member_data.find("assigned_team");
+            const auto team = assigned != member.member_data.end() && assigned->is_number_integer()
+                                ? (*assigned == 2 ? 2 : *assigned == 3 ? 3 : 0) : 0;
             players.push_back(CreateMatchPlayer{account_id,
                                                 member.nickname,
-                                                "TEAM_NEUTRAL",
+                                                team == 2 ? "TEAM1_COLOR" : team == 3 ? "TEAM2_COLOR" : "TEAM_NEUTRAL",
                                                 member.legacy_id == lobby.owner_id,
                                                 member.legacy_id ==
                                                     friends_lobby_menu.local_account_id(),
                                                 member.in_game});
         }
-        if (players.empty()) {
-            players.push_back(CreateMatchPlayer{resolved_player_account_id,
-                                                config.player_name,
-                                                "TEAM_NEUTRAL",
-                                                true,
-                                                true,
-                                                false});
-        }
         create_match_menu.set_players(std::move(players));
+        create_match_menu.set_match_join_available(!lobby.server_id.empty() &&
+            (lobby.state == "ready" || lobby.state == "in_game"),
+            friends_lobby_menu.busy() || social_leave_generation ||
+                social_join_active.load(std::memory_order_acquire));
+        const auto owner = !friends_lobby_menu.local_account_id().empty() &&
+                           lobby.owner_id == friends_lobby_menu.local_account_id();
+        create_match_menu.set_host_authority(owner && lobby.state == "forming" &&
+                                             !social_start_generation && !social_start_retry_configuration &&
+                                             !social_leave_generation);
+        create_match_menu.set_member_management_enabled(lobby.state == "forming");
         if (!lobby.name.empty()) static_cast<void>(create_match_menu.set_lobby_name(lobby.name));
-        reset_create_match_page_transition();
-        friends_lobby_menu.leave();
-        static_cast<void>(window.set_text_input_enabled(false));
-        if (screen() == FrontendScreen::friends_lobby) {
-            static_cast<void>(navigation.replace(FrontendScreen::create_match,
-                                                 NavigationDirection::forward));
+        if (apply_settings) {
+            create_match_menu.apply_authoritative_configuration(social_configuration(lobby));
         }
     }
 
-    /** Best-effort social leave; the local route must never hang on HTTPS. */
-    void leave_active_social_lobby() {
-        if (social_client == nullptr) return;
+    /** Fold new cursor events into the bounded Match Lobby chat panel. */
+    void apply_social_lobby_events(const network::RevivalSocialSnapshot& source) {
+        if (!source.lobby.has_value()) return;
+        const auto& lobby = *source.lobby;
+        if (social_chat_lobby_id != lobby.id) {
+            social_chat_lobby_id = lobby.id;
+            social_chat_event_ids.clear();
+            social_chat_event_order.clear();
+            create_match_menu.set_chat_lines({});
+        }
+        auto lines = create_match_menu.presentation().chat_lines;
+        for (const auto& event : source.events) {
+            if (event.type != "lobby.chat" || event.lobby_id != lobby.id) continue;
+            if (event.id.empty() || social_chat_event_ids.contains(event.id)) continue;
+            const auto message = event.payload.find("message");
+            if (message == event.payload.end() || !message->is_string()) continue;
+            social_chat_event_ids.insert(event.id);
+            social_chat_event_order.push_back(event.id);
+            while (social_chat_event_order.size() > 512U) {
+                social_chat_event_ids.erase(social_chat_event_order.front());
+                social_chat_event_order.pop_front();
+            }
+            auto author = event.actor_id;
+            const auto member = std::ranges::find(lobby.members,
+                                                  event.actor_id,
+                                                  &network::RevivalSocialLobbyMember::legacy_id);
+            if (member != lobby.members.end() && !member->nickname.empty()) {
+                author = member->nickname;
+            }
+            if (author.empty()) author = "Player";
+            lines.push_back(CreateMatchChatLine{std::move(author),
+                                                message->get<std::string>()});
+        }
+        create_match_menu.set_chat_lines(std::move(lines));
+    }
+
+    [[nodiscard]] bool send_lobby_member_action(const CreateMatchMemberEffect& action) {
+        if (social_client == nullptr) return false;
         const auto snapshot = social_client->snapshot();
-        if (!snapshot.lobby.has_value()) return;
+        if (!snapshot.lobby || snapshot.lobby->state != "forming" ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id()) return false;
+        const auto target = std::to_string(action.account_id);
+        const auto member = std::ranges::find(snapshot.lobby->members, target,
+            &network::RevivalSocialLobbyMember::legacy_id);
+        if (member == snapshot.lobby->members.end() ||
+            (action.kick && target == snapshot.lobby->owner_id)) return false;
         network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.lobby_id = snapshot.lobby->id;
+        request.target = target;
+        request.action = action.kick ? "kick" : "assign_team";
+        request.payload = nlohmann::json{{"target", target}, {"team", action.team}};
+        return social_client->enqueue(std::move(request));
+    }
+
+    [[nodiscard]] bool send_active_lobby_chat(std::string message) {
+        if (social_client == nullptr || message.empty()) return false;
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value()) return false;
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "chat";
+        request.payload = nlohmann::json{{"message", std::move(message)}};
+        return social_client->enqueue(std::move(request));
+    }
+
+    /**
+     * Project the AoSPlay lobby into retail BaseSquadLobbyMenu's one true
+     * roster. The Friends screen deliberately never renders a second roster.
+     */
+    void open_social_match_lobby(const network::RevivalSocialSnapshot& source) {
+        if (!source.lobby.has_value()) return;
+        pending_social_lobby_navigation = source.lobby->id;
+        // Network replies may arrive halfway through the Friends slide. Keep
+        // the destination pending until routing accepts it, rather than losing
+        // the reply or disabling the still-visible menu.
+        if (!navigation.shell().accepts_input()) return;
+        const auto target = source.lobby->lobby_type == "ugc"
+            ? FrontendScreen::ugc_editor_lobby : FrontendScreen::create_match;
+        const auto current = screen();
+        if (current != target) {
+            const bool can_open = current == FrontendScreen::friends_lobby ||
+                current == FrontendScreen::ugc_editor_browser || is_create_match_screen(current);
+            if (!can_open) { pending_social_lobby_navigation.reset(); return; }
+            if (!navigation.return_to(target) &&
+                !navigation.replace(target, NavigationDirection::forward)) return;
+        }
+        pending_social_lobby_navigation.reset();
+        settings_warning.clear();
+        if (source.lobby->lobby_type == "ugc") {
+            sync_ugc_social_lobby(source);
+            friends_lobby_menu.leave();
+            static_cast<void>(window.set_text_input_enabled(false));
+            return;
+        }
+        sync_social_match_lobby(source, true);
+        reset_create_match_page_transition();
+        friends_lobby_menu.leave();
+        static_cast<void>(window.set_text_input_enabled(false));
+    }
+
+    [[nodiscard]] std::uint64_t background_social_generation() noexcept {
+        if (++next_background_social_generation == 0U) {
+            next_background_social_generation = 1'000'000'000ULL;
+        }
+        return next_background_social_generation;
+    }
+
+    /** Queue authoritative Leave and navigate only after AoSPlay confirms it. */
+    [[nodiscard]] bool leave_active_social_lobby() {
+        if (social_client == nullptr || social_leave_generation.has_value()) return false;
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value()) return false;
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
         request.kind = network::RevivalSocialRequestKind::lobby_action;
         request.priority = true;
         request.lobby_id = snapshot.lobby->id;
         request.action = "leave";
-        static_cast<void>(social_client->enqueue(std::move(request)));
+        const auto generation = request.generation;
+        if (!social_client->enqueue(std::move(request))) return false;
+        social_leave_generation = generation;
+        if (social_join_worker.joinable()) social_join_worker.request_stop();
+        if (const auto operation = friends_lobby_menu.operation(); operation &&
+            operation->intent.kind == FriendsLobbyActionKind::join_game) {
+            static_cast<void>(friends_lobby_menu.complete(operation->generation, true, {},
+                                                         std::chrono::steady_clock::now()));
+        }
+        social_canceled_join = std::array{snapshot.lobby->id, snapshot.lobby->start_id,
+                                          snapshot.lobby->server_id};
+        pending_social_lobby_navigation.reset();
+        create_match_menu.set_match_join_available(false);
+        settings_warning = "Leaving the lobby...";
+        return true;
+    }
+
+    [[nodiscard]] bool start_active_social_lobby(
+        const CreateMatchConfiguration& configuration, bool retry = false) {
+        if (social_client == nullptr || social_start_generation.has_value()) return false;
+        if (!retry && social_start_retry_configuration) return false;
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value() ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id() ||
+            snapshot.lobby->state != "forming") {
+            settings_warning = "Only the lobby owner can start this match";
+            return false;
+        }
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "start";
+        if (!retry) {
+            social_pending_start_id = network::new_revival_social_id();
+            social_start_revision_retries = 0U;
+            social_start_retry_configuration.reset();
+        }
+        if (social_settings_generation || social_desired_configuration || social_settings_waiting_for_sync) {
+            social_pending_start_lobby_id = snapshot.lobby->id;
+            social_start_retry_configuration = configuration;
+            create_match_menu.set_host_authority(false);
+            settings_warning = "Saving your latest settings before starting...";
+            return true;
+        }
+        request.payload = nlohmann::json{{"settings", social_settings(configuration)},
+            {"max_members", configuration.max_players}, {"privacy", social_privacy(configuration.privacy)}};
+        if (snapshot.lobby->lobby_type != "ugc") social_pending_ugc_start.reset();
+        if (snapshot.lobby->lobby_type == "ugc" && social_pending_ugc_start) {
+            request.payload = nlohmann::json{{"settings", ugc_social_settings(*social_pending_ugc_start)},
+                {"max_members", social_pending_ugc_start->maximum_players}};
+            request.payload["privacy"] = ugc_social_privacy(social_pending_ugc_start->privacy);
+        }
+        request.payload["revision"] = snapshot.lobby->revision;
+        request.payload["start_id"] = social_pending_start_id;
+        const auto generation = request.generation;
+        if (!social_client->enqueue(std::move(request))) return false;
+        social_start_generation = generation;
+        social_pending_start_lobby_id = snapshot.lobby->id;
+        social_start_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{30};
+        social_pending_start_configuration = configuration;
+        create_match_menu.set_host_authority(false);
+        settings_warning = "Starting the lobby match...";
+        return true;
+    }
+
+    void queue_social_settings(const CreateMatchConfiguration& configuration) {
+        if (social_client == nullptr) return;
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value() ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id() ||
+            snapshot.lobby->state != "forming" || social_start_generation.has_value()) {
+            return;
+        }
+        social_desired_configuration = configuration;
+    }
+
+    void pump_social_settings_update() {
+        if (social_client == nullptr || social_settings_generation.has_value() ||
+            social_settings_waiting_for_sync || !social_desired_configuration.has_value()) {
+            return;
+        }
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value() || snapshot.lobby->revision.empty() ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id() ||
+            snapshot.lobby->state != "forming" || social_start_generation.has_value()) {
+            social_desired_configuration.reset();
+            return;
+        }
+        const auto desired = *social_desired_configuration;
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.coalesce_key = "lobby-settings";
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "update";
+        request.payload = nlohmann::json{{"revision", snapshot.lobby->revision},
+                                         {"privacy", social_privacy(desired.privacy)},
+                                         {"max_members", desired.max_players},
+                                         {"settings", social_settings(desired)}};
+        const auto generation = request.generation;
+        if (!social_client->enqueue(std::move(request))) return;
+        social_settings_generation = generation;
+        social_sent_configuration = desired;
+        social_desired_configuration.reset();
     }
 
     [[nodiscard]] std::optional<std::pair<std::string, std::string>>
@@ -2283,28 +2715,87 @@ struct NativeFrontendModule::Impl final {
     }
 
     void submit_social_intent(FriendsLobbyIntent intent) {
+        const auto now = std::chrono::steady_clock::now();
+        if (config.debug_ui && config.debug_ui->starts_with("friends") &&
+            intent.kind != FriendsLobbyActionKind::back) {
+            if (const auto operation = friends_lobby_menu.begin(intent, now)) {
+                static_cast<void>(friends_lobby_menu.complete(operation->generation, false,
+                    "Design preview only. Open Friends from the main menu to play online.", now));
+            }
+            return;
+        }
+        if (intent.kind == FriendsLobbyActionKind::open_lobby) {
+            if (social_client != nullptr) open_social_match_lobby(social_client->snapshot());
+            return;
+        }
+        if (intent.kind == FriendsLobbyActionKind::start_lobby && social_client != nullptr) {
+            const auto snapshot = social_client->snapshot();
+            if (snapshot.lobby && snapshot.lobby->lobby_type == "ugc") {
+                open_social_match_lobby(snapshot);
+                social_pending_ugc_start = ugc_editor_lobby.configuration();
+                if (!start_active_social_lobby(CreateMatchConfiguration{})) social_pending_ugc_start.reset();
+                return;
+            }
+            if (snapshot.lobby) {
+                open_social_match_lobby(snapshot);
+                if (!start_active_social_lobby(social_configuration(*snapshot.lobby)))
+                    settings_warning = "Could not start the lobby. Please retry.";
+                return;
+            }
+        }
         if (intent.kind == FriendsLobbyActionKind::back) {
+            const auto snapshot = social_client != nullptr
+                ? social_client->snapshot() : network::RevivalSocialSnapshot{};
+            if (snapshot.lobby && !snapshot.lobby->server_id.empty())
+                social_canceled_join = std::array{snapshot.lobby->id, snapshot.lobby->start_id,
+                                                  snapshot.lobby->server_id};
             if (social_join_worker.joinable()) social_join_worker.request_stop();
+            social_open_match_generation.reset();
+            social_open_match_lobby_id.clear();
+            pending_social_lobby_navigation.reset();
             friends_lobby_menu.leave();
             static_cast<void>(window.set_text_input_enabled(false));
             static_cast<void>(navigation.pop());
             play_back();
             return;
         }
-        const auto now = std::chrono::steady_clock::now();
         auto operation = friends_lobby_menu.begin(intent, now);
-        if (!operation.has_value()) return;
+        if (!operation.has_value()) {
+            if (intent.kind == FriendsLobbyActionKind::create_lobby && is_create_match_screen(screen()))
+                settings_warning = "Online lobbies are unavailable. Use Local Match or reconnect and retry.";
+            return;
+        }
 
         if (intent.kind == FriendsLobbyActionKind::create_lobby ||
-            intent.kind == FriendsLobbyActionKind::accept_lobby_invite) {
+            intent.kind == FriendsLobbyActionKind::accept_lobby_invite ||
+            intent.kind == FriendsLobbyActionKind::join_friend_lobby) {
             social_open_match_generation = operation->generation;
+            social_open_match_lobby_id = intent.kind == FriendsLobbyActionKind::join_friend_lobby
+                ? intent.target_id : std::string{};
+            if (intent.kind == FriendsLobbyActionKind::accept_lobby_invite) {
+                if (const auto target = invitation_target(intent.target_id))
+                    social_open_match_lobby_id = target->first;
+            }
+            if (is_create_match_screen(screen())) {
+                create_match_menu.set_host_authority(false);
+                settings_warning = "Creating your online lobby...";
+            }
         }
 
         if (intent.kind == FriendsLobbyActionKind::join_game) {
+            if (social_leave_generation) {
+                static_cast<void>(friends_lobby_menu.complete(operation->generation, false,
+                    "Wait for Leave Lobby to finish before joining a match.", now));
+                return;
+            }
+            social_canceled_join.reset();
             if (!begin_social_lobby_join(operation->generation, std::move(intent.target_id))) {
                 static_cast<void>(friends_lobby_menu.complete(
                     operation->generation, false,
                     "The previous lobby connection is still cancelling. Please retry.", now));
+            } else if (is_create_match_screen(screen())) {
+                create_match_menu.set_match_join_available(true, true);
+                settings_warning = "Finding the lobby server...";
             }
             return;
         }
@@ -2313,7 +2804,13 @@ struct NativeFrontendModule::Impl final {
         request.generation = operation->generation;
         request.priority = intent.kind == FriendsLobbyActionKind::create_lobby ||
                            intent.kind == FriendsLobbyActionKind::accept_lobby_invite ||
+                           intent.kind == FriendsLobbyActionKind::join_friend_lobby ||
                            intent.kind == FriendsLobbyActionKind::invite_friend ||
+                           intent.kind == FriendsLobbyActionKind::decline_lobby_invite ||
+                           intent.kind == FriendsLobbyActionKind::send_friend_request ||
+                           intent.kind == FriendsLobbyActionKind::accept_friend_request ||
+                           intent.kind == FriendsLobbyActionKind::decline_friend_request ||
+                           intent.kind == FriendsLobbyActionKind::remove_friend ||
                            intent.kind == FriendsLobbyActionKind::leave_lobby ||
                            intent.kind == FriendsLobbyActionKind::start_lobby;
         request.target = intent.target_id;
@@ -2326,18 +2823,33 @@ struct NativeFrontendModule::Impl final {
         case FriendsLobbyActionKind::accept_friend_request:
         case FriendsLobbyActionKind::decline_friend_request:
         case FriendsLobbyActionKind::remove_friend:
+        case FriendsLobbyActionKind::send_friend_request:
             request.kind = network::RevivalSocialRequestKind::friend_action;
-            request.action = intent.kind == FriendsLobbyActionKind::accept_friend_request
+            request.action = intent.kind == FriendsLobbyActionKind::send_friend_request
+                                 ? "request"
+                             : intent.kind == FriendsLobbyActionKind::accept_friend_request
                                  ? "accept"
                              : intent.kind == FriendsLobbyActionKind::decline_friend_request
                                  ? "decline"
                                  : "remove";
             break;
+        case FriendsLobbyActionKind::join_friend_lobby:
+            request.kind = network::RevivalSocialRequestKind::lobby_action;
+            request.lobby_id = intent.target_id;
+            request.action = "join";
+            break;
         case FriendsLobbyActionKind::create_lobby:
             request.kind = network::RevivalSocialRequestKind::create_lobby;
-            request.payload = nlohmann::json{{"name", config.player_name + "'s Lobby"},
-                                             {"privacy", "friends"},
-                                             {"max_members", 24}};
+            request.payload = nlohmann::json{
+                {"name", config.player_name + "'s Lobby"},
+                {"privacy", social_privacy(create_match_menu.configuration().privacy)},
+                {"max_members", create_match_menu.configuration().max_players},
+                {"settings", social_settings(create_match_menu.configuration())}};
+            if (!intent.target_id.empty()) {
+                // The collection endpoint creates the lobby and invitation in
+                // one database transaction, avoiding a race with social sync.
+                request.payload["invite_target"] = intent.target_id;
+            }
             break;
         case FriendsLobbyActionKind::accept_lobby_invite: {
             const auto target = invitation_target(intent.target_id);
@@ -2361,7 +2873,7 @@ struct NativeFrontendModule::Impl final {
             }
             request.kind = network::RevivalSocialRequestKind::lobby_action;
             request.lobby_id = target->first;
-            request.action = "decline";
+            request.action = "decline_invite";
             request.payload = nlohmann::json{{"invitation_id", target->second}};
             break;
         }
@@ -2386,8 +2898,8 @@ struct NativeFrontendModule::Impl final {
             request.lobby_id = friends_lobby_menu.snapshot().lobby->id;
             request.action = intent.kind == FriendsLobbyActionKind::leave_lobby ? "leave" : "start";
             break;
-        case FriendsLobbyActionKind::send_friend_request:
         case FriendsLobbyActionKind::retry:
+        case FriendsLobbyActionKind::open_lobby:
         case FriendsLobbyActionKind::back:
         case FriendsLobbyActionKind::join_game:
             static_cast<void>(friends_lobby_menu.complete(
@@ -2416,9 +2928,14 @@ struct NativeFrontendModule::Impl final {
             social_join_outcome.reset();
         }
         const auto public_url = config.public_server_list_url;
+        const auto snapshot = social_client != nullptr ? social_client->snapshot() : network::RevivalSocialSnapshot{};
+        const bool follows_lobby = snapshot.lobby && snapshot.lobby->server_id == server_id;
+        auto lobby_id = follows_lobby ? snapshot.lobby->id : std::string{};
+        auto start_id = follows_lobby ? snapshot.lobby->start_id : std::string{};
         social_join_active.store(true, std::memory_order_release);
         social_join_worker = std::jthread{
-            [this, generation, server_id = std::move(server_id), public_url](
+            [this, generation, server_id = std::move(server_id), public_url,
+             lobby_id = std::move(lobby_id), start_id = std::move(start_id)](
                 std::stop_token stop) mutable {
                 network::PublicDiscoveryConfig discovery_config;
                 discovery_config.url = public_url;
@@ -2430,7 +2947,8 @@ struct NativeFrontendModule::Impl final {
                 }
                 std::scoped_lock lock{social_join_mutex};
                 social_join_outcome =
-                    SocialJoinOutcome{generation, std::move(server_id), std::move(discovery)};
+                    SocialJoinOutcome{generation, std::move(server_id), std::move(discovery),
+                                      std::move(lobby_id), std::move(start_id)};
                 social_join_active.store(false, std::memory_order_release);
             }};
         return true;
@@ -2448,6 +2966,16 @@ struct NativeFrontendModule::Impl final {
             social_join_outcome.reset();
         }
         if (!outcome.has_value()) return;
+        if (social_leave_generation) return;
+        if (!outcome->lobby_id.empty()) {
+            const auto snapshot = social_client != nullptr ? social_client->snapshot() : network::RevivalSocialSnapshot{};
+            if (!snapshot.lobby || snapshot.lobby->id != outcome->lobby_id ||
+                snapshot.lobby->start_id != outcome->start_id || snapshot.lobby->server_id != outcome->server_id) {
+                static_cast<void>(friends_lobby_menu.complete(outcome->generation, false,
+                    "The lobby changed before the server could be joined.", std::chrono::steady_clock::now()));
+                return;
+            }
+        }
         const auto found = network::find_discovered_server(
             outcome->discovery.servers, outcome->server_id);
         if (!found.has_value()) {
@@ -2455,12 +2983,25 @@ struct NativeFrontendModule::Impl final {
                                     ? "That lobby's server is no longer published."
                                     : "Could not resolve the lobby server: " +
                                           outcome->discovery.error;
-            static_cast<void>(friends_lobby_menu.complete(
-                outcome->generation, false, reason, std::chrono::steady_clock::now()));
+            const auto accepted = friends_lobby_menu.complete(
+                outcome->generation, false, reason, std::chrono::steady_clock::now());
+            if (accepted && is_create_match_screen(screen())) settings_warning = reason;
+            // Publication and public-list reads are eventually consistent.
+            // Do not remember a failed lookup as joined: the authoritative
+            // lobby poll must be allowed to retry the same server ID.
+            if (social_last_joined_server_id == outcome->server_id) {
+                social_last_joined_server_id.clear();
+            }
+            social_join_retry_at = std::chrono::steady_clock::now() +
+                                   std::chrono::seconds{1};
             return;
         }
         const auto now = std::chrono::steady_clock::now();
         if (!friends_lobby_menu.complete(outcome->generation, true, {}, now)) return;
+        social_last_joined_server_id = outcome->server_id;
+        social_joined_lobby_id = outcome->lobby_id;
+        social_joined_start_id = outcome->start_id;
+        social_join_retry_at = {};
         begin_match_loading(ServerConnectRequest{found->game.identifier(),
                                                   found->game.host,
                                                   found->game.port,
@@ -2472,46 +3013,597 @@ struct NativeFrontendModule::Impl final {
                                                   found->identity_ticket});
     }
 
+    /** Move all potentially blocking host shutdown off the presentation thread. */
+    void retire_local_host(LocalHostOutcome outcome) {
+        if (!outcome.process && !outcome.tunnel && !outcome.relay) return;
+        auto reservation = std::move(outcome.cleanup);
+        reservation.defer(std::packaged_task<void()>{
+            [service = identity_service, outcome = std::move(outcome)]() mutable {
+                if (outcome.tunnel) outcome.tunnel->stop();
+                if (outcome.process) outcome.process->stop();
+                if (outcome.relay && service) {
+                    static_cast<void>(service->close_relay_lobby(*outcome.relay));
+                }
+            }});
+    }
+
+    /** Stop and unpublish every resource owned by a client-hosted match. */
+    void release_owned_local_match_host() {
+        if (local_host_cancel != nullptr) local_host_cancel->request_stop();
+        active_local_host_generation = 0U;
+        owned_social_lobby_id.clear();
+        owned_social_start_id.clear();
+        social_publish_generation.reset();
+        social_pending_owner_connect.reset();
+        social_publish_attempts = 0U;
+        LocalHostOutcome retired;
+        retired.process = std::move(owned_local_server);
+        retired.tunnel = std::move(owned_relay_tunnel);
+        retired.relay = std::move(owned_relay_lobby);
+        retired.cleanup = std::move(owned_host_cleanup);
+        owned_relay_lobby.reset();
+        retire_local_host(std::move(retired));
+        hosted_results_retry_at = {};
+    }
+
+    /** Ask AoSPlay to return a failed lobby start to its editable state. */
+    void queue_social_start_failed(std::string message) {
+        if (social_client == nullptr) return;
+        const auto snapshot = social_client->snapshot();
+        const auto& lobby_id = owned_social_lobby_id.empty() ? social_pending_start_lobby_id : owned_social_lobby_id;
+        const auto& attempt = owned_social_start_id.empty() ? social_pending_start_id : owned_social_start_id;
+        if (!snapshot.lobby.has_value() ||
+            lobby_id.empty() || attempt.empty() || snapshot.lobby->id != lobby_id ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id()) {
+            return;
+        }
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "start_failed";
+        request.payload = nlohmann::json{{"message", std::move(message)}};
+        request.payload["start_id"] = attempt;
+        static_cast<void>(social_client->enqueue(std::move(request)));
+    }
+
+    /**
+     * Publish the already-running relay into the social lobby.
+     *
+     * AoSPlay accepts this only after the authoritative server has completed
+     * at least one authenticated heartbeat. A bounded retry therefore closes
+     * the race between local A2S readiness and public master readiness.
+     */
+    [[nodiscard]] bool queue_social_publish() {
+        if (social_client == nullptr || social_publish_generation.has_value() ||
+            !owned_relay_lobby.has_value() ||
+            !social_pending_owner_connect.has_value()) {
+            return false;
+        }
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value() ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id()) {
+            return false;
+        }
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "publish";
+        request.payload = nlohmann::json{
+            {"relay_lobby_id", owned_relay_lobby->lobby_id},
+            {"server_id", owned_relay_lobby->server_id}};
+        if (!owned_social_start_id.empty()) request.payload["start_id"] = owned_social_start_id;
+        const auto generation = request.generation;
+        if (!social_client->enqueue(std::move(request))) return false;
+        social_publish_generation = generation;
+        ++social_publish_attempts;
+        settings_warning = "Publishing the community match to the lobby...";
+        return true;
+    }
+
+    void show_host_start_failure(std::string message) {
+        match_loading.fail("SERVER_CONNECTION_FAILED");
+        std::fprintf(stderr, "[hosting] %s\n", message.c_str());
+        // Keep the map/rules editable and the concrete failure visible. A
+        // relay outage must not strand the host on a generic failed loader.
+        const auto newline = message.find_first_of("\r\n");
+        settings_warning = message.substr(0U, std::min<std::size_t>(newline, 300U));
+        static_cast<void>(navigation.leave_match_instant());
+    }
+
+    void fail_social_host_start(std::string message) {
+        social_pending_ugc_start.reset();
+        if (message.empty()) message = "The public match could not be published.";
+        queue_social_start_failed(message);
+        show_host_start_failure(std::move(message));
+        release_owned_local_match_host();
+    }
+
+    /**
+     * A disconnected HTTP response does not prove that a write failed.
+     * PostgreSQL may have committed before the socket vanished.  These
+     * outcomes stay pending until the next authoritative sync proves success
+     * or the menu's bounded deadline expires.
+     */
+    [[nodiscard]] static bool social_write_may_have_committed(
+        const network::RevivalSocialResult& result) noexcept {
+        if (result ||
+            (result.request.kind != network::RevivalSocialRequestKind::friend_action &&
+             result.request.kind != network::RevivalSocialRequestKind::create_lobby &&
+             result.request.kind != network::RevivalSocialRequestKind::lobby_action)) {
+            return false;
+        }
+        if (result.http_status == 0L || result.http_status >= 500L) return true;
+        if (result.request.kind == network::RevivalSocialRequestKind::create_lobby &&
+            result.error_code == "active_lobby_exists") {
+            return true;
+        }
+        if (result.request.kind == network::RevivalSocialRequestKind::friend_action &&
+            result.error_code == "friend_request_missing") {
+            return true;
+        }
+        return result.request.kind == network::RevivalSocialRequestKind::lobby_action &&
+               result.request.action == "leave" &&
+               result.error_code == "lobby_not_found";
+    }
+
+    void pump_social_publish_retry(std::chrono::steady_clock::time_point now) {
+        if (!social_pending_owner_connect.has_value() ||
+            social_publish_generation.has_value()) {
+            return;
+        }
+        if (now >= social_publish_deadline) {
+            fail_social_host_start(
+                "The server started locally, but AoSPlay did not confirm its public relay in time.");
+            return;
+        }
+        if (now >= social_publish_retry_at && !queue_social_publish()) {
+            social_publish_retry_at = now + std::chrono::milliseconds{250};
+        }
+    }
+
     void pump_social() {
+        if (config.debug_ui && config.debug_ui->starts_with("friends")) return;
         if (social_client == nullptr) return;
         const auto now = std::chrono::steady_clock::now();
+        if (social_open_match_generation && ugc_create_deadline == std::chrono::steady_clock::time_point{}) {
+            const auto operation = friends_lobby_menu.operation();
+            if (!operation || operation->generation != *social_open_match_generation ||
+                now >= operation->deadline) {
+                social_open_match_generation.reset();
+                social_open_match_lobby_id.clear();
+                if (social_leave_after_create && is_create_match_screen(screen()))
+                    static_cast<void>(navigation.pop());
+            }
+        }
         social_client->tick(now);
         for (auto result : social_client->drain(now)) {
-            if (result.request.kind == network::RevivalSocialRequestKind::sync) continue;
-            if (result.request.kind == network::RevivalSocialRequestKind::find_friends && result) {
-                if (!result.found_player.has_value()) {
-                    static_cast<void>(friends_lobby_menu.complete(
-                        result.request.generation, false, "No exact player match was found.", now));
-                    continue;
-                }
-                network::RevivalSocialRequest followup;
-                followup.generation = result.request.generation;
-                followup.kind = network::RevivalSocialRequestKind::friend_action;
-                followup.action = "request";
-                followup.target = result.found_player->legacy_id;
-                if (!social_client->enqueue(std::move(followup))) {
-                    static_cast<void>(friends_lobby_menu.complete(
-                        result.request.generation, false,
-                        "The friend request queue is busy. Please retry.", now));
+            if (ugc_settings_generation == result.request.generation) {
+                ugc_settings_generation.reset();
+                ugc_settings_retry_at = now + std::chrono::seconds{2};
+                if (!result) {
+                    settings_warning = result.error;
+                    // Keep the draft for transient errors; a rejected value
+                    // must converge to the owner's authoritative settings.
+                    if (!social_write_may_have_committed(result) &&
+                        result.error_code != "lobby_revision_conflict") ugc_social_owner_id.clear();
                 }
                 continue;
             }
-            static_cast<void>(friends_lobby_menu.complete(
-                result.request.generation, static_cast<bool>(result), result.error, now));
+            if (ugc_discovery_generation == result.request.generation) {
+                ugc_discovery_generation.reset();
+                if (screen() == FrontendScreen::ugc_editor_browser) {
+                    std::vector<UgcEditorLobbyRecord> rows;
+                    if (result) for (const auto& lobby : result.snapshot.lobbies) {
+                        if (lobby.lobby_type != "ugc") continue;
+                        const auto friends = social_client->snapshot().friends;
+                        if (ugc_editor_browser.source() == UgcEditorLobbySource::friends &&
+                            !std::ranges::any_of(friends, [&](const auto& friend_row) {
+                                return friend_row.legacy_id == lobby.owner_id;
+                            }) && lobby.owner_id != friends_lobby_menu.local_account_id()) continue;
+                        rows.push_back({lobby.id, lobby.name,
+                            static_cast<std::uint16_t>(std::max(lobby.member_count, lobby.members.size())),
+                            static_cast<std::uint16_t>(lobby.maximum_members), 0U, lobby.privacy == "open"});
+                    }
+                    static_cast<void>(ugc_editor_browser.complete_refresh(std::move(rows), static_cast<bool>(result)));
+                }
+                continue;
+            }
+            if (result) apply_social_lobby_events(result.snapshot);
+            if (result.request.kind == network::RevivalSocialRequestKind::sync) {
+                if (result && social_settings_waiting_for_sync) {
+                    social_settings_waiting_for_sync = false;
+                }
+                continue;
+            }
+            if (social_leave_generation == result.request.generation) {
+                if (result) {
+                    social_leave_generation.reset();
+                    release_owned_local_match_host();
+                    social_desired_configuration.reset();
+                    social_settings_generation.reset();
+                    social_sent_configuration.reset();
+                    social_settings_waiting_for_sync = false;
+                    social_start_generation.reset();
+                    social_pending_start_configuration.reset();
+                    social_pending_ugc_start.reset();
+                    ugc_social_lobby_id.clear();
+                    ugc_settings_generation.reset();
+                    create_match_menu.set_host_authority(true);
+                    settings_warning.clear();
+                    if (is_create_match_screen(screen())) {
+                        static_cast<void>(navigation.pop());
+                    }
+                } else if (social_write_may_have_committed(result)) {
+                    settings_warning = "Confirming that the lobby was left...";
+                } else {
+                    social_leave_generation.reset();
+                    settings_warning = result.error.empty()
+                                           ? "Leave Lobby failed. Please retry."
+                                           : result.error;
+                }
+                continue;
+            }
+            if (social_settings_generation == result.request.generation) {
+                social_settings_generation.reset();
+                if (!result) {
+                    if (!social_desired_configuration.has_value() &&
+                        social_sent_configuration.has_value()) {
+                        social_desired_configuration = social_sent_configuration;
+                    }
+                    settings_warning = result.error_code == "lobby_revision_conflict"
+                                           ? "Lobby settings changed; synchronizing and retrying."
+                                           : result.error;
+                    social_settings_waiting_for_sync =
+                        result.error_code == "lobby_revision_conflict";
+                } else {
+                    settings_warning.clear();
+                    social_settings_waiting_for_sync = false;
+                }
+                social_sent_configuration.reset();
+                continue;
+            }
+            if (social_start_generation == result.request.generation) {
+                if (!result && result.error_code == "lobby_revision_conflict" &&
+                    social_start_revision_retries < 3U && social_pending_start_configuration) {
+                    ++social_start_revision_retries;
+                    social_start_retry_configuration = social_pending_start_configuration;
+                    social_pending_start_configuration.reset();
+                    social_start_generation.reset();
+                    social_settings_waiting_for_sync = true;
+                    settings_warning = "Lobby settings changed; confirming the latest revision before starting...";
+                } else if (!result && social_write_may_have_committed(result)) {
+                    settings_warning = "Confirming that the lobby match started...";
+                } else if (!result || !social_pending_start_configuration.has_value()) {
+                    social_start_generation.reset();
+                    settings_warning = result.error.empty()
+                                           ? "The lobby could not start."
+                                           : result.error;
+                    social_pending_start_configuration.reset();
+                    social_pending_ugc_start.reset();
+                } else if (!result.snapshot.lobby ||
+                           result.snapshot.lobby->id != social_pending_start_lobby_id ||
+                           result.snapshot.lobby->owner_id != friends_lobby_menu.local_account_id() ||
+                           result.snapshot.lobby->start_id != social_pending_start_id ||
+                           (result.snapshot.lobby->state != "starting" && result.snapshot.lobby->state != "ready" &&
+                            result.snapshot.lobby->state != "in_game")) {
+                    social_start_generation.reset();
+                    social_pending_start_configuration.reset();
+                    social_pending_ugc_start.reset();
+                    settings_warning = "The lobby changed before this match could start.";
+                } else {
+                    social_start_generation.reset();
+                    const auto configuration = *social_pending_start_configuration;
+                    social_pending_start_configuration.reset();
+                    launch_social_session(configuration);
+                }
+                continue;
+            }
+            if (social_publish_generation == result.request.generation) {
+                social_publish_generation.reset();
+                if (result && social_pending_owner_connect.has_value()) {
+                    auto request = std::move(*social_pending_owner_connect);
+                    social_pending_owner_connect.reset();
+                    social_publish_attempts = 0U;
+                    settings_warning = "Community match published. Connecting...";
+                    begin_match_loading(request);
+
+                    // server_id is already authoritative after publish. This
+                    // state only improves friends-list presence and is not a
+                    // prerequisite for members to converge and connect.
+                    network::RevivalSocialRequest in_game;
+                    in_game.generation = background_social_generation();
+                    in_game.kind = network::RevivalSocialRequestKind::lobby_action;
+                    in_game.priority = true;
+                    in_game.lobby_id = result.snapshot.lobby.has_value()
+                                           ? result.snapshot.lobby->id
+                                           : result.request.lobby_id;
+                    in_game.action = "in_game";
+                    if (!owned_social_start_id.empty()) in_game.payload["start_id"] = owned_social_start_id;
+                    static_cast<void>(social_client->enqueue(std::move(in_game)));
+                } else if (result.error_code == "relay_not_ready" &&
+                           social_pending_owner_connect.has_value() &&
+                           now < social_publish_deadline) {
+                    const auto shift = std::min<std::uint32_t>(social_publish_attempts, 3U);
+                    social_publish_retry_at =
+                        now + std::chrono::milliseconds{250U << shift};
+                    settings_warning =
+                        "Waiting for the public server heartbeat before inviting the lobby...";
+                } else if (social_write_may_have_committed(result) &&
+                           social_pending_owner_connect.has_value() &&
+                           now < social_publish_deadline) {
+                    social_publish_retry_at = now + std::chrono::milliseconds{500};
+                    settings_warning =
+                        "Confirming the public community server with AoSPlay...";
+                } else {
+                    fail_social_host_start(result.error.empty()
+                                               ? "The lobby rejected the public server."
+                                               : result.error);
+                }
+                continue;
+            }
+            if (result.request.kind == network::RevivalSocialRequestKind::find_friends && result) {
+                std::vector<FriendsLobbyFriend> matches;
+                matches.reserve(result.found_players.size());
+                for (const auto& row : result.found_players) {
+                    matches.push_back({row.legacy_id,
+                                       row.nickname.empty() ? row.username : row.nickname,
+                                       row.presence,
+                                       row.friendship_status,
+                                       row.direction,
+                                       row.current_lobby_id,
+                                       row.current_server_id});
+                }
+                if (!friends_lobby_menu.apply_search_results(result.request.generation,
+                        result.request.query, std::move(matches), now)) continue;
+                if (result.found_players.empty()) {
+                    static_cast<void>(friends_lobby_menu.complete(
+                        result.request.generation, false, "No matching player profile was found.", now));
+                    continue;
+                }
+                static_cast<void>(friends_lobby_menu.complete(
+                    result.request.generation, true, {}, now));
+                continue;
+            }
+            const auto reconcile_from_poll = social_write_may_have_committed(result);
+            if (!reconcile_from_poll) {
+                static_cast<void>(friends_lobby_menu.complete(
+                    result.request.generation, static_cast<bool>(result), result.error, now));
+            }
             if (social_open_match_generation.has_value() &&
                 *social_open_match_generation == result.request.generation) {
-                if (result && result.snapshot.lobby.has_value()) {
-                    open_social_match_lobby(result.snapshot);
+                if (result && result.snapshot.lobby.has_value() &&
+                    (social_open_match_lobby_id.empty() ||
+                     result.snapshot.lobby->id == social_open_match_lobby_id)) {
+                    if (!ugc_leave_after_create && !social_leave_after_create) open_social_match_lobby(result.snapshot);
                 }
-                social_open_match_generation.reset();
+                if (!reconcile_from_poll) {
+                    social_open_match_generation.reset();
+                    ugc_create_deadline = {};
+                    if (!result && social_leave_after_create && !result.snapshot.lobby) {
+                        social_leave_after_create = false;
+                        if (is_create_match_screen(screen())) static_cast<void>(navigation.pop());
+                    }
+                }
             }
-            social_client->set_presence("online");
         }
         friends_lobby_menu.apply_snapshot(
             adapt_social_snapshot(social_client->snapshot()), now);
+        const auto authoritative = social_client->snapshot();
+        create_match_menu.set_match_join_available(authoritative.lobby &&
+            !authoritative.lobby->server_id.empty() &&
+            (authoritative.lobby->state == "ready" || authoritative.lobby->state == "in_game"),
+            friends_lobby_menu.busy() || social_leave_generation ||
+                social_join_active.load(std::memory_order_acquire));
+        if (social_leave_after_create && authoritative.lobby && !social_leave_generation &&
+            leave_active_social_lobby()) {
+            social_leave_after_create = false;
+            social_open_match_generation.reset();
+        }
+        const bool pending_start_owned = authoritative.lobby &&
+            authoritative.lobby->id == social_pending_start_lobby_id &&
+            authoritative.lobby->owner_id == friends_lobby_menu.local_account_id();
+        if (social_start_generation && !pending_start_owned) {
+            social_start_generation.reset();
+            social_pending_start_configuration.reset();
+            social_pending_ugc_start.reset();
+        }
+        if (social_start_retry_configuration && !pending_start_owned)
+            social_start_retry_configuration.reset();
+        if (!owned_social_lobby_id.empty() &&
+            (!authoritative.lobby || authoritative.lobby->id != owned_social_lobby_id ||
+             authoritative.lobby->owner_id != friends_lobby_menu.local_account_id() ||
+             authoritative.lobby->state == "forming" || authoritative.lobby->state == "closed" ||
+             (!owned_social_start_id.empty() && authoritative.lobby->start_id != owned_social_start_id))) {
+            release_owned_local_match_host();
+            teardown_tutorial();
+            static_cast<void>(navigation.leave_match_instant());
+            settings_warning = "The lobby or hosted match changed. The previous server was stopped.";
+        }
+        if (!social_joined_lobby_id.empty() &&
+            (!authoritative.lobby || authoritative.lobby->id != social_joined_lobby_id ||
+             authoritative.lobby->start_id != social_joined_start_id ||
+             authoritative.lobby->server_id != social_last_joined_server_id)) {
+            social_joined_lobby_id.clear();
+            social_joined_start_id.clear();
+            social_last_joined_server_id.clear();
+            teardown_tutorial();
+            static_cast<void>(navigation.leave_match_instant());
+            settings_warning = "The hosted match ended or the lobby changed. Returned to the lobby.";
+        }
+        if (!social_match_lobby_id.empty() && !authoritative.lobby) {
+            social_match_lobby_id.clear();
+            social_match_owner_id.clear();
+            social_desired_configuration.reset();
+            social_sent_configuration.reset();
+            social_settings_generation.reset();
+            social_settings_waiting_for_sync = false;
+            create_match_menu.set_host_authority(false);
+            create_match_menu.set_players({});
+            while (is_create_match_screen(screen())) {
+                if (!navigation.pop_instant()) break;
+            }
+            settings_warning = "The lobby has closed or you are no longer a member.";
+        }
+        if (ugc_leave_after_create && authoritative.lobby && authoritative.lobby->lobby_type == "ugc" &&
+            !social_leave_generation && leave_active_social_lobby()) {
+            ugc_leave_after_create = false;
+            social_open_match_generation.reset();
+        }
+        if (!ugc_social_lobby_id.empty() && !authoritative.lobby) {
+            ugc_social_lobby_id.clear();
+            ugc_social_owner_id.clear();
+            ugc_settings_generation.reset();
+            social_pending_ugc_start.reset();
+            ugc_editor_lobby.set_host_authority(false);
+            if (screen() == FrontendScreen::ugc_editor_lobby) {
+                settings_warning = "The editor lobby has closed or you are no longer a member.";
+                static_cast<void>(navigation.pop());
+            }
+        }
+        if (authoritative.lobby && authoritative.lobby->lobby_type == "ugc" &&
+            screen() == FrontendScreen::ugc_editor_lobby) sync_ugc_social_lobby(authoritative);
+
+        // Recover every state-changing transition from the authoritative poll
+        // as well as from its direct HTTP response.  This is essential on
+        // Wi-Fi/mobile networks where the database commit can outlive the
+        // response socket, and it makes macOS and Windows converge identically.
+        if (social_open_match_generation.has_value() &&
+            authoritative.lobby.has_value() &&
+            (social_open_match_lobby_id.empty() || authoritative.lobby->id == social_open_match_lobby_id)) {
+            static_cast<void>(friends_lobby_menu.complete(
+                *social_open_match_generation, true, {}, now));
+            social_open_match_generation.reset();
+            ugc_create_deadline = {};
+            if (screen() == FrontendScreen::friends_lobby || screen() == FrontendScreen::ugc_editor_browser ||
+                screen() == FrontendScreen::ugc_editor_lobby) {
+                open_social_match_lobby(authoritative);
+            }
+        }
+        if (social_leave_generation.has_value() && !authoritative.lobby.has_value()) {
+            social_leave_generation.reset();
+            release_owned_local_match_host();
+            social_desired_configuration.reset();
+            social_settings_generation.reset();
+            social_sent_configuration.reset();
+            social_settings_waiting_for_sync = false;
+            social_start_generation.reset();
+            social_pending_start_configuration.reset();
+            social_pending_ugc_start.reset();
+            ugc_settings_generation.reset();
+            create_match_menu.set_host_authority(true);
+            settings_warning.clear();
+            if (is_create_match_screen(screen())) {
+                static_cast<void>(navigation.pop());
+            }
+        }
+        if (social_start_generation.has_value() &&
+            social_pending_start_configuration.has_value() &&
+            authoritative.lobby.has_value() &&
+            pending_start_owned &&
+            authoritative.lobby->start_id == social_pending_start_id &&
+            authoritative.lobby->owner_id == friends_lobby_menu.local_account_id() &&
+            (authoritative.lobby->state == "starting" ||
+             authoritative.lobby->state == "ready" ||
+             authoritative.lobby->state == "in_game")) {
+            social_start_generation.reset();
+            const auto configuration = *social_pending_start_configuration;
+            social_pending_start_configuration.reset();
+            launch_social_session(configuration);
+        }
+        if (!authoritative.lobby.has_value() ||
+            authoritative.lobby->server_id.empty()) {
+            // A failed/finished host start returns the same lobby to forming.
+            // Forget its previous relay so a later allocation may legitimately
+            // reuse the same public identifier and still trigger Join Game.
+            social_last_joined_server_id.clear();
+        }
+        if (is_create_match_screen(screen()) && authoritative.lobby.has_value()) {
+            const auto apply_settings = !social_settings_generation.has_value() &&
+                                        !social_desired_configuration.has_value();
+            sync_social_match_lobby(authoritative, apply_settings);
+        }
         const auto status = social_client->status(now);
         friends_lobby_menu.set_service_status(status.available, status.last_error);
         friends_lobby_menu.tick(now);
+        if (is_create_match_screen(screen()) && !authoritative.lobby && !friends_lobby_menu.busy()) {
+            create_match_menu.set_host_authority(true);
+            if (!friends_lobby_menu.error().empty()) settings_warning = friends_lobby_menu.error();
+            if (social_open_match_generation && ugc_create_deadline == std::chrono::steady_clock::time_point{}) {
+                social_open_match_generation.reset();
+                if (social_leave_after_create) {
+                    static_cast<void>(navigation.pop());
+                }
+            }
+        }
+        pump_social_settings_update();
+        if (social_start_retry_configuration && !social_start_generation &&
+            !social_settings_waiting_for_sync && !social_settings_generation) {
+            const auto retry = *social_start_retry_configuration;
+            social_start_retry_configuration.reset();
+            static_cast<void>(start_active_social_lobby(retry, true));
+        }
+        if (social_start_generation && now >= social_start_deadline) {
+            social_start_generation.reset();
+            social_pending_start_configuration.reset();
+            social_pending_ugc_start.reset();
+            settings_warning = "AoSPlay could not confirm the match start. Retry after the lobby synchronizes.";
+            queue_social_start_failed(settings_warning);
+        }
+        pump_ugc_social_settings(now);
+        if (social_open_match_generation && ugc_create_deadline != std::chrono::steady_clock::time_point{} &&
+            now >= ugc_create_deadline) {
+            social_open_match_generation.reset();
+            ugc_create_deadline = {};
+            settings_warning = "AoSPlay could not confirm the editor lobby. Return to the browser and retry.";
+            ugc_editor_lobby.set_host_authority(false);
+            ugc_leave_after_create = true;
+        }
+        pump_social_publish_retry(now);
+        if (pending_social_lobby_navigation) {
+            if (authoritative.lobby && authoritative.lobby->id == *pending_social_lobby_navigation)
+                open_social_match_lobby(authoritative);
+            else pending_social_lobby_navigation.reset();
+        }
+
+        // Follow the host while viewing this lobby. Back cancels this particular
+        // start; an explicit Join Game or a new start can try again. Background
+        // polls must never pull someone out of another menu or match.
+        const bool viewing_lobby = is_create_match_screen(screen()) ||
+            screen() == FrontendScreen::ugc_editor_lobby;
+        if (viewing_lobby && navigation.shell().accepts_input() && !social_leave_generation &&
+            authoritative.lobby.has_value() &&
+            (authoritative.lobby->state == "ready" || authoritative.lobby->state == "in_game") &&
+            (!social_canceled_join || *social_canceled_join != std::array{
+                authoritative.lobby->id, authoritative.lobby->start_id, authoritative.lobby->server_id}) &&
+            authoritative.lobby->owner_id != friends_lobby_menu.local_account_id() &&
+            !authoritative.lobby->server_id.empty() &&
+            (authoritative.lobby->server_id != social_last_joined_server_id ||
+             authoritative.lobby->start_id != social_joined_start_id ||
+             authoritative.lobby->id != social_joined_lobby_id) &&
+            now >= social_join_retry_at &&
+            !social_join_active.load(std::memory_order_acquire)) {
+            auto operation = friends_lobby_menu.begin(
+                {FriendsLobbyActionKind::join_game,
+                 authoritative.lobby->server_id,
+                 {}},
+                now);
+            if (operation.has_value()) {
+                // The resolver marks this ID joined only after it appears in
+                // the authoritative public list. Recording it here made one
+                // transient master-list miss permanently strand members in
+                // the lobby while the owner was already playing.
+                static_cast<void>(begin_social_lobby_join(
+                    operation->generation, authoritative.lobby->server_id));
+                if (is_create_match_screen(screen())) {
+                    create_match_menu.set_match_join_available(true, true);
+                    settings_warning = "Finding the lobby server...";
+                }
+            }
+        }
     }
 
     void request_main_menu_after_identity() {
@@ -2638,6 +3730,19 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    void pump_hosted_results() {
+        if (identity_service == nullptr || !authenticated_identity ||
+            identity_operation != IdentityOperation::none || hosted_results_active.load() ||
+            std::chrono::steady_clock::now() < hosted_results_retry_at) return;
+        hosted_results_retry_at = std::chrono::steady_clock::now() + std::chrono::seconds{30};
+        if (hosted_results_worker.joinable()) hosted_results_worker.join();
+        hosted_results_active.store(true);
+        hosted_results_worker = std::jthread([this, identity = identity_service](std::stop_token stop) {
+            try { static_cast<void>(identity->flush_hosted_results(stop)); } catch (...) {}
+            hosted_results_active.store(false);
+        });
+    }
+
     void pump_identity_operation() {
         if (identity_operation == IdentityOperation::none ||
             !identity_worker.valid() ||
@@ -2662,6 +3767,9 @@ struct NativeFrontendModule::Impl final {
         }
         if (operation == IdentityOperation::logout) {
             authenticated_identity = false;
+            inventory_autoload=false;
+            if (inventory_session) inventory_session->cancel();
+            inventory_menu=InventoryMenuModel{};
             social_client->shutdown(std::chrono::milliseconds{0});
             friends_lobby_menu.set_identity({});
             friends_lobby_menu.set_service_status(false,
@@ -3253,6 +4361,14 @@ struct NativeFrontendModule::Impl final {
         return {world_position[0U], world_position[1U], world_position[2U]};
     }
 
+    [[nodiscard]] std::string_view local_weapon_sound_cosmetic(std::uint8_t tool) const {
+        const auto* item = local_equipped_cosmetic("weapon:"+std::to_string(tool)+":view");
+        if (applied_settings.main.show_skins && !network_match && developer_tools_allowed() && config.tutorial_debug_cosmetic)
+            item = find_inventory_cosmetic(*config.tutorial_debug_cosmetic);
+        if (!item || std::ranges::none_of(item->parents, [tool](const auto& parent) { return parent.tool == tool; })) return {};
+        return item->id;
+    }
+
     void present_remote_shot(const network::ShootFeedbackPacket& feedback,
                              const network::RemotePlayerReplica& shooter) {
         const auto position = remote_sound_position(shooter);
@@ -3283,6 +4399,14 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         auto& state = remote_fire_loops[feedback.shooter_id];
+        const auto* cosmetic = equipped_cosmetic(feedback.shooter_id,
+            "weapon:"+std::to_string(feedback.tool_id)+":world");
+        if (cosmetic && audio->has_cosmetic_fire(cosmetic->id)) {
+            stop_remote_fire_loop(feedback.shooter_id, position, false);
+            audio->play_weapon_shoot(feedback.tool_id,feedback.seed,position,
+                audio::remote_weapon_report_gain(),false,audio::SpatialSoundProfile::weapon_report,cosmetic->id);
+            return;
+        }
         if (audio->has_weapon_cue(feedback.tool_id, audio::WeaponCue::fire_loop)) {
             if (state.voice != audio::invalid_loop_voice && state.tool_id != feedback.tool_id) {
                 stop_remote_fire_loop(feedback.shooter_id, position, false);
@@ -3979,7 +5103,10 @@ struct NativeFrontendModule::Impl final {
                     packet.sound_id >= 39U ||
                     position.z >= static_cast<float>(world::VxlMap::height) - 2.0F;
                 damage_stem = melee_hit_stem(best->tool_id, submerged);
+                const auto* cosmetic=equipped_cosmetic(best->player_id,"weapon:"+std::to_string(best->tool_id)+":world");
+                const bool custom=cosmetic&&audio->play_cosmetic_cue(cosmetic->id,"melee-hit-block",0U,position,packet.volume,false);
                 pending_melee_sound_hints.erase(best);
+                if(custom)return;
             }
         }
         const auto stems = audio::sound_group_stems(group);
@@ -4381,8 +5508,49 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    [[nodiscard]] SettingsMenuEnvironment
+    make_settings_environment(SettingsMenuContext context,
+                              settings::Resolution fallback_resolution) const {
+        SettingsMenuEnvironment environment;
+        environment.context = context;
+        environment.multisampling_supported = true;
+        environment.glsl_shader_quality_supported = true;
+        environment.graphics_apis.clear();
+        for (const auto backend : render::supported_graphics_backends()) {
+            environment.graphics_apis.push_back(settings_api(backend));
+        }
+        environment.languages.clear();
+        for (const auto& language : localization.languages()) {
+            environment.languages.push_back({language.locale, language.native_name});
+        }
+        if (environment.languages.empty()) {
+            environment.languages.push_back({"en", "English"});
+        }
+        for (const auto& mode : window.display_modes()) {
+            const settings::Resolution resolution{mode.extent.width, mode.extent.height};
+            if (std::ranges::find(environment.display_modes, resolution) ==
+                environment.display_modes.end()) {
+                environment.display_modes.push_back(resolution);
+            }
+        }
+        if (environment.display_modes.empty()) {
+            environment.display_modes.push_back(fallback_resolution);
+        }
+        return environment;
+    }
+
+    void rebuild_settings_menu(SettingsMenuContext context) {
+        settings_menu = std::make_unique<SettingsMenuModel>(
+            settings_session,
+            make_settings_environment(context, settings_session.draft().graphics.resolution));
+    }
+
     void load_settings() {
         settings_warning.clear();
+        skin_variant_preferences=std::make_unique<world::SkinVariantPreferences>(
+            config.settings_path.parent_path()/"skin-variants.json");
+        if(!skin_variant_preferences->load(settings_warning))settings_warning="Skin choices: "+settings_warning;
+        applied_skin_variant_revision=skin_variant_preferences->revision();
         settings_store = std::make_unique<settings::TomlSettingsStore>(config.settings_path);
         favourite_server_store = std::make_unique<FavoriteServerStore>(
             config.settings_path.parent_path() / "server_favorites.txt");
@@ -4391,6 +5559,9 @@ struct NativeFrontendModule::Impl final {
         auto initial = loaded ? loaded.settings : settings::retail_default_settings();
         if (!loaded) {
             settings_warning = loaded.error;
+        }
+        if (!localization.set_active_locale(initial.main.language)) {
+            initial.main.language = std::string{localization.active_locale()};
         }
 
         // Retail defaults describe a fullscreen first boot, but this native
@@ -4443,23 +5614,7 @@ struct NativeFrontendModule::Impl final {
             applied_settings.graphics.resolution = {actual_extent.width, actual_extent.height};
         }
 
-        SettingsMenuEnvironment environment;
-        environment.context = SettingsMenuContext::frontend;
-        environment.multisampling_supported = true;
-        environment.glsl_shader_quality_supported = true;
-        environment.graphics_apis = std::move(supported_apis);
-        for (const auto& mode : window.display_modes()) {
-            const settings::Resolution resolution{mode.extent.width, mode.extent.height};
-            if (std::ranges::find(environment.display_modes, resolution) ==
-                environment.display_modes.end()) {
-                environment.display_modes.push_back(resolution);
-            }
-        }
-        if (environment.display_modes.empty()) {
-            environment.display_modes.push_back(initial.graphics.resolution);
-        }
-        settings_menu =
-            std::make_unique<SettingsMenuModel>(settings_session, std::move(environment));
+        rebuild_settings_menu(SettingsMenuContext::frontend);
     }
 
     [[nodiscard]] bool apply_display(const settings::ClientSettings& value) {
@@ -4476,9 +5631,30 @@ struct NativeFrontendModule::Impl final {
         return true;
     }
 
+    void apply_cosmetic_preferences(const settings::MainSettings& value) {
+        if (applied_settings.main.show_skins != value.show_skins) {
+            uploaded_sandbox_tool.reset(); uploaded_tool.reset();
+            loaded_tutorial_arm_class.reset(); view_model_meshes_uploaded=false;
+        }
+        // Remote rigs and world props compare their resolved appearance every
+        // update and rebuild incrementally. Keep authoritative equipment cached
+        // so turning visibility back on never needs an inventory request.
+        applied_settings.main.show_skins=value.show_skins;
+        applied_settings.main.show_other_skins=value.show_other_skins;
+        applied_settings.main.weapon_motion=value.weapon_motion;
+    }
+
     [[nodiscard]] bool apply_runtime_settings(const settings::ClientSettings& value,
                                               bool include_display) {
         bool success{true};
+        const auto previous_locale = std::string{localization.active_locale()};
+        if (!localization.set_active_locale(value.main.language)) {
+            settings_warning = "selected language pack is unavailable";
+            success = false;
+        } else if (previous_locale != localization.active_locale()) {
+            localization_generation = localization.generation();
+            release_text_textures();
+        }
         if (audio_started && audio != nullptr) {
             success =
                 audio->set_master_volume(static_cast<float>(value.main.master_volume)) && success;
@@ -4494,6 +5670,7 @@ struct NativeFrontendModule::Impl final {
             success = apply_display(value) && success;
         }
         if (success) {
+            apply_cosmetic_preferences(value.main);
             applied_settings = value;
             if (tutorial_session != nullptr) {
                 tutorial_session->set_look_preferences(
@@ -4506,6 +5683,20 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] bool apply_live_preview(SettingsRowId source,
                                           const settings::ClientSettings& draft) {
         switch (source) {
+        case SettingsRowId::show_skins:
+        case SettingsRowId::show_other_skins:
+        case SettingsRowId::weapon_motion:
+            apply_cosmetic_preferences(draft.main);
+            return true;
+        case SettingsRowId::language:
+            if (!localization.set_active_locale(draft.main.language)) {
+                settings_warning = "selected language pack is unavailable";
+                return false;
+            }
+            localization_generation = localization.generation();
+            release_text_textures();
+            applied_settings.main.language = draft.main.language;
+            return true;
         case SettingsRowId::master_volume:
             if (audio_started && audio != nullptr &&
                 !audio->set_master_volume(static_cast<float>(draft.main.master_volume))) {
@@ -4591,7 +5782,12 @@ struct NativeFrontendModule::Impl final {
                 settings_warning = "Restart required for graphics quality changes to take effect.";
             }
             resolution_restart_required = false;
-            return_to_select();
+            if (settings_opened_from_gameplay) {
+                static_cast<void>(navigation.pop_instant());
+                close_settings();
+            } else {
+                return_to_select();
+            }
             if (audio_started) {
                 audio->play_menu_confirm();
             }
@@ -4638,6 +5834,10 @@ struct NativeFrontendModule::Impl final {
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsPreviewEffect>) {
                         switch (payload.source) {
+                        case SettingsRowId::show_skins:
+                        case SettingsRowId::show_other_skins:
+                        case SettingsRowId::weapon_motion:
+                        case SettingsRowId::language:
                         case SettingsRowId::master_volume:
                         case SettingsRowId::music_volume:
                         case SettingsRowId::fullscreen:
@@ -4649,6 +5849,9 @@ struct NativeFrontendModule::Impl final {
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsDefaultsCommand>) {
                         if (payload.tab == settings::SettingsTab::main) {
+                            apply_cosmetic_preferences(payload.draft.main);
+                            static_cast<void>(
+                                apply_live_preview(SettingsRowId::language, payload.draft));
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::master_volume, payload.draft));
                             static_cast<void>(
@@ -4901,6 +6104,108 @@ struct NativeFrontendModule::Impl final {
             const auto pending = *pending_leaderboard_request;
             launch_leaderboard_request(pending);
         }
+    }
+
+    void dispatch_inventory_action(InventoryAction action) {
+        if (action == InventoryAction::none) return;
+        if (action == InventoryAction::creators) {
+            if (!window.open_external_url("https://www.aosplay.net/creators/skin-packs"))
+                inventory_menu.error = "The creator page could not be opened.";
+            return;
+        }
+        if (inventory_fixture) return;
+        if (!inventory_session) inventory_session = std::make_unique<InventorySession>(identity_service);
+        inventory_session->start(inventory_menu, action);
+    }
+
+    [[nodiscard]] bool markup_inventory_active() const {
+        return !boot_loading && screen()==FrontendScreen::player_profile &&
+            player_profile_menu.selected_tab()==PlayerProfileTab::inventory && inventory_view;
+    }
+
+    void consume_inventory_view() {
+        if (!inventory_view) return;
+        dispatch_inventory_action(inventory_view->take_action());
+        const auto route=inventory_view->take_navigation();
+        if (route==0) { static_cast<void>(navigation.pop()); play_back(); }
+        else if (route>=1 && route<=4) {
+            static_cast<void>(player_profile_menu.select_tab(static_cast<PlayerProfileTab>(route-1)));
+        }
+        const auto sound=inventory_view->take_sound();
+        if (sound==1) play_scroll();
+        else if (sound==2 || sound==3) play_confirm();
+    }
+
+    void pump_inventory() {
+        using namespace std::chrono_literals;
+        if(skin_variant_preferences&&applied_skin_variant_revision!=skin_variant_preferences->revision()){
+            applied_skin_variant_revision=skin_variant_preferences->revision();
+            uploaded_sandbox_tool.reset();failed_scripted_skins.clear();
+        }
+        const auto before=inventory_menu.data.equipped;
+        if (inventory_session) inventory_session->pump(inventory_menu);
+        if (inventory_autoload && !inventory_fixture && !inventory_menu.busy) {
+            dispatch_inventory_action(InventoryAction::refresh);
+            if (inventory_menu.busy) inventory_autoload=false;
+        }
+        if (before!=inventory_menu.data.equipped) {
+            uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
+            uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();
+            remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
+            remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
+            inventory_preload_pending.clear();
+            for (const auto& item : inventory_menu.data.items) {
+                if (item.owned && item.enabled && std::ranges::any_of(inventory_menu.data.equipped,
+                    [&](const auto& slot) { return slot.second == item.id; }))
+                    inventory_preload_pending.push_back(item);
+            }
+        }
+        if (inventory_preload_worker.valid() && inventory_preload_worker.wait_for(0ms) == std::future_status::ready)
+            inventory_preload_worker.get();
+        if (!inventory_preload_worker.valid() && !inventory_preload_pending.empty()) {
+            inventory_preload_worker=std::async(std::launch::async,
+                [items=std::exchange(inventory_preload_pending, {}), root=config.asset_root] {
+                    for (const auto& item : items) {
+                        try {
+                            static_cast<void>(inventory_verified_model(item, root));
+                            static_cast<void>(inventory_character_parts(&item, root));
+                        } catch (const std::exception&) { /* Missing content keeps the normal base-model fallback. */ }
+                    }
+                });
+        }
+        if (inventory_view) { consume_inventory_view(); return; }
+        InventoryCosmetic crate_preview;
+        crate_preview.id="supply-crate-preview";
+        const auto* item=inventory_menu.section==InventorySection::crates?&crate_preview:inventory_menu.selected_item();
+        const auto key=item && item->kind!="profile_badge"
+            ? item->id+":"+std::to_string(inventory_menu.angle)+":"+std::to_string(inventory_menu.zoom)+":"+std::to_string(inventory_menu.blue_team)
+            : std::string{};
+        if (key!=inventory_preview_key) inventory_menu.preview_ready=false;
+        if (inventory_preview_worker.valid() && inventory_preview_worker.wait_for(0ms) == std::future_status::ready) {
+            auto result = inventory_preview_worker.get();
+            if (result.key==key && !result.error.empty()) inventory_menu.error = std::move(result.error);
+            if (result.key==key && !result.pixels.empty()) {
+                const auto texture_id = texture_key(inventory_preview_asset, render::TextureFilter::linear);
+                const auto existing = image_textures.find(texture_id);
+                bool uploaded{};
+                if (existing == image_textures.end()) {
+                    if (const auto texture = renderer.create_texture_rgba8(result.pixels,
+                            {world::cosmetic_preview_width, world::cosmetic_preview_height}, render::TextureFilter::linear)) {
+                        image_textures.emplace(texture_id,*texture); uploaded=true;
+                    }
+                } else uploaded=renderer.update_texture_rgba8(existing->second.texture,result.pixels);
+                inventory_menu.preview_ready=uploaded;
+            }
+        }
+        if (inventory_preview_worker.valid() || player_profile_menu.selected_tab()!=PlayerProfileTab::inventory) return;
+        if (key.empty()) { inventory_preview_key.clear(); return; }
+        if (key==inventory_preview_key) return;
+        inventory_preview_key=key; inventory_menu.preview_ready=false;
+        inventory_preview_worker=std::async(std::launch::async,[item=*item,root=config.asset_root,key,
+                blue=inventory_menu.blue_team,angle=inventory_menu.angle,zoom=inventory_menu.zoom] {
+            try { return InventoryPreviewOutcome{key,build_inventory_preview(item,root,blue,angle,zoom),{}}; }
+            catch (const std::exception& error) { return InventoryPreviewOutcome{key,{},error.what()}; }
+        });
     }
 
     void launch_profile_request(PlayerProfileRequest request) {
@@ -5207,7 +6512,25 @@ struct NativeFrontendModule::Impl final {
     void begin_owned_local_server(platform::LocalServerLaunchConfig launch,
                                   std::string mode_key,
                                   bool classic,
-                                  std::string skin) {
+                                  std::string skin,
+                                  std::optional<network::RevivalRelayLobbyRequest>
+                                      relay_request = std::nullopt) {
+        // Include still-closing servers in the admission limit. A fast sequence
+        // of Start/Back must not spawn an unbounded cleanup/process backlog.
+        if (owned_local_server && !owned_local_server->running()) release_owned_local_match_host();
+        auto cleanup = host_cleanup.try_reserve();
+        if (!cleanup) {
+            settings_warning = "The previous hosted sessions are still closing. Please try again shortly.";
+            queue_social_start_failed(settings_warning);
+            return;
+        }
+        if (relay_request && social_client != nullptr) {
+            const auto snapshot = social_client->snapshot();
+            if (snapshot.lobby) {
+                owned_social_lobby_id = snapshot.lobby->id;
+                owned_social_start_id = snapshot.lobby->start_id;
+            }
+        }
         match_ui_skin = supported_ui_skin(skin);
         match_loading.begin(launch.map_name, mode_key, classic, match_ui_skin);
         if (screen() != FrontendScreen::game_loading) {
@@ -5215,11 +6538,17 @@ struct NativeFrontendModule::Impl final {
         }
         settings_warning = launch.program == platform::LocalServerProgram::map_creator
                                ? "Starting the private BattleSpades Map Creator"
+                           : relay_request.has_value()
+                               ? "Allocating and starting the public community match"
                                : "Starting a private local BattleSpades server";
+        match_loading.set_status(settings_warning);
+        std::fprintf(stderr, "[hosting] bundle=%s mode=%s map=%s\n",
+                     launch.bundle_root.string().c_str(), launch.mode.c_str(), launch.map_name.c_str());
         const auto generation = next_local_host_generation++;
         active_local_host_generation = generation;
-        local_host_cancel = std::make_shared<std::atomic_bool>(false);
+        local_host_cancel = std::make_shared<std::stop_source>();
         const auto cancellation = local_host_cancel;
+        const auto identity = identity_service;
         local_host_worker = std::async(
             std::launch::async,
             [generation,
@@ -5227,45 +6556,138 @@ struct NativeFrontendModule::Impl final {
              mode_key = std::move(mode_key),
              classic,
              skin = std::move(skin),
-             cancellation]() mutable {
-                auto process = std::make_unique<platform::LocalServerProcess>();
+             cancellation,
+             cleanup = std::move(*cleanup),
+             identity,
+             relay_request = std::move(relay_request)]() mutable {
+                std::optional<network::RevivalRelayLobby> relay;
+                std::unique_ptr<platform::LocalServerProcess> process;
+                std::unique_ptr<platform::RelayHostTunnel> tunnel;
+                try {
+                if (relay_request.has_value()) {
+                    auto allocated = identity->create_relay_lobby(*relay_request, cancellation->get_token());
+                    if (!allocated || !allocated.lobby.has_value()) {
+                        return LocalHostOutcome{
+                            generation, {}, {}, {}, {},
+                            allocated.error.empty()
+                                ? "AoSPlay could not allocate a public match relay."
+                                : std::move(allocated.error)};
+                    }
+                    relay = std::move(*allocated.lobby);
+                    launch.environment_overrides = {
+                        {"AOS_MASTER_URL", relay->master_url},
+                        {"AOS_MASTER_WRITE_TOKEN", relay->server_token},
+                        {"AOS_PUBLIC_HOST", relay->relay_host},
+                        {"AOS_PUBLIC_PORT", std::to_string(relay->relay_port)},
+                        {"AOS_PUBLIC_QUERY_PORT", std::to_string(relay->relay_port)},
+                        {"AOS_SERVER_ID", relay->server_id},
+                        {"AOS_RELAY_LOBBY_ID", relay->lobby_id},
+                    };
+                    const auto results_directory = identity->hosted_results_directory();
+                    if (!results_directory.empty()) {
+                        launch.environment_overrides.emplace("AOS_MATCH_RESULTS_DIRECTORY", results_directory.string());
+                    }
+                    if (launch.program == platform::LocalServerProgram::map_creator) {
+                        const auto account = identity->cached_account();
+                        if (!account || account->legacy_id.empty()) {
+                            static_cast<void>(identity->close_relay_lobby(*relay));
+                            return LocalHostOutcome{generation, {}, {}, {}, {}, "Editor owner identity is unavailable."};
+                        }
+                        launch.environment_overrides.emplace("AOS_UGC_OWNER_ID", account->legacy_id);
+                    }
+                }
+                if (cancellation->stop_requested()) {
+                    if (relay) static_cast<void>(identity->close_relay_lobby(*relay));
+                    return LocalHostOutcome{generation, {}, {}, {}, {}, "Local server startup was cancelled"};
+                }
+                process = std::make_unique<platform::LocalServerProcess>();
                 std::string error;
                 if (!process->start(launch, error)) {
-                    return LocalHostOutcome{generation, std::move(process), {}, std::move(error)};
+                    if (relay.has_value()) {
+                        static_cast<void>(identity->close_relay_lobby(*relay));
+                    }
+                    return LocalHostOutcome{generation, std::move(process), {}, {}, {},
+                                            std::move(error)};
+                }
+                std::fprintf(stderr, "[hosting] process started on UDP %u\n",
+                             static_cast<unsigned>(process->port()));
+                if (relay.has_value()) {
+                    tunnel = std::make_unique<platform::RelayHostTunnel>();
+                    platform::RelayHostTunnelConfig tunnel_config;
+                    tunnel_config.allocation_id = relay->allocation_id;
+                    tunnel_config.relay_host = relay->relay_host;
+                    tunnel_config.relay_port = relay->relay_port;
+                    tunnel_config.host_key_base64url = relay->host_key;
+                    tunnel_config.local_server_port = process->port();
+                    tunnel_config.maximum_clients = launch.maximum_players;
+                    tunnel_config.keepalive = std::chrono::seconds{
+                        relay->keepalive_seconds};
+                    if (!tunnel->start(std::move(tunnel_config), error)) {
+                        process->stop();
+                        static_cast<void>(identity->close_relay_lobby(*relay));
+                        return LocalHostOutcome{generation, std::move(process),
+                                                std::move(tunnel), {}, {},
+                                                std::move(error)};
+                    }
                 }
                 const auto endpoint = network::ServerEndpoint{"127.0.0.1", process->port()};
                 const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
-                while (!cancellation->load(std::memory_order_relaxed) &&
+                auto next_legacy_probe = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+                while (!cancellation->stop_requested() &&
                        std::chrono::steady_clock::now() < deadline) {
                     if (!process->running()) {
                         error = "The local BattleSpades server exited during startup";
                         break;
                     }
-                    auto discovery =
-                        network::probe_lan_server(endpoint, std::chrono::milliseconds{350});
-                    if (discovery && !discovery.servers.empty()) {
-                        const auto& server = discovery.servers.front();
-                        if (server.mode_code != launch.mode) {
-                            error = "The local server started with mode '" + server.mode_code +
-                                    "' instead of '" + launch.mode + "'";
-                            break;
-                        }
-                        return LocalHostOutcome{generation,
-                                                std::move(process),
-                                                ServerConnectRequest{endpoint.identifier(),
-                                                                     endpoint.host,
-                                                                     endpoint.port,
-                                                                     launch.map_name,
-                                                                     mode_key,
-                                                                     skin,
-                                                                     classic,
-                                                                     {},
-                                                                     false},
-                                                {}};
+                    const auto state = process->status();
+                    bool ready = state == platform::LocalServerState::ready;
+                    if (state == platform::LocalServerState::failed ||
+                        state == platform::LocalServerState::stopped ||
+                        state == platform::LocalServerState::stopping) {
+                        error = "The local server could not finish starting. Check its startup log.";
+                        break;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds{100});
+                    // New servers report readiness directly after map/mode/bot
+                    // initialization. Older bundles still use their LAN probe.
+                    if (state == platform::LocalServerState::unavailable &&
+                        std::chrono::steady_clock::now() >= next_legacy_probe) {
+                        const auto discovery = network::probe_lan_server(endpoint, std::chrono::milliseconds{150});
+                        next_legacy_probe = std::chrono::steady_clock::now() + std::chrono::milliseconds{250};
+                        if (discovery && !discovery.servers.empty()) {
+                            if (discovery.servers.front().mode_code != launch.mode) {
+                                error = "The local server started with the wrong game mode.";
+                                break;
+                            }
+                            ready = true;
+                        }
+                    }
+                    if (ready) {
+                        std::fprintf(stderr, "[hosting] local server ready via %s\n",
+                            state == platform::LocalServerState::ready ? "native bridge" : "LAN probe");
+                        const auto relay_server_id = relay.has_value()
+                                                         ? relay->server_id
+                                                         : std::string{};
+                        const auto identity_ticket = relay.has_value();
+                        auto request = ServerConnectRequest{endpoint.identifier(),
+                                                 endpoint.host,
+                                                 endpoint.port,
+                                                 launch.map_name,
+                                                 mode_key,
+                                                 skin,
+                                                 classic,
+                                                 relay_server_id,
+                                                 identity_ticket};
+                        return LocalHostOutcome{
+                            generation,
+                            std::move(process),
+                            std::move(tunnel),
+                            std::move(relay),
+                            std::move(request),
+                            {}, std::move(cleanup)};
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds{25});
                 }
-                if (cancellation->load(std::memory_order_relaxed)) {
+                if (cancellation->stop_requested()) {
                     error = "Local server startup was cancelled";
                 } else if (error.empty()) {
                     error = "The local BattleSpades server did not become ready in 20 seconds";
@@ -5273,12 +6695,28 @@ struct NativeFrontendModule::Impl final {
                 const auto tail = bounded_log_tail(process->log_path());
                 if (!tail.empty())
                     error += "\n" + tail;
+                if (tunnel != nullptr) tunnel->stop();
                 process->stop();
-                return LocalHostOutcome{generation, std::move(process), {}, std::move(error)};
+                if (relay.has_value()) {
+                    static_cast<void>(identity->close_relay_lobby(*relay));
+                }
+                return LocalHostOutcome{generation, std::move(process), std::move(tunnel),
+                                        {}, {}, std::move(error)};
+                } catch (const std::exception& error) {
+                    // Preserve remote allocation credentials as well as local
+                    // ownership if startup throws between ordinary checks.
+                    return LocalHostOutcome{generation, std::move(process), std::move(tunnel),
+                        std::move(relay), {}, std::string{"Local server startup failed: "} + error.what(),
+                        std::move(cleanup)};
+                } catch (...) {
+                    return LocalHostOutcome{generation, std::move(process), std::move(tunnel),
+                        std::move(relay), {}, "Local server startup failed unexpectedly.", std::move(cleanup)};
+                }
             });
     }
 
-    void begin_local_match(const CreateMatchConfiguration& configuration) {
+    void begin_local_match(const CreateMatchConfiguration& configuration,
+                           bool public_lobby = true) {
         if (local_host_worker.valid() ||
             (owned_local_server != nullptr && owned_local_server->running())) {
             settings_warning = "A client-owned local match is already active";
@@ -5318,31 +6756,99 @@ struct NativeFrontendModule::Impl final {
         launch.bot_count = configuration.bot_count;
         launch.bot_difficulty = configuration.bot_difficulty;
 
-        begin_owned_local_server(std::move(launch), mode_key, classic, skin);
+        std::optional<network::RevivalRelayLobbyRequest> relay_request;
+        if (public_lobby && social_client != nullptr) {
+            const auto social = social_client->snapshot();
+            if (social.lobby.has_value() &&
+                social.lobby->owner_id == friends_lobby_menu.local_account_id()) {
+                relay_request = network::RevivalRelayLobbyRequest{
+                    launch.server_name,
+                    launch.map_name,
+                    mode_key,
+                    mode_code,
+                    launch.maximum_players,
+                    configuration.retail_playlist_id,
+                    skin,
+                    classic};
+            }
+        }
+        begin_owned_local_server(std::move(launch), mode_key, classic, skin,
+                                 std::move(relay_request));
     }
 
     void pump_local_match_start() {
+        // Shared worker/publish lifecycle handles ordinary and editor hosts.
         using namespace std::chrono_literals;
+        if (owned_local_server &&
+            (!owned_local_server->running() || (owned_relay_tunnel && !owned_relay_tunnel->running()))) {
+            auto error = owned_relay_tunnel ? owned_relay_tunnel->last_error() : std::string{};
+            if (error.empty()) error = "The hosted server stopped unexpectedly.";
+            fail_social_host_start(error);
+            teardown_tutorial();
+            static_cast<void>(navigation.leave_match_instant());
+            if (social_client) social_client->set_presence("online");
+            return;
+        }
         if (!local_host_worker.valid() ||
             local_host_worker.wait_for(0ms) != std::future_status::ready) {
             return;
         }
-        auto outcome = local_host_worker.get();
+        LocalHostOutcome outcome;
+        try {
+            outcome = local_host_worker.get();
+        } catch (const std::exception& error) {
+            if (active_local_host_generation != 0U) {
+                fail_social_host_start(std::string{"Local server startup failed: "} + error.what());
+            } else {
+                std::fprintf(stderr, "[hosting] canceled startup: %s\n", error.what());
+            }
+            return;
+        }
+        std::fprintf(stderr, "[hosting] startup worker completed\n");
         if (outcome.generation != active_local_host_generation) {
+            retire_local_host(std::move(outcome));
             return;
         }
         active_local_host_generation = 0U;
         local_host_cancel.reset();
         if (!outcome.error.empty() || outcome.process == nullptr || !outcome.process->running()) {
-            match_loading.fail("SERVER_CONNECTION_FAILED");
-            settings_warning = outcome.error.empty() ? "The client-owned local server stopped"
-                                                     : std::move(outcome.error);
+            const auto message = outcome.error.empty() ? "The client-owned local server stopped"
+                                                       : std::move(outcome.error);
+            queue_social_start_failed(message);
+            show_host_start_failure(message);
+            retire_local_host(std::move(outcome));
             return;
         }
         owned_local_server = std::move(outcome.process);
+        owned_host_cleanup = std::move(outcome.cleanup);
+        owned_relay_tunnel = std::move(outcome.tunnel);
+        owned_relay_lobby = std::move(outcome.relay);
+        if (owned_relay_lobby.has_value()) {
+            social_pending_owner_connect = std::move(outcome.request);
+            const auto now = std::chrono::steady_clock::now();
+            social_publish_deadline = now + std::chrono::seconds{20};
+            social_publish_retry_at = now;
+            social_publish_attempts = 0U;
+            settings_warning = "Local server ready; publishing its relay...";
+            match_loading.set_status(settings_warning);
+            if (!queue_social_publish()) {
+                social_publish_retry_at = now + std::chrono::milliseconds{250};
+            }
+            return;
+        }
         settings_warning =
             "Local server ready on UDP " + std::to_string(owned_local_server->port());
         begin_match_loading(outcome.request);
+    }
+
+    void launch_social_session(const CreateMatchConfiguration& configuration) {
+        if (social_pending_ugc_start) {
+            const auto editor = *social_pending_ugc_start;
+            social_pending_ugc_start.reset();
+            begin_ugc_editor_loading(editor);
+        } else {
+            begin_local_match(configuration);
+        }
     }
 
     void consume_create_match_effects(
@@ -5383,12 +6889,64 @@ struct NativeFrontendModule::Impl final {
                                 static_cast<void>(window.set_text_input_enabled(false));
                             }
                         }
+                    } else if constexpr (
+                        std::is_same_v<Payload, CreateMatchConfigurationChangedEffect>) {
+                        queue_social_settings(payload.configuration);
+                    } else if constexpr (std::is_same_v<Payload, CreateMatchMemberEffect>) {
+                        if (!send_lobby_member_action(payload)) {
+                            settings_warning = "The member action could not be queued. Refresh the lobby and retry.";
+                        }
+                    } else if constexpr (std::is_same_v<Payload, CreateMatchChatEffect>) {
+                        if (!send_active_lobby_chat(payload.message)) {
+                            settings_warning = "Could not send lobby chat. Please retry.";
+                        }
                     } else if constexpr (std::is_same_v<Payload, CreateMatchRouteEffect>) {
-                        if (payload.action == CreateMatchRouteAction::leave_lobby) {
-                            leave_active_social_lobby();
-                            static_cast<void>(navigation.pop());
+                        if (payload.action == CreateMatchRouteAction::join_game) {
+                            const auto snapshot = social_client != nullptr
+                                ? social_client->snapshot() : network::RevivalSocialSnapshot{};
+                            if (snapshot.lobby && !snapshot.lobby->server_id.empty() &&
+                                (snapshot.lobby->state == "ready" || snapshot.lobby->state == "in_game")) {
+                                submit_social_intent({FriendsLobbyActionKind::join_game,
+                                                      snapshot.lobby->server_id, {}});
+                            } else {
+                                create_match_menu.set_match_join_available(false);
+                                settings_warning = "The hosted match is no longer available. Waiting for the lobby to update.";
+                            }
+                        } else if (payload.action == CreateMatchRouteAction::start_local_game) {
+                            if (social_start_generation || social_pending_owner_connect ||
+                                local_host_worker.valid()) {
+                                settings_warning = local_host_worker.valid() && active_local_host_generation == 0U
+                                    ? "Finishing the previous server cleanup. Try Local Match again in a moment."
+                                    : "A match is already starting. Use Back to cancel it first.";
+                                return;
+                            }
+                            begin_local_match(payload.configuration, false);
+                        } else if (payload.action == CreateMatchRouteAction::leave_lobby) {
+                            if (social_open_match_generation && social_client != nullptr &&
+                                !social_client->snapshot().lobby.has_value()) {
+                                social_leave_after_create = true;
+                                settings_warning = "Finishing the lobby request, then leaving...";
+                                return;
+                            }
+                            if (social_client == nullptr ||
+                                !social_client->snapshot().lobby.has_value()) {
+                                static_cast<void>(navigation.pop());
+                            } else if (!leave_active_social_lobby()) {
+                                settings_warning = "Could not queue Leave Lobby. Please retry.";
+                            }
                         } else {
-                            begin_local_match(payload.configuration);
+                            if (social_client != nullptr &&
+                                social_client->snapshot().lobby.has_value()) {
+                                if (!start_active_social_lobby(payload.configuration)) {
+                                    settings_warning = "Could not start the lobby. Please retry.";
+                                }
+                            } else {
+                                if (social_client != nullptr) {
+                                    submit_social_intent({FriendsLobbyActionKind::create_lobby, {}, {}});
+                                } else {
+                                    settings_warning = "Online lobbies are unavailable. Use Local Match to play on this computer.";
+                                }
+                            }
                         }
                     }
                 },
@@ -5406,23 +6964,25 @@ struct NativeFrontendModule::Impl final {
             break;
         case JoinMatchRoute::direct_connect:
             direct_connect_menu.focus_input();
+            static_cast<void>(window.set_text_input_enabled(true));
             static_cast<void>(navigation.push(FrontendScreen::direct_connect));
             play_confirm();
             break;
         case JoinMatchRoute::random_match:
-            // Public-master discovery is an explicit networking adapter. The
-            // offline state leaves playlist inspection available while Start
-            // and Refresh fail closed.
             quick_play_menu.set_network_available(false);
+            quick_play_menu.set_network_available(true);
             static_cast<void>(navigation.push(FrontendScreen::public_match));
+            if (const auto search = quick_play_menu.begin_search()) {
+                begin_quick_play_refresh(*search);
+            }
             play_confirm();
             break;
         case JoinMatchRoute::custom_match:
-            // Lobby enumeration belongs to a future service adapter. Reset to
-            // an explicit offline state so this screen cannot offer phantom
-            // joins or retain stale discovery rows between visits.
-            custom_match_menu.set_network_available(false);
-            static_cast<void>(navigation.push(FrontendScreen::custom_match));
+            // The retained legacy entry uses the same social/relay service as
+            // Friends and Create Match, including its availability errors.
+            friends_lobby_menu.enter(std::chrono::steady_clock::now());
+            static_cast<void>(window.set_text_input_enabled(true));
+            static_cast<void>(navigation.push(FrontendScreen::friends_lobby));
             play_confirm();
             break;
         case JoinMatchRoute::select_menu:
@@ -5439,8 +6999,10 @@ struct NativeFrontendModule::Impl final {
             // Retail routes through UGCSquadsMenu first. Discovery is an
             // adapter boundary, while local New Lobby remains usable.
             ugc_editor_browser = UgcEditorBrowserModel{};
-            ugc_editor_browser.set_network_available(false);
+            ugc_editor_browser.set_network_available(social_client != nullptr &&
+                identity_service->has_online_session());
             static_cast<void>(navigation.push(FrontendScreen::ugc_editor_browser));
+            consume_ugc_editor_browser_intent(ugc_editor_browser.request_refresh());
             break;
         }
         case UgcSelectAction::publish_map:
@@ -5479,27 +7041,120 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    [[nodiscard]] static nlohmann::json ugc_social_settings(const UgcEditorConfiguration& value) {
+        return {{"map_name", value.map_name}, {"ugc_mode", value.ugc_mode},
+                {"prefab_set", value.prefab_set}, {"map_title", value.map_title}};
+    }
+
+    [[nodiscard]] static std::string ugc_social_privacy(UgcEditorPrivacy value) {
+        return value == UgcEditorPrivacy::open ? "open"
+             : value == UgcEditorPrivacy::friends_only ? "friends" : "invite";
+    }
+
+    void pump_ugc_social_settings(std::chrono::steady_clock::time_point now) {
+        if (social_client == nullptr || ugc_social_lobby_id.empty() || ugc_settings_generation ||
+            social_start_generation || social_leave_generation || now < ugc_settings_retry_at ||
+            ugc_editor_lobby.title_editing()) return;
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby || snapshot.lobby->id != ugc_social_lobby_id ||
+            snapshot.lobby->lobby_type != "ugc" || snapshot.lobby->state != "forming" ||
+            snapshot.lobby->owner_id != friends_lobby_menu.local_account_id()) return;
+        const auto& desired = ugc_editor_lobby.configuration();
+        const auto settings = ugc_social_settings(desired);
+        const auto privacy = ugc_social_privacy(desired.privacy);
+        if (settings == snapshot.lobby->settings && privacy == snapshot.lobby->privacy &&
+            desired.maximum_players == snapshot.lobby->maximum_members) return;
+        network::RevivalSocialRequest request;
+        request.generation = background_social_generation();
+        request.kind = network::RevivalSocialRequestKind::lobby_action;
+        request.priority = true;
+        request.coalesce_key = "ugc-settings";
+        request.lobby_id = snapshot.lobby->id;
+        request.action = "update";
+        request.payload = {{"revision", snapshot.lobby->revision}, {"settings", settings},
+            {"privacy", privacy}, {"max_members", desired.maximum_players}};
+        const auto generation = request.generation;
+        if (social_client->enqueue(std::move(request))) ugc_settings_generation = generation;
+    }
+
+    void sync_ugc_social_lobby(const network::RevivalSocialSnapshot& snapshot) {
+        if (!snapshot.lobby || snapshot.lobby->lobby_type != "ugc") return;
+        const auto& lobby = *snapshot.lobby;
+        const auto owner = lobby.owner_id == friends_lobby_menu.local_account_id();
+        if (!owner || ugc_social_lobby_id != lobby.id || ugc_social_owner_id != lobby.owner_id) {
+            UgcEditorConfiguration value;
+            try {
+                value.map_name = lobby.settings.value("map_name", value.map_name);
+                value.map_title = lobby.settings.value("map_title", value.map_title);
+                value.ugc_mode = lobby.settings.value("ugc_mode", value.ugc_mode);
+                const auto prefab = social_u16(lobby.settings, "prefab_set");
+                value.prefab_set = prefab && *prefab < 6U ? static_cast<std::uint8_t>(*prefab) : 255U;
+                value.maximum_players = static_cast<std::uint8_t>(std::min<std::size_t>(24U, lobby.maximum_members));
+                value.privacy = lobby.privacy == "open" ? UgcEditorPrivacy::open
+                              : lobby.privacy == "friends" ? UgcEditorPrivacy::friends_only : UgcEditorPrivacy::invite_only;
+                if (!ugc_editor_lobby.apply_configuration(value)) settings_warning = "The editor lobby settings are invalid.";
+            } catch (const nlohmann::json::exception&) {
+                settings_warning = "The editor lobby settings are invalid.";
+            }
+        }
+        ugc_social_lobby_id = lobby.id;
+        ugc_social_owner_id = lobby.owner_id;
+        ugc_editor_lobby.set_host_authority(owner && lobby.state == "forming");
+        std::vector<std::pair<std::string, bool>> members;
+        for (const auto& member : lobby.members) members.emplace_back(member.nickname, member.legacy_id == lobby.owner_id);
+        ugc_editor_lobby.set_members(std::move(members));
+    }
+
     void consume_ugc_editor_browser_intent(std::optional<UgcEditorBrowserIntent> intent) {
         if (!intent.has_value()) {
             return;
         }
         switch (intent->kind) {
         case UgcEditorBrowserIntentKind::back_to_ugc_select:
+            ugc_discovery_generation.reset();
             static_cast<void>(navigation.pop());
             play_back();
             break;
         case UgcEditorBrowserIntentKind::create_lobby:
+            if (social_client != nullptr && social_client->snapshot().lobby) {
+                open_social_match_lobby(social_client->snapshot());
+                break;
+            }
             ugc_editor_lobby = UgcEditorLobbyModel{};
+            ugc_social_lobby_id.clear();
+            ugc_leave_after_create = false;
             static_cast<void>(navigation.push(FrontendScreen::ugc_editor_lobby));
+            if (social_client != nullptr && identity_service->has_online_session()) {
+                network::RevivalSocialRequest request;
+                request.generation = background_social_generation();
+                request.kind = network::RevivalSocialRequestKind::create_lobby;
+                request.priority = true;
+                request.payload = {{"lobby_type", "ugc"}, {"name", "Map Creator"},
+                    {"privacy", "open"}, {"max_members", 12},
+                    {"settings", ugc_social_settings(ugc_editor_lobby.configuration())}};
+                social_open_match_generation = request.generation;
+                ugc_create_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{20};
+                if (!social_client->enqueue(std::move(request))) {
+                    social_open_match_generation.reset();
+                    settings_warning = "Could not create the editor lobby. Local editing remains available.";
+                }
+            }
             play_confirm();
             break;
         case UgcEditorBrowserIntentKind::join_lobby:
-            // The remote-lobby adapter will hydrate member/owner state. Keep
-            // this path typed and visible without claiming network success.
-            last_error = "joining a remote map creator lobby is unavailable";
+            friends_lobby_menu.enter(std::chrono::steady_clock::now());
+            submit_social_intent({FriendsLobbyActionKind::join_friend_lobby, intent->lobby_id, {}});
             break;
         case UgcEditorBrowserIntentKind::refresh_lobbies:
-            // No matchmaking adapter is attached in the native vertical slice.
+            if (social_client != nullptr) {
+                network::RevivalSocialRequest request;
+                request.generation = background_social_generation();
+                request.kind = network::RevivalSocialRequestKind::list_lobbies;
+                request.coalesce_key = "ugc-lobbies";
+                ugc_discovery_generation = request.generation;
+                if (social_client->enqueue(std::move(request))) break;
+            }
+            ugc_discovery_generation.reset();
             static_cast<void>(ugc_editor_browser.complete_refresh({}, false));
             break;
         }
@@ -5559,9 +7214,19 @@ struct NativeFrontendModule::Impl final {
             .author = config.player_name,
             .publish_root = config.settings_path.parent_path() / "hosted_ugc",
             .retail_root = config.asset_root,
+            .prefab_set = configuration.prefab_set,
         };
         ugc_map_title = configuration.map_title;
-        begin_owned_local_server(std::move(launch), "MAP_CREATOR", false, "ugc");
+        std::optional<network::RevivalRelayLobbyRequest> relay;
+        if (social_client != nullptr) {
+            const auto social = social_client->snapshot();
+            if (social.lobby && social.lobby->lobby_type == "ugc" &&
+                social.lobby->owner_id == friends_lobby_menu.local_account_id()) {
+                relay = network::RevivalRelayLobbyRequest{launch.server_name, launch.map_name,
+                    "MAP_CREATOR", "ugc", launch.maximum_players, 0U, "ugc", false};
+            }
+        }
+        begin_owned_local_server(std::move(launch), "MAP_CREATOR", false, "ugc", std::move(relay));
     }
 
     void consume_ugc_editor_lobby_intent(std::optional<UgcEditorLobbyIntent> intent) {
@@ -5570,14 +7235,32 @@ struct NativeFrontendModule::Impl final {
         }
         switch (intent->kind) {
         case UgcEditorLobbyIntentKind::leave_lobby:
+            social_pending_ugc_start.reset();
+            if (social_open_match_generation) ugc_leave_after_create = true;
+            if (social_client != nullptr && social_client->snapshot().lobby &&
+                !leave_active_social_lobby()) {
+                settings_warning = "Could not queue Leave Lobby. Please retry.";
+                break;
+            }
             static_cast<void>(navigation.pop());
             play_back();
             break;
         case UgcEditorLobbyIntentKind::invite_friends:
-            last_error = "the friend-invite adapter is unavailable";
+            friends_lobby_menu.enter(std::chrono::steady_clock::now());
+            static_cast<void>(window.set_text_input_enabled(true));
+            static_cast<void>(navigation.push(FrontendScreen::friends_lobby));
             break;
         case UgcEditorLobbyIntentKind::start_editor:
-            begin_ugc_editor_loading(intent->configuration);
+            if (social_open_match_generation) {
+                settings_warning = "Waiting for the editor lobby to be created.";
+                break;
+            }
+            if (social_client != nullptr && social_client->snapshot().lobby) {
+                social_pending_ugc_start = intent->configuration;
+                if (!start_active_social_lobby(CreateMatchConfiguration{})) social_pending_ugc_start.reset();
+            } else {
+                begin_ugc_editor_loading(intent->configuration);
+            }
             play_confirm();
             break;
         }
@@ -5639,6 +7322,16 @@ struct NativeFrontendModule::Impl final {
         } else if (route == "player_profile") {
             load_parity_profile_fixture();
             target = FrontendScreen::player_profile;
+        } else if (route == "inventory" || route == "inventory/crates" || route == "inventory/packs") {
+            load_parity_profile_fixture();
+            static_cast<void>(player_profile_menu.select_tab(PlayerProfileTab::inventory));
+            inventory_menu.complete(inventory_preview_fixture());
+            inventory_fixture=true;
+            inventory_menu.online=false;
+            inventory_menu.error="DESIGN PREVIEW - fixture items cannot be opened or equipped.";
+            if (route=="inventory/crates") inventory_menu.section=InventorySection::crates;
+            if (route=="inventory/packs") inventory_menu.section=InventorySection::packs;
+            target = FrontendScreen::player_profile;
         } else if (route == "loading") {
             match_ui_skin = supported_ui_skin("classic");
             match_loading.begin("Atlantis", "CTF", false, match_ui_skin);
@@ -5672,8 +7365,20 @@ struct NativeFrontendModule::Impl final {
         }
 
         if (target.has_value() && navigation.push(*target)) {
+            if (*target == FrontendScreen::direct_connect) {
+                direct_connect_menu.focus_input();
+                static_cast<void>(window.set_text_input_enabled(true));
+            }
             play_confirm();
         }
+    }
+
+    void pump_ugc_publication() {
+        if (!ugc_publish_worker.valid() ||
+            ugc_publish_worker.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) return;
+        auto result = ugc_publish_worker.get();
+        settings_warning = result.error.empty() ? result.warning : result.error;
+        consume_ugc_publish_effect(ugc_publish_menu.finish_publish(static_cast<bool>(result), result.item_url));
     }
 
     void consume_ugc_publish_effect(std::optional<UgcPublishEffect> effect) {
@@ -5688,9 +7393,16 @@ struct NativeFrontendModule::Impl final {
 
         switch (effect->kind) {
         case UgcPublishEffectKind::publish_requested:
-            // The immutable request is ready for a future Workshop adapter.
-            // Fail visibly today instead of claiming a publish succeeded.
-            static_cast<void>(ugc_publish_menu.finish_publish(false));
+            if (effect->publish_request && !ugc_publish_worker.valid()) {
+                ugc_publish_stop = std::stop_source{};
+                auto service = identity_service;
+                const auto request = *effect->publish_request;
+                ugc_publish_worker = std::async(std::launch::async,
+                    [service, request, root = ugc_maps_root(), stop = ugc_publish_stop.get_token()] {
+                        return service->publish_ugc_project(root, request.local_uid, request.workshop_title, stop);
+                    });
+                settings_warning = "Uploading the saved map to the Revival Workshop...";
+            }
             break;
         case UgcPublishEffectKind::delete_requested:
             if (effect->delete_request.has_value()) {
@@ -5752,6 +7464,10 @@ struct NativeFrontendModule::Impl final {
         if (boot_loading || !accepts_input()) {
             return;
         }
+        if (markup_inventory_active()) {
+            inventory_view->pointer_move(settings_point(point).value_or(ui::Point{-1,-1}));
+            return;
+        }
         switch (screen()) {
         case FrontendScreen::identity:
             identity_menu.pointer_move(point);
@@ -5767,6 +7483,16 @@ struct NativeFrontendModule::Impl final {
             break;
         case FrontendScreen::direct_connect:
             direct_connect_menu.pointer_move(point);
+            break;
+        case FrontendScreen::game_loading:
+            if (loading_scrollbar_dragging) {
+                if (const auto raw = settings_point(point)) {
+                    const auto thumb = loading_layout::score_thumb(match_loading.snapshot());
+                    const auto travel = loading_layout::score_track.height - thumb.height;
+                    if (travel > 0.0) static_cast<void>(match_loading.set_score_scroll(
+                        (raw->y - loading_scrollbar_grab_offset - loading_layout::score_track.y) / travel));
+                }
+            }
             break;
         case FrontendScreen::server_browser:
             server_browser_pointer = settings_point(point);
@@ -5835,6 +7561,10 @@ struct NativeFrontendModule::Impl final {
         if (boot_loading || !accepts_input()) {
             return;
         }
+        if (markup_inventory_active()) {
+            inventory_view->pointer_move(settings_point(point).value_or(ui::Point{-1,-1}));
+            inventory_view->pointer_button(true); return;
+        }
         switch (screen()) {
         case FrontendScreen::identity:
             identity_menu.pointer_press(point);
@@ -5851,6 +7581,16 @@ struct NativeFrontendModule::Impl final {
         case FrontendScreen::direct_connect:
             direct_connect_menu.pointer_press(point);
             break;
+        case FrontendScreen::game_loading: {
+            const auto raw = settings_point(point);
+            const auto loading = match_loading.snapshot();
+            const auto thumb = loading_layout::score_thumb(loading);
+            loading_scrollbar_dragging = raw && loading.tabs[loading.selected_tab] == LoadingTab::scores &&
+                thumb.height < loading_layout::score_track.height &&
+                loading_layout::contains(thumb, raw->x, raw->y);
+            if (loading_scrollbar_dragging) loading_scrollbar_grab_offset = raw->y - thumb.y;
+            break;
+        }
         case FrontendScreen::server_browser:
             server_browser_pointer = settings_point(point);
             server_browser_pointer_down = point.has_value();
@@ -5904,6 +7644,12 @@ struct NativeFrontendModule::Impl final {
         case FrontendScreen::resolution_confirmation:
             resolution_confirmation.pointer_press(point);
             break;
+        case FrontendScreen::create_match:
+        case FrontendScreen::create_match_rules:
+        case FrontendScreen::create_match_maps:
+        case FrontendScreen::create_match_lobby:
+            create_match_menu.pointer_press(settings_point(point));
+            break;
         default:
             break;
         }
@@ -5938,20 +7684,106 @@ struct NativeFrontendModule::Impl final {
         return entry;
     }
 
+    void cancel_quick_play_refresh() {
+        quick_play_refresh_stop.request_stop();
+        pending_quick_play_refresh.reset();
+        quick_play_menu.set_network_available(false);
+    }
+
+    void begin_quick_play_refresh(QuickPlaySearchIntent request) {
+        if (quick_play_refresh_worker.valid()) {
+            quick_play_refresh_stop.request_stop();
+            pending_quick_play_refresh = request;
+            return;
+        }
+        pending_quick_play_refresh.reset();
+        quick_play_refresh_stop = std::stop_source{};
+        quick_play_refresh_worker = std::async(
+            std::launch::async,
+            [request, url = config.public_server_list_url,
+             stop = quick_play_refresh_stop.get_token()] {
+                network::DiscoveryResult discovery;
+                try {
+                    network::PublicDiscoveryConfig web;
+                    web.url = url;
+                    discovery = network::discover_public_servers(web, stop);
+                } catch (const std::exception& error) {
+                    discovery.error = error.what();
+                }
+                return QuickPlayRefreshOutcome{request, std::move(discovery)};
+            });
+    }
+
+    void pump_quick_play_refresh() {
+        using namespace std::chrono_literals;
+        if (!quick_play_refresh_worker.valid() ||
+            quick_play_refresh_worker.wait_for(0ms) != std::future_status::ready) {
+            return;
+        }
+        auto outcome = quick_play_refresh_worker.get();
+        if (!outcome.discovery) {
+            static_cast<void>(quick_play_menu.fail_search(outcome.request));
+        } else {
+            for (const auto& source : outcome.discovery.servers) {
+                const auto mode = resolve_server_mode(source.mode_code, source.classic);
+                QuickPlayServerResponse response;
+                response.name = source.name;
+                response.address = source.game.host;
+                response.game_port = source.game.port;
+                response.query_port = source.query_port;
+                response.ping_seconds = static_cast<double>(source.ping_milliseconds) / 1'000.0;
+                response.map = source.map;
+                response.mode = mode.title_key;
+                // Keep unknown modes out of playlists; the presentation resolver's
+                // TDM fallback is a label fallback, not matchmaking authority.
+                response.mode_id = source.mode_code;
+                response.players = source.players;
+                response.maximum_players = source.maximum_players;
+                response.texture_skin = source.texture_skin;
+                response.classic = mode.classic;
+                response.identity_server_id = source.master_identifier;
+                response.identity_ticket = source.identity_ticket;
+                static_cast<void>(quick_play_menu.accept_public_server(outcome.request, response));
+            }
+            static_cast<void>(quick_play_menu.finish_search(outcome.request));
+        }
+        if (pending_quick_play_refresh) {
+            begin_quick_play_refresh(*pending_quick_play_refresh);
+        }
+    }
+
     void launch_browser_refresh(ServerBrowserRefreshRequest request) {
         pending_browser_refresh.reset();
         const auto public_url = config.public_server_list_url;
         const auto local_ports = config.local_server_ports;
+        std::vector<std::string> friend_server_ids;
+        if (request.source == ServerBrowserSource::friends && social_client) {
+            const auto social = social_client->snapshot();
+            for (const auto& friend_row : social.friends) {
+                if (friend_row.friendship_status == "accepted" &&
+                    !friend_row.current_server_id.empty()) {
+                    friend_server_ids.push_back(friend_row.current_server_id);
+                }
+            }
+            std::ranges::sort(friend_server_ids);
+            friend_server_ids.erase(
+                std::unique(friend_server_ids.begin(), friend_server_ids.end()),
+                friend_server_ids.end());
+        }
         browser_refresh_worker =
-            std::async(std::launch::async, [request, public_url, local_ports]() mutable {
+            std::async(std::launch::async,
+                       [request, public_url, local_ports,
+                        friend_server_ids = std::move(friend_server_ids)]() mutable {
                 network::DiscoveryResult discovery;
                 if (request.source == ServerBrowserSource::local) {
                     network::LanDiscoveryConfig lan;
                     lan.ports = local_ports;
                     discovery = network::discover_lan_servers(lan);
                 } else if (request.source == ServerBrowserSource::friends) {
-                    // AoSPlay does not expose private Steam friend metadata.
-                    // An empty result is truthful; no synthetic rows are used.
+                    network::PublicDiscoveryConfig web;
+                    web.url = public_url;
+                    discovery = network::select_discovered_servers(
+                        network::discover_public_servers(web), friend_server_ids);
                 } else {
                     network::PublicDiscoveryConfig web;
                     web.url = public_url;
@@ -5983,9 +7815,14 @@ struct NativeFrontendModule::Impl final {
         if (outcome.request.generation == server_browser.refresh_generation() &&
             server_browser.refreshing()) {
             for (const auto& discovered : outcome.discovery.servers) {
+                auto entry = browser_entry(discovered, favourite_servers, history_servers);
+                // The Friends request has already selected the authoritative
+                // friend server IDs. Preserve that evidence through the menu's
+                // own source filter instead of filtering every row back out.
+                entry.friend_hosted = outcome.request.source == ServerBrowserSource::friends;
                 static_cast<void>(server_browser.accept_response(
                     outcome.request.generation,
-                    browser_entry(discovered, favourite_servers, history_servers)));
+                    std::move(entry)));
             }
             static_cast<void>(server_browser.finish_refresh(outcome.request.generation));
             if (!outcome.discovery.error.empty()) {
@@ -6002,6 +7839,13 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    void retire_match_connection() {
+        if (!match_connection) return;
+        match_connection->request_stop();
+        match_connection_cleanup.defer(std::packaged_task<void()>{
+            [connection = std::move(match_connection)] { connection->stop(); }});
+    }
+
     [[nodiscard]] bool start_match_transport(const ServerConnectRequest& request,
                                              std::uint32_t timeout_ms,
                                              std::string wire_name) {
@@ -6009,7 +7853,15 @@ struct NativeFrontendModule::Impl final {
             static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
             active_steam_ticket = 0U;
         }
+        retire_match_connection();
+        auto cleanup = connection_cleanup.try_reserve();
+        if (!cleanup) {
+            settings_warning = "Previous connections are still closing. Please try again shortly.";
+            return false;
+        }
+        match_connection_cleanup = std::move(*cleanup);
         active_join_wire_name = wire_name;
+        last_logged_connection_error.clear();
         match_connection = std::make_unique<network::LiveProtocol168Connection>();
         // Revoke local grants before any Protocol 168 packet can be queued.
         enforce_developer_access();
@@ -6047,7 +7899,7 @@ struct NativeFrontendModule::Impl final {
             return start_match_transport(request, timeout_ms, config.player_name);
         }
         if (request.identity_server_id.empty() || !identity_service->has_online_session()) {
-            settings_warning = "This ranked server requires an online AoSPlay identity.";
+            settings_warning = "This server requires an online AoSPlay identity.";
             return false;
         }
         if (pending_match_identity.has_value()) {
@@ -6069,6 +7921,7 @@ struct NativeFrontendModule::Impl final {
                 return pending;
             });
         settings_warning = "Authorizing with AoSPlay...";
+        match_loading.set_status(settings_warning);
         return true;
     }
 
@@ -6084,11 +7937,15 @@ struct NativeFrontendModule::Impl final {
         auto queued = std::move(queued_match_identity);
         queued_match_identity.reset();
         if (outcome.generation != expected_generation || !active_match_request.has_value() ||
-            outcome.request.identifier != active_match_request->identifier) {
+            outcome.request.identifier != active_match_request->identifier ||
+            outcome.request.identity_server_id != active_match_request->identity_server_id) {
             if (queued.has_value() && active_match_request.has_value() &&
-                queued->request.identifier == active_match_request->identifier) {
-                static_cast<void>(begin_match_identity(
-                    queued->request, queued->timeout_ms, queued->map_transition));
+                queued->request.identifier == active_match_request->identifier &&
+                queued->request.identity_server_id == active_match_request->identity_server_id) {
+                if (!begin_match_identity(queued->request, queued->timeout_ms, queued->map_transition)) {
+                    if (queued->map_transition) schedule_map_transition_retry(settings_warning);
+                    else match_loading.fail(settings_warning);
+                }
             }
             return;
         }
@@ -6096,29 +7953,30 @@ struct NativeFrontendModule::Impl final {
             if (outcome.map_transition) {
                 schedule_map_transition_retry(outcome.ticket.error);
             } else {
-                match_loading.fail("SERVER_CONNECTION_FAILED");
-                settings_warning = outcome.ticket.error;
+                settings_warning = outcome.ticket.error.empty()
+                    ? "Server authorization failed. Go back to retry." : outcome.ticket.error;
+                match_loading.fail(settings_warning);
             }
             return;
         }
         settings_warning.clear();
         if (!start_match_transport(
                 outcome.request, outcome.timeout_ms, std::move(outcome.ticket.join_code))) {
-            const auto status = match_connection->status();
+            const auto error = match_connection ? match_connection->status().error : settings_warning;
             if (outcome.map_transition) {
-                schedule_map_transition_retry(status.error);
+                schedule_map_transition_retry(error);
             } else {
-                match_loading.fail("SERVER_CONNECTION_FAILED");
-                settings_warning = status.error;
+                settings_warning = error.empty()
+                    ? "Could not connect to the server. Go back to retry." : error;
+                match_loading.fail(settings_warning);
             }
+        } else {
+            match_loading.set_status("CONNECTING_TO_SERVER");
         }
     }
 
     void fail_map_transition_reconnect(std::string error) {
-        if (match_connection != nullptr) {
-            match_connection->stop();
-            match_connection.reset();
-        }
+        retire_match_connection();
         map_transition_armed = false;
         map_transition_reconnecting = false;
         map_transition_attempts = 0U;
@@ -6128,10 +7986,7 @@ struct NativeFrontendModule::Impl final {
     }
 
     void schedule_map_transition_retry(std::string error) {
-        if (match_connection != nullptr) {
-            match_connection->stop();
-            match_connection.reset();
-        }
+        retire_match_connection();
         const auto now = std::chrono::steady_clock::now();
         if (map_transition_attempts >= map_transition_retry_delays.size() ||
             now >= map_transition_deadline) {
@@ -6163,6 +8018,7 @@ struct NativeFrontendModule::Impl final {
         match_ui_skin = supported_ui_skin(request.expected_skin);
         match_loading.begin(
             request.expected_map, request.expected_mode, request.expected_classic, match_ui_skin);
+        loading_scrollbar_dragging = false;
         if (screen() != FrontendScreen::game_loading) {
             static_cast<void>(
                 navigation.replace(FrontendScreen::game_loading, NavigationDirection::forward));
@@ -6203,6 +8059,14 @@ struct NativeFrontendModule::Impl final {
             direct_connect_menu.set_error("The server endpoint is invalid");
             return;
         }
+        // Stop advertising the previous public match before replacing its
+        // transport. A successful Protocol 168 bootstrap below publishes the
+        // new authoritative master-list identifier. Same-server map rotation
+        // uses begin_map_transition_reconnect() and intentionally skips this
+        // transient online state.
+        if (network_match && social_client != nullptr) {
+            social_client->set_presence("online");
+        }
         teardown_tutorial();
         match_ui_skin = supported_ui_skin(request.expected_skin);
         match_loading.begin(
@@ -6212,11 +8076,12 @@ struct NativeFrontendModule::Impl final {
         }
         play_confirm();
         active_match_request = request;
+        loading_scrollbar_dragging = false;
         if (!begin_match_identity(request, 30'000U, false)) {
-            match_loading.fail("SERVER_CONNECTION_FAILED");
             if (settings_warning.empty()) {
                 settings_warning = "Could not start the server connection.";
             }
+            match_loading.fail(settings_warning);
         }
     }
 
@@ -6256,6 +8121,7 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] bool apply_live_map_environment(std::string_view server_skydome) {
         apply_retail_state_lighting();
+        world_renderer.set_retail_fog_color(match_state_info.fog_color);
 
         const std::string selected_skydome = live_official_environment.has_value()
                                                  ? std::string{live_official_environment->skydome}
@@ -6275,6 +8141,7 @@ struct NativeFrontendModule::Impl final {
             const auto local_fog = atmosphere.fog_color;
             world_renderer.set_atmosphere(atmosphere);
             world_renderer.set_fog_color(local_fog);
+            world_renderer.set_retail_fog_color(match_state_info.fog_color);
         }
         return true;
     }
@@ -6600,8 +8467,13 @@ struct NativeFrontendModule::Impl final {
             remesh_config.static_lights = &tutorial_session->static_lights();
         }
         const world::ChunkMesher remesher{remesh_config};
+        // A chunk count alone is not a time budget: 24 dense slabs can consume
+        // an entire simulation frame. Finish at least one chunk, then yield at
+        // the deadline. FIFO prevents sustained nearby edits starving an older
+        // authoritative update indefinitely.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{2};
         while (budget > 0U && !live_chunk_remesh_queue.empty()) {
-            const auto key = live_chunk_remesh_queue.back();
+            const auto key = live_chunk_remesh_queue.front();
             if (!world_renderer.upload_chunk(remesher.mesh(*active_map, key))) {
                 settings_warning = "terrain chunk synchronization failed: " +
                                    std::string{world_renderer.last_error()};
@@ -6610,7 +8482,7 @@ struct NativeFrontendModule::Impl final {
                 }
                 return;
             }
-            live_chunk_remesh_queue.pop_back();
+            live_chunk_remesh_queue.pop_front();
             const auto index = static_cast<std::size_t>(key.y) * live_chunk_axis + key.x;
             live_chunk_remesh_pending[index] = false;
             skylight.refresh_region(*active_map,
@@ -6629,6 +8501,9 @@ struct NativeFrontendModule::Impl final {
                 minimap_texture_upload_pending = true;
             }
             --budget;
+            if (std::chrono::steady_clock::now() >= deadline) {
+                break;
+            }
         }
         if (live_chunk_remesh_queue.empty()) {
             minimap_map_revision = active_map->revision();
@@ -6648,10 +8523,30 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    std::string last_logged_connection_error;
+
+    void record_connection_failure(const network::LiveProtocol168Status& status) {
+        if (status.error.empty() || status.error == last_logged_connection_error) return;
+        last_logged_connection_error = status.error;
+        // Portable diagnostics for reports whose UI only says connection failed.
+        // Never include account names, access tokens, join codes or Steam tickets.
+        try {
+            const auto path = config.executable_directory / "connection-diagnostics.log";
+            std::error_code error;
+            const auto size = std::filesystem::file_size(path, error);
+            std::ofstream output{path, !error && size >= 256U * 1024U ? std::ios::trunc : std::ios::app};
+            output << std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count() << " endpoint=";
+            if (active_match_request) output << active_match_request->host << ':' << active_match_request->port;
+            output << " received=" << status.received_datagrams << " sent=" << status.sent_datagrams
+                   << " queued=" << status.queued_inbound << " error=" << status.error.substr(0U, 1024U) << '\n';
+        } catch (...) { /* Logging must never interrupt connection recovery. */ }
+    }
+
     void pump_match_connection() {
-        if (map_transition_reconnecting && match_connection == nullptr) {
+        if (map_transition_reconnecting) {
             pump_map_transition_reconnect();
-            return;
+            if (!map_transition_reconnecting || match_connection == nullptr) return;
         }
         if (match_connection == nullptr) {
             return;
@@ -6659,7 +8554,9 @@ struct NativeFrontendModule::Impl final {
         const auto status = match_connection->status();
         if (status.phase == network::LiveProtocol168Phase::failed ||
             status.phase == network::LiveProtocol168Phase::disconnected) {
-            if (map_transition_armed) {
+            record_connection_failure(status);
+            if (network::protocol168_should_reconnect_after_map_change(
+                    status, map_transition_armed)) {
                 if (!map_transition_reconnecting) {
                     begin_map_transition_reconnect(status.error);
                 } else {
@@ -6667,8 +8564,7 @@ struct NativeFrontendModule::Impl final {
                 }
                 return;
             }
-            match_loading.fail("SERVER_CONNECTION_FAILED");
-            settings_warning = status.error;
+            fail_map_transition_reconnect(status.error);
             return;
         }
         auto bootstrap = match_connection->take_bootstrap();
@@ -6689,7 +8585,9 @@ struct NativeFrontendModule::Impl final {
                                                    bootstrap->initial_info.classic);
         match_ui_skin = supported_ui_skin(bootstrap->initial_info.texture_skin);
         match_loading.initial_info(
-            map, mode.title_key, mode.classic, match_ui_skin, mode.code == "ugc");
+            map, mode.title_key, mode.classic, match_ui_skin, mode.code == "ugc",
+            bootstrap->initial_info.friendly_fire);
+        match_loading.set_infographic_captions(bootstrap->initial_info.mode_infographic_text);
         match_loading.receiving_map();
         tutorial_roster = std::move(bootstrap->roster);
         match_initial_info = std::move(bootstrap->initial_info);
@@ -6733,6 +8631,16 @@ struct NativeFrontendModule::Impl final {
         local_spawn_confirmed = false;
         initial_join_team.reset();
         network_match = true;
+        // Only a successful protocol bootstrap proves that the player is in
+        // this match. Publish the opaque master-list ID, never a direct socket
+        // supplied by an arbitrary user. Friends resolve it against AoSPlay's
+        // current public list before they connect.
+        if (social_client != nullptr && active_match_request.has_value() &&
+            !active_match_request->identity_server_id.empty()) {
+            social_client->set_presence(
+                "in_game",
+                nlohmann::json{{"server_id", active_match_request->identity_server_id}});
+        }
         // Interactive bootstrap has not emitted ClientData yet. Diagnostic
         // auto-join sessions still report their exact next loop here.
         client_loop_count = static_cast<std::int32_t>(bootstrap->next_client_loop_count);
@@ -6745,6 +8653,8 @@ struct NativeFrontendModule::Impl final {
         pending_class_selection.reset();
         live_terrain_replica.reset();
         live_prefab_placement.clear();
+        live_prefab_model.reset();
+        live_prefab_model_name.clear();
         timed_explosive_seconds.clear();
         deferred_terrain_packets.clear();
         clear_live_chunk_remeshes();
@@ -6770,6 +8680,8 @@ struct NativeFrontendModule::Impl final {
         prefab_yaw_override = 1U;
         preview_prefab_name.clear();
         preview_prefab_model.reset();
+        preview_prefab_placement.reset();
+        preview_prefab_icon.clear();
         preview_prefab_position.reset();
         preview_prefab_pitch = 0U;
         preview_prefab_roll = 0U;
@@ -6780,10 +8692,12 @@ struct NativeFrontendModule::Impl final {
         placement_cube_meshes_uploaded = false;
         preview_prefab_meshes_uploaded = false;
         preview_ugc_item_uploaded.reset();
+        preview_deployable_type_uploaded.reset();
         preview_prefab_color = 0U;
-        tutorial_bootstrap = std::make_unique<world::TutorialWorldBootstrap>(
-            std::move(bootstrap->map), tutorial_map_name);
-        tutorial_bootstrap->start();
+        if (!start_world_bootstrap(std::move(bootstrap->map), tutorial_map_name)) {
+            retire_match_connection();
+            return;
+        }
         history_servers.insert(active_match_request->identifier);
     }
 
@@ -6819,6 +8733,10 @@ struct NativeFrontendModule::Impl final {
             const auto id = std::to_integer<std::uint8_t>(packet.front());
             const PerformanceScope packet_performance{
                 "network_packet", std::chrono::microseconds{2'000}, id};
+            if (id == network::CosmeticAppearances::packet_id) {
+                static_cast<void>(remote_cosmetics.ingest(packet));
+                continue;
+            }
             if (id == network::PrefabCompletePacket::id &&
                 (live_terrain_replica == nullptr || live_catchup_packet_sync)) {
                 // Keep packet 29 ordered with the packet-30 slices buffered
@@ -6979,7 +8897,7 @@ struct NativeFrontendModule::Impl final {
                             {impact.source_tool,
                              {static_cast<float>(impact.cell.x) + 0.5F,
                               static_cast<float>(impact.cell.y) + 0.5F,
-                              static_cast<float>(impact.cell.z) + 0.5F}});
+                              static_cast<float>(impact.cell.z) + 0.5F},terrain_damage?terrain_damage->player_id:std::uint8_t{255U}});
                     }
                     if (predicted_contact && !impact.destroyed) {
                         // ShootFeedback already emitted the contact chips and
@@ -7135,10 +9053,13 @@ struct NativeFrontendModule::Impl final {
                                 begin_local_death(std::nullopt);
                             }
                         }
-                        tutorial_session->apply_server_movement_state(
-                            row.action_flags, row.state_flags, row.pickup_id);
                         tutorial_session->note_authoritative_snapshot(row.acknowledged_client_loop,
                                                                       position);
+                        tutorial_session->apply_server_jetpack_fuel(
+                            row.jetpack_fuel, row.acknowledged_client_loop);
+                        tutorial_session->apply_server_movement_state(
+                            row.action_flags, row.state_flags, row.pickup_id,
+                            row.acknowledged_client_loop);
                         // Character.pyx restores the exact ACK state and
                         // replays every later movement record. Delta-rebasing
                         // is observably wrong at voxel edges and jump/crouch
@@ -7325,6 +9246,9 @@ struct NativeFrontendModule::Impl final {
                         static_cast<std::uint32_t>(response->damage_by) * 0x9E3779B9U ^
                         static_cast<std::uint32_t>(latest_world_loop);
                     world::emit_player_blood(particles, response->position, seed);
+                    const auto* attacker=tutorial_roster.player(response->damage_by);
+                    const auto* cosmetic=attacker?equipped_cosmetic(attacker->player_id,"weapon:"+std::to_string(attacker->tool_id)+":world"):nullptr;
+                    if(audio_started&&cosmetic)static_cast<void>(audio->play_cosmetic_cue(cosmetic->id,"melee-hit-player",0U,{response->position[0],response->position[1],response->position[2]},1.F,false));
                 }
                 if (response->damaged != 0U && local_player_id == response->damage_by &&
                     !played_hit_sound) {
@@ -7480,64 +9404,69 @@ struct NativeFrontendModule::Impl final {
                     if (!created.packet->dead) {
                         begin_local_spawn_audio(created.packet->class_id);
                     }
-                } else if (tutorial_session != nullptr && !sync_roster_players()) {
-                    settings_warning = "live CreatePlayer model failed: " + settings_warning;
-                } else if (created && is_local_create_player_boundary(
+                } else {
+                    // Presentation failures on another roster member cannot
+                    // block the owner's authoritative life/camera transition.
+                    if (tutorial_session != nullptr && !sync_roster_players()) {
+                        settings_warning = "live CreatePlayer model failed: " + settings_warning;
+                    }
+                    if (created && is_local_create_player_boundary(
                                           created.packet->player_id,
                                           local_player_id,
                                           tutorial_session != nullptr)) {
-                    if (const auto* local = tutorial_roster.player(*local_player_id);
-                        local != nullptr) {
-                        local_spawn_confirmed = true;
-                        // InitialInfo carries the multiplier applied to the
-                        // native per-class constants, not an already-composed
-                        // sprint speed. Dividing by the class sprint constant
-                        // made prediction ~40% slower than authority.
-                        const auto speed_scale = network::protocol168_movement_scale(
-                            match_initial_info, local->class_id);
-                        tutorial_session->apply_server_class(local->class_id, speed_scale);
-                        // A repeated local CreatePlayer is a new authoritative
-                        // life, not an inventory-only update. Snap physics to
-                        // its spawn and discard prediction samples/latches from
-                        // the dead life before publishing the next ClientData.
-                        tutorial_session->apply_authoritative_transform(
-                            local->position, local->orientation, local->velocity);
-                        if (!local->dead) {
-                            // CreatePlayer, not KillAction, is retail's spawn
-                            // audio boundary. Arm after the transform so an
-                            // audio failure cannot interrupt respawn state.
-                            begin_local_spawn_audio(local->class_id);
+                        if (const auto* local = tutorial_roster.player(*local_player_id);
+                            local != nullptr) {
+                            local_spawn_confirmed = true;
+                            // InitialInfo carries the multiplier applied to the
+                            // native per-class constants, not an already-composed
+                            // sprint speed. Dividing by the class sprint constant
+                            // made prediction ~40% slower than authority.
+                            const auto speed_scale = network::protocol168_movement_scale(
+                                match_initial_info, local->class_id);
+                            tutorial_session->apply_server_class(local->class_id, speed_scale);
+                            // A repeated local CreatePlayer is a new authoritative
+                            // life, not an inventory-only update. Snap physics to
+                            // its spawn and discard prediction samples/latches from
+                            // the dead life before publishing the next ClientData.
+                            tutorial_session->apply_authoritative_transform(
+                                local->position, local->orientation, local->velocity);
+                            if (!local->dead) {
+                                // CreatePlayer, not KillAction, is retail's spawn
+                                // audio boundary. Arm after the transform so an
+                                // audio failure cannot interrupt respawn state.
+                                begin_local_spawn_audio(local->class_id);
+                            }
+                            pending_tool_selection.reset();
+                            last_sent_tool.reset();
+                            end_local_death(local->team, local->dead);
+                            const auto* class_definition =
+                                world::find_class_definition(local->class_id);
+                            const auto spawn_tool =
+                                class_definition != nullptr
+                                    ? world::preferred_spawn_tool(*class_definition, local->loadout)
+                                    : std::optional<std::uint8_t>{};
+                            if (!tutorial_session->apply_server_selection(local->class_id,
+                                                                          local->loadout,
+                                                                          local->prefabs,
+                                                                          local->ugc_tools,
+                                                                          spawn_tool)) {
+                                settings_warning =
+                                    "CreatePlayer loadout could not replace local inventory";
+                            }
+                            // CreatePlayer is the atomic class/team lifecycle
+                            // boundary. Rebuild first-person materials here too;
+                            // retaining the prior life left arms and team-tinted
+                            // tools blue after a class or team change.
+                            uploaded_sandbox_tool.reset();
+                            if (!load_tutorial_class_arms(local->class_id)) {
+                                settings_warning =
+                                    "local CreatePlayer model refresh failed: " + settings_warning;
+                            }
                         }
-                        pending_tool_selection.reset();
-                        last_sent_tool.reset();
-                        end_local_death(local->team, local->dead);
-                        const auto* class_definition =
-                            world::find_class_definition(local->class_id);
-                        const auto spawn_tool =
-                            class_definition != nullptr
-                                ? world::preferred_spawn_tool(*class_definition, local->loadout)
-                                : std::optional<std::uint8_t>{};
-                        if (!tutorial_session->apply_server_selection(local->class_id,
-                                                                      local->loadout,
-                                                                      local->prefabs,
-                                                                      local->ugc_tools,
-                                                                      spawn_tool)) {
-                            settings_warning =
-                                "CreatePlayer loadout could not replace local inventory";
+                        if (screen() == FrontendScreen::pause_menu ||
+                            screen() == FrontendScreen::change_team) {
+                            refresh_pause_menu();
                         }
-                        // CreatePlayer is the atomic class/team lifecycle
-                        // boundary. Rebuild first-person materials here too;
-                        // retaining the prior life left arms and team-tinted
-                        // tools blue after a class or team change.
-                        uploaded_sandbox_tool.reset();
-                        if (!load_tutorial_class_arms(local->class_id)) {
-                            settings_warning =
-                                "local CreatePlayer model refresh failed: " + settings_warning;
-                        }
-                    }
-                    if (screen() == FrontendScreen::pause_menu ||
-                        screen() == FrontendScreen::change_team) {
-                        refresh_pause_menu();
                     }
                 }
             } else if (id == network::SetClassLoadoutPacket::id) {
@@ -7590,6 +9519,7 @@ struct NativeFrontendModule::Impl final {
                     // Health (4) is carried by SetHP and must not touch ammo.
                     if (restock->type == 0U) {
                         tutorial_session->restock_ammunition();
+                        tutorial_session->restock_jetpack_fuel();
                     } else if (restock->type == 3U) {
                         tutorial_session->restock_from_ammo_crate();
                     } else if (restock->type == 5U) {
@@ -7597,6 +9527,7 @@ struct NativeFrontendModule::Impl final {
                     } else if (restock->type == 6U) {
                         // Character.restock updates the resource immediately;
                         // the following WorldUpdate remains authoritative.
+                        tutorial_session->restock_jetpack_fuel();
                         static_cast<void>(tutorial_roster.update_jetpack_fuel(
                             restock->player_id,
                             static_cast<float>(game_hud_assets::retail_jetpack_max_fuel)));
@@ -7645,6 +9576,8 @@ struct NativeFrontendModule::Impl final {
                                                             static_cast<float>(player->position.y),
                                                             static_cast<float>(player->position.z)};
                         const auto seed = static_cast<std::uint8_t>(latest_world_loop);
+                        const auto* cosmetic=equipped_cosmetic(reload->player_id,"weapon:"+std::to_string(reload->tool_id)+":world");
+                        if(cosmetic&&audio->play_cosmetic_cue(cosmetic->id,reload->is_done?"reload-done":"reload",seed,position))continue;
                         if (reload->is_done) {
                             audio->play_weapon_reload_done(reload->tool_id, seed, position, 1.0F);
                         } else {
@@ -7711,6 +9644,7 @@ struct NativeFrontendModule::Impl final {
                     settings_warning = decoded.error;
                     continue;
                 }
+                remote_cosmetics.erase(left->player_id);
                 if (const auto* player = tutorial_roster.player(left->player_id);
                     player != nullptr) {
                     const auto position = remote_sound_position(*player);
@@ -8045,6 +9979,8 @@ struct NativeFrontendModule::Impl final {
                     entity.aim_yaw = created->yaw;
                     entity.team = created->state;
                     entity.owner = created->player_id;
+                    entity.local_launcher_muzzle = local_player_id == entity.owner &&
+                        launcher_muzzle_tracker.consume(entity, std::chrono::steady_clock::now());
                     entity.face = created->face;
                     entity.fuse = created->fuse;
                     const auto channel = [](float value) {
@@ -8485,15 +10421,19 @@ struct NativeFrontendModule::Impl final {
                            localized_message != nullptr) {
                     if (localized_message->chat_type == chat_big_type) {
                         game_hud.set_big_message(
-                            format_runtime_message(localized_text(localized_message->string_id),
-                                                   localized_message->parameters,
-                                                   localized_message->localise_parameters),
+                            format_runtime_message(
+                                localized_text(localized_message->string_id),
+                                localized_message->parameters,
+                                localized_message->localise_parameters,
+                                [this](std::string_view key) { return localized_text(key); }),
                             localized_message->override_previous_message);
                     } else {
                         game_chat.add(
-                            format_runtime_message(localized_text(localized_message->string_id),
-                                                   localized_message->parameters,
-                                                   localized_message->localise_parameters),
+                            format_runtime_message(
+                                localized_text(localized_message->string_id),
+                                localized_message->parameters,
+                                localized_message->localise_parameters,
+                                [this](std::string_view key) { return localized_text(key); }),
                             {244U, 236U, 187U, 255U});
                         if (audio_started) {
                             static_cast<void>(audio->play_named_one_shot("chat", {}, 0.70F, true));
@@ -8798,7 +10738,9 @@ struct NativeFrontendModule::Impl final {
     void end_local_death(std::uint8_t team, bool dead) {
         if (tutorial_session == nullptr)
             return;
-        if (dead) {
+        const bool spectator = local_player_is_spectator(
+            team, match_initial_info.enable_spectator);
+        if (dead && !spectator) {
             begin_local_death(std::nullopt);
             return;
         }
@@ -8806,7 +10748,8 @@ struct NativeFrontendModule::Impl final {
         pending_local_jetpack_death.reset();
         tutorial_session->set_server_health(100.0);
         game_hud.clear_respawn();
-        if (team == 0U && match_initial_info.enable_spectator) {
+        if (spectator) {
+            tutorial_session->clear_input();
             death_camera.enter_spectator(tutorial_session->player().position,
                                          tutorial_session->yaw(),
                                          choose_death_camera_target());
@@ -8843,15 +10786,34 @@ struct NativeFrontendModule::Impl final {
     /** Publish one retail ClientData sample for each fixed simulation tick. */
     void send_live_client_data() {
         if (!network_match || match_connection == nullptr || tutorial_session == nullptr ||
-            !tutorial_session->alive() || death_camera.active() || !local_player_id.has_value()) {
+            !local_player_id.has_value()) {
             return;
         }
+        const auto* local = tutorial_roster.player(*local_player_id);
+        const bool spectator = local != nullptr && local_player_is_spectator(
+            local->team, match_initial_info.enable_spectator);
+        if (spectator) {
+            // First ClientData is the server's scene-ready boundary. Keep
+            // neutral samples flowing during incremental roster/map reveal,
+            // without recording character prediction or authorizing actions.
+            const auto orientation = tutorial_session->player().orientation;
+            const auto packet = spectator_client_data(
+                client_loop_count++, *local_player_id,
+                {static_cast<float>(orientation.x), static_cast<float>(orientation.y),
+                 static_cast<float>(orientation.z)});
+            if (!match_connection->send(network::encode_packet(packet))) {
+                const auto status = match_connection->status();
+                if (!status.error.empty()) settings_warning = status.error;
+            }
+            return;
+        }
+        if (!tutorial_session->alive() || death_camera.active()) return;
         network::ClientDataPacket packet;
         packet.loop_count = client_loop_count++;
         tutorial_session->record_network_prediction(packet.loop_count);
         packet.player_id = *local_player_id;
         packet.tool_id = tutorial_session->selected_tool_id().value_or(0U);
-        if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr) {
+        if (local != nullptr) {
             remember_combat_tool(*local, packet.tool_id);
         }
         if (!last_sent_tool.has_value() || *last_sent_tool != packet.tool_id) {
@@ -9024,25 +10986,8 @@ struct NativeFrontendModule::Impl final {
                       std::uint8_t yaw,
                       std::uint8_t pitch,
                       std::uint8_t roll) noexcept {
-        // shared.common.rotate_point applies roll(Y), pitch(X), then yaw(Z).
-        // These quarter turns are protocol-visible because packet 30 carries
-        // only a KV6 name, range, anchor, and these three compact rotations.
-        for (std::uint8_t step{}; step < (roll & 3U); ++step) {
-            const auto previous_x = x;
-            x = -z;
-            z = previous_x;
-        }
-        for (std::uint8_t step{}; step < (pitch & 3U); ++step) {
-            const auto previous_y = y;
-            y = z;
-            z = -previous_y;
-        }
-        for (std::uint8_t step{}; step < (yaw & 3U); ++step) {
-            const auto previous_x = x;
-            x = y;
-            y = -previous_x;
-        }
-        return {x, y, z};
+        const auto rotated = world::rotate_prefab_cell({x, y, z}, yaw, pitch, roll);
+        return {rotated.x, rotated.y, rotated.z};
     }
 
     [[nodiscard]] std::optional<std::filesystem::path>
@@ -9151,18 +11096,22 @@ struct NativeFrontendModule::Impl final {
             return result;
         }
 
-        const auto path = resolve_prefab_asset(prefab_name);
-        if (!path.has_value()) {
-            result.error = "server prefab asset is unavailable: " + std::string{prefab_name};
-            return result;
+        if (live_prefab_model_name != prefab_name || !live_prefab_model.has_value()) {
+            const auto path = resolve_prefab_asset(prefab_name);
+            if (!path.has_value()) {
+                result.error = "server prefab asset is unavailable: " + std::string{prefab_name};
+                return result;
+            }
+            std::string load_error;
+            live_prefab_model = world::Kv6Model::load_file(*path, &load_error);
+            if (!live_prefab_model.has_value()) {
+                result.error = "server prefab asset failed to load: " +
+                               (load_error.empty() ? path->string() : load_error);
+                return result;
+            }
+            live_prefab_model_name = prefab_name;
         }
-        std::string load_error;
-        const auto model = world::Kv6Model::load_file(*path, &load_error);
-        if (!model.has_value()) {
-            result.error = "server prefab asset failed to load: " +
-                           (load_error.empty() ? path->string() : load_error);
-            return result;
-        }
+        const auto& model = live_prefab_model;
         const auto count = static_cast<std::int32_t>(std::min<std::size_t>(
             model->voxels().size(),
             static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
@@ -9293,21 +11242,8 @@ struct NativeFrontendModule::Impl final {
         if (tutorial_session == nullptr || model.voxels().empty()) {
             return;
         }
-        std::vector<world::PrefabPlacementCell> footprint;
-        footprint.reserve(model.voxels().size());
-        for (const auto& voxel : model.voxels()) {
-            const auto rotated = rotate_prefab_xyz(static_cast<std::int32_t>(voxel.x),
-                                                    static_cast<std::int32_t>(voxel.y),
-                                                    static_cast<std::int32_t>(voxel.z),
-                                                    yaw,
-                                                    pitch,
-                                                    roll);
-            footprint.push_back({origin[0U] + rotated[0U],
-                                 origin[1U] + rotated[1U],
-                                 origin[2U] + rotated[2U]});
-        }
-        const auto evaluation =
-            world::evaluate_prefab_placement(tutorial_session->map(), footprint);
+        const auto evaluation = preview_prefab_placement.evaluate(
+            tutorial_session->map(), {origin[0U], origin[1U], origin[2U]}, yaw, pitch, roll);
         required_blocks = static_cast<std::int32_t>(std::min<std::size_t>(
             evaluation.required_blocks,
             static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
@@ -9332,26 +11268,9 @@ struct NativeFrontendModule::Impl final {
             return std::nullopt;
         }
         const auto& player = tutorial_session->player();
-        std::array<std::int32_t, 3U> minimum{
-            std::numeric_limits<std::int32_t>::max(),
-            std::numeric_limits<std::int32_t>::max(),
-            std::numeric_limits<std::int32_t>::max()};
-        std::array<std::int32_t, 3U> maximum{
-            std::numeric_limits<std::int32_t>::lowest(),
-            std::numeric_limits<std::int32_t>::lowest(),
-            std::numeric_limits<std::int32_t>::lowest()};
-        for (const auto& voxel : model.voxels()) {
-            const auto rotated = rotate_prefab_xyz(static_cast<std::int32_t>(voxel.x),
-                                                    static_cast<std::int32_t>(voxel.y),
-                                                    static_cast<std::int32_t>(voxel.z),
-                                                    yaw,
-                                                    pitch,
-                                                    roll);
-            for (std::size_t axis{}; axis < 3U; ++axis) {
-                minimum[axis] = std::min(minimum[axis], rotated[axis]);
-                maximum[axis] = std::max(maximum[axis], rotated[axis]);
-            }
-        }
+        const auto& footprint_bounds = preview_prefab_placement.bounds(yaw, pitch, roll);
+        const auto& minimum = footprint_bounds.minimum;
+        const auto& maximum = footprint_bounds.maximum;
         const auto world_x = maximum[0U] - minimum[0U] + 1;
         const auto world_y = maximum[1U] - minimum[1U] + 1;
         const auto world_z = maximum[2U] - minimum[2U] + 1;
@@ -9795,6 +11714,13 @@ struct NativeFrontendModule::Impl final {
                     return;
                 }
             }
+            if (action.kind == world::WeaponActionKind::oriented_item) {
+                launcher_muzzle_tracker.remember(
+                    action.tool_id,
+                    {wire.position[0U], wire.position[1U], wire.position[2U]},
+                    {wire.velocity[0U], wire.velocity[1U], wire.velocity[2U]},
+                    std::chrono::steady_clock::now());
+            }
             if (!expected_prefab_colors.empty() && live_terrain_replica != nullptr) {
                 live_terrain_replica->expect_owner_build_colors(
                     wire.loop_count, wire.player_id, expected_prefab_colors);
@@ -9830,8 +11756,8 @@ struct NativeFrontendModule::Impl final {
             if (inserted) {
                 persist_favourite_servers();
             }
-            direct_connect_menu.set_error(inserted ? "Added to Favorites"
-                                                   : "Already in Favorites");
+            direct_connect_menu.set_notice(inserted ? "Added to Favorites"
+                                                    : "Already in Favorites");
             play_confirm();
             return;
         }
@@ -9980,26 +11906,26 @@ struct NativeFrontendModule::Impl final {
             [this](const auto& payload) {
                 using Payload = std::decay_t<decltype(payload)>;
                 if constexpr (std::is_same_v<Payload, QuickPlayBackIntent>) {
+                    cancel_quick_play_refresh();
                     static_cast<void>(navigation.pop());
                     play_back();
                 } else if constexpr (std::is_same_v<Payload, QuickPlaySearchIntent>) {
-                    // The public-master adapter is not attached in this engine
-                    // slice. Close this exact generation as failed so stale
-                    // callbacks can never mutate later searches.
-                    static_cast<void>(quick_play_menu.fail_search(payload));
+                    begin_quick_play_refresh(payload);
                     play_confirm();
                 } else if constexpr (std::is_same_v<Payload, QuickPlayDirectStartIntent>) {
-                    match_ui_skin = supported_ui_skin(payload.expected_skin);
-                    match_loading.begin(payload.expected_map,
-                                        payload.expected_mode,
-                                        payload.expected_classic,
-                                        match_ui_skin);
-                    static_cast<void>(navigation.push(FrontendScreen::game_loading));
-                    play_confirm();
+                    network::ServerEndpoint endpoint;
+                    std::string error;
+                    if (network::parse_server_endpoint(payload.identifier, endpoint, error)) {
+                        begin_match_loading(ServerConnectRequest{payload.identifier,
+                            endpoint.host, endpoint.port, payload.expected_map,
+                            payload.expected_mode, payload.expected_skin,
+                            payload.expected_classic, payload.identity_server_id,
+                            payload.identity_ticket});
+                    }
                 } else if constexpr (std::is_same_v<Payload, QuickPlayPlaylistStartIntent>) {
-                    // Playlist matchmaking needs the same external service as
-                    // discovery. Native offline state prevents this path.
-                    quick_play_menu.set_network_available(false);
+                    if (const auto search = quick_play_menu.begin_search()) {
+                        begin_quick_play_refresh(*search);
+                    }
                 } else if constexpr (std::is_same_v<Payload, QuickPlayBuyIntent>) {
                     if (!window.open_external_url("https://store.steampowered.com/app/420650")) {
                         last_error = "the Mafia DLC store page could not be opened";
@@ -10194,6 +12120,13 @@ struct NativeFrontendModule::Impl final {
                             static_cast<std::int32_t>(value.width),
                             static_cast<std::int32_t>(value.height)};
         };
+        if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory && point.y>=138) {
+            if (contains({60,500,170,48},point) && !inventory_menu.reveal) {
+                static_cast<void>(navigation.pop()); play_back(); return;
+            }
+            dispatch_inventory_action(inventory_menu.click(point));
+            play_scroll(); return;
+        }
         if (contains(as_rect(layout.cancel_button), point)) {
             static_cast<void>(navigation.pop());
             play_back();
@@ -10241,6 +12174,8 @@ struct NativeFrontendModule::Impl final {
                            0,
                            static_cast<std::int32_t>(PlayerProfileMenuModel::tab_count - 1U)));
             static_cast<void>(player_profile_menu.select_tab(static_cast<PlayerProfileTab>(tab)));
+            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory)
+                dispatch_inventory_action(InventoryAction::refresh);
             play_scroll();
         } else if (player_profile_menu.filter_visible() &&
                    contains(as_rect(layout.filter_dropdown), point)) {
@@ -10311,6 +12246,10 @@ struct NativeFrontendModule::Impl final {
         if (boot_loading || !accepts_input()) {
             return;
         }
+        if (markup_inventory_active()) {
+            inventory_view->pointer_move(settings_point(point).value_or(ui::Point{-1,-1}));
+            inventory_view->pointer_button(false); consume_inventory_view(); return;
+        }
         switch (screen()) {
         case FrontendScreen::identity:
             if (const auto action = identity_menu.pointer_release(point); action.has_value()) {
@@ -10357,6 +12296,7 @@ struct NativeFrontendModule::Impl final {
         case FrontendScreen::gameplay_debug:
             break;
         case FrontendScreen::game_loading:
+            if (std::exchange(loading_scrollbar_dragging, false)) break;
             if (const auto raw = settings_point(point); raw.has_value()) {
                 handle_loading_click(*raw);
             }
@@ -10428,7 +12368,11 @@ struct NativeFrontendModule::Impl final {
             if (const auto raw = settings_point(point); raw.has_value()) {
                 auto before = create_match_menu.presentation();
                 create_match_menu.pointer_release(*raw);
+                static_cast<void>(window.set_text_input_enabled(
+                    create_match_menu.chat_focused()));
                 consume_create_match_effects(std::move(before));
+            } else {
+                create_match_menu.pointer_press(std::nullopt);
             }
             break;
         case FrontendScreen::leaderboard:
@@ -10454,6 +12398,7 @@ struct NativeFrontendModule::Impl final {
     }
 
     void cancel_pointer_capture() {
+        if (inventory_view) inventory_view->cancel_pointer_capture();
         // Retail MenuScene sends an off-canvas mouse-motion event to both the
         // outgoing and incoming menu whenever a route changes. Clear hover as
         // well as press capture so cached screens cannot re-enter highlighted.
@@ -10480,6 +12425,7 @@ struct NativeFrontendModule::Impl final {
         static_cast<void>(change_team_menu.pointer_release(std::nullopt));
         server_browser_pointer.reset();
         server_browser_pointer_down = false;
+        loading_scrollbar_dragging = false;
         quick_play_menu.pointer_move(std::nullopt);
         quick_play_menu.pointer_press(std::nullopt);
         static_cast<void>(quick_play_menu.pointer_release(std::nullopt));
@@ -10508,12 +12454,14 @@ struct NativeFrontendModule::Impl final {
         resolution_confirmation.cancel_pointer_capture();
         resolution_confirmation.pointer_move(std::nullopt);
         create_match_menu.pointer_move(std::nullopt);
+        create_match_menu.pointer_press(std::nullopt);
     }
 
     [[nodiscard]] bool handle_input(ui::InputEvent event) {
         if (boot_loading || !accepts_input()) {
             return false;
         }
+        if (markup_inventory_active()) { inventory_view->input(event); consume_inventory_view(); return true; }
         if (event.action == ui::InputAction::cancel && event.phase == ui::InputPhase::pressed) {
             // Recovered EscapeMenu flow: Escape in the world opens the pause
             // menu with the open cue; Escape inside it resumes with confirm.
@@ -10525,7 +12473,7 @@ struct NativeFrontendModule::Impl final {
                     tutorial_session->clear_input();
                 }
                 refresh_pause_menu();
-                if (navigation.push(FrontendScreen::pause_menu)) {
+                if (navigation.push_instant(FrontendScreen::pause_menu)) {
                     send_client_in_menu(true);
                     play_back();
                 }
@@ -10533,7 +12481,7 @@ struct NativeFrontendModule::Impl final {
             }
             if (screen() == FrontendScreen::pause_menu) {
                 send_client_in_menu(false);
-                static_cast<void>(navigation.pop());
+                static_cast<void>(navigation.pop_instant());
                 play_confirm();
                 return true;
             }
@@ -10584,6 +12532,48 @@ struct NativeFrontendModule::Impl final {
             }
             return false;
         case FrontendScreen::friends_lobby:
+            if (!event.triggers_action()) return false;
+            if (event.action == ui::InputAction::navigate_up || event.action == ui::InputAction::navigate_down) {
+                if (friends_lobby_menu.move_selection(event.action == ui::InputAction::navigate_down ? 1 : -1))
+                    play_scroll();
+                return true;
+            }
+            if (event.action == ui::InputAction::navigate_left || event.action == ui::InputAction::navigate_right ||
+                event.action == ui::InputAction::focus_next || event.action == ui::InputAction::focus_previous) {
+                if (friends_lobby_menu.cycle_tab(event.action == ui::InputAction::navigate_left ||
+                    event.action == ui::InputAction::focus_previous ? -1 : 1)) play_scroll();
+                return true;
+            }
+            if (event.action == ui::InputAction::activate) {
+                if (friends_lobby_menu.search_focused()) {
+                    if (!friends_lobby_menu.search_text().empty())
+                        submit_social_intent({FriendsLobbyActionKind::search, {},
+                                              std::string{friends_lobby_menu.search_text()}});
+                } else if (const auto action = friends_lobby_menu.primary_button().intent) {
+                    submit_social_intent(*action);
+                }
+                return true;
+            }
+            return false;
+        case FrontendScreen::player_profile:
+            if (!event.triggers_action()) return false;
+            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) {
+                if (event.action==ui::InputAction::navigate_up || event.action==ui::InputAction::navigate_down) {
+                    inventory_menu.move_selection(event.action==ui::InputAction::navigate_down?1:-1); return true;
+                }
+                if (event.action==ui::InputAction::navigate_left || event.action==ui::InputAction::navigate_right) {
+                    const auto index=static_cast<int>(inventory_menu.section);
+                    inventory_menu.section=static_cast<InventorySection>((index+(event.action==ui::InputAction::navigate_right?1:3))%4);
+                    inventory_menu.page=inventory_menu.selected=0U; return true;
+                }
+                if (event.action==ui::InputAction::activate && event.phase==ui::InputPhase::pressed) { dispatch_inventory_action(inventory_menu.click({625,524})); return true; }
+            }
+            if (event.action==ui::InputAction::focus_next) {
+                const auto tab=(static_cast<std::size_t>(player_profile_menu.selected_tab())+1U)%PlayerProfileMenuModel::tab_count;
+                static_cast<void>(player_profile_menu.select_tab(static_cast<PlayerProfileTab>(tab)));
+                if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory && !inventory_menu.loaded) dispatch_inventory_action(InventoryAction::refresh);
+                return true;
+            }
             return false;
         case FrontendScreen::select_menu:
             if (const auto action = menu.handle(event); action.has_value()) {
@@ -10689,7 +12679,13 @@ struct NativeFrontendModule::Impl final {
         }
         switch (screen()) {
         case FrontendScreen::friends_lobby:
-            if (friends_lobby_menu.scroll_rows(steps > 0 ? -1 : 1)) play_scroll();
+            if (friends_lobby_menu.scroll_rows_at(steps > 0 ? -1 : 1,
+                    ui::Point{point.x * FriendsLobbyMenuModel::subpixels_per_pixel,
+                              point.y * FriendsLobbyMenuModel::subpixels_per_pixel})) play_scroll();
+            break;
+        case FrontendScreen::game_loading:
+            if (loading_layout::contains(loading_layout::score_viewport, point.x, point.y) &&
+                match_loading.scroll_scores(-steps)) play_scroll();
             break;
         case FrontendScreen::settings:
             if (settings_menu != nullptr) {
@@ -10725,7 +12721,9 @@ struct NativeFrontendModule::Impl final {
             }
             break;
         case FrontendScreen::player_profile:
-            static_cast<void>(player_profile_menu.scroll_rows(-steps));
+            if (markup_inventory_active()) { inventory_view->wheel(steps); break; }
+            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) inventory_menu.move_selection(-steps);
+            else static_cast<void>(player_profile_menu.scroll_rows(-steps));
             play_scroll();
             break;
         case FrontendScreen::class_selection:
@@ -10770,14 +12768,7 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    [[nodiscard]] text::TextRasterizer* font(std::string_view asset) noexcept {
-        // Community language packs may select a Unicode face when retail's
-        // Latin display fonts have no glyphs for Cyrillic/CJK text.  Geometry,
-        // size and alignment remain owned by the recovered presentation.
-        if (const auto localized_asset = localization.active_font_asset();
-            !localized_asset.empty()) {
-            asset = localized_asset;
-        }
+    [[nodiscard]] text::TextRasterizer* configured_font(std::string_view asset) noexcept {
         if (asset == main_menu_assets::button_font) {
             return spades_font.get();
         }
@@ -10793,17 +12784,129 @@ struct NativeFrontendModule::Impl final {
         if (asset == tuffy_font_asset) {
             return tuffy_font.get();
         }
-        if (asset == mplus_font_asset) {
+        if (asset == mplus_font_asset || asset == mplus_compact_font_asset) {
             return mplus_font.get();
         }
-        if (asset == noto_japanese_font_asset) {
+        if (asset == noto_japanese_font_asset || asset == noto_japanese_compact_font_asset) {
             return noto_japanese_font.get();
         }
         return nullptr;
     }
 
+    /**
+     * Apply the font aliases selected by aoslib.strings before text.set_fonts().
+     *
+     * The retail client did not merely fall back when a glyph was missing: it
+     * replaced complete font roles for Russian, Polish, Turkish and Japanese.
+     * Preserving those aliases prevents one translated screen from mixing
+     * A750, Edo, Tuffy and Noto depending on the particular letters in a row.
+     */
+    [[nodiscard]] text::TextRasterizer* locale_font(std::string_view asset) noexcept {
+        auto locale = localization.active_locale();
+        if (const auto separator = locale.find('-'); separator != std::string_view::npos) {
+            locale = locale.substr(0U, separator);
+        }
+        const auto standard_role = asset == main_menu_assets::welcome_font ||
+                                   asset == settings_standard_font ||
+                                   asset == settings_bold_font;
+        const auto aldo_role = asset == main_menu_assets::button_font;
+        const auto edo_role = asset == settings_edo_font;
+
+        if (locale == "ru" || locale == "pl") {
+            if (standard_role) return tuffy_font.get();
+            if (edo_role) return spades_font.get();
+        } else if (locale == "tr") {
+            if (standard_role) return tuffy_font.get();
+            if (aldo_role) return edo_font.get();
+        } else if (locale == "ja") {
+            if (standard_role) return noto_japanese_font.get();
+            if (aldo_role || edo_role) return mplus_font.get();
+        } else if (locale == "bg" || locale == "uk") {
+            // These revival community packs have no retail font policy. Use
+            // their declared Cyrillic face consistently rather than allowing
+            // partial glyph coverage in the decorative Latin fonts to split
+            // a single screen across unrelated typefaces.
+            return configured_font(localization.active_font_asset());
+        }
+        return configured_font(asset);
+    }
+
+    /** Prefer complete coverage, then render unavailable symbols as .notdef. */
+    [[nodiscard]] text::TextRasterizer* font_for_text(std::string_view asset,
+                                                      std::string_view utf8,
+                                                      text::TextCase text_case =
+                                                          text::TextCase::preserve) noexcept {
+        std::array<text::TextRasterizer*, 6U> candidates{
+            locale_font(asset),
+            configured_font(asset),
+            configured_font(localization.active_font_asset()),
+            tuffy_font.get(),
+            noto_japanese_font.get(),
+            mplus_font.get(),
+        };
+        // Legacy servers can supply arbitrary Unicode names (including flag
+        // emoji). Exhaust the locale faces first, but never end a match just
+        // because the installed fonts lack one symbol in a roster/chat row.
+        if (auto* selected = text::select_text_font(candidates, utf8, text_case))
+            return selected;
+        last_error = "no loaded UI font covers text for locale '" +
+                     std::string{localization.active_locale()} + "' (faces:";
+        for (const auto* candidate : candidates) {
+            if (candidate == nullptr) {
+                last_error += " <null>";
+            } else {
+                last_error += " ";
+                last_error += candidate->font_asset_id();
+                last_error += candidate->ready() ? "[ready]" : "[failed]";
+            }
+        }
+        last_error += "; utf8=";
+        constexpr char hex_digits[]{"0123456789ABCDEF"};
+        for (const auto byte : utf8) {
+            const auto value = static_cast<std::uint8_t>(byte);
+            last_error.push_back(hex_digits[value >> 4U]);
+            last_error.push_back(hex_digits[value & 0x0FU]);
+        }
+        last_error += ")";
+        return nullptr;
+    }
+
+    std::string cosmetic_weapon_icon(std::uint8_t tool,std::string_view fallback,bool blue_team){
+        const auto* item=local_equipped_cosmetic("weapon:"+std::to_string(tool)+":view");
+        if(!item)item=local_equipped_cosmetic("weapon:"+std::to_string(tool)+":world");
+        if(!item)return std::string{fallback};
+        if(!cosmetic_icons)cosmetic_icons=std::make_unique<CosmeticIconCache>(config.asset_root);
+        CosmeticIconRequest request;request.item=*item;request.blue_team=blue_team;
+        if(skin_variant_preferences)request.variants=skin_variant_preferences->selection(item->id);
+        return cosmetic_icons->request(request,fallback);
+    }
+    std::string cosmetic_class_icon(std::uint8_t klass,bool blue_team,bool portrait,std::string_view fallback){
+        const auto* body=local_equipped_cosmetic("class:"+std::to_string(klass)+":body");
+        const auto* hat=local_equipped_cosmetic("class:"+std::to_string(klass)+":hat");
+        if(!body&&!hat)return std::string{fallback};
+        if(!cosmetic_icons)cosmetic_icons=std::make_unique<CosmeticIconCache>(config.asset_root);
+        CosmeticIconRequest request;request.item=body?*body:*hat;request.class_id=klass;request.blue_team=blue_team;
+        request.kind=portrait?CosmeticIconKind::class_body:CosmeticIconKind::class_head;
+        if(body&&hat)request.hat=*hat;
+        return cosmetic_icons->request(request,fallback);
+    }
+    ClassSelectionAppearance class_selection_icons(){
+        ClassSelectionAppearance appearance;const bool blue=class_selection_menu.team()!=3U;const auto team=blue?0U:1U;
+        const auto classes=class_selection_menu.classes();
+        const auto first=class_selection_menu.visible_class_offset(),last=std::min(classes.size(),first+class_selection_menu.classes_per_page());
+        for(auto i=first;i<last;++i)if(const auto* klass=world::find_class_definition(classes[i]))
+            appearance.class_icons[classes[i]]=cosmetic_class_icon(classes[i],blue,false,klass->team_icon_assets[team]);
+        if(const auto* klass=world::find_class_definition(class_selection_menu.selected_class())){
+            appearance.class_portraits[klass->class_id]=cosmetic_class_icon(klass->class_id,blue,true,klass->team_portrait_assets[team]);
+            for(const auto group:klass->item_groups)for(const auto tool:group)if(tool<world::weapon_catalog().size())
+                appearance.weapon_icons[tool]=cosmetic_weapon_icon(static_cast<std::uint8_t>(tool),class_selection_item_icon(tool),blue);
+        }
+        return appearance;
+    }
+
     [[nodiscard]] std::optional<render::UiTextureInfo> image_texture(std::string_view asset,
                                                                      render::TextureFilter filter) {
+        if(cosmetic_icons&&asset.starts_with("runtime/cosmetic/"))return cosmetic_icons->texture(asset);
         // `png/high/white.png` is retail's solid-quad source. Loading the tiny
         // uniform PNG through the image decoder may select a single-channel
         // texture format; the UI shader then observes only red and every
@@ -10922,16 +13025,23 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] text::TextRasterResult rasterized_text(
         const ui::TextDrawCommand& command, std::string_view display_text,
         std::uint32_t pixel_height) {
-        auto* const rasterizer = font(command.preferred_font_asset);
+        const auto text_case = command.transform == ui::TextTransform::uppercase
+                                   ? text::TextCase::unicode_uppercase
+                                   : text::TextCase::preserve;
+        auto* const rasterizer =
+            font_for_text(command.preferred_font_asset, display_text, text_case);
         if (rasterizer == nullptr || !rasterizer->ready()) {
-            last_error = rasterizer == nullptr ? "requested UI font is unavailable"
+            last_error = rasterizer == nullptr ? last_error
                                                : std::string{rasterizer->initialization_error()};
-            return {};
+            return {nullptr,
+                    {},
+                    text::TextErrorCode::not_ready,
+                    last_error,
+                    false};
         }
         return rasterizer->rasterize(text::TextRasterRequest{
             std::string{display_text},
-            command.transform == ui::TextTransform::uppercase ? text::TextCase::ascii_uppercase
-                                                              : text::TextCase::preserve,
+            text_case,
             pixel_height,
             command.retail_outline_stroke,
         });
@@ -11143,6 +13253,31 @@ struct NativeFrontendModule::Impl final {
             const auto line_count = static_cast<double>(lines.size());
             const auto lines_height =
                 (command.line_spacing_pixels + char_height) * line_count;
+            if (command.layout == ui::TextLayout::bounded_wrapped_lines) {
+                const auto limit = std::max<std::size_t>(1U, std::min<std::size_t>(
+                    command.maximum_lines, static_cast<std::size_t>(std::max(1.0,
+                        std::floor(command.destination.height / std::max(1.0, char_height))))));
+                const bool overflow = lines.size() > limit;
+                if (overflow) lines.resize(limit);
+                for (std::size_t index{}; index < lines.size(); ++index) {
+                    auto& line = lines[index];
+                    const auto measure = [&](std::string_view value) {
+                        const auto raster = rasterized_text(command, value, rasterization.pixel_height);
+                        return raster ? static_cast<double>(raster.output->metrics.content_width_pixels) *
+                            rasterization.design_pixels_per_bitmap_pixel : command.destination.width + 1.0;
+                    };
+                    if ((overflow && index + 1U == lines.size()) || measure(line) > command.destination.width) {
+                        while (!line.empty() && measure(line + "...") > command.destination.width) {
+                            auto boundary = line.size() - 1U;
+                            while (boundary > 0U && (static_cast<unsigned char>(line[boundary]) & 0xC0U) == 0x80U)
+                                --boundary;
+                            line.resize(boundary);
+                        }
+                        line += "...";
+                    }
+                }
+                break;
+            }
             if (lines_height <= command.destination.height || font_height <= 1U) break;
             --font_height;
         }
@@ -11180,17 +13315,22 @@ struct NativeFrontendModule::Impl final {
         }
         fitted.line_advance_pixels =
             line_span * fitted.line_scale + command.line_spacing_pixels * 2.0;
+        if (command.layout == ui::TextLayout::bounded_wrapped_lines)
+            fitted.line_advance_pixels = static_cast<double>(metric_raster.output->metrics.line_height_pixels) *
+                fitted.design_pixels_per_bitmap_pixel + command.line_spacing_pixels;
         return fitted;
     }
 
     [[nodiscard]] bool prepare_text(const ui::TextDrawCommand& command) {
-        if (command.layout == ui::TextLayout::retail_wrapped_lines) {
+        const auto display_text = localized_text(command.localization_key);
+        if (command.layout != ui::TextLayout::single_line) {
             const auto fitted = fitted_retail_wrapped_text(command);
             if (!fitted) {
                 last_error = fitted.error;
                 return false;
             }
-            auto* const rasterizer = font(command.preferred_font_asset);
+            auto* const rasterizer =
+                font_for_text(command.preferred_font_asset, display_text);
             if (rasterizer == nullptr) return false;
             for (const auto& line : fitted.lines) {
                 if (line.output->bitmap.width != 0U && line.output->bitmap.height != 0U &&
@@ -11210,13 +13350,12 @@ struct NativeFrontendModule::Impl final {
         if (raster.output->bitmap.width == 0U || raster.output->bitmap.height == 0U) {
             return true;
         }
-        auto* const rasterizer = font(command.preferred_font_asset);
+        auto* const rasterizer = font_for_text(command.preferred_font_asset, display_text);
         return rasterizer != nullptr && text_texture(*rasterizer, raster).has_value();
     }
 
     [[nodiscard]] bool prepare_name_plate(const ui::PlayerNamePlateDrawRequest& command) {
-        if (welcome_font == nullptr || !welcome_font->ready() || drawable_extent.width == 0U ||
-            drawable_extent.height == 0U) {
+        if (drawable_extent.width == 0U || drawable_extent.height == 0U) {
             last_error = "welcome font is unavailable while preparing the player-name plate";
             return false;
         }
@@ -11235,18 +13374,24 @@ struct NativeFrontendModule::Impl final {
         const auto welcome = localized_text(command.welcome_localization_key) + ' ';
         const auto player = core::utf8_code_point_prefix(command.player_name,
                                                          command.maximum_player_name_code_points);
-        const auto welcome_raster = welcome_font->rasterize(
+        auto* const name_font =
+            font_for_text(main_menu_assets::welcome_font, welcome + player);
+        if (name_font == nullptr) {
+            last_error = "no UI font covers the localized player-name plate";
+            return false;
+        }
+        const auto welcome_raster = name_font->rasterize(
             text::TextRasterRequest{welcome, text::TextCase::preserve, font_height});
-        const auto player_raster = welcome_font->rasterize(
+        const auto player_raster = name_font->rasterize(
             text::TextRasterRequest{player, text::TextCase::preserve, font_height});
         if (!welcome_raster || !player_raster) {
             last_error = "failed to rasterize player-name plate segments";
             return false;
         }
         const auto welcome_ready = welcome_raster.output->bitmap.width == 0U ||
-                                   text_texture(*welcome_font, welcome_raster).has_value();
+                                   text_texture(*name_font, welcome_raster).has_value();
         const auto player_ready = player_raster.output->bitmap.width == 0U ||
-                                  text_texture(*welcome_font, player_raster).has_value();
+                                  text_texture(*name_font, player_raster).has_value();
         return welcome_ready && player_ready;
     }
 
@@ -11273,13 +13418,15 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] bool draw_text(const ui::TextDrawCommand& command) {
-        if (command.layout == ui::TextLayout::retail_wrapped_lines) {
+        const auto display_text = localized_text(command.localization_key);
+        if (command.layout != ui::TextLayout::single_line) {
             const auto fitted = fitted_retail_wrapped_text(command);
             if (!fitted) {
                 last_error = fitted.error;
                 return false;
             }
-            auto* const rasterizer = font(command.preferred_font_asset);
+            auto* const rasterizer =
+                font_for_text(command.preferred_font_asset, display_text);
             if (rasterizer == nullptr) return false;
             const auto geometry_scale =
                 std::isfinite(command.geometric_scale)
@@ -11289,6 +13436,8 @@ struct NativeFrontendModule::Impl final {
                 fitted.design_pixels_per_bitmap_pixel * geometry_scale *
                 fitted.line_scale;
             auto baseline_y = command.destination.y;
+            if (command.layout == ui::TextLayout::bounded_wrapped_lines && !fitted.lines.empty())
+                baseline_y += static_cast<double>(fitted.lines.front().output->metrics.ascender_pixels) * bitmap_to_design;
             for (const auto& line : fitted.lines) {
                 const auto& metrics = line.output->metrics;
                 const auto content_width =
@@ -11355,7 +13504,12 @@ struct NativeFrontendModule::Impl final {
         }
         const auto& raster = fitted.raster;
 
-        const auto texture = text_texture(*font(command.preferred_font_asset), raster);
+        auto* const rasterizer = font_for_text(command.preferred_font_asset, display_text);
+        if (rasterizer == nullptr) {
+            last_error = "no UI font covers localized text '" + command.localization_key + "'";
+            return false;
+        }
+        const auto texture = text_texture(*rasterizer, raster);
         if (!texture.has_value()) {
             return raster.output->bitmap.width == 0U || raster.output->bitmap.height == 0U;
         }
@@ -11462,11 +13616,8 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] bool draw_name_plate(const ui::PlayerNamePlateDrawRequest& command) {
-        if (welcome_font == nullptr || !welcome_font->ready() || drawable_extent.width == 0U ||
-            drawable_extent.height == 0U) {
-            last_error = welcome_font == nullptr
-                             ? "welcome font is unavailable"
-                             : std::string{welcome_font->initialization_error()};
+        if (drawable_extent.width == 0U || drawable_extent.height == 0U) {
+            last_error = "welcome font is unavailable";
             return false;
         }
 
@@ -11477,11 +13628,17 @@ struct NativeFrontendModule::Impl final {
         const auto welcome = localized_text(command.welcome_localization_key) + ' ';
         const auto player = core::utf8_code_point_prefix(command.player_name,
                                                          command.maximum_player_name_code_points);
-        const auto combined = welcome_font->rasterize(
+        auto* const name_font =
+            font_for_text(main_menu_assets::welcome_font, welcome + player);
+        if (name_font == nullptr) {
+            last_error = "no UI font covers the localized player-name plate";
+            return false;
+        }
+        const auto combined = name_font->rasterize(
             text::TextRasterRequest{welcome + player, text::TextCase::preserve, font_height});
-        const auto welcome_raster = welcome_font->rasterize(
+        const auto welcome_raster = name_font->rasterize(
             text::TextRasterRequest{welcome, text::TextCase::preserve, font_height});
-        const auto player_raster = welcome_font->rasterize(
+        const auto player_raster = name_font->rasterize(
             text::TextRasterRequest{player, text::TextCase::preserve, font_height});
         if (!combined || !welcome_raster || !player_raster) {
             last_error = "failed to shape the player-name plate";
@@ -11515,7 +13672,7 @@ struct NativeFrontendModule::Impl final {
 
         // selectMenu.py supplies the bottom-left FTGL baseline as
         // y + frameHeight / 2 - 5. This is its direct top-left equivalent.
-        if (!draw_text_segment(*welcome_font,
+        if (!draw_text_segment(*name_font,
                                welcome_raster,
                                geometry->text_left,
                                geometry->baseline_y,
@@ -11523,7 +13680,7 @@ struct NativeFrontendModule::Impl final {
                                color(command.welcome_color))) {
             return false;
         }
-        return draw_text_segment(*welcome_font,
+        return draw_text_segment(*name_font,
                                  player_raster,
                                  geometry->text_left +
                                      welcome_raster.output->metrics.advance_width_pixels * scale,
@@ -11611,7 +13768,8 @@ struct NativeFrontendModule::Impl final {
             target == FrontendScreen::create_match_maps ||
             target == FrontendScreen::create_match_lobby) {
             auto active_page = create_match_presentation.build(
-                create_match_menu.presentation(), CreateMatchPresentationContext{pixels, 1'000U});
+                create_match_menu.presentation(),
+                CreateMatchPresentationContext{pixels, 1'000U, settings_warning});
             if (!create_match_page_shell.transitioning() &&
                 create_match_page_shell.active_offset() == 0.0) {
                 return active_page;
@@ -11657,13 +13815,23 @@ struct NativeFrontendModule::Impl final {
             return leaderboard_presentation.build(leaderboard_menu, context);
         }
         if (target == FrontendScreen::player_profile) {
-            return player_profile_presentation.build(
+            auto list = player_profile_presentation.build(
                 player_profile_menu,
                 PlayerProfilePresentationContext{pixels,
                                                  1'000U,
                                                  profile_cancel_state,
                                                  profile_achievements_state,
                                                  profile_filter_state});
+            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) {
+                if (inventory_view) {
+                    ui::DrawList background;
+                    if (!list.commands().empty()) background.push(list.commands().front());
+                    return background;
+                }
+                const auto panel=inventory_menu.build();
+                for (const auto& command:panel.commands()) list.push(command);
+            }
+            return list;
         }
         if (target == FrontendScreen::game_loading || target == FrontendScreen::startup_loading) {
             // Recovered START glow toggles every 0.4 s = 24 frames at 60 Hz.
@@ -11677,7 +13845,7 @@ struct NativeFrontendModule::Impl final {
             }
             const bool in_game =
                 class_selection_from_pause || class_selection_team_change.has_value();
-            return class_selection_presentation.build(class_selection_menu, pixels, in_game);
+            return class_selection_presentation.build(class_selection_menu, pixels, in_game,class_selection_icons());
         }
         if (target == FrontendScreen::tutorial_world) {
             // The 3D world pass renders beneath the UI views; this list is
@@ -11730,6 +13898,11 @@ struct NativeFrontendModule::Impl final {
             snapshot = presentation_snapshot(settings_menu->presentation());
             if (!settings_warning.empty() && snapshot.error_key.empty()) {
                 snapshot.error_key = settings_warning;
+                snapshot.tooltip_is_error = true;
+            }
+            if (snapshot.error_key.empty() && config.enable_audio && !audio_started &&
+                audio != nullptr && !audio->last_error().empty()) {
+                snapshot.error_key = std::string{audio->last_error()};
                 snapshot.tooltip_is_error = true;
             }
         }
@@ -12114,10 +14287,12 @@ struct NativeFrontendModule::Impl final {
 
     /** Settings from the in-game pause menu returns there, not to Select. */
     void close_settings() {
-        if (screen() == FrontendScreen::settings && tutorial_world_in_stack()) {
+        if (screen() == FrontendScreen::settings && settings_opened_from_gameplay) {
+            settings_opened_from_gameplay = false;
             static_cast<void>(navigation.pop());
             return;
         }
+        settings_opened_from_gameplay = false;
         return_to_select();
     }
 
@@ -12407,9 +14582,18 @@ struct NativeFrontendModule::Impl final {
             const auto& advertised =
                 target_team == 3U ? match_state_info.team2_classes
                                   : match_state_info.team1_classes;
+            const auto* current_player = !initial_join && local_player_id.has_value()
+                                             ? tutorial_roster.player(*local_player_id)
+                                             : nullptr;
             const auto initial_class =
-                advertised.empty() ? std::uint8_t{0U} : advertised.front();
+                current_player != nullptr ? current_player->class_id
+                                          : advertised.empty() ? std::uint8_t{0U}
+                                                               : advertised.front();
             class_selection_menu.configure(advertised, target_team, initial_class);
+            if (current_player != nullptr &&
+                class_selection_menu.selected_class() == current_player->class_id) {
+                class_selection_menu.restore_loadout(current_player->loadout, current_player->prefabs);
+            }
             ugc_loadout_active = false;
         }
         class_selection_from_pause = false;
@@ -12431,18 +14615,22 @@ struct NativeFrontendModule::Impl final {
         switch (*action) {
         case PauseMenuAction::resume:
             send_client_in_menu(false);
-            static_cast<void>(navigation.pop());
+            static_cast<void>(navigation.pop_instant());
             play_confirm();
             break;
         case PauseMenuAction::settings:
             if (settings_menu != nullptr) {
                 settings_session = settings::SettingsSession{confirmed_settings};
+                rebuild_settings_menu(SettingsMenuContext::in_game);
                 settings_menu->cancel_pointer_capture();
                 settings_menu->cancel_binding_capture();
                 settings_menu->set_active_tab(settings::SettingsTab::main);
                 settings_warning.clear();
-                static_cast<void>(navigation.push(FrontendScreen::settings));
-                play_confirm();
+                settings_opened_from_gameplay =
+                    navigation.push(FrontendScreen::settings);
+                if (settings_opened_from_gameplay) {
+                    play_confirm();
+                }
             }
             break;
         case PauseMenuAction::disconnect:
@@ -12462,6 +14650,9 @@ struct NativeFrontendModule::Impl final {
                     const auto& advertised = selection_team == 3U ? match_state_info.team2_classes
                                                                   : match_state_info.team1_classes;
                     class_selection_menu.configure(advertised, selection_team, replica->class_id);
+                    if (class_selection_menu.selected_class() == replica->class_id) {
+                        class_selection_menu.restore_loadout(replica->loadout, replica->prefabs);
+                    }
                     ugc_loadout_active = false;
                     class_selection_from_pause = true;
                     class_selection_initial_join = false;
@@ -12502,7 +14693,7 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    /** True while any stacked route still belongs to the Tutorial flow. */
+    /** True while a stacked route still owns a tutorial or network match. */
     [[nodiscard]] bool tutorial_route_active() const {
         for (const auto id : navigation.stack()) {
             const auto route = frontend_screen(id);
@@ -12510,7 +14701,12 @@ struct NativeFrontendModule::Impl final {
                 route == FrontendScreen::class_selection || route == FrontendScreen::change_team ||
                 (route == FrontendScreen::game_loading &&
                  (tutorial_bootstrap != nullptr || tutorial_ready_map != nullptr ||
-                  match_connection != nullptr || active_local_host_generation != 0U))) {
+                  match_connection != nullptr || active_match_request.has_value() ||
+                  active_local_host_generation != 0U ||
+                  owned_local_server != nullptr))) {
+                // A public host waits for lobby publication and an identity
+                // ticket after its startup worker finishes. The owned server
+                // must survive that gap before match_connection is created.
                 return true;
             }
         }
@@ -12552,11 +14748,45 @@ struct NativeFrontendModule::Impl final {
                                 std::to_string(minimap_texture_generation);
     }
 
-    void teardown_tutorial() {
-        if (match_connection != nullptr) {
-            match_connection->stop();
-            match_connection.reset();
+    void retire_world_bootstrap() {
+        if (!tutorial_bootstrap) {
+            tutorial_bootstrap_cleanup.reset();
+            return;
         }
+        tutorial_bootstrap->cancel();
+        tutorial_bootstrap_cleanup.defer(std::packaged_task<void()>{
+            [bootstrap = std::move(tutorial_bootstrap)]() mutable { bootstrap.reset(); }});
+    }
+
+    template <typename... Arguments>
+    [[nodiscard]] bool start_world_bootstrap(Arguments&&... arguments) {
+        retire_world_bootstrap();
+        auto cleanup = bootstrap_cleanup.try_reserve();
+        if (!cleanup) {
+            settings_warning = "Previous maps are still closing. Go back and try again shortly.";
+            match_loading.fail(settings_warning);
+            return false;
+        }
+        try {
+            tutorial_bootstrap = std::make_unique<world::TutorialWorldBootstrap>(
+                std::forward<Arguments>(arguments)...);
+            tutorial_bootstrap_cleanup = std::move(*cleanup);
+            tutorial_bootstrap->start();
+            return true;
+        } catch (const std::exception& error) {
+            retire_world_bootstrap();
+            settings_warning = std::string{"Could not prepare the map: "} + error.what();
+            match_loading.fail(settings_warning);
+            return false;
+        }
+    }
+
+    void teardown_tutorial() {
+        // Keep an outstanding future drainable without blocking the UI. Its
+        // response must never authorize a later host attempt at the same port.
+        if (pending_match_identity) pending_match_identity->generation = 0U;
+        queued_match_identity.reset();
+        retire_match_connection();
         map_transition_armed = false;
         map_transition_reconnecting = false;
         map_transition_attempts = 0U;
@@ -12564,6 +14794,7 @@ struct NativeFrontendModule::Impl final {
         map_transition_deadline = {};
         active_match_request.reset();
         local_player_id.reset();
+        launcher_muzzle_tracker.clear();
         active_join_wire_name.clear();
         awaiting_initial_spawn_create_player = false;
         local_spawn_confirmed = false;
@@ -12607,6 +14838,8 @@ struct NativeFrontendModule::Impl final {
         pending_class_selection.reset();
         live_terrain_replica.reset();
         live_prefab_placement.clear();
+        live_prefab_model.reset();
+        live_prefab_model_name.clear();
         timed_explosive_seconds.clear();
         deferred_terrain_packets.clear();
         clear_live_chunk_remeshes();
@@ -12634,12 +14867,10 @@ struct NativeFrontendModule::Impl final {
         if (audio_started) {
             audio->stop_named_loops();
         }
-        if (tutorial_bootstrap != nullptr) {
-            tutorial_bootstrap->cancel();
-            tutorial_bootstrap.reset();
-        }
+        retire_world_bootstrap();
         tutorial_ready_map.reset();
         tutorial_session.reset();
+        clear_scripted_weapon();
         advance_minimap_texture_generation();
         minimap_pixels.clear();
         minimap_map_revision = std::numeric_limits<std::uint64_t>::max();
@@ -12672,11 +14903,13 @@ struct NativeFrontendModule::Impl final {
         terrain_effect_slots.clear();
         projectile_slots.clear();
         entity_part_slots.clear();
+        entity_part_appearances.clear();
         entity_part_minimum_y.clear();
         entity_menu_visible = false;
         tutorial_diagnostics_visible = false;
         debug_arm_variant = 0;
         tutorial_roster.clear();
+        remote_cosmetics.clear();
         remote_player_rigs.clear();
         remote_character_audio = {};
         pending_remote_mesh_clears.clear();
@@ -12685,6 +14918,10 @@ struct NativeFrontendModule::Impl final {
         jetpack_deaths.clear();
         pending_local_jetpack_death.reset();
         local_death_announced = false;
+        preview_deployable_type_uploaded.reset();
+        preview_deployable_minimum_y.clear();
+        parachute_mesh_attempted.fill(false);
+        parachute_mesh_uploaded.fill(false);
         if (world_renderer.is_initialized()) {
             world_renderer.clear_chunks();
             world_renderer.clear_view_model();
@@ -12695,6 +14932,12 @@ struct NativeFrontendModule::Impl final {
                 static_cast<void>(world_renderer.set_world_model_mesh(slot, empty));
             }
             for (std::uint32_t slot{}; slot < 3U; ++slot) {
+                static_cast<void>(world_renderer.set_world_model_mesh(slot, empty));
+            }
+            static_cast<void>(world_renderer.set_world_model_mesh(parachute_world_slot, empty));
+            static_cast<void>(world_renderer.set_world_model_mesh(parachute_first_person_slot, empty));
+            for (std::uint32_t slot = placement_deployable_slot;
+                 slot < placement_deployable_slot + placement_deployable_slot_count; ++slot) {
                 static_cast<void>(world_renderer.set_world_model_mesh(slot, empty));
             }
             for (std::uint32_t slot = placement_block_valid_slot;
@@ -12747,6 +14990,8 @@ struct NativeFrontendModule::Impl final {
                 dome = world::resolve_map_skydome(config.asset_root, tutorial_map_name, confidence);
             }
             live_skydome_name = dome;
+            // Offline worlds must not inherit the last server's two-light state.
+            world_renderer.set_retail_lighting(render::RetailTerrainLighting{});
             world_renderer.set_fog_color({111U, 215U, 223U});
             if (!world_renderer.set_skydome(dome)) {
                 settings_warning =
@@ -12758,13 +15003,12 @@ struct NativeFrontendModule::Impl final {
                 world_renderer.set_fog_color(world_renderer.atmosphere().horizon_color);
             }
         }
-        tutorial_bootstrap = std::make_unique<world::TutorialWorldBootstrap>(tutorial_path);
-        tutorial_bootstrap->start();
         match_ui_skin = supported_ui_skin("classic");
         match_loading.begin("Training", "TUTORIAL", false, match_ui_skin);
         match_loading.initial_info("Training", "TUTORIAL", false, match_ui_skin);
         match_loading.receiving_map();
         static_cast<void>(navigation.push(FrontendScreen::game_loading));
+        static_cast<void>(start_world_bootstrap(tutorial_path));
     }
 
     /**
@@ -12780,7 +15024,7 @@ struct NativeFrontendModule::Impl final {
         if (progress.stage == world::BootstrapStage::failed) {
             match_loading.fail("LOAD_FAILED");
             settings_warning = progress.error;
-            tutorial_bootstrap->cancel();
+            retire_world_bootstrap();
             return;
         }
         if (world_renderer.is_initialized()) {
@@ -12808,7 +15052,7 @@ struct NativeFrontendModule::Impl final {
 
         auto shared_map = tutorial_bootstrap->map();
         auto derived_world = tutorial_bootstrap->take_derived_world();
-        tutorial_bootstrap.reset();
+        retire_world_bootstrap();
         if (shared_map == nullptr || !derived_world.has_value()) {
             match_loading.fail("LOAD_FAILED");
             return;
@@ -12921,6 +15165,8 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         world::TutorialSessionConfig session_config;
+        session_config.flight_profile = network_match ? match_initial_info.flight_profile
+                                                       : world::balanced_flight_profile();
         session_config.mouse_sensitivity = applied_settings.controls.mouse_sensitivity;
         session_config.invert_mouse = applied_settings.main.invert_mouse;
         if (network_match) {
@@ -13013,6 +15259,16 @@ struct NativeFrontendModule::Impl final {
             tutorial_session = std::make_unique<world::TutorialWorldSession>(
                 std::move(tutorial_ready_map), session_config);
         }
+        if (network_match && local_player_id.has_value()) {
+            const auto* replica = tutorial_roster.player(*local_player_id);
+            if (replica != nullptr && replica->acknowledged_client_loop >= 0) {
+                tutorial_session->apply_server_jetpack_fuel(
+                    replica->jetpack_fuel, replica->acknowledged_client_loop);
+                tutorial_session->apply_server_movement_state(
+                    replica->action_flags, replica->state_flags, replica->pickup_id,
+                    replica->acknowledged_client_loop);
+            }
+        }
         tutorial_ready_map.reset();
         if (local_palette_color.has_value()) {
             tutorial_session->set_block_color(
@@ -13100,6 +15356,10 @@ struct NativeFrontendModule::Impl final {
                 settings_warning = std::string{audio->last_error()};
             }
         } else if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr) {
+            // The first CreatePlayer arrived before this world session
+            // existed. Apply that same authoritative life boundary now;
+            // otherwise initial spectators retain the default live FPS view.
+            end_local_death(local->team, local->dead);
             {
                 const PerformanceScope stage{"enter_arms", std::chrono::microseconds{1'000}};
                 static_cast<void>(load_tutorial_class_arms(local->class_id));
@@ -13251,7 +15511,7 @@ struct NativeFrontendModule::Impl final {
 
     void handle_loading_click(ui::Point point) {
         // Retail large navbar BACK strip, bottom-left.
-        if (contains({54, 541, 135, 32}, point)) {
+        if (loading_layout::contains(loading_layout::back, point.x, point.y)) {
             if (navigation.pop()) {
                 play_back();
             }
@@ -13259,17 +15519,20 @@ struct NativeFrontendModule::Impl final {
         }
         const auto snapshot = match_loading.snapshot();
         for (std::size_t index = 0U; index < snapshot.tabs.size(); ++index) {
-            const ui::Rect tab_bounds{static_cast<std::int32_t>(7.0 + 228.0 * index), 99, 224, 42};
-            if (contains(tab_bounds, point)) {
+            if (loading_layout::contains(loading_layout::tab(index), point.x, point.y)) {
                 static_cast<void>(match_loading.select_tab(index));
                 play_scroll();
                 return;
             }
         }
+        if (match_loading.handle_score_click(point.x, point.y)) {
+            play_scroll();
+            return;
+        }
         if (tutorial_bootstrap == nullptr && tutorial_ready_map == nullptr) {
             return;
         }
-        if (snapshot.start_enabled && contains({492, 449, 246, 58}, point)) {
+        if (snapshot.start_enabled && loading_layout::contains(loading_layout::start, point.x, point.y)) {
             start_tutorial_pressed();
         }
     }
@@ -13522,6 +15785,10 @@ struct NativeFrontendModule::Impl final {
     // slots rather than the sandbox's running counter, so these are fixed too.
     static constexpr std::uint32_t view_model_slot_sight{8U};
     static constexpr std::uint32_t view_model_slot_pin{9U};
+    static constexpr std::uint32_t placement_deployable_slot{12U};
+    static constexpr std::uint32_t placement_deployable_slot_count{4U};
+    static constexpr std::uint32_t parachute_world_slot{16U};
+    static constexpr std::uint32_t parachute_first_person_slot{17U};
     static constexpr std::uint32_t placement_block_valid_slot{20U};
     static constexpr std::uint32_t placement_block_invalid_slot{21U};
     static constexpr std::uint32_t placement_prefab_valid_slot{22U};
@@ -13715,6 +15982,52 @@ struct NativeFrontendModule::Impl final {
         return draws;
     }
 
+    bool sync_deployable_preview_meshes(std::uint8_t tool) {
+        const auto type = world::entity_placed_by_tool(tool);
+        const auto* definition = world::find_entity_definition(type);
+        if (definition == nullptr || definition->parts.empty() ||
+            definition->parts.size() > placement_deployable_slot_count) {
+            preview_deployable_type_uploaded.reset();
+            return true;
+        }
+        const auto team_color = local_player_team_color();
+        const auto* cosmetic = local_equipped_cosmetic("entity:" + std::to_string(type));
+        const auto appearance = cosmetic != nullptr ? cosmetic->id : std::string{};
+        if (preview_deployable_type_uploaded == type &&
+            preview_deployable_team_color == team_color &&
+            preview_deployable_appearance == appearance) return true;
+
+        preview_deployable_type_uploaded.reset();
+        preview_deployable_minimum_y.clear();
+        const auto replacements = inventory_character_parts(cosmetic, config.asset_root);
+        for (std::size_t part{}; part < definition->parts.size(); ++part) {
+            const auto& piece = definition->parts[part];
+            const auto asset = config.asset_root / "kv6" / std::string{piece.kv6};
+            std::string error;
+            auto model = load_runtime_model(asset, &error);
+            if (const auto replacement = replacements.find(std::string{piece.kv6});
+                replacement != replacements.end()) model = replacement->second;
+            if (!model.has_value()) {
+                settings_warning = "deployable preview failed: " +
+                                   (error.empty() ? asset.string() : error);
+                return true;
+            }
+            model->offset_pivots(piece.pivot_offset);
+            if (cosmetic != nullptr) model->apply_cosmetic_palette(cosmetic->palette);
+            world::apply_entity_team_material(*model, type, team_color);
+            const auto mesh = model->mesh();
+            if (!world_renderer.set_world_model_mesh(
+                    placement_deployable_slot + static_cast<std::uint32_t>(part), mesh)) {
+                return false;
+            }
+            preview_deployable_minimum_y.push_back(mesh.minimum[1U]);
+        }
+        preview_deployable_team_color = team_color;
+        preview_deployable_appearance = appearance;
+        preview_deployable_type_uploaded = type;
+        return true;
+    }
+
     bool sync_placement_preview_meshes() {
         if (tutorial_session == nullptr || !world_renderer.is_initialized()) {
             return true;
@@ -13743,6 +16056,10 @@ struct NativeFrontendModule::Impl final {
         const auto selected = tutorial_session->selected_tool_id();
         const auto* weapon =
             selected.has_value() ? world::find_weapon_definition(*selected) : nullptr;
+        if (selected.has_value() && world::deployable_placement(*selected) != nullptr &&
+            !sync_deployable_preview_meshes(*selected)) {
+            return false;
+        }
         if (weapon != nullptr && weapon->mechanism == world::WeaponMechanism::ugc_entity) {
             const auto selected_item = tutorial_session->selected_ugc_item();
             if (!selected_item.has_value()) {
@@ -13801,6 +16118,8 @@ struct NativeFrontendModule::Impl final {
         if (name != preview_prefab_name) {
             preview_prefab_name = name;
             preview_prefab_model.reset();
+            preview_prefab_placement.reset();
+            preview_prefab_icon = world::prefab_preview_asset(config.asset_root, name);
             preview_prefab_meshes_uploaded = false;
             prefab_yaw_override = 1U;
             ugc_prefab_control.reset();
@@ -13814,6 +16133,14 @@ struct NativeFrontendModule::Impl final {
                     (error.empty() ? path.value_or(std::filesystem::path{name}).string() : error);
                 return true;
             }
+            std::vector<world::PrefabPlacementCell> authored;
+            authored.reserve(preview_prefab_model->voxels().size());
+            for (const auto& voxel : preview_prefab_model->voxels()) {
+                authored.push_back({static_cast<std::int32_t>(voxel.x),
+                                     static_cast<std::int32_t>(voxel.y),
+                                     static_cast<std::int32_t>(voxel.z)});
+            }
+            preview_prefab_placement.reset(authored);
         }
         if (preview_prefab_model.has_value() && !preview_prefab_meshes_uploaded) {
             const std::array<float, 3U> tint =
@@ -13838,13 +16165,46 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] std::vector<render::WorldModelDraw> placement_preview_draws() {
         std::vector<render::WorldModelDraw> draws;
-        if (tutorial_session == nullptr || death_camera.active())
+        if (tutorial_session == nullptr || !tutorial_session->alive() || death_camera.active() ||
+            match_results.visible())
             return draws;
+        if (network_match && local_player_id.has_value()) {
+            const auto* local = tutorial_roster.player(*local_player_id);
+            if (local != nullptr && local->team != 2U && local->team != 3U) return draws;
+        }
         const auto selected = tutorial_session->selected_tool_id();
         const auto* weapon =
             selected.has_value() ? world::find_weapon_definition(*selected) : nullptr;
         if (weapon == nullptr)
             return draws;
+
+        if (world::deployable_placement(*selected) != nullptr) {
+            // Weapon.can_draw_ghosting accepts either remaining ammo pool.
+            const auto* ammo = tutorial_session->selected_ammo();
+            if (ammo == nullptr || (ammo->magazine == 0U && ammo->reserve == 0U)) return draws;
+            const auto target = tutorial_session->deployable_target(*selected);
+            const auto type = world::entity_placed_by_tool(*selected);
+            const auto* definition = world::find_entity_definition(type);
+            if (!target.has_value() || preview_deployable_type_uploaded != type ||
+                definition == nullptr) return draws;
+            world::LocalEntity ghost;
+            ghost.type = type;
+            ghost.position = {static_cast<double>(target->cell[0U]),
+                              static_cast<double>(target->cell[1U]),
+                              static_cast<double>(target->cell[2U])};
+            ghost.face = target->face;
+            ghost.attached = true;
+            ghost.grounded = true;
+            const auto contact = world::entity_rig_vertical_contact_adjustment(
+                ghost, *definition, definition->parts, preview_deployable_minimum_y);
+            for (std::size_t part{}; part < definition->parts.size(); ++part) {
+                // All six retail gadget draw_ghosting methods use alpha 0.3.
+                draws.push_back({placement_deployable_slot + static_cast<std::uint32_t>(part),
+                    world::entity_presentation_transform(
+                        ghost, *definition, definition->parts[part], contact), 0.3F});
+            }
+            return draws;
+        }
 
         if (weapon->mechanism == world::WeaponMechanism::ugc_entity) {
             const auto item = tutorial_session->selected_ugc_item();
@@ -13903,17 +16263,11 @@ struct NativeFrontendModule::Impl final {
             network::BlockLinePacket line;
             line.start = block_line_start.value_or(*current);
             line.end = *current;
-            const auto cells = network::cube_line_cells(line, 64U);
-            bool valid = !cells.empty() &&
-                         cells.size() <= static_cast<std::size_t>(
-                                             std::max(0, tutorial_session->blocks_remaining()));
-            for (const auto& cell : cells) {
-                if (cell.x >= world::VxlMap::width || cell.y >= world::VxlMap::depth ||
-                    cell.z >= world::VxlMap::height ||
-                    tutorial_session->map().solid(cell.x, cell.y, cell.z)) {
-                    valid = false;
-                }
-            }
+            const auto cells = network::cube_line_cells(line, 65U);
+            const auto placement = world::evaluate_block_line_placement(
+                tutorial_session->map(), cells);
+            const bool valid = placement.can_place(tutorial_session->blocks_remaining(),
+                                                   tutorial_session->infinite_blocks());
             for (const auto& cell : cells) {
                 if (cell.x >= world::VxlMap::width || cell.y >= world::VxlMap::depth ||
                     cell.z >= world::VxlMap::height ||
@@ -13936,20 +16290,11 @@ struct NativeFrontendModule::Impl final {
             update_prefab_candidate();
             if (!preview_prefab_position.has_value())
                 return draws;
-            Mat4 model = mat_rotate_x(-90.0F);
-            // Row-vector matrices use the opposite sign from OpenGL's
-            // glRotatef.  -90 degrees matches rotate_z_axis(y, -x) and the
-            // authoritative server expansion for packet 30.
-            model = mat_mul(model, mat_rotate_z(-90.0F * static_cast<float>(preview_prefab_yaw)));
-            model =
-                mat_mul(model, mat_rotate_x(-90.0F * static_cast<float>(preview_prefab_pitch)));
-            model =
-                mat_mul(model, mat_rotate_z(-90.0F * static_cast<float>(preview_prefab_roll)));
-            model =
-                mat_mul(model,
-                        mat_translate(static_cast<float>((*preview_prefab_position)[0U]) + 0.5F,
-                                      static_cast<float>((*preview_prefab_position)[1U]) + 0.5F,
-                                      static_cast<float>((*preview_prefab_position)[2U]) + 0.5F));
+            const auto model = world::prefab_preview_transform(
+                preview_prefab_model->pivot(),
+                {(*preview_prefab_position)[0U], (*preview_prefab_position)[1U],
+                 (*preview_prefab_position)[2U]},
+                preview_prefab_yaw, preview_prefab_pitch, preview_prefab_roll);
             draws.push_back(render::WorldModelDraw{
                 preview_prefab_valid ? placement_prefab_valid_slot : placement_prefab_invalid_slot,
                 model,
@@ -14030,8 +16375,9 @@ struct NativeFrontendModule::Impl final {
             auto position = std::array<double, 3U>{
                 projectile.position.x, projectile.position.y, projectile.position.z};
             const bool owning_first_person =
-                !network_match ||
-                (local_player_id.has_value() && projectile.source_player == local_player_id);
+                !projectile.autonomous_source &&
+                (!network_match ||
+                 (local_player_id.has_value() && projectile.source_player == local_player_id));
             if (owning_first_person) {
                 position = world::local_rocket_presentation_anchor(
                     projectile.tool_id,
@@ -14088,6 +16434,7 @@ struct NativeFrontendModule::Impl final {
                 return false;
             }
             entity_part_minimum_y.erase(iterator->first);
+            entity_part_appearances.erase(iterator->first);
             iterator = entity_part_slots.erase(iterator);
         }
         std::size_t uploaded_this_tick{};
@@ -14099,17 +16446,23 @@ struct NativeFrontendModule::Impl final {
             const auto model_parts = entity.type == 29U
                                          ? world::ugc_entity_model_parts(entity.ugc_item_id)
                                          : definition->parts;
+            const auto* cosmetic=(entity.type==11U||entity.type==12U) ? equipped_cosmetic(entity.owner,"tombstone") : equipped_cosmetic(entity.owner,"entity:"+std::to_string(entity.type));
+            if(!cosmetic&&entity.owner>=128U&&(!network_match||applied_settings.main.show_other_skins))
+                cosmetic=local_equipped_cosmetic("entity:"+std::to_string(entity.type));
+            const auto appearance=cosmetic ? cosmetic->id : std::string{};
             for (std::size_t part = 0U; part < model_parts.size(); ++part) {
                 const auto key = entity_part_key(entity.id, part);
-                if (entity_part_slots.contains(key)) {
+                const auto existing_slot=entity_part_slots.find(key);
+                if (existing_slot!=entity_part_slots.end() && entity_part_appearances[key]==appearance) {
                     continue;
                 }
                 if (uploaded_this_tick >= entity_mesh_upload_budget) {
                     return true;
                 }
                 std::optional<std::uint32_t> free_slot;
+                if (existing_slot!=entity_part_slots.end()) free_slot=existing_slot->second;
                 for (std::uint32_t slot = render::WorldRenderer::entity_slot_base;
-                     slot < render::WorldRenderer::entity_slot_base +
+                     !free_slot.has_value() && slot < render::WorldRenderer::entity_slot_base +
                                 render::WorldRenderer::entity_slot_count;
                      ++slot) {
                     if (!std::ranges::any_of(entity_part_slots, [slot](const auto& entry) {
@@ -14156,21 +16509,26 @@ struct NativeFrontendModule::Impl final {
                 const auto variant_key = entity.type == 29U
                                              ? static_cast<std::uint64_t>(entity.ugc_item_id & 0x1FU)
                                              : 0ULL;
-                const auto model_key = (static_cast<std::uint64_t>(entity.type) << 56U) |
+                const auto model_key = std::pair{(static_cast<std::uint64_t>(entity.type) << 56U) |
                                        (static_cast<std::uint64_t>(part & 0xFFU) << 48U) |
                                        (variant_key << 42U) |
-                                       (team_material ? (1ULL << 41U) : 0ULL) | tint_key;
+                                       (team_material ? (1ULL << 41U) : 0ULL) | tint_key, cosmetic ? cosmetic->id : std::string{}};
                 auto cached = entity_model_cache.find(model_key);
                 if (cached == entity_model_cache.end()) {
                     std::string error;
                     auto model = load_runtime_model(asset, &error);
+                    if(cosmetic){
+                        if(cosmetic->kind=="tombstone"){const auto replacement=inventory_verified_model(*cosmetic,config.asset_root);if(replacement)model=*replacement;}
+                        else {const auto parts=inventory_character_parts(cosmetic,config.asset_root);const auto replacement=parts.find(std::string{model_parts[part].kv6});if(replacement!=parts.end())model=replacement->second;}
+                    }
                     if (!model.has_value()) {
                         settings_warning = "entity model failed: " +
                                            (error.empty() ? std::string{asset.string()} : error);
                         return false;
                     }
                     const auto& piece = model_parts[part];
-                    model->offset_pivots(piece.pivot_offset);
+                    if(!cosmetic||cosmetic->kind!="tombstone")model->offset_pivots(piece.pivot_offset);
+                    if (cosmetic) model->apply_cosmetic_palette(cosmetic->palette);
                     if (tint.has_value() && team_material) {
                         world::apply_entity_team_material(*model, entity.type, *tint);
                     } else if (tint.has_value()) {
@@ -14184,6 +16542,7 @@ struct NativeFrontendModule::Impl final {
                     return false;
                 }
                 entity_part_slots.emplace(key, *free_slot);
+                entity_part_appearances.insert_or_assign(key,appearance);
                 entity_part_minimum_y.insert_or_assign(key, cached->second.minimum[1U]);
                 ++uploaded_this_tick;
             }
@@ -14208,17 +16567,14 @@ struct NativeFrontendModule::Impl final {
             const auto model_parts = entity.type == 29U
                                          ? world::ugc_entity_model_parts(entity.ugc_item_id)
                                          : definition->parts;
-            double contact_adjustment{};
-            if (!model_parts.empty()) {
-                const auto contact = entity_part_minimum_y.find(entity_part_key(entity.id, 0U));
-                if (contact != entity_part_minimum_y.end()) {
-                    // Part zero is the stable contact mesh. This matters for a
-                    // turret: using its aiming barrel would make the whole rig
-                    // rise and fall as pitch changes.
-                    contact_adjustment = world::entity_vertical_contact_adjustment(
-                        entity, *definition, model_parts[0U], contact->second);
-                }
+            std::vector<float> contact_bounds(model_parts.size(),std::numeric_limits<float>::quiet_NaN());
+            for(std::size_t part=0U;part<model_parts.size();++part){
+                const auto key=entity_part_key(entity.id,part);
+                const auto contact=entity_part_minimum_y.find(key);
+                if(entity_part_slots.contains(key)&&contact!=entity_part_minimum_y.end())contact_bounds[part]=contact->second;
             }
+            const double contact_adjustment=world::entity_rig_vertical_contact_adjustment(
+                entity,*definition,model_parts,contact_bounds);
             for (std::size_t part = 0U; part < model_parts.size(); ++part) {
                 const auto found = entity_part_slots.find(entity_part_key(entity.id, part));
                 if (found == entity_part_slots.end()) {
@@ -14237,8 +16593,7 @@ struct NativeFrontendModule::Impl final {
                     // packet-10 projectiles, so keep one transform for both.
                     auto position = std::array<double, 3U>{
                         entity.position.x, entity.position.y, entity.position.z};
-                    if (local_player_id.has_value() && entity.owner == *local_player_id &&
-                        (entity.type == 21U || entity.type == 22U)) {
+                    if (entity.local_launcher_muzzle) {
                         position = world::local_rocket_presentation_anchor(
                             entity.type == 21U ? 12U : 13U,
                             {entity.home.x, entity.home.y, entity.home.z},
@@ -14254,42 +16609,8 @@ struct NativeFrontendModule::Impl final {
                     draws.push_back({found->second, model});
                     continue;
                 }
-                auto model = mat_scale(definition->model_size * piece.scale);
-                // Kv6Model::mesh bakes an Rx(+90) so the retail draw_fps
-                // transforms apply verbatim, which leaves a model lying on its
-                // side in this z-down world. Undo it, exactly as the
-                // third-person tool path and class_models.cpp already do --
-                // without this a landmine stands on its edge.
-                model = mat_mul(model, mat_rotate_x(-90.0F));
-                // Retail applies one axis-angle per attachment face. Ground
-                // placement is face 4, which is the identity -- so this changes
-                // nothing for a crate and everything for C4 stuck to a wall.
-                if (const auto face = world::entity_face_rotation(entity.face);
-                    face.degrees != 0.0F) {
-                    model = mat_mul(model,
-                                    face.axis == 0U   ? mat_rotate_x(face.degrees)
-                                    : face.axis == 1U ? mat_rotate_y(face.degrees)
-                                                      : mat_rotate_z(face.degrees));
-                }
-                // rotation_mode is what makes the turret read as one machine:
-                // its base is bolted down, the ball tracks in yaw, and only the
-                // gun adds pitch. Applying one shared transform to all three
-                // would swing the whole assembly like a weathervane.
-                if (piece.rotation_mode >= 2U) {
-                    model = mat_mul(model, mat_rotate_y(static_cast<float>(-entity.aim_pitch)));
-                }
-                if (piece.rotation_mode >= 1U) {
-                    model = mat_mul(model, mat_rotate_z(static_cast<float>(entity.aim_yaw)));
-                }
-                // Entity.set_position has a face-specific offset table; graves
-                // and rocket turrets then add dedicated centring paths. Keeping
-                // this in one pure helper prevents visible meshes floating away
-                // from the same physics anchor used for collision.
-                const auto origin = world::entity_presentation_position(entity, piece);
-                model = mat_mul(model,
-                                mat_translate(static_cast<float>(origin.x),
-                                              static_cast<float>(origin.y),
-                                              static_cast<float>(origin.z + contact_adjustment)));
+                const auto model = world::entity_presentation_transform(
+                    entity, *definition, piece, contact_adjustment);
                 draws.push_back({found->second, model});
             }
         }
@@ -14733,6 +17054,11 @@ struct NativeFrontendModule::Impl final {
             }
         }
         auto found = remote_player_rigs.find(replica.player_id);
+        const auto* body_cosmetic = equipped_cosmetic(replica.player_id,"class:"+std::to_string(replica.class_id)+":body");
+        const auto* hat_cosmetic = equipped_cosmetic(replica.player_id,"class:"+std::to_string(replica.class_id)+":hat");
+        const auto* held_cosmetic = equipped_cosmetic(replica.player_id,"weapon:"+std::to_string(replica.tool_id)+":world");
+        const auto body_appearance = (body_cosmetic ? body_cosmetic->id : "") + std::string{"/"} + (hat_cosmetic ? hat_cosmetic->id : "");
+        const auto weapon_appearance = held_cosmetic ? held_cosmetic->id : std::string{};
         const auto corpse_jetpack_id =
             replica.dead
                 ? world::retail_jetpack_id(replica.loadout, replica.ugc_tools)
@@ -14740,6 +17066,7 @@ struct NativeFrontendModule::Impl final {
         const bool body_matches =
             found != remote_player_rigs.end() && found->second.generation == replica.generation &&
             found->second.class_id == replica.class_id && found->second.team == replica.team &&
+            found->second.body_appearance == body_appearance &&
             found->second.resolved_team_color == color && found->second.disguised == disguised &&
             (!disguised || found->second.disguise_color == disguise_color);
         if (body_matches && corpse_jetpack_id.has_value() &&
@@ -14747,7 +17074,7 @@ struct NativeFrontendModule::Impl final {
             return true;
         }
         if (body_matches && !corpse_jetpack_id.has_value() &&
-            found->second.tool_id == replica.tool_id) {
+            found->second.tool_id == replica.tool_id && found->second.weapon_appearance == weapon_appearance) {
             found->second.pending_tool_id.reset();
             found->second.pending_tool_snapshots = 0U;
             return true;
@@ -14803,6 +17130,8 @@ struct NativeFrontendModule::Impl final {
         rig.arm_upper_slot = base + 10U;
         rig.arm_lower_slot = base + 11U;
         rig.generation = replica.generation;
+        rig.body_appearance = body_appearance;
+        rig.weapon_appearance = weapon_appearance;
         rig.class_id = replica.class_id;
         rig.team = replica.team;
         rig.tool_id = replica.tool_id;
@@ -14868,15 +17197,20 @@ struct NativeFrontendModule::Impl final {
                 }
                 rig.draws_arms = false;
                 rig.arm_meshes_available = false;
+                rig.combined_arms = false;
                 rig.tool_part_count = 0U;
             } else {
-                const auto class_key =
-                    (static_cast<std::uint64_t>(replica.class_id) << 32U) | color_key;
+                const auto* cosmetic=body_cosmetic;
+                const auto palette=cosmetic?std::optional{cosmetic->palette}:std::nullopt;
+                const auto class_key = std::pair{
+                    (static_cast<std::uint64_t>(replica.class_id) << 32U) | color_key, body_appearance};
                 auto cached = remote_class_model_cache.find(class_key);
                 if (cached == remote_class_model_cache.end()) {
+                    const auto head = hat_cosmetic ? inventory_verified_model(*hat_cosmetic,config.asset_root) : nullptr;
+                    const auto parts=inventory_character_parts(body_cosmetic,config.asset_root);
                     auto loaded =
                         world::load_class_models(config.asset_root, replica.class_id, color,
-                                                 model_inverse_scale);
+                                                 model_inverse_scale, palette, head.get(), &parts);
                     if (!loaded) {
                         settings_warning = "remote class model failed: " + loaded.error;
                         return false;
@@ -14905,6 +17239,8 @@ struct NativeFrontendModule::Impl final {
                     return false;
                 }
                 const auto& arms = character.first_person_arms;
+                rig.combined_arms=character.combined_arms.has_value();
+                if(rig.combined_arms&&!world_renderer.set_world_model_mesh(rig.arm_upper_slot,*character.combined_arms))return false;
                 rig.arm_meshes_available = arms.size() >= 2U;
                 rig.draws_arms = rig.arm_meshes_available;
                 if (rig.arm_meshes_available &&
@@ -14937,7 +17273,7 @@ struct NativeFrontendModule::Impl final {
             }
         }
         rig.tool_part_count = 0U;
-        rig.draws_arms = false;
+        rig.draws_arms = rig.arm_meshes_available;
         rig.attached_jetpack_id.reset();
         remote_player_rigs[replica.player_id] = rig;
 
@@ -14975,12 +17311,13 @@ struct NativeFrontendModule::Impl final {
             return true;
         }
 
-        const auto weapon_key = (static_cast<std::uint64_t>(replica.tool_id) << 32U) | color_key;
+        const auto weapon_key = std::pair{(static_cast<std::uint64_t>(replica.tool_id) << 32U) | color_key, weapon_appearance};
         auto cached_weapon = remote_weapon_model_cache.find(weapon_key);
         if (cached_weapon == remote_weapon_model_cache.end()) {
+            const auto finish=inventory_weapon_finish(held_cosmetic,config.asset_root,replica.tool_id);
             auto loaded = world::load_weapon_models(
                 config.asset_root, replica.tool_id, {1.0F, 1.0F, 1.0F}, color,
-                model_inverse_scale);
+                model_inverse_scale, finish?&*finish:nullptr);
             if (!loaded) {
                 settings_warning =
                     "remote held-tool art unavailable; body retained: " + loaded.error;
@@ -14998,7 +17335,7 @@ struct NativeFrontendModule::Impl final {
                 settings_warning =
                     "remote weapon upload failed: " + std::string{world_renderer.last_error()};
                 rig.tool_part_count = 0U;
-                rig.draws_arms = false;
+                rig.draws_arms = rig.arm_meshes_available;
                 remote_player_rigs[replica.player_id] = rig;
                 return false;
             }
@@ -15053,7 +17390,46 @@ struct NativeFrontendModule::Impl final {
         return sync_roster_players();
     }
 
-    [[nodiscard]] std::vector<render::WorldModelDraw> tutorial_player_draws() const {
+    [[nodiscard]] bool ensure_parachute_mesh(bool first_person) {
+        const std::size_t index = first_person ? 1U : 0U;
+        if (parachute_mesh_attempted[index]) return parachute_mesh_uploaded[index];
+        parachute_mesh_attempted[index] = true;
+        const auto stem = first_person ? world::retail_first_person_parachute_model
+                                       : world::retail_parachute_model;
+        std::string error;
+        auto model = load_runtime_model(config.asset_root / "kv6" /
+                                           (std::string{stem} + ".kv6"), &error);
+        if (!model.has_value()) {
+            settings_warning = "parachute art unavailable; character retained: " + error;
+            return false;
+        }
+        model->offset_pivots({0.0F, 0.0F, world::retail_parachute_pivot_offset});
+        const auto slot = first_person ? parachute_first_person_slot : parachute_world_slot;
+        parachute_mesh_uploaded[index] = world_renderer.set_world_model_mesh(slot, model->mesh());
+        if (!parachute_mesh_uploaded[index]) {
+            settings_warning = "parachute upload failed: " + std::string{world_renderer.last_error()};
+        }
+        // The separate model-inspection scene uses slots 0..17 for its class
+        // gallery. Its next entry must restore that gallery after gameplay.
+        lab_models_color.reset();
+        return parachute_mesh_uploaded[index];
+    }
+
+    [[nodiscard]] std::optional<render::WorldModelDraw> local_parachute_draw() {
+        if (tutorial_session == nullptr || !tutorial_session->alive() ||
+            !tutorial_session->player().parachute ||
+            !tutorial_session->player().parachute_active || !ensure_parachute_mesh(true)) {
+            return std::nullopt;
+        }
+        const auto& orientation = tutorial_session->player().orientation;
+        const auto yaw = world::retail_character_root_yaw_degrees(
+            {orientation.x, orientation.y, orientation.z});
+        return render::WorldModelDraw{
+            parachute_first_person_slot,
+            world::retail_parachute_world_transform(tutorial_session->eye_position(), yaw, true)};
+    }
+
+    [[nodiscard]] std::vector<render::WorldModelDraw> tutorial_player_draws() {
         std::vector<render::WorldModelDraw> draws;
         const auto tune_character_draws = [&draws](std::size_t first) {
             for (std::size_t index{first}; index < draws.size(); ++index) {
@@ -15130,6 +17506,12 @@ struct NativeFrontendModule::Impl final {
             head = mat_mul(head, mat_translate(0.0F, 0.0F, head_pivot_z));
             head = mat_mul(head, root);
             draws.push_back({rig->second.head_slot, head});
+            if(rig->second.combined_arms){
+                auto arms=mat_translate(0.F,0.F,-.25F);
+                arms=mat_mul(arms,mat_rotate_x(static_cast<float>(aim_pitch)));
+                arms=mat_mul(arms,mat_translate(0.F,crouching?-.3F:0.F,crouching?.35F:.25F));
+                draws.push_back({rig->second.arm_upper_slot,mat_mul(arms,root)});
+            }
 
             const auto walk_pose = world::evaluate_retail_walk_pose(
                 static_cast<std::uint64_t>(character_animation_timer_ms),
@@ -15182,10 +17564,16 @@ struct NativeFrontendModule::Impl final {
                 continue;
             }
 
-            if ((player.action_flags & 0x10U) == 0U) {
-                tune_character_draws(first_character_draw);
-                continue;
+            // Character.draw draws the canopy independently of its held tool
+            // and arms, under the same yaw/body anchor, before the weapon.
+            if ((player.state_flags & 0x01U) != 0U &&
+                std::ranges::find(player.loadout, world::retail_parachute_equipment) !=
+                    player.loadout.end() && ensure_parachute_mesh(false)) {
+                draws.push_back({parachute_world_slot,
+                    world::retail_parachute_world_transform(
+                        {motion.position.x, motion.position.y, motion.position.z}, yaw, false)});
             }
+
             const double elapsed =
                 rig->second.last_primary_world_loop < 0
                     ? 1.0e9
@@ -15197,7 +17585,8 @@ struct NativeFrontendModule::Impl final {
                                                                        rig->second.tool_part_count,
                                                                        elapsed,
                                                                        rig->second.action_serial,
-                                                                       aim_pitch);
+                                                                       aim_pitch,
+                                                                       (player.action_flags & 0x10U) != 0U);
             world::ViewModelVector sucker_shake{};
             if (player.tool_id == 63U && rig->second.block_sucker_state != 0U) {
                 const double sucker_elapsed =
@@ -15217,7 +17606,7 @@ struct NativeFrontendModule::Impl final {
                      std::sin(sucker_elapsed * 27.5 + player.player_id * 0.7) * amplitude,
                      0.0});
             }
-            for (std::size_t part{}; part < rig->second.tool_part_count; ++part) {
+            for (std::size_t part{}; part < pose.tool_part_count; ++part) {
                 const auto& part_pose = pose.tool_parts[part];
                 // Tool.apply_transform is outside DisplayList: scale the KV6,
                 // rotate it, then apply the tool's DIRECT GL-space child
@@ -15388,6 +17777,9 @@ struct NativeFrontendModule::Impl final {
             return true;
         }
         world_renderer.clear_world_models();
+        preview_deployable_type_uploaded.reset();
+        parachute_mesh_attempted.fill(false);
+        parachute_mesh_uploaded.fill(false);
         for (const auto& definition : world::class_catalog()) {
             auto loaded = world::load_class_models(config.asset_root, definition.class_id, color,
                                                    model_inverse_scale);
@@ -15669,18 +18061,19 @@ struct NativeFrontendModule::Impl final {
         return draws;
     }
 
-    /** Load the exact FPS arm pair declared by the recovered class table. */
+    [[nodiscard]] std::uint8_t first_person_class_id() const {
+        if (network_match && local_player_id) {
+            if (const auto* local=tutorial_roster.player(*local_player_id)) return local->class_id;
+        }
+        return tutorial_session ? tutorial_session->debug_class_id() : 0U;
+    }
+
+    /** Keep retail poses, using the equipped character's authored arm pair. */
     [[nodiscard]] bool load_tutorial_class_arms(std::uint8_t class_id) {
         const auto team_color = local_player_team_color();
         if (loaded_tutorial_arm_class == class_id && loaded_tutorial_arm_color == team_color) {
             return true;
         }
-        arms_upper_mesh = {};
-        arms_lower_mesh = {};
-        arms_debug_upper_mesh = {};
-        arms_debug_lower_a_mesh = {};
-        arms_debug_lower_b_mesh = {};
-        tutorial_class_draws_arms = false;
 
         const auto* definition = world::find_class_definition(class_id);
         if (definition == nullptr) {
@@ -15691,6 +18084,14 @@ struct NativeFrontendModule::Impl final {
         // equipped zombie-hands tool owns the complete FPS presentation.
         if (definition->first_person_arm_assets[0U].empty() &&
             definition->first_person_arm_assets[1U].empty()) {
+            arms_upper_mesh = {};
+            arms_lower_mesh = {};
+            arms_debug_upper_mesh = {};
+            arms_debug_lower_a_mesh = {};
+            arms_debug_lower_b_mesh = {};
+            tutorial_class_draws_arms = false;
+            uploaded_sandbox_tool.reset();
+            view_model_meshes_uploaded = false;
             loaded_tutorial_arm_class = class_id;
             loaded_tutorial_arm_color = team_color;
             return true;
@@ -15714,14 +18115,39 @@ struct NativeFrontendModule::Impl final {
             settings_warning = "lower FPS arm failed to load: " + error;
             return false;
         }
+        if (const auto* cosmetic=local_equipped_cosmetic("class:"+std::to_string(class_id)+":body")) {
+            upper->apply_cosmetic_palette(cosmetic->palette);
+            lower->apply_cosmetic_palette(cosmetic->palette);
+        }
         upper->apply_default_color(team_color);
         lower->apply_default_color(team_color);
-        arms_upper_mesh = upper->mesh();
-        arms_lower_mesh = lower->mesh();
+        auto upper_mesh = upper->mesh();
+        auto lower_mesh = lower->mesh();
+        const auto* character=local_equipped_cosmetic("class:"+std::to_string(class_id)+":body");
+        const auto parts=inventory_character_parts(character,config.asset_root);
+        if(parts.contains("arm_upper")&&parts.contains("arm_lower")) {
+            const auto loaded=world::load_class_models(config.asset_root,class_id,team_color,
+                                                       model_inverse_scale,std::nullopt,nullptr,&parts);
+            if(!loaded||loaded.models->first_person_arms.size()!=2U) {
+                settings_warning="equipped character arms failed: "+loaded.error;
+                return false;
+            }
+            upper_mesh=loaded.models->first_person_arms[0];
+            lower_mesh=loaded.models->first_person_arms[1];
+        }
+        // Commit both hands together after every required model succeeded.
+        // A missing cosmetic/model keeps the last usable pair instead of
+        // emptying it while the previous cache identity remains valid.
+        arms_upper_mesh = std::move(upper_mesh);
+        arms_lower_mesh = std::move(lower_mesh);
         arms_debug_upper_mesh = upper->mesh({}, {2.0F, 0.4F, 0.4F});
         arms_debug_lower_a_mesh = lower->mesh({}, {0.4F, 2.0F, 0.4F});
         arms_debug_lower_b_mesh = lower->mesh({}, {0.4F, 0.4F, 2.0F});
         tutorial_class_draws_arms = true;
+        // Class/team can change while holding the same tool. Invalidate the
+        // GPU cache only after the complete replacement pair has loaded.
+        uploaded_sandbox_tool.reset();
+        view_model_meshes_uploaded = false;
         loaded_tutorial_arm_class = class_id;
         loaded_tutorial_arm_color = team_color;
         return true;
@@ -15771,11 +18197,96 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    void clear_scripted_weapon() {
+        if(tutorial_session)tutorial_session->set_skin_zoom(0U,std::nullopt);
+        scripted_weapon.reset();scripted_cosmetic_id.clear();scripted_model_slots.clear();scripted_sounds.clear();
+        scripted_images.clear(renderer);scripted_shots=0;scripted_reload_started=scripted_reload_finished=false;scripted_aim=scripted_raise=0;
+        scripted_motion={};
+    }
+
+    bool load_scripted_weapon(const InventoryCosmetic* item,std::uint8_t tool) {
+        if(!item||item->scripted_skin.empty()||std::ranges::none_of(item->parents,[tool](const auto& p){return p.tool==tool;}))return false;
+        if(std::ranges::find(failed_scripted_skins,item->id)!=failed_scripted_skins.end())return false;
+        auto skin=std::make_unique<world::ScriptedWeapon>();std::string error;
+        const auto variant=skin_variant_preferences?skin_variant_preferences->selection(item->id):world::SkinVariantSelection{};
+        if(!skin->load(config.asset_root.parent_path()/item->scripted_skin,error,variant)){
+            failed_scripted_skins.push_back(item->id);settings_warning="Skin animation failed: "+error;return false;
+        }
+        const auto* character=local_equipped_cosmetic("class:"+std::to_string(first_person_class_id())+":body");
+        const auto arms=inventory_character_parts(character,config.asset_root);
+        world_renderer.clear_view_model();std::uint32_t slot=0;
+        for(std::size_t id=0;id<skin->resources().size();++id){const auto& r=skin->resources()[id];
+            if(r.path.empty())continue;
+            if(r.kind==0){auto mesh=skin->model_mesh(id,local_player_team_color(),arms);
+                if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
+                    settings_warning="Skin model failed: "+r.name;clear_scripted_weapon();return false;
+                }scripted_model_slots[id]=slot++;
+            }else if(r.kind==2&&audio_started)scripted_sounds[id]=audio->preload_skin_sound(r.path);
+        }
+        if(slot==0)return false;
+        if(!scripted_images.load(renderer,*skin,error))settings_warning="Skin sight image failed: "+error;
+        if(tutorial_session&&skin->variant().magnification>0.F)
+            tutorial_session->set_skin_zoom(tool,world::skin_variant_zoom_target(skin->variant().magnification));
+        scripted_cosmetic_id=item->id;scripted_weapon=std::move(skin);scripted_time=std::chrono::steady_clock::now();
+        if(audio_started)static_cast<void>(audio->play_cosmetic_cue(item->id,"raise",0,{},.7F,true));
+        uploaded_sandbox_tool=tool;uploaded_tool.reset();view_model_meshes_uploaded=false;return true;
+    }
+
+    std::vector<render::ViewModelDraw> scripted_weapon_draws() {
+        std::vector<render::ViewModelDraw> draws;if(!scripted_weapon||!tutorial_session||!uploaded_sandbox_tool)return draws;
+        world::SkinInput input;const auto now=std::chrono::steady_clock::now();
+        input.dt=std::clamp(std::chrono::duration<float>(now-scripted_time).count(),0.F,.1F);scripted_time=now;
+        const float target=tutorial_session->zoomed()?1.F:0.F;
+        scripted_aim+=std::clamp(target-scripted_aim,-input.dt*3.F,input.dt*8.F);input.aim=scripted_aim;
+        const auto movement=tutorial_session->diagnostics();
+        const bool running=tutorial_session->action_held(world::TutorialAction::sprint)&&
+            !movement.airborne&&std::hypot(movement.velocity.x,movement.velocity.y)>.01;
+        input.sprint=running?1.F:0.F;
+        scripted_raise=std::min(1.F,scripted_raise+input.dt*4.F);input.raise=scripted_raise;
+        const auto* definition=world::find_weapon_definition(*uploaded_sandbox_tool);
+        if(definition){input.clip_size=definition->clip_size;
+            if(definition->melee)input.aim=scripted_dig?1.F:0.F;
+            input.ready=std::clamp(static_cast<float>(tutorial_session->seconds_since_primary()/std::max(definition->fire_interval,.01)),0.F,1.F);
+            input.reload_progress=1.F-std::clamp(static_cast<float>(tutorial_session->weapon_reload_remaining()/std::max(definition->reload_time,.01)),0.F,1.F);
+        }
+        if(const auto* ammo=tutorial_session->selected_ammo()){input.ammo=ammo->magazine;input.reloading=ammo->reloading;}
+        // Authored scopes hide the weapon while aimed. Cancel that pose on
+        // the first reload frame so the entire reload animation stays visible.
+        if(input.reloading){scripted_aim=0.F;input.aim=0.F;}
+        const auto sway=first_person_sway();input.swing={-static_cast<float>(sway.x),static_cast<float>(sway.z),-static_cast<float>(sway.y)};
+        scripted_motion.apply(input,applied_settings.main.weapon_motion);
+        const auto team=local_player_team_color();input.team_color={team.red/255.F,team.green/255.F,team.blue/255.F};
+        input.screen_width=static_cast<float>(drawable_extent.width);input.screen_height=static_cast<float>(drawable_extent.height);
+        input.muted=!audio_started;input.reload_started=std::exchange(scripted_reload_started,false);input.reload_finished=std::exchange(scripted_reload_finished,false);
+        const bool fired=scripted_shots>0;unsigned events=std::max(1U,scripted_shots);scripted_shots=0;
+        for(unsigned n=0;n<events;++n){input.fired=fired;
+            std::string error;if(!scripted_weapon->update(input,error)){failed_scripted_skins.push_back(scripted_cosmetic_id);settings_warning="Skin animation stopped: "+error;clear_scripted_weapon();uploaded_sandbox_tool.reset();return draws;}
+            if(audio_started)for(const auto& s:scripted_weapon->frame().sounds){auto found=scripted_sounds.find(s.resource);if(found!=scripted_sounds.end()&&found->second)audio->play_skin_sound(found->second,s.gain*.125F,s.pitch);}
+            input.dt=0;input.reload_started=input.reload_finished=false;
+        }
+        for(const auto& d:scripted_weapon->frame().models){const auto slot=scripted_model_slots.find(d.resource);if(slot!=scripted_model_slots.end())draws.push_back({slot->second,d.transform});}
+        return draws;
+    }
+
+    void draw_scripted_images() {
+        if(!scripted_weapon||!tutorial_session||!tutorial_world_in_stack())return;
+        if(death_camera.active()||!tutorial_session->weapon_view_model_visible())return;
+        const auto* ammo=tutorial_session->selected_ammo();
+        const bool iron_dot=tutorial_session->zoomed()&&scripted_aim>.8F&&
+            !(ammo&&ammo->reloading)&&!tutorial_session->action_held(world::TutorialAction::sprint);
+        if(!scripted_images.draw(renderer,scripted_weapon->frame(),{drawable_extent.width,drawable_extent.height},
+            static_cast<float>(world::zoom_fov_y_degrees(tutorial_session->zoom_level())),iron_dot))
+            settings_warning="Skin sight drawing failed: "+std::string{renderer.last_error()};
+    }
+
     /** Streams the selected all-weapons sandbox tool into viewmodel slots. */
     [[nodiscard]] bool sync_sandbox_view_model() {
         if (tutorial_session == nullptr) {
             return true;
         }
+        // Inventory refresh invalidates the arm cache even while the same
+        // weapon is held. Refresh before uploading its viewmodel again.
+        if(!load_tutorial_class_arms(first_person_class_id())) return false;
         const auto selected = tutorial_session->selected_tool_id();
         if (!selected.has_value() || uploaded_sandbox_tool == selected) {
             return true;
@@ -15789,9 +18300,16 @@ struct NativeFrontendModule::Impl final {
                     static_cast<float>(color.green) / 255.0F,
                     static_cast<float>(color.blue) / 255.0F};
         }
+        const auto* cosmetic=local_equipped_cosmetic("weapon:"+std::to_string(*selected)+":view");
+        // Local visual oracle cannot advertise or award an unowned item online.
+        if (applied_settings.main.show_skins && !network_match && developer_tools_allowed() && config.tutorial_debug_cosmetic)
+            cosmetic=find_inventory_cosmetic(*config.tutorial_debug_cosmetic);
+        clear_scripted_weapon();
+        if(load_scripted_weapon(cosmetic,*selected))return true;
+        const auto finish=inventory_weapon_finish(cosmetic,config.asset_root,*selected);
         const auto loaded = world::load_weapon_models(
             config.asset_root, *selected, tint, local_player_team_color(),
-            model_inverse_scale);
+            model_inverse_scale, finish?&*finish:nullptr);
         if (!loaded) {
             settings_warning = "sandbox weapon model failed: " + loaded.error;
             return false;
@@ -15881,6 +18399,7 @@ struct NativeFrontendModule::Impl final {
             weapon_sway_y += (target_y - weapon_sway_y) / 20.0;
         }
         world::ViewModelVector sway{weapon_sway_x, weapon_sway_y, 0.0};
+        if (!applied_settings.main.weapon_motion) return {};
         if (tutorial_session == nullptr) {
             return sway;
         }
@@ -15905,6 +18424,7 @@ struct NativeFrontendModule::Impl final {
         if (tutorial_session == nullptr || !uploaded_sandbox_tool.has_value()) {
             return draws;
         }
+        if(scripted_weapon)return scripted_weapon_draws();
         if (!tutorial_session->weapon_view_model_visible()) {
             return draws;
         }
@@ -16028,6 +18548,7 @@ struct NativeFrontendModule::Impl final {
                 game_hud.set_player_score(0, false);
                 game_hud.set_numeric_health_visible(false);
                 game_hud.set_jetpack_fuel(0.0, false);
+                game_hud.set_ability_hint({});
                 game_hud.set_disguise_active(false);
                 game_hud.set_parachute_active(false);
                 game_hud.set_team_scores({}, {}, false);
@@ -16076,7 +18597,7 @@ struct NativeFrontendModule::Impl final {
                     network_match && local_player_id.has_value() &&
                     tutorial_roster.player(*local_player_id) != nullptr &&
                     tutorial_roster.player(*local_player_id)->high_minimap_visibility;
-                game_hud.set_class_portrait(std::string{klass->team_icon_assets[team]},
+                game_hud.set_class_portrait(cosmetic_class_icon(klass->class_id,team==0U,false,klass->team_icon_assets[team]),
                                             high_minimap_visibility);
             } else {
                 game_hud.set_health_damage_multiplier(1.0);
@@ -16106,11 +18627,31 @@ struct NativeFrontendModule::Impl final {
                  std::any_of(local_replica->loadout.begin(),
                              local_replica->loadout.end(),
                              [](std::uint8_t item) { return item >= 66U && item <= 69U; }));
-            game_hud.set_jetpack_fuel(local_replica != nullptr
-                                          ? retail_jetpack_fuel_fraction(
-                                                local_replica->jetpack_fuel)
-                                          : (has_jetpack ? 1.0 : 0.0),
-                                      has_jetpack);
+            game_hud.set_jetpack_fuel(
+                retail_jetpack_fuel_fraction(tutorial_session->jetpack_fuel()), has_jetpack);
+            const auto key_name = [&](settings::ControlAction action, std::string_view fallback) {
+                const auto binding = applied_settings.controls.binding(action);
+                if (binding.kind == settings::BindingKind::keyboard_scancode) {
+                    const auto value = scancode_display_name(binding.code);
+                    if (value != "?") return value;
+                }
+                return std::string{fallback};
+            };
+            std::string ability_hint;
+            if (tutorial_session->alive() && movement.parachute) {
+                ability_hint = movement.parachute_active ? "Parachute deployed"
+                    : movement.parachute_pending ? "Parachute opens on descent"
+                    : key_name(settings::ControlAction::hover, "Z") + ": deploy parachute in air";
+            } else if (tutorial_session->alive() && has_jetpack) {
+                ability_hint = key_name(movement.jetpack == 4U ? settings::ControlAction::hover
+                                                              : settings::ControlAction::jump,
+                                        movement.jetpack == 4U ? "Z" : "SPACE") + ": thrust";
+                if (movement.jetpack != 4U &&
+                    (!network_match || match_initial_info.flight_profile.grounded_refill_only)) {
+                    ability_hint += "; release + land to recharge";
+                }
+            }
+            game_hud.set_ability_hint(std::move(ability_hint));
             game_hud.set_disguise_active(local_replica != nullptr &&
                                          (local_replica->state_flags & 0x02U) != 0U);
             game_hud.set_parachute_active(local_replica != nullptr
@@ -16176,8 +18717,6 @@ struct NativeFrontendModule::Impl final {
                                      weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor;
             if (prefab_tool) {
                 const auto prefab_name = tutorial_session->selected_prefab();
-                const auto preview_asset =
-                    world::prefab_preview_asset(config.asset_root, prefab_name);
                 // sync_placement_preview_meshes runs before this HUD pass and
                 // owns the selected KV6 cache. Reusing it avoids parsing a
                 // prefab every frame merely to recover prefab_cost.
@@ -16185,7 +18724,7 @@ struct NativeFrontendModule::Impl final {
                                             prefab_name == preview_prefab_name &&
                                             preview_prefab_model.has_value();
                 const auto cost = matching_model ? preview_prefab_cost : 0;
-                game_hud.set_prefab_cost_state(preview_asset,
+                game_hud.set_prefab_cost_state(preview_prefab_icon,
                                                cost,
                                                matching_model &&
                                                    (tutorial_session->infinite_blocks() ||
@@ -16195,13 +18734,37 @@ struct NativeFrontendModule::Impl final {
                 return;
             }
 
+            if (weapon->mechanism == world::WeaponMechanism::block_builder) {
+                // Retail BlockTool's upper row is placement cost, even though
+                // blocks have no magazine. Keep this before sandbox/live ammo
+                // handling so it cannot disappear as a non-ammunition tool.
+                const auto current = tutorial_session->placement_cell(
+                    match_initial_info.classic ? 5.0 : 10.0);
+                std::int32_t cost{1};
+                bool can_place = false;
+                if (current.has_value()) {
+                    network::BlockLinePacket line;
+                    line.start = block_line_start.value_or(*current);
+                    line.end = *current;
+                    const auto cells = network::cube_line_cells(line, 65U);
+                    const auto placement = world::evaluate_block_line_placement(
+                        tutorial_session->map(), cells);
+                    cost = static_cast<std::int32_t>(placement.required_blocks);
+                    can_place = placement.can_place(tutorial_session->blocks_remaining(),
+                                                     tutorial_session->infinite_blocks());
+                }
+                game_hud.set_block_cost_state(
+                    cost, can_place, game_hud.team_color(), true);
+                return;
+            }
+
             if (tutorial_session->weapon_sandbox_enabled()) {
                 const auto* ammo = tutorial_session->selected_ammo();
                 const bool count_bearing =
                     ammo != nullptr && (weapon->clip_size > 0U || weapon->reserve_ammo > 0U ||
                                         ammo->magazine > 0U || ammo->reserve > 0U);
                 game_hud.set_ammo_state(
-                    std::string{weapon->first_person_image_asset},
+                    cosmetic_weapon_icon(*selected,weapon->first_person_image_asset,local_player_team_index()==0U),
                     count_bearing ? static_cast<std::int32_t>(ammo->magazine) : 0,
                     count_bearing && weapon->reserve_ammo > 0U
                         ? std::optional<std::int32_t>{static_cast<std::int32_t>(ammo->reserve)}
@@ -16213,7 +18776,7 @@ struct NativeFrontendModule::Impl final {
             // Recovered tutorial protocol ids: block=5, spade=2, pistol=17.
             // DiggingTool intentionally displays the shared block stock.
             if (*selected == 17U) {
-                game_hud.set_ammo_state(std::string{weapon->first_person_image_asset},
+                game_hud.set_ammo_state(cosmetic_weapon_icon(*selected,weapon->first_person_image_asset,local_player_team_index()==0U),
                                         tutorial_session->pistol_clip(),
                                         tutorial_session->pistol_stock(),
                                         true);
@@ -16261,7 +18824,7 @@ struct NativeFrontendModule::Impl final {
                         static_cast<std::uint8_t>(slot.variant_id))};
                 }
                 if (icon.empty() && definition != nullptr) {
-                    icon = std::string{definition->toolbar_icon_asset};
+                    icon = cosmetic_weapon_icon(slot.tool_id,definition->toolbar_icon_asset,local_player_team_index()==0U);
                 }
                 hud_slots.push_back({std::move(icon),
                                      index < 9U    ? std::to_string(index + 1U)
@@ -16293,7 +18856,9 @@ struct NativeFrontendModule::Impl final {
             const bool hidden_while_aimed =
                 weapon != nullptr && weapon->retail.use.crosshair_mode == unzoomed_crosshair &&
                 tutorial_session->zoomed();
-            game_hud.set_crosshair_visible(weapon != nullptr && !hidden_while_aimed);
+            const bool skin_crosshair=scripted_weapon&&scripted_images.has_screen_image(scripted_weapon->frame());
+            game_hud.set_crosshair_visible(weapon!=nullptr&&!hidden_while_aimed&&
+                (!scripted_weapon||(!tutorial_session->zoomed()&&!skin_crosshair)));
             game_hud.set_crosshair_geometry(tutorial_session->weapon_crosshair_radius_pixels(
                                                 static_cast<double>(drawable_extent.height)),
                                             weapon != nullptr &&
@@ -16320,7 +18885,7 @@ struct NativeFrontendModule::Impl final {
                         static_cast<std::uint8_t>(slot.variant_id))};
                 }
                 if (icon.empty() && definition != nullptr) {
-                    icon = std::string{definition->toolbar_icon_asset};
+                    icon = cosmetic_weapon_icon(slot.tool_id,definition->toolbar_icon_asset,local_player_team_index()==0U);
                 }
                 hud_slots.push_back(
                     GameHudInventorySlot{icon, index == 9U ? "0" : std::to_string(index + 1U)});
@@ -16538,15 +19103,17 @@ struct NativeFrontendModule::Impl final {
         }
         if (!mouse_captured && tutorial_session != nullptr) {
             tutorial_session->clear_input();
+            ugc_prefab_control.clear_inputs();
         }
     }
 
     /** Shaped width of one help-panel line for retail backing sizing. */
     [[nodiscard]] double measure_help_line(std::string_view line, double font_pixels) {
-        if (spades_font == nullptr || !spades_font->ready()) {
+        auto* const rasterizer = font_for_text(main_menu_assets::button_font, line);
+        if (rasterizer == nullptr) {
             return 0.0;
         }
-        const auto raster = spades_font->rasterize(text::TextRasterRequest{
+        const auto raster = rasterizer->rasterize(text::TextRasterRequest{
             std::string{line},
             text::TextCase::preserve,
             static_cast<std::uint32_t>(std::max(1.0, std::floor(font_pixels + 0.5))),
@@ -16559,10 +19126,11 @@ struct NativeFrontendModule::Impl final {
 
     /** Shaped width of one retail kill-feed name in A750-Sans-Medium. */
     [[nodiscard]] double measure_kill_feed_name(std::string_view line, double font_pixels) {
-        if (welcome_font == nullptr || !welcome_font->ready()) {
+        auto* const rasterizer = font_for_text(main_menu_assets::welcome_font, line);
+        if (rasterizer == nullptr) {
             return 0.0;
         }
-        const auto raster = welcome_font->rasterize(text::TextRasterRequest{
+        const auto raster = rasterizer->rasterize(text::TextRasterRequest{
             std::string{line},
             text::TextCase::preserve,
             static_cast<std::uint32_t>(std::max(1.0, std::floor(font_pixels + 0.5))),
@@ -16577,7 +19145,7 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] double measure_chat_text(std::string_view line,
                                            double font_pixels,
                                            std::string_view font_asset) {
-        auto* const rasterizer = font(font_asset);
+        auto* const rasterizer = font_for_text(font_asset, line);
         if (rasterizer == nullptr || !rasterizer->ready()) {
             return 0.0;
         }
@@ -16595,10 +19163,11 @@ struct NativeFrontendModule::Impl final {
 
     /** Shaped width of one retail CHAT_BIG line in Edo. */
     [[nodiscard]] double measure_big_message_line(std::string_view line, double font_pixels) {
-        if (edo_font == nullptr || !edo_font->ready()) {
+        auto* const rasterizer = font_for_text(settings_edo_font, line);
+        if (rasterizer == nullptr) {
             return 0.0;
         }
-        const auto raster = edo_font->rasterize(text::TextRasterRequest{
+        const auto raster = rasterizer->rasterize(text::TextRasterRequest{
             std::string{line},
             text::TextCase::preserve,
             static_cast<std::uint32_t>(std::max(1.0, std::floor(font_pixels + 0.5))),
@@ -17077,6 +19646,11 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] ui::DrawList tutorial_world_draw_list() {
         GameHudPresentationContext hud_context;
+        if (network_match && local_player_id.has_value()) {
+            const auto* local = tutorial_roster.player(*local_player_id);
+            hud_context.player_widgets_visible = local == nullptr ||
+                !local_player_is_spectator(local->team, match_initial_info.enable_spectator);
+        }
         hud_context.window = ui::PixelExtent{static_cast<std::int32_t>(drawable_extent.width),
                                              static_cast<std::int32_t>(drawable_extent.height)};
         hud_context.measure_text = [this](std::string_view line, double font_pixels) {
@@ -17339,6 +19913,18 @@ struct NativeFrontendModule::Impl final {
                              : ((network_match || screen() == FrontendScreen::game_loading)
                                     ? match_ui_skin
                                     : std::string{"default"});
+        if (!boot_loading && screen()==FrontendScreen::player_profile &&
+            player_profile_menu.selected_tab()==PlayerProfileTab::inventory && !inventory_markup_failed) {
+            if (!inventory_view) inventory_view=std::make_unique<InventoryView>(renderer,config.asset_root,skin_variant_preferences.get());
+            if (!inventory_view->ready()) {
+                inventory_menu.error=std::string{inventory_view->error()};
+                inventory_view.reset(); inventory_markup_failed=true;
+            } else {
+                const auto canvas=ui::DesignCanvas{800,600}.viewport({static_cast<std::int32_t>(extent.width),static_cast<std::int32_t>(extent.height)});
+                inventory_view->prepare(inventory_menu,inventory_fixture,canvas?static_cast<float>(canvas->scale):1.0F);
+                consume_inventory_view();
+            }
+        }
         const auto list = build_active_draw_list(extent);
         if (!prepare_resources(list)) {
             return false;
@@ -17486,6 +20072,12 @@ struct NativeFrontendModule::Impl final {
                                         ? std::vector<render::ViewModelDraw>{}
                                         : view_model_draws();
             auto terrain_draws = terrain_effect_draws();
+            if (!result_camera.has_value() && !death_camera.active() &&
+                !ugc_prefab_control.active()) {
+                if (const auto canopy = local_parachute_draw(); canopy.has_value()) {
+                    terrain_draws.push_back(*canopy);
+                }
+            }
             auto placement_draws = placement_preview_draws();
             auto moving_projectiles = projectile_draws();
             auto placed_entities = entity_draws();
@@ -17535,13 +20127,19 @@ struct NativeFrontendModule::Impl final {
                                        static_cast<float>(camera.eye[1U]),
                                        static_cast<float>(camera.eye[2U])},
                                       static_cast<float>(camera.fog_distance));
+            const auto effect_lights=terrain_effects.lights();
+            std::vector<world::DynamicLight> frame_lights(effect_lights.begin(),effect_lights.end());
+            if(scripted_weapon&&!tool_draws.empty()){
+                const auto muzzle_lights=scripted_images.muzzle_lights(scripted_weapon->frame(),camera);
+                frame_lights.insert(frame_lights.end(),muzzle_lights.begin(),muzzle_lights.end());
+            }
             if (!world_renderer.submit(camera,
                                        {extent.width, extent.height},
                                        tool_draws,
                                        terrain_draws,
                                        particles.instances(),
                                        particles.batches(),
-                                       terrain_effects.lights(),
+                                       frame_lights,
                                        sniper_lasers,
                                        entity_spot_shadows,
                                        objective_zones)) {
@@ -17552,6 +20150,7 @@ struct NativeFrontendModule::Impl final {
             }
         }
 
+        if(tutorial_session&&!match_results.visible()&&!ugc_prefab_control.active())draw_scripted_images();
         bool success{true};
         for (const auto& command : list.commands()) {
             success = std::visit(
@@ -17567,13 +20166,42 @@ struct NativeFrontendModule::Impl final {
                 },
                 command);
             if (!success) {
+                // end_frame() clears the renderer error on a successful flush.
+                // Retain the failing command and reason before closing the frame.
+                if (last_error.empty()) {
+                    last_error = std::visit(
+                        [](const auto& payload) -> std::string {
+                            using Payload = std::decay_t<decltype(payload)>;
+                            if constexpr (std::is_same_v<Payload, ui::SpriteDrawCommand>) {
+                                return "frontend sprite rejected: " + payload.asset_id;
+                            } else if constexpr (std::is_same_v<Payload, ui::TextDrawCommand>) {
+                                return "frontend text draw rejected";
+                            } else {
+                                return "frontend name plate draw rejected";
+                            }
+                        },
+                        command);
+                    if (!renderer.last_error().empty()) {
+                        last_error += ": " + std::string{renderer.last_error()};
+                    }
+                }
                 break;
             }
         }
 
+        if (markup_inventory_active() && !inventory_view->draw()) {
+            success=false;
+            last_error="inventory drawing failed: "+std::string{renderer.last_error()};
+        }
         if (!renderer.end_frame()) {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
+        }
+        if (renderer.last_frame_dropped_draws() != 0U &&
+            (last_ui_budget_warning_frame == 0U || text_cache_frame - last_ui_budget_warning_frame >= 600U)) {
+            std::fprintf(stderr, "[renderer] UI transient capacity exceeded; skipped %zu draws this frame\n",
+                         renderer.last_frame_dropped_draws());
+            last_ui_budget_warning_frame = text_cache_frame;
         }
         if (!success && last_error.empty()) {
             last_error = "an active frontend draw command was rejected";
@@ -17588,6 +20216,8 @@ struct NativeFrontendModule::Impl final {
         }
         if (action == MainMenuAction::settings && settings_menu != nullptr) {
             settings_session = settings::SettingsSession{confirmed_settings};
+            settings_opened_from_gameplay = false;
+            rebuild_settings_menu(SettingsMenuContext::frontend);
             settings_menu->cancel_pointer_capture();
             settings_menu->cancel_binding_capture();
             settings_menu->set_active_tab(settings::SettingsTab::main);
@@ -17600,6 +20230,10 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         if (action == MainMenuAction::create_match) {
+            settings_warning.clear();
+            social_leave_after_create = false;
+            create_match_menu.set_host_authority(true);
+            create_match_menu.set_match_join_available(false);
             create_match_menu.set_players(
                 {CreateMatchPlayer{0U, config.player_name, "TEAM_NEUTRAL", true, true, false}});
             reset_create_match_page_transition();
@@ -17651,6 +20285,9 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         if (action == MainMenuAction::logout) {
+            inventory_autoload=false;
+            if (inventory_session) inventory_session->cancel();
+            inventory_menu=InventoryMenuModel{};
             if (audio_started) {
                 audio->stop_menu_music();
             }
@@ -17694,9 +20331,14 @@ bool NativeFrontendModule::start() {
             impl_->social_client->status(std::chrono::steady_clock::now()).closing) {
             impl_->initialize_social_client();
         }
-        impl_->load_settings();
+        std::string localization_warning;
         if (!impl_->localization.load()) {
-            impl_->settings_warning = std::string{impl_->localization.last_error()};
+            localization_warning = std::string{impl_->localization.last_error()};
+        }
+        impl_->load_settings();
+        if (!localization_warning.empty()) {
+            if (!impl_->settings_warning.empty()) impl_->settings_warning += "; ";
+            impl_->settings_warning += localization_warning;
         }
         impl_->localization_generation = impl_->localization.generation();
         if (!impl_->ui_layout_store.load()) {
@@ -17791,38 +20433,46 @@ bool NativeFrontendModule::start() {
             std::filesystem::path{main_menu_assets::button_font},
             36U,
             {},
+            true,
         });
         impl_->welcome_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
             std::filesystem::path{main_menu_assets::welcome_font},
             16U,
             {},
+            true,
         });
         impl_->edo_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
             std::filesystem::path{settings_edo_font},
             18U,
             {},
+            true,
         });
         impl_->bold_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
             std::filesystem::path{settings_bold_font},
             11U,
             {},
+            true,
         });
         impl_->tuffy_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
             std::filesystem::path{tuffy_font_asset},
             12U,
             {},
+            true,
         });
-        const auto optional_font = [this](std::string_view preferred) {
-            std::error_code code;
-            const auto candidate = impl_->config.asset_root /
-                                   std::filesystem::path{preferred};
-            return std::filesystem::is_regular_file(candidate, code) && !code
-                       ? std::filesystem::path{preferred}
-                       : std::filesystem::path{tuffy_font_asset};
+        const auto optional_font = [this](std::initializer_list<std::string_view> choices) {
+            for (const auto preferred : choices) {
+                std::error_code code;
+                const auto candidate = impl_->config.asset_root /
+                                       std::filesystem::path{preferred};
+                if (std::filesystem::is_regular_file(candidate, code) && !code) {
+                    return std::filesystem::path{preferred};
+                }
+            }
+            return std::filesystem::path{tuffy_font_asset};
         };
         // These CJK helper faces were added to some development copies of the
         // retail tree, but are absent from a clean Steam installation.  They
@@ -17830,16 +20480,35 @@ bool NativeFrontendModule::start() {
         // never make a genuine owned installation fail to boot.
         impl_->mplus_font = std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
             impl_->config.asset_root,
-            optional_font(mplus_font_asset),
+            optional_font({mplus_font_asset, mplus_compact_font_asset}),
             16U,
             {},
+            true,
         });
+        // Japanese cannot depend on the player's Steam language depot. The
+        // OFL-licensed Noto face is project-owned and installed under
+        // assets/client on every platform. Older developer trees may still
+        // use the verified retail-depot copy as a compatibility fallback.
+        const auto bundled_japanese =
+            impl_->config.client_asset_root /
+            std::filesystem::path{noto_japanese_font_asset};
+        std::error_code bundled_font_error;
+        const auto has_bundled_japanese =
+            std::filesystem::is_regular_file(bundled_japanese, bundled_font_error) &&
+            !bundled_font_error;
         impl_->noto_japanese_font =
             std::make_unique<text::TextRasterizer>(text::TextRasterizerConfig{
-                impl_->config.asset_root,
-                optional_font(noto_japanese_font_asset),
+                has_bundled_japanese ? impl_->config.client_asset_root
+                                     : impl_->config.asset_root,
+                has_bundled_japanese
+                    ? std::filesystem::path{noto_japanese_font_asset}
+                    : optional_font({noto_japanese_font_asset,
+                                     noto_japanese_compact_font_asset,
+                                     mplus_font_asset,
+                                     mplus_compact_font_asset}),
                 16U,
                 {},
+                true,
         });
         if (!impl_->spades_font->ready() || !impl_->welcome_font->ready() ||
             !impl_->edo_font->ready() || !impl_->bold_font->ready() ||
@@ -17866,7 +20535,8 @@ bool NativeFrontendModule::start() {
                     48U,
                     static_cast<float>(startup_settings.main.music_volume),
                     1.0F,
-                    false});
+                    false,
+                    startup_settings.main.audio_device});
             // Audio is intentionally optional: a missing output device must not
             // prevent the graphical client from opening.
             impl_->audio_started = impl_->audio->start();
@@ -17875,6 +20545,9 @@ bool NativeFrontendModule::start() {
                     impl_.get(), &Impl::spatial_sound_gain_callback);
                 static_cast<void>(impl_->audio->set_master_volume(
                     static_cast<float>(startup_settings.main.master_volume)));
+            } else {
+                impl_->settings_warning = std::string{impl_->audio->last_error()};
+                std::fprintf(stderr, "[audio] %s\n", impl_->settings_warning.c_str());
             }
         }
 
@@ -17887,8 +20560,22 @@ bool NativeFrontendModule::start() {
         const bool direct_ui_oracle = impl_->config.debug_ui.has_value();
         const auto root_screen =
             direct_vfx_oracle ? FrontendScreen::gameplay_debug
+            : direct_ui_oracle && impl_->config.debug_ui->starts_with("inventory")
+                ? FrontendScreen::player_profile
             : direct_ui_oracle && *impl_->config.debug_ui == "leaderboard"
                 ? FrontendScreen::leaderboard
+            : direct_ui_oracle && impl_->config.debug_ui->starts_with("friends")
+                ? FrontendScreen::friends_lobby
+            : direct_ui_oracle && impl_->config.debug_ui->starts_with("loading/")
+                ? FrontendScreen::game_loading
+            : direct_ui_oracle && impl_->config.debug_ui->starts_with("create_match")
+                ? FrontendScreen::create_match
+            : direct_ui_oracle && *impl_->config.debug_ui == "ugc_lobby"
+                ? FrontendScreen::ugc_editor_lobby
+            : direct_ui_oracle && *impl_->config.debug_ui == "ugc_browser"
+                ? FrontendScreen::ugc_editor_browser
+            : direct_ui_oracle && *impl_->config.debug_ui == "ugc_loadout"
+                ? FrontendScreen::class_selection
             : direct_ui_oracle ? FrontendScreen::tutorial_world
                                : FrontendScreen::identity;
         if (!impl_->navigation.start(root_screen)) {
@@ -17912,7 +20599,105 @@ bool NativeFrontendModule::start() {
             // actually visible through the production world renderer.
             impl_->gameplay_debug_lab.select_vfx(kind, false);
         } else if (direct_ui_oracle) {
-            if (*impl_->config.debug_ui == "leaderboard") {
+            if (impl_->config.debug_ui->starts_with("friends")) {
+                const auto now = std::chrono::steady_clock::now();
+                auto& menu = impl_->friends_lobby_menu;
+                menu.set_identity("preview-host");
+                menu.enter(now);
+                menu.set_service_status(*impl_->config.debug_ui != "friends/offline",
+                    *impl_->config.debug_ui == "friends/offline"
+                    ? "AoSPlay is unavailable. Your friends are saved; reconnect to invite or join."
+                    : "");
+                FriendsLobbySnapshot snapshot;
+                snapshot.friends = {
+                    {"one", "Block Runner", "online", "accepted", {}, {}, {}},
+                    {"two", "Captain Spades", "online", "accepted", {}, "preview-squad", {}},
+                    {"three", "The Architect", "in_game", "accepted", {}, "preview-game", "preview-server"},
+                    {"four", "A very long player name that must stay inside the menu", "offline", "accepted", {}, {}, {}},
+                    {"five", "Night Watch", "offline", "accepted", {}, {}, {}},
+                    {"six", "New Recruit", "online", "pending", "incoming", {}, {}},
+                    {"seven", "Squad Builder", "offline", "pending", "outgoing", {}, {}}};
+                if (*impl_->config.debug_ui == "friends/invites") {
+                    snapshot.invitations = {
+                        {"invite-one", "preview-squad", "Friday night playtest", "Captain Spades"},
+                        {"invite-two", "preview-other", "A very long lobby name that stays inside the invitation panel", "The Architect"}};
+                }
+                if (*impl_->config.debug_ui == "friends/lobby") {
+                    snapshot.lobby = FriendsLobby{"preview-squad", "preview-host", "Friday night playtest",
+                        "forming", {}, 24U,
+                        {{"preview-host", "Local host", "online", false}, {"two", "Captain Spades", "online", false}}};
+                }
+                menu.apply_snapshot(std::move(snapshot), now);
+                if (*impl_->config.debug_ui == "friends/requests") menu.set_tab(FriendsLobbyTab::requests);
+                if (*impl_->config.debug_ui == "friends/invites") menu.set_tab(FriendsLobbyTab::invitations);
+                if (*impl_->config.debug_ui == "friends/busy") {
+                    static_cast<void>(menu.begin({FriendsLobbyActionKind::create_lobby, {}, {}}, now));
+                }
+                static_cast<void>(impl_->window.set_text_input_enabled(true));
+            } else if (*impl_->config.debug_ui == "ugc_lobby") {
+                impl_->ugc_editor_lobby.set_members({{"Map creator", true}, {"Builder", false}});
+            } else if (*impl_->config.debug_ui == "ugc_loadout") {
+                std::vector<std::string> prefabs;
+                std::error_code error;
+                for (std::filesystem::directory_iterator iterator{
+                         impl_->config.asset_root / "ugc" / "prefabs", error}, end;
+                     !error && iterator != end; iterator.increment(error)) {
+                    if (iterator->path().extension() == ".png") {
+                        prefabs.push_back(iterator->path().stem().string());
+                    }
+                }
+                std::ranges::sort(prefabs);
+                impl_->ugc_loadout_menu.configure(UgcLoadoutLibrary::constructs,
+                    prefabs, {}, {}, {}, 2U, false);
+                impl_->ugc_loadout_active = true;
+            } else if (*impl_->config.debug_ui == "ugc_browser") {
+                // The empty/offline browser fixture performs no lobby requests.
+            } else if (impl_->config.debug_ui->starts_with("loading/")) {
+                impl_->match_loading.begin("London", "ZOMBIE_MODE_TITLE", false, "classic");
+                impl_->match_loading.initial_info("London", "ZOMBIE_MODE_TITLE", false, "classic");
+                if (*impl_->config.debug_ui == "loading/hosting") {
+                    impl_->match_loading.set_status("Starting the lobby server. Preparing the map and game mode...");
+                } else if (*impl_->config.debug_ui == "loading/error") {
+                    impl_->match_loading.fail("The server could not complete its startup. Return to the lobby and retry. See the server log for details.");
+                } else {
+                    assets::PreloadSnapshot ready;
+                    ready.state = assets::PreloadBatchState::ready;
+                    ready.progress = 1.0;
+                    impl_->match_loading.set_preload_snapshot(ready);
+                }
+                static_cast<void>(impl_->match_loading.select_tab(
+                    *impl_->config.debug_ui == "loading/mode" ? 1U :
+                    *impl_->config.debug_ui == "loading/scores" ? 2U : 0U));
+            } else if (impl_->config.debug_ui->starts_with("create_match")) {
+                impl_->create_match_menu.set_players(
+                    {CreateMatchPlayer{0U, "Local host", "TEAM_NEUTRAL", true, true, false}});
+                impl_->settings_warning = "Local Match runs on this computer. Start Game uses the online lobby when connected.";
+                if (*impl_->config.debug_ui == "create_match/notice")
+                    impl_->settings_warning = "The lobby could not confirm the latest settings. Please reconnect and try again; your match settings are still available. This is a long notification for checking the window boundary.\nDiagnostic details stay in the server log.";
+            } else if (impl_->config.debug_ui->starts_with("inventory")) {
+                impl_->load_parity_profile_fixture();
+                static_cast<void>(impl_->player_profile_menu.select_tab(PlayerProfileTab::inventory));
+                impl_->inventory_menu.complete(inventory_preview_fixture());
+                if (*impl_->config.debug_ui == "inventory/empty") {
+                    impl_->inventory_menu.complete(InventoryData{});
+                }
+                impl_->inventory_fixture=true; impl_->inventory_menu.online=false;
+                impl_->inventory_menu.error="DESIGN PREVIEW - fixture items cannot be opened or equipped.";
+                if (*impl_->config.debug_ui=="inventory/crates") impl_->inventory_menu.section=InventorySection::crates;
+                if (*impl_->config.debug_ui=="inventory/packs") impl_->inventory_menu.section=InventorySection::packs;
+                if (*impl_->config.debug_ui=="inventory/stg44" || *impl_->config.debug_ui=="inventory/reveal") {
+                    auto& menu=impl_->inventory_menu;
+                    menu.owned_only=false; menu.kind_filter=1;
+                    const auto filtered=menu.filtered_items();
+                    for (std::size_t i{}; i<filtered.size(); ++i) if (menu.data.items[filtered[i]].id=="community-stg44-v2") {
+                        menu.selected=i; menu.page=i/6U;
+                        if (*impl_->config.debug_ui=="inventory/reveal") {
+                            const auto& item=menu.data.items[filtered[i]];
+                            menu.reveal=InventoryOpening{"preview-reward",item.name,item.rarity,"", "", "",false,item.id};
+                        }
+                    }
+                }
+            } else if (*impl_->config.debug_ui == "leaderboard") {
                 impl_->load_parity_leaderboard_fixture();
             } else if (*impl_->config.debug_ui == "chat") {
                 impl_->load_parity_chat_fixture();
@@ -17991,6 +20776,13 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             // Text cache keys contain only the source font/key. Drop them when
             // a translator edits a value so the next frame shapes fresh UTF-8.
             impl_->release_text_textures();
+            if (impl_->settings_menu != nullptr) {
+                std::vector<SettingsLanguageOption> languages;
+                for (const auto& language : impl_->localization.languages()) {
+                    languages.push_back({language.locale, language.native_name});
+                }
+                impl_->settings_menu->set_languages(std::move(languages));
+            }
         }
         if (!impl_->ui_layout_store.reload_if_changed()) {
             impl_->settings_warning = std::string{impl_->ui_layout_store.last_error()};
@@ -17998,6 +20790,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     }
 
     if (impl_->audio_started && impl_->audio->tick(context) == core::TickDecision::stop) {
+        impl_->settings_warning = std::string{impl_->audio->last_error()};
+        std::fprintf(stderr, "[audio] %s\n", impl_->settings_warning.c_str());
         impl_->audio_started = false;
         impl_->audio->stop();
     }
@@ -18005,12 +20799,19 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     impl_->navigation.tick();
     impl_->create_match_page_shell.tick();
     impl_->pump_identity_operation();
+    impl_->pump_hosted_results();
     impl_->pump_identity_navigation();
     impl_->pump_social();
+    impl_->pump_ugc_publication();
     impl_->pump_social_lobby_join();
     impl_->pump_server_browser_refresh();
+    impl_->pump_quick_play_refresh();
     impl_->pump_leaderboard_request();
     impl_->pump_profile_request();
+    impl_->pump_inventory();
+    if (context.present && impl_->cosmetic_icons) {
+        impl_->cosmetic_icons->pump(impl_->renderer);
+    }
     impl_->pump_local_match_start();
     impl_->pump_match_identity();
     impl_->pump_match_connection();
@@ -18049,7 +20850,11 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     if (!impl_->create_match_page_shell.transitioning()) {
         impl_->previous_create_match_page.reset();
     }
-    if (impl_->screen() == FrontendScreen::game_loading) {
+    // Server startup and relay publication have their own bounded workers.
+    // The packet no-progress timeout starts with the actual server connection.
+    if (impl_->screen() == FrontendScreen::game_loading &&
+        impl_->active_local_host_generation == 0U && !impl_->social_pending_owner_connect &&
+        !(impl_->config.debug_ui && impl_->config.debug_ui->starts_with("loading/"))) {
         impl_->match_loading.tick(std::chrono::duration<double>{context.fixed_delta}.count());
     }
     const auto fixed_seconds =
@@ -18272,6 +21077,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 if (impl_->tutorial_session != nullptr) {
                     impl_->tutorial_session->clear_input();
                 }
+                impl_->ugc_prefab_control.clear_inputs();
             }
             break;
         case platform::WindowEventType::mouse_moved:
@@ -18455,19 +21261,30 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 }
                 break;
             }
-            if (const auto point = settings_point(mapped_point(event.mouse_x, event.mouse_y));
-                point.has_value()) {
+            {
                 const auto steps = event.mouse_delta_y > 0.0F   ? 1
                                    : event.mouse_delta_y < 0.0F ? -1
                                                                 : 0;
-                impl_->mouse_wheel(*point, steps);
+                if (const auto point = settings_point(mapped_point(event.mouse_x, event.mouse_y));
+                    point.has_value()) {
+                    impl_->mouse_wheel(*point, steps);
+                } else if (is_create_match_screen(impl_->screen())) {
+                    // The active Rules/Maps list owns the wheel even when the
+                    // pointer lands in a high-DPI letterbox margin.
+                    impl_->mouse_wheel({0, 0}, steps);
+                }
             }
             break;
         case platform::WindowEventType::text_input:
-            if (impl_->screen() == FrontendScreen::identity) {
+            if (impl_->screen() == FrontendScreen::direct_connect) {
+                static_cast<void>(impl_->direct_connect_menu.append_text(event.text));
+            } else if (impl_->screen() == FrontendScreen::identity) {
                 static_cast<void>(impl_->identity_menu.append_text(event.text));
             } else if (impl_->screen() == FrontendScreen::friends_lobby) {
                 static_cast<void>(impl_->friends_lobby_menu.append_search_text(event.text));
+            } else if (is_create_match_screen(impl_->screen()) &&
+                       impl_->create_match_menu.chat_focused()) {
+                static_cast<void>(impl_->create_match_menu.append_chat_text(event.text));
             } else if (impl_->screen() == FrontendScreen::tutorial_world &&
                        impl_->game_chat.active()) {
                 static_cast<void>(impl_->game_chat.append_text(event.text));
@@ -18558,15 +21375,27 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 }
                 break;
             }
-            if (impl_->screen() == FrontendScreen::friends_lobby && !event.repeated) {
-                if (event.scancode == scancode_backspace) {
+            if (is_create_match_screen(impl_->screen()) &&
+                impl_->create_match_menu.chat_focused()) {
+                if (!event.repeated && (event.scancode == scancode_return ||
+                                        event.scancode == scancode_keypad_enter)) {
+                    static_cast<void>(impl_->create_match_menu.submit_chat());
+                    impl_->consume_create_match_effects();
+                } else if (!event.repeated && event.scancode == scancode_escape) {
+                    impl_->create_match_menu.cancel_chat();
+                    static_cast<void>(impl_->window.set_text_input_enabled(false));
+                } else if (event.scancode == scancode_backspace) {
+                    static_cast<void>(impl_->create_match_menu.erase_chat_code_point());
+                }
+                break;
+            }
+            if (impl_->screen() == FrontendScreen::friends_lobby) {
+                if (event.scancode == scancode_backspace && impl_->friends_lobby_menu.search_focused()) {
                     static_cast<void>(impl_->friends_lobby_menu.erase_search_code_point());
-                } else if ((event.scancode == scancode_return ||
-                            event.scancode == scancode_keypad_enter) &&
-                           !impl_->friends_lobby_menu.search_text().empty()) {
-                    impl_->submit_social_intent(
-                        {FriendsLobbyActionKind::search, {},
-                         std::string{impl_->friends_lobby_menu.search_text()}});
+                } else if (!event.repeated && event.scancode != scancode_space) {
+                    if (const auto action = semantic_key(event.scancode, event.modifiers)) {
+                        static_cast<void>(impl_->handle_input({*action, ui::InputPhase::pressed}));
+                    }
                 }
                 break;
             }
@@ -18894,24 +21723,34 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     break;
                 }
             }
-            if (impl_->screen() == FrontendScreen::direct_connect && !event.repeated) {
+            if (impl_->screen() == FrontendScreen::direct_connect) {
                 if (event.scancode == scancode_backspace) {
                     static_cast<void>(impl_->direct_connect_menu.erase_character());
                     break;
                 }
-                if (event.scancode == scancode_return || event.scancode == scancode_keypad_enter) {
+                if (!event.repeated &&
+                    (event.scancode == scancode_return || event.scancode == scancode_keypad_enter)) {
                     impl_->consume_direct_connect(impl_->direct_connect_menu.submit());
                     break;
                 }
-                if (event.keycode >= 32U && event.keycode <= 126U) {
-                    auto character = static_cast<char>(event.keycode);
-                    if ((event.modifiers & shift_modifier_mask) != 0U && character >= 'a' &&
-                        character <= 'z') {
-                        character = static_cast<char>(character - 'a' + 'A');
+                // SDL committed text handles shifted punctuation and keyboard layouts.
+                // Ctrl+V is a command, never a literal 'v' in the endpoint.
+                constexpr std::uint32_t scancode_v = 25U;
+#if defined(__APPLE__)
+                constexpr std::uint16_t paste_modifier_mask = 0x0C00U;
+#else
+                constexpr std::uint16_t paste_modifier_mask = control_modifier_mask;
+#endif
+                if (event.scancode == scancode_v &&
+                    (event.modifiers & paste_modifier_mask) != 0U &&
+                    (event.modifiers & 0x0300U) == 0U) {
+                    if (!event.repeated && impl_->direct_connect_menu.input_focused()) {
+                        static_cast<void>(impl_->direct_connect_menu.paste_text(
+                            impl_->window.clipboard_text()));
                     }
-                    if (impl_->direct_connect_menu.append_character(character))
-                        break;
+                    break;
                 }
+                if (event.scancode != scancode_escape) break;
             }
             if (impl_->screen() == FrontendScreen::resolution_confirmation) {
                 break;
@@ -18939,6 +21778,14 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         }
         if (impl_->screen() != route_before_event ||
             impl_->create_match_page_shell.active() != create_page_before_event) {
+            if (impl_->screen() == FrontendScreen::direct_connect) {
+                // Back from Loading must restore committed text just like the
+                // initial Join Match -> Connect to IP entry.
+                impl_->direct_connect_menu.focus_input();
+                static_cast<void>(impl_->window.set_text_input_enabled(true));
+            } else if (route_before_event == FrontendScreen::direct_connect) {
+                static_cast<void>(impl_->window.set_text_input_enabled(false));
+            }
             impl_->cancel_pointer_capture();
         }
     }
@@ -18953,18 +21800,35 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     // Tutorial world pipeline: abandon on route exit, stream pending chunk
     // uploads, advance the fixed 60 Hz simulation, reconcile mouse capture.
     if ((impl_->tutorial_bootstrap != nullptr || impl_->tutorial_session != nullptr ||
-         impl_->match_connection != nullptr || impl_->active_local_host_generation != 0U ||
+         impl_->match_connection != nullptr || impl_->active_match_request.has_value() ||
+         impl_->active_local_host_generation != 0U ||
          impl_->owned_local_server != nullptr) &&
         !impl_->tutorial_route_active()) {
         const bool was_in_world = impl_->tutorial_session != nullptr;
+        const bool was_network_match = impl_->network_match;
+        const bool was_owned_host = impl_->active_local_host_generation != 0U ||
+                                    impl_->owned_local_server != nullptr;
         if (impl_->local_host_cancel != nullptr) {
-            impl_->local_host_cancel->store(true, std::memory_order_relaxed);
+            impl_->local_host_cancel->request_stop();
         }
         impl_->active_local_host_generation = 0U;
         impl_->teardown_tutorial();
-        if (impl_->owned_local_server != nullptr) {
-            impl_->owned_local_server->stop();
-            impl_->owned_local_server.reset();
+        if (was_network_match && impl_->social_client != nullptr) {
+            impl_->social_client->set_presence("online");
+        }
+        if (!impl_->owned_social_lobby_id.empty() && !impl_->owned_social_start_id.empty()) {
+            // The social lobby survives the match. Returning it to forming
+            // removes the dead relay from every member and lets the owner
+            // adjust settings or start another game.
+            impl_->queue_social_start_failed(was_network_match
+                ? "The host left the match." : "The host canceled the match startup.");
+        }
+        impl_->release_owned_local_match_host();
+        if (was_owned_host && (is_create_match_screen(impl_->screen()) ||
+                               impl_->screen() == FrontendScreen::ugc_editor_lobby)) {
+            impl_->settings_warning = was_network_match
+                ? "The hosted match has ended. You can start another match."
+                : "Match startup canceled. You can change settings or start again.";
         }
         // Leaving the world restores the frontend soundscape; abandoning the
         // loading screen never switched it in the first place.
@@ -18973,9 +21837,13 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             static_cast<void>(impl_->audio->start_menu_music());
         }
     }
-    impl_->pump_tutorial_loading();
+    if (context.present) {
+        impl_->pump_tutorial_loading();
+    }
     impl_->pump_live_terrain_catchup(128U);
-    impl_->pump_live_chunk_remeshes(Impl::tutorial_upload_budget);
+    if (context.present) {
+        impl_->pump_live_chunk_remeshes(Impl::tutorial_upload_budget);
+    }
     if (impl_->world_simulation_active()) {
         impl_->refresh_live_player_collisions();
         if (impl_->ugc_prefab_selected()) {
@@ -19000,7 +21868,9 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             impl_->terrain_effects.spawn_falling(std::move(component));
         }
         for (const auto& impact : impl_->tutorial_session->take_terrain_impacts()) {
-            impl_->terrain_effects.spawn_impact(impact);
+            const auto* cosmetic=impl_->local_equipped_cosmetic("weapon:"+std::to_string(impact.source_tool)+":view");
+            const bool custom=impact.kind==world::TerrainImpactKind::melee&&impl_->audio_started&&cosmetic&&impl_->audio->play_cosmetic_cue(cosmetic->id,"melee-hit-block",0U,{static_cast<float>(impact.cell.x)+.5F,static_cast<float>(impact.cell.y)+.5F,static_cast<float>(impact.cell.z)+.5F},1.F,false);
+            impl_->terrain_effects.spawn_impact(impact,custom?world::TerrainImpactSoundPolicy::silent:world::TerrainImpactSoundPolicy::full);
         }
         const auto effect_delta = std::chrono::duration<double>{context.fixed_delta}.count();
         impl_->refresh_death_camera(effect_delta);
@@ -19112,6 +21982,12 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         // action, and in particular never reopen a loop cancelled by death.
         if (local_alive) {
             impl_->send_live_weapon_actions(weapon_actions);
+            if(impl_->scripted_weapon)for(const auto& action:weapon_actions){
+                if(action.kind==world::WeaponActionKind::hitscan)++impl_->scripted_shots;
+                if(action.kind==world::WeaponActionKind::melee)impl_->scripted_dig=action.secondary;
+                if(action.kind==world::WeaponActionKind::reload_started)impl_->scripted_reload_started=true;
+                if(action.kind==world::WeaponActionKind::reload_completed)impl_->scripted_reload_finished=true;
+            }
             if (impl_->network_match && impl_->local_player_id.has_value()) {
                 const auto& player = impl_->tutorial_session->player();
                 for (const auto& action : weapon_actions) {
@@ -19201,11 +22077,19 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                             static_cast<float>(player.orientation.x),
                             static_cast<float>(player.orientation.y),
                             static_cast<float>(player.orientation.z)};
-                        impl_->terrain_effects.spawn_weapon_flash(
+                        if(!impl_->scripted_weapon||!impl_->scripted_images.has_muzzle_images())impl_->terrain_effects.spawn_weapon_flash(
                             {static_cast<float>(eye[0U]) + forward[0U] * 0.72F,
                              static_cast<float>(eye[1U]) + forward[1U] * 0.72F,
                              static_cast<float>(eye[2U]) + forward[2U] * 0.72F},
                             action.tool_id);
+                        const auto cosmetic_id = impl_->local_weapon_sound_cosmetic(action.tool_id);
+                        if(impl_->scripted_weapon)break;
+                        if (impl_->audio->has_cosmetic_fire(cosmetic_id)) {
+                            // Pack samples contain one round, including on burst follow-ups.
+                            impl_->audio->play_weapon_shoot(action.tool_id,action.seed,local_position,
+                                audio::local_weapon_report_gain(),true,audio::SpatialSoundProfile::ordinary,cosmetic_id);
+                            break;
+                        }
                         const world::FireSoundInput shape_input{
                             action.tool_id,
                             impl_->audio->has_weapon_cue(action.tool_id,
@@ -19233,6 +22117,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     case world::WeaponActionKind::melee:
                         // Retail plays the swing on every swing; the block/player
                         // impact cues are driven separately by what was struck.
+                        if(impl_->audio->play_cosmetic_cue(impl_->local_weapon_sound_cosmetic(action.tool_id),"melee-miss",action.seed,local_position,1.F,true))break;
                         impl_->audio->play_weapon_cue(action.tool_id,
                                                       audio::WeaponCue::melee_miss,
                                                       action.seed,
@@ -19274,10 +22159,14 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                       true);
                         break;
                     case world::WeaponActionKind::reload_started:
+                        if(impl_->scripted_weapon)break;
+                        if(impl_->audio->play_cosmetic_cue(impl_->local_weapon_sound_cosmetic(action.tool_id),"reload",action.seed,local_position,1.F,true))break;
                         impl_->audio->play_weapon_reload(
                             action.tool_id, action.seed, local_position, 1.0F, true);
                         break;
                     case world::WeaponActionKind::reload_completed:
+                        if(impl_->scripted_weapon)break;
+                        if(impl_->audio->play_cosmetic_cue(impl_->local_weapon_sound_cosmetic(action.tool_id),"reload-done",action.seed,local_position,1.F,true))break;
                         if (action.value > 0.5) {
                             impl_->audio->play_weapon_reload_done(
                                 action.tool_id, action.seed, local_position, 1.0F, true);
@@ -19467,7 +22356,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         // within the bounded next-frame budget.
         const auto dirty = impl_->tutorial_session->take_dirty_chunks();
         impl_->queue_live_chunk_remeshes(dirty);
-        if (!impl_->sync_minimap_texture()) {
+        if (context.present && !impl_->sync_minimap_texture()) {
             // Keep gameplay alive if a dynamic HUD upload fails. The prior
             // texture remains valid and the warning identifies the failure.
             impl_->minimap_pixels.clear();
@@ -19520,9 +22409,10 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     if (impl_->stop_requested) {
         return core::TickDecision::stop;
     }
-    if (impl_->window_suspended) {
-        // Keep the application/input loop alive without submitting bgfx work
-        // to a surface the window manager has made non-presentable.
+    if (impl_->window_suspended || !context.present) {
+        // Input, network and fixed-step simulation above still run during
+        // catch-up. Presenting every overdue step would let VSync prevent the
+        // simulation from ever recovering after a slow frame.
         return core::TickDecision::continue_running;
     }
     return impl_->render_frame() ? core::TickDecision::continue_running : core::TickDecision::stop;
@@ -19532,10 +22422,22 @@ void NativeFrontendModule::stop() noexcept {
     if (impl_ == nullptr) {
         return;
     }
+    if (impl_->inventory_session) {
+        impl_->inventory_session->cancel();
+    }
+    impl_->cancel_quick_play_refresh();
+    impl_->ugc_publish_stop.request_stop();
+    impl_->hosted_results_worker.request_stop();
+    if (impl_->hosted_results_worker.joinable()) impl_->hosted_results_worker.join();
     if (impl_->local_host_cancel != nullptr) {
-        impl_->local_host_cancel->store(true, std::memory_order_relaxed);
+        impl_->local_host_cancel->request_stop();
     }
     impl_->active_local_host_generation = 0U;
+    if (!impl_->owned_social_lobby_id.empty() && !impl_->owned_social_start_id.empty()) {
+        // Queue this before social shutdown. The priority lane drains the
+        // lobby reset and presence deletion within the same bounded grace.
+        impl_->queue_social_start_failed("The host closed the game.");
+    }
     if (impl_->social_client != nullptr) {
         impl_->social_client->shutdown(std::chrono::milliseconds{250});
     }
@@ -19551,10 +22453,17 @@ void NativeFrontendModule::stop() noexcept {
         impl_->native_steam->stop();
     }
     impl_->teardown_tutorial();
-    if (impl_->owned_local_server != nullptr) {
-        impl_->owned_local_server->stop();
-        impl_->owned_local_server.reset();
+    impl_->release_owned_local_match_host();
+    if (impl_->local_host_worker.valid()) {
+        try {
+            impl_->retire_local_host(impl_->local_host_worker.get());
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "[hosting] shutdown: %s\n", error.what());
+        }
     }
+    impl_->host_cleanup.drain();
+    impl_->connection_cleanup.drain();
+    impl_->bootstrap_cleanup.drain();
     if (impl_->mouse_captured) {
         static_cast<void>(impl_->window.set_relative_mouse_mode(false));
         impl_->mouse_captured = false;
@@ -19567,6 +22476,7 @@ void NativeFrontendModule::stop() noexcept {
     impl_->audio_started = false;
     impl_->audio.reset();
     impl_->release_text_textures();
+    if(impl_->cosmetic_icons){impl_->cosmetic_icons->clear(impl_->renderer);impl_->cosmetic_icons.reset();}
     for (const auto& [key, texture] : impl_->image_textures) {
         static_cast<void>(key);
         static_cast<void>(impl_->renderer.release_texture(texture.texture));
@@ -19583,6 +22493,7 @@ void NativeFrontendModule::stop() noexcept {
     impl_->noto_japanese_font.reset();
     impl_->settings_menu.reset();
     impl_->settings_store.reset();
+    impl_->inventory_view.reset();
     impl_->renderer.shutdown();
     impl_->started = false;
     impl_->stop_requested = false;

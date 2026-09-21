@@ -1,5 +1,7 @@
 # Map Creator frontend route
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 The retail Map Editor button does not enter the in-game loading screen directly. The recovered route is:
 
 1. `UGCSelectMenu.map_editor_lobbies_pressed`

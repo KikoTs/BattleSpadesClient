@@ -17,11 +17,15 @@ namespace battlespades::frontend {
 
 /** Stable identities for every row recovered from the retail Settings menu. */
 enum class SettingsRowId : std::uint8_t {
+    language,
     master_volume,
     music_volume,
     fullscreen,
     invert_mouse,
     favorite_server,
+    show_skins,
+    show_other_skins,
+    weapon_motion,
     resolution,
     graphics_api,
     antialiasing,
@@ -88,6 +92,11 @@ enum class SettingsMenuContext : std::uint8_t {
     in_game,
 };
 
+struct SettingsLanguageOption final {
+    std::string locale;
+    std::string native_name;
+};
+
 /** Runtime facts that are deliberately not persisted in ClientSettings. */
 struct SettingsMenuEnvironment final {
     SettingsMenuContext context{SettingsMenuContext::frontend};
@@ -96,6 +105,7 @@ struct SettingsMenuEnvironment final {
     bool favorite_server_available{false};
     bool favorite_server{false};
     std::string favorite_server_description{};
+    std::vector<SettingsLanguageOption> languages{{"en", "English"}};
     std::vector<settings::Resolution> display_modes{};
     /** Backends compiled into this executable, in the order shown to players. */
     std::vector<settings::GraphicsApi> graphics_apis{
@@ -284,6 +294,8 @@ public:
 
     [[nodiscard]] settings::SettingsTab active_tab() const noexcept;
     void set_active_tab(settings::SettingsTab tab);
+    /** Refreshes externally discovered language packs without discarding the draft. */
+    void set_languages(std::vector<SettingsLanguageOption> languages);
 
     [[nodiscard]] SettingsMenuPresentation presentation() const;
     [[nodiscard]] std::optional<SettingsMenuTarget> focused() const noexcept;

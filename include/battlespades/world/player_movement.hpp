@@ -24,6 +24,10 @@ struct MovementClassConfig final {
     double jump_multiplier{1.2};
     double water_friction{8.0};
     bool can_sprint_uphill{true};
+    double falling_damage_min_distance{10.0};
+    double falling_damage_max_distance{40.0};
+    double falling_damage_max_damage{100.0};
+    double fall_on_water_damage_multiplier{0.5};
 };
 
 /** Exact Battle Builder class profile (0..17), with server rule scaling. */
@@ -51,8 +55,8 @@ struct PlayerInputState final {
  *
  * `position` is the retail anchor: the feet plane sits `contact offset`
  * blocks below it (2.25 standing, 1.35 crouching) and the eye/camera sits at
- * the anchor itself. `orientation` is the unit facing vector; its unnormalized
- * horizontal components steer movement, preserving retail's pitch slowdown.
+ * the anchor itself. Movement normalizes the horizontal facing components
+ * independently of pitch, using the original float32 normalization stores.
  */
 struct PlayerMovementState final {
     Vec3 position{};
@@ -73,8 +77,11 @@ struct PlayerMovementState final {
     bool parachute{};
     /** Replicated deployed-parachute state (WorldUpdate state bit 0x01). */
     bool parachute_active{};
+    /** Local negotiated deploy request waiting for descent; never grants lift. */
+    bool parachute_pending{};
     double fall_distance{};
     double climb_timer{};
+    double climb_slowdown{1.0};
 };
 
 /** Server-authored packet-108 movement volume, in canonical map coordinates. */
@@ -154,7 +161,9 @@ struct MovementStepResult final {
  * Applies a crouch/stand request with the retail 0.9-block anchor shift and
  * the stand-up headroom check. Airborne crouches do not shift the anchor.
  */
-void apply_crouch_request(PlayerMovementState& state, bool crouch, const VxlMap* map);
+void apply_crouch_request(PlayerMovementState& state, bool crouch, const VxlMap* map,
+                         std::span<const PlayerCollisionBody> collision_bodies = {},
+                         bool hover = false);
 
 /** Retail clipbox probe (z=239 water row remaps to the z=238 bed). */
 [[nodiscard]] bool clip_at(const VxlMap* map, double x, double y, double z) noexcept;

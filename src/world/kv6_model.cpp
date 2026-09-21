@@ -1,6 +1,7 @@
 #include "battlespades/world/kv6_model.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -38,6 +39,24 @@ namespace {
         *error = message;
     }
     return false;
+}
+
+[[nodiscard]] const std::array<float, 3U>& retail_normal(std::uint8_t index) {
+    // kv6.pyd sub_10001350/100013F0 construct this table. sub_1001AA50
+    // reads voxel byte 7 and writes (-x, z, -y), including index 255's sentinel.
+    static const auto normals = [] {
+        std::array<std::array<float, 3U>, 256U> result{};
+        for (std::size_t i{}; i < 255U; ++i) {
+            const float value = static_cast<float>(i);
+            const float nz = value * 0.007843137718737125F - 0.9960784316062927F;
+            const float radius = std::sqrt(std::max(0.0F, 1.0F - nz * nz));
+            const float angle = value * 2.39996337890625F;
+            result[i] = {-std::cos(angle) * radius, nz, -std::sin(angle) * radius};
+        }
+        result[255U] = {2.0F, 0.0F, 0.0F};
+        return result;
+    }();
+    return normals[index];
 }
 
 } // namespace
@@ -112,6 +131,7 @@ std::optional<Kv6Model> Kv6Model::load(std::span<const std::byte> bytes, std::st
                                        255U};
                 voxel.z = read_u16(bytes, record + 4U);
                 voxel.visibility = std::to_integer<std::uint8_t>(bytes[record + 6U]);
+                voxel.normal_index = std::to_integer<std::uint8_t>(bytes[record + 7U]);
                 if (voxel.z >= model.size_z_) {
                     static_cast<void>(fail(error, "KV6 voxel outside the model bounds"));
                     return std::nullopt;
@@ -133,6 +153,44 @@ void Kv6Model::offset_pivots(std::array<float, 3U> offset) noexcept {
     for (std::size_t axis{}; axis < pivot_.size(); ++axis) {
         pivot_[axis] += offset[axis] / voxel_scale_;
     }
+}
+
+std::vector<Kv6Model> Kv6Model::articulated_classic_arms() const {
+    if (size_x_ != 12U || size_y_ != 10U || size_z_ != 6U || voxel_scale_ != 1.0F) {
+        return {};
+    }
+    // Classic p_arms encodes a bent arm in the x=0/1 slice: shoulder
+    // (y=0,z=0), elbow (4,4), wrist (8,0). Unbend its two straight sections
+    // into the OpenSpades shoulder/elbow frame. The original colors, glove
+    // shape and sleeve markings come from this model, never the default arms.
+    std::vector<Kv6Model> result(2U);
+    for (std::size_t part = 0U; part < result.size(); ++part) {
+        auto& segment = result[part];
+        segment.size_x_ = 2U;
+        segment.size_y_ = 3U;
+        segment.size_z_ = 12U;
+        segment.pivot_ = {0.5F, 1.5F, 0.0F};
+        const int start = part == 0U ? 0 : 5;
+        for (const auto& voxel : voxels_) {
+            const int along = static_cast<int>(voxel.y) - start;
+            if (voxel.x > 1U || along < 0 || along >= 4) {
+                continue;
+            }
+            const int center = part == 0U ? voxel.y : 8 - voxel.y;
+            const int across = static_cast<int>(voxel.z) - center + 1;
+            if (across < 0 || across >= 3) {
+                return {}; // A different authored pose needs its own adapter.
+            }
+            for (int layer = 0; layer < 3; ++layer) {
+                segment.voxels_.push_back({voxel.x, static_cast<std::uint16_t>(across),
+                    static_cast<std::uint16_t>(along * 3 + layer), voxel.color, 63U});
+            }
+        }
+        if (segment.voxels_.empty()) {
+            return {};
+        }
+    }
+    return result;
 }
 
 Kv6Model Kv6Model::inverse_scaled(std::uint8_t inverse_scale) const {
@@ -194,7 +252,8 @@ Kv6Model Kv6Model::inverse_scaled(std::uint8_t inverse_scale) const {
                 255U,
             };
         }
-        result.voxels_.push_back(Voxel{x, y, z, color, 0U});
+        // Retail scale_kv6 (sub_100015D0) sets rebuilt normals to index 1.
+        result.voxels_.push_back(Voxel{x, y, z, color, 0U, 1U});
     }
     return result;
 }
@@ -220,6 +279,23 @@ void Kv6Model::apply_default_color(VxlColor team_color) noexcept {
                                scaled(team_color.green, intensity),
                                scaled(team_color.blue, intensity),
                                team_color.alpha};
+    }
+}
+
+void Kv6Model::apply_cosmetic_palette(std::array<std::uint8_t, 3U> palette) noexcept {
+    for (auto& voxel : voxels_) {
+        const auto original = voxel.color;
+        if (original.green == 0U && original.red == original.blue &&
+            (original.red == 0U || original.red == 64U || original.red == 128U || original.red == 192U)) continue;
+        const auto light = (static_cast<unsigned>(original.red)*3U +
+            static_cast<unsigned>(original.green)*6U + static_cast<unsigned>(original.blue))/10U;
+        const auto shade = [light](std::uint8_t source, std::uint8_t target) {
+            return static_cast<std::uint8_t>(std::min(255U,(static_cast<unsigned>(source)*3U +
+                static_cast<unsigned>(target)*light*7U/180U)/10U));
+        };
+        voxel.color.red=shade(original.red,palette[0]);
+        voxel.color.green=shade(original.green,palette[1]);
+        voxel.color.blue=shade(original.blue,palette[2]);
     }
 }
 
@@ -387,7 +463,7 @@ ChunkMesh Kv6Model::mesh(const ChunkMesherConfig& shading,
                 const float model_z =
                     (static_cast<float>(voxel.y + corner[1U]) - half_voxel -
                      pivot_[1U]) * voxel_scale_ + centre_correction;
-                const ChunkVertex vertex{
+                ChunkVertex vertex{
                     model_x,
                     model_y,
                     model_z,
@@ -405,6 +481,15 @@ ChunkMesh Kv6Model::mesh(const ChunkMesherConfig& shading,
                     0U,
                     0U,
                 };
+                // kv6.pyd sub_10001350/100013F0 generate the 255-direction table;
+                // sub_1001AA50 writes (-nx, nz, -ny) as gl_Normal for every face.
+                // Reuse the terrain-only UV attribute for a tagged KV6 normal.
+                // Enhanced retains the exposed face normal and its existing AO.
+                const auto& normal = retail_normal(voxel.normal_index);
+                vertex.static_light = 0x40000000U;
+                vertex.ao_u = normal[0U];
+                vertex.ao_v = normal[1U];
+                vertex.edge_u = normal[2U];
                 result.vertices.push_back(vertex);
                 result.minimum[0U] = std::min(result.minimum[0U], vertex.x);
                 result.minimum[1U] = std::min(result.minimum[1U], vertex.y);

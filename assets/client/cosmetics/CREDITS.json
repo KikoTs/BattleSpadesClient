@@ -1,0 +1,515 @@
+[
+  {
+    "id": "aeon-mossberg",
+    "name": "AEON Mossberg 500",
+    "archive": "b_s_aeon_mossberg500_custom.rar",
+    "archive_sha256": "71c5305b43446263184d539a3b3e308653e339ba1db898649bca4bdda2625e4d",
+    "source": "https://gamebanana.com/mods/319115",
+    "credits": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "b1ca0c9a8a13142e50dbb301f13d1a785dafa764840f23a63557436f1ce5cad9"
+  },
+  {
+    "id": "honey-badger",
+    "name": "Honey Badger",
+    "archive": "3_honeybadger.rar",
+    "archive_sha256": "254148035c1290f0c3f8f62ef8cab29f62a9ab63623a578cc46084e6b78d52f2",
+    "source": "https://gamebanana.com/mods/170213",
+    "credits": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Ace_Of_Dead",
+            "role": "Creator",
+            "url": "https://gamebanana.com/members/1302104"
+          }
+        ]
+      },
+      {
+        "group": "Original Authors",
+        "authors": [
+          {
+            "name": "DaLemon",
+            "role": "Sight,Alternate models Owner ",
+            "url": "https://gamebanana.com/members/1456656"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "dca1c7de544eed556be16ae5e6ecc11c5bc70500a07ea888ddd8d90a16e797ae"
+  },
+  {
+    "id": "bren",
+    "name": "Bren Gun",
+    "archive": "twodayudie_bren_gun_9ac41.zip",
+    "archive_sha256": "b17cd8c9ba4fbebb3f34bda303f5d5a7808c92efc6e3dbc20001314c4cd218fe",
+    "source": "https://gamebanana.com/mods/344131",
+    "credits": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Twodayudie",
+            "role": "Creator",
+            "url": "https://gamebanana.com/members/1982902"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "194060cc64d1a24cf6b01534d6addd1b7367445567eebd93ab0615b25a7c95d5"
+  },
+  {
+    "id": "m1a1",
+    "name": "M1A1 Thompson",
+    "archive": "m1a1_v2_recommended_e31e4.zip",
+    "archive_sha256": "ac2f8869b40675bd114adbc64786aeee1ab539068c1318d0246e4c322d833f3d",
+    "source": "https://gamebanana.com/mods/169765",
+    "credits": [
+      {
+        "group": "Me",
+        "authors": [
+          {
+            "name": "Azeitona",
+            "role": "Made the skin",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Activion",
+        "authors": [
+          {
+            "name": "Cod Team",
+            "role": "Made the sounds",
+            "url": null
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "9081efa4d02975bb3a2d5af41a211835ba7e6836c9c9f835dab99af983b85126"
+  },
+  {
+    "id": "lee-enfield",
+    "name": "Lee-Enfield",
+    "archive": "leenfields_ucho.rar",
+    "archive_sha256": "cab0690ad504e8b0583734afae56558a9868ed61a7a64e1568f9dfc80c60f5ba",
+    "source": "https://gamebanana.com/mods/170562",
+    "credits": [
+      {
+        "group": "Creator",
+        "authors": [
+          {
+            "name": "Ucho",
+            "role": "Modeler, Skins, Gay.",
+            "url": "https://gamebanana.com/members/1481386"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "0328cbb9dc82a3e90087524c18dadd8a7fffc1e6f100714b993334cc82c872f6"
+  },
+  {
+    "id": "aeon-awp",
+    "name": "AEON AWP",
+    "archive": "os_aeon_awp.zip",
+    "archive_sha256": "ed9bbc4c66a8de7000a2f3347066931df5bf8b464d2899512e4ad11b0103eff9",
+    "source": "https://gamebanana.com/mods/319882",
+    "credits": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      },
+      {
+        "group": "Model and Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Original Model",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "a4b11ea05f438eddf623bb22ccb50340e2c533125895b3c5f6c427d5267ba652"
+  },
+  {
+    "id": "stg44",
+    "name": "StG 44",
+    "archive": "sgt44.zip",
+    "archive_sha256": "b0a6f6996cfc9fd6af29c6f0ff18c91a3ddae809c19c894016abed75d950f397",
+    "source": "https://gamebanana.com/mods/169827",
+    "credits": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Lauchin",
+            "role": "Modeler",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "DaLemon",
+            "role": "Model and Sound",
+            "url": null
+          },
+          {
+            "name": "PTrooper",
+            "role": "Scripts",
+            "url": null
+          }
+        ]
+      },
+      {
+        "group": "Scripts",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script Creator",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "cb627e9cecb147b88e9c18125e683f5798e20e87304e4235042b45a80c1f2cb3"
+  },
+  {
+    "id": "mp5k",
+    "name": "MP5K",
+    "archive": "mp5k_1f629.zip",
+    "archive_sha256": "69e7c42b96d6260162fd199a677fef92356e939cc3eebf2ab3f380e3b404b887",
+    "source": "https://gamebanana.com/mods/487866",
+    "credits": [
+      {
+        "group": "Key Authors",
+        "authors": [
+          {
+            "name": "Nuceto",
+            "role": "animation",
+            "url": "https://gamebanana.com/members/1773911"
+          }
+        ]
+      },
+      {
+        "group": "Contributors",
+        "authors": [
+          {
+            "name": "Lolwuut",
+            "role": "Modeler",
+            "url": "https://gamebanana.com/members/1732817"
+          }
+        ]
+      },
+      {
+        "group": "Special Thanks",
+        "authors": [
+          {
+            "name": "PTrooper",
+            "role": "Script",
+            "url": "https://gamebanana.com/members/1415230"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Static voxel assembly from the original third-person part transforms; native parent animations.",
+    "model_sha256": "89f6d35ab8fbad021045e4a4a718b72c8e9a7b2227879b2236878ffd37692319"
+  },
+  {
+    "id": "kar98",
+    "name": "Kar98",
+    "archive": "kar89mod_b7541.rar",
+    "archive_sha256": "70b711289453444a629dfb69cc7031407e70187f2432f2aa6dd80714386ff055",
+    "source": "https://gamebanana.com/mods/170226",
+    "credits": [
+      {
+        "group": "Author",
+        "authors": [
+          {
+            "name": "Nuceto",
+            "role": "Modeler/Scripter",
+            "url": "https://gamebanana.com/members/1773911"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Static voxel assembly from the original third-person part transforms; native parent animations.",
+    "model_sha256": "4d628b62981ebff6cf3f8d5e6be9f4a03a1bfb00dad6c686d435b9eef0b31a90"
+  },
+  {
+    "id": "aeon-l115a3",
+    "name": "AEON L115A3",
+    "archive": "b_s_aeon_l115a3.zip",
+    "archive_sha256": "f614ad298e7e10c4f824e8475dd55a695b6b573e225354b6374695039c88ad8d",
+    "source": "https://gamebanana.com/mods/319083",
+    "credits": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      },
+      {
+        "group": "Model",
+        "authors": [
+          {
+            "name": "1Shot_1Kill",
+            "role": "Original Model",
+            "url": "https://gamebanana.com/members/1394077"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "ed417c8def9f82278fb3803abaef3cb5bb6c1e684a7f609e5507581b5dd4b645"
+  },
+  {
+    "id": "aeon-hk416",
+    "name": "AEON HK416",
+    "archive": "b_s_aeon_hk416.zip",
+    "archive_sha256": "da263cf0de23fda317d7b5561cc482a165874132bde1aae3b501c1c435881e0d",
+    "source": "https://gamebanana.com/mods/319114",
+    "credits": [
+      {
+        "group": "Skin",
+        "authors": [
+          {
+            "name": "iSkyte.",
+            "role": "Skin Maker",
+            "url": "https://gamebanana.com/members/1992661"
+          }
+        ]
+      },
+      {
+        "group": "Model",
+        "authors": [
+          {
+            "name": "1Shot_1Kill",
+            "role": "Original Model",
+            "url": "https://gamebanana.com/members/1394077"
+          }
+        ]
+      }
+    ],
+    "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+    "license_checklist": {
+      "yes": [
+        "Download and install this Mod"
+      ],
+      "ask": [
+        "Redistribute this Mod on other sites",
+        "Modify this Mod and distribute the modified Mod on GameBanana",
+        "Modify this Mod and distribute the modified Mod on another site",
+        "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+        "Use parts of this Mod in another Mod and distribute the Mod on another site",
+        "Use this Mod or components of this Mod in adult/NSFW content"
+      ],
+      "no": [
+        "Use this Mod or components of this Mod commercially"
+      ]
+    },
+    "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+    "model_sha256": "29e2e8802ed1096334854527480dc404628c3b938a39da4948bb1d45dfcb30cf"
+  }
+]

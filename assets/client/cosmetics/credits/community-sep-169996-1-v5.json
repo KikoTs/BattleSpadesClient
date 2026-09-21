@@ -1,0 +1,57 @@
+{
+  "name": "M4A1",
+  "source": "https://gamebanana.com/mods/169996",
+  "archives": [
+    {
+      "archive": "169996\\444700-m4a1_for_openspades.rar",
+      "extracted": "169996\\files-444700",
+      "sha256": "f31713edea62e18d536f6b9e68b0e99dce10c07f460fd8a9d9019a13d930abc8",
+      "listing": [
+        "M4A1.zip"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Model",
+          "_idRow": "1456656",
+          "_sName": "DaLemon",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/5ea31b59ba34f.gif",
+          "_sProfileUrl": "https://gamebanana.com/members/1456656",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5bf3162f5cfdc.png",
+          "_bIsOnline": false,
+          "_aAffiliatedStudio": {
+            "_sProfileUrl": "https://gamebanana.com/studios/33904",
+            "_sName": "Block Studio",
+            "_sFlagUrl": "https://images.gamebanana.com/img/flags/studios/57c6ae7517e45.png",
+            "_sBannerUrl": "https://images.gamebanana.com/img/banners/studios/58db9797cb151.jpg"
+          }
+        },
+        {
+          "_sRole": "Scripts",
+          "_sName": "Orange_"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

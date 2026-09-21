@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-315714-1",
+  "name": "Rifolver",
+  "source": "https://gamebanana.com/mods/315714",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/scopecross.png": "Gfx/scopecross.png",
+    "Models/Weapons/Rifle/barrel.kv6": "Models/Weapons/Rifle/barrel.kv6",
+    "Models/Weapons/Rifle/Barrelhandle.kv6": "Models/Weapons/Rifle/Barrelhandle.kv6",
+    "Models/Weapons/Rifle/bullet.kv6": "Models/Weapons/Rifle/bullet.kv6",
+    "Models/Weapons/Rifle/bulletchamber.kv6": "Models/Weapons/Rifle/bulletchamber.kv6",
+    "Models/Weapons/Rifle/bulletchamber2.kv6": "Models/Weapons/Rifle/bulletchamber2.kv6",
+    "Models/Weapons/Rifle/bulletcyl.kv6": "Models/Weapons/Rifle/bulletcyl.kv6",
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/Casing1.kv6": "Models/Weapons/Rifle/Casing1.kv6",
+    "Models/Weapons/Rifle/Casing10.kv6": "Models/Weapons/Rifle/Casing10.kv6",
+    "Models/Weapons/Rifle/Casing2.kv6": "Models/Weapons/Rifle/Casing2.kv6",
+    "Models/Weapons/Rifle/Casing3.kv6": "Models/Weapons/Rifle/Casing3.kv6",
+    "Models/Weapons/Rifle/Casing4.kv6": "Models/Weapons/Rifle/Casing4.kv6",
+    "Models/Weapons/Rifle/Casing5.kv6": "Models/Weapons/Rifle/Casing5.kv6",
+    "Models/Weapons/Rifle/Casing6.kv6": "Models/Weapons/Rifle/Casing6.kv6",
+    "Models/Weapons/Rifle/Casing7.kv6": "Models/Weapons/Rifle/Casing7.kv6",
+    "Models/Weapons/Rifle/Casing8.kv6": "Models/Weapons/Rifle/Casing8.kv6",
+    "Models/Weapons/Rifle/Casing9.kv6": "Models/Weapons/Rifle/Casing9.kv6",
+    "Models/Weapons/Rifle/hammer.kv6": "Models/Weapons/Rifle/hammer.kv6",
+    "Models/Weapons/Rifle/Scope.kv6": "Models/Weapons/Rifle/Scope.kv6",
+    "Models/Weapons/Rifle/scopeDot.kv6": "Models/Weapons/Rifle/scopeDot.kv6",
+    "Models/Weapons/Rifle/SingleVoxel.kv6": "Models/Weapons/Rifle/SingleVoxel.kv6",
+    "Models/Weapons/Rifle/speedloader.kv6": "Models/Weapons/Rifle/speedloader.kv6",
+    "Models/Weapons/Rifle/speedloaderfull.kv6": "Models/Weapons/Rifle/speedloaderfull.kv6",
+    "Models/Weapons/Rifle/Stock.kv6": "Models/Weapons/Rifle/Stock.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine2.kv6": "Models/Weapons/Rifle/WeaponNoMagazine2.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/FireLocal.wav": "Sounds/Weapons/Rifle/FireLocal.wav.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav": "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Models/Weapons/Rifle/barrelhandle.kv6": "Models/Weapons/Rifle/Barrelhandle.kv6",
+    "Models/Weapons/Rifle/casing1.kv6": "Models/Weapons/Rifle/Casing1.kv6",
+    "Models/Weapons/Rifle/casing2.kv6": "Models/Weapons/Rifle/Casing2.kv6",
+    "Models/Weapons/Rifle/casing3.kv6": "Models/Weapons/Rifle/Casing3.kv6",
+    "Models/Weapons/Rifle/casing4.kv6": "Models/Weapons/Rifle/Casing4.kv6",
+    "Models/Weapons/Rifle/casing5.kv6": "Models/Weapons/Rifle/Casing5.kv6",
+    "Models/Weapons/Rifle/casing6.kv6": "Models/Weapons/Rifle/Casing6.kv6",
+    "Models/Weapons/Rifle/casing7.kv6": "Models/Weapons/Rifle/Casing7.kv6",
+    "Models/Weapons/Rifle/casing8.kv6": "Models/Weapons/Rifle/Casing8.kv6",
+    "Models/Weapons/Rifle/casing9.kv6": "Models/Weapons/Rifle/Casing9.kv6",
+    "Models/Weapons/Rifle/casing10.kv6": "Models/Weapons/Rifle/Casing10.kv6",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Gfx/scopecross.png": "31676bd8c92770cfee04ad045a653033938ec3d832bc74fb6817e7d9f11ddaa8",
+    "Models/Weapons/Rifle/barrel.kv6": "bf7bd09c239121adf7992c75e1bd0ba1af52379e11e7a9c9009ffd2b3bb5851b",
+    "Models/Weapons/Rifle/Barrelhandle.kv6": "59597c6610aa8cbd65fe57e656616354f0c8361380850d40c7436a9e28908816",
+    "Models/Weapons/Rifle/bullet.kv6": "56c8f53d9567217a789d9f967ce4892e87478eda7df214980cc4d05dcf034f14",
+    "Models/Weapons/Rifle/bulletchamber.kv6": "da3d66a32073143b4185c8cb6312096d1c92f565147263af0977f4378392e54c",
+    "Models/Weapons/Rifle/bulletchamber2.kv6": "8a6cfa677652a78a26b7173c25140c3e1332ca48c68479d7234c6924e8e1d137",
+    "Models/Weapons/Rifle/bulletcyl.kv6": "f988a95c8cd3495b390426a81785bbfd03b2d7001ea0fa55bd82b44dd9898ae9",
+    "Models/Weapons/Rifle/Casing.kv6": "9a680a2585240e3038a35d665f227b4abd38e247c3c1b0f9ce00c39b451a5a3b",
+    "Models/Weapons/Rifle/Casing1.kv6": "001266c960bcb9e2c9fa4d7b6ec11d2875f1cf7feb16e8fb28b21ead34a26d10",
+    "Models/Weapons/Rifle/Casing10.kv6": "210a462f1314a2326624a023c1f337b3ad5708b6ebaa389cb6acebe04a6241b2",
+    "Models/Weapons/Rifle/Casing2.kv6": "0fda3d1865b0399508dc88143c6e5b3a6942c217beb111619e047e17eaa6b404",
+    "Models/Weapons/Rifle/Casing3.kv6": "6a37d4c67dd1a268f843644a1f57569ad5eb8140c27b28290b455c1788df2985",
+    "Models/Weapons/Rifle/Casing4.kv6": "c47cccafeb695c8469eb73c3be396429c5be79a4ca875244698887c111886fc6",
+    "Models/Weapons/Rifle/Casing5.kv6": "efe24b925fb05ee822424c1d47de761dd9b41eac6fb4be57cc763b60646ffbae",
+    "Models/Weapons/Rifle/Casing6.kv6": "09cd0bd17f880e6ec8ecc42422011966f55f19e885d461596a64cd614655bfa9",
+    "Models/Weapons/Rifle/Casing7.kv6": "cb83ce058370940c80b963f6fc2cef862341abf60b7327661ef1aa85b5bdc646",
+    "Models/Weapons/Rifle/Casing8.kv6": "627b7d73a32f4c2156295e8a8cb525e1a1d25f52ff50e502e2d85d687155fd3f",
+    "Models/Weapons/Rifle/Casing9.kv6": "6771837a840bfe12e4afce31372b5e3fdaee854f4f9dac87b1405d1f591e11cb",
+    "Models/Weapons/Rifle/hammer.kv6": "bbf564d2117f4570aa087a90ba5182d582c14d0beb046017090f25b2083a9509",
+    "Models/Weapons/Rifle/Scope.kv6": "68e2fa806ea05029578d9d148c52677156d612bd6e3caedb1a0eade17e8e05f8",
+    "Models/Weapons/Rifle/scopeDot.kv6": "34944004615d3be0f89e2c04eb4bd206847fdf4fe66c264de3df4ea475050292",
+    "Models/Weapons/Rifle/SingleVoxel.kv6": "3e42d534280af739414686592f2edf2ff4140e577fc842038c32f8cec051c2ef",
+    "Models/Weapons/Rifle/speedloader.kv6": "0b8fcc9500bf128f5bb83818090223602b7bc224f201c254f83b5f245c46cdbc",
+    "Models/Weapons/Rifle/speedloaderfull.kv6": "d0db581943a12c790279e0e91daa8c5b851e51d32f547ced7d73c901af2db62d",
+    "Models/Weapons/Rifle/Stock.kv6": "832d21cf48953d044208373e789247ef6b1524fb49a728adba900b65416dc486",
+    "Models/Weapons/Rifle/Weapon.kv6": "16a4d12c5661f3914f1fabd908bd3903eac3888d7aa0086e7e20cd5e6a8948c1",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "2d0a56ef20de884152bb5baa3d41fcc5c9741090beb6d5a61403ce3957521a14",
+    "Models/Weapons/Rifle/WeaponNoMagazine2.kv6": "81597a5ddf30cae161f050e5d112b0ab58fa74c6c0eca22eab30b3d6b7312998",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "9ecd8c70a349f3424c112874859663461a904dce87f0dc1a8f5441b1f6f05db7",
+    "Scripts/Skin/Rifle/View.as": "e3ac59cd3cffa3afbf556feabdf448504cf247e412726dca06ee29d0be3cc136",
+    "Sounds/Weapons/Rifle/FireLocal.wav.ogg": "0ade6067d52168063bc8021a89b52e4e281601ba5a40250b5386da274a9b0efb",
+    "Sounds/Weapons/Rifle/ReloadLocal.wav.ogg": "e26f99cb032d70f1ca445559113b309616c6ffe4a5baae534e6e45fe72ccfab5",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg": "47560c0e5c40d04bbfe64e8cc840bcffe10028e5439439c094db080f3d028435",
+    "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "9a5c3c1e071ad7261ca33cd4836e73c3a726bf5770ed5f0ea5105fff00f12030",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "7cba2f05391b3493a56cc8c63f4a8b3c8450f4a9cbc8b2faac02450e9c4c34a8",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "3c53c14ca25b203e3fcbd41cbe59f4241e1291147d73deaed882e70897d1fef4",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "e3ac59cd3cffa3afbf556feabdf448504cf247e412726dca06ee29d0be3cc136",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models/animations",
+          "_idRow": 1982902,
+          "_sName": "Twodayudie",
+          "_sProfileUrl": "https://gamebanana.com/members/1982902",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/61c492515b28e.png",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scope Model, parts of animation script",
+          "_idRow": 1415230,
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "OpenSpades creator",
+          "_sName": "YVT"
+        }
+      ]
+    }
+  ],
+  "license": "You are free to use anything from this mod to make your own or customize you own. <br><br>Just make sure to give credit where credit is due.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireFar.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireStereo.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireStereo.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceSmall.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceSmall.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceLarge.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceLarge.opus"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 2.5,
+    "scope": true
+  }
+}

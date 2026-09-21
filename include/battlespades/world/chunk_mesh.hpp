@@ -22,9 +22,9 @@ struct ChunkKey final {
 /**
  * One renderer-neutral terrain vertex in canonical voxel coordinates.
  *
- * `abgr` carries pure voxel albedo. Terrain additionally carries the two
- * recovered retail AO-atlas coordinates and its noise corner; detached KV6
- * meshes leave those values zero and continue through their model path.
+ * `abgr` carries pure voxel albedo. Terrain carries the two recovered AO-atlas
+ * coordinates and baked-light multiplier. Tagged KV6 meshes reuse the first
+ * three UV components for their authored normal in retail model coordinates.
  */
 struct ChunkVertex final {
     float x{};
@@ -40,23 +40,25 @@ struct ChunkVertex final {
     /** Retail gl_Vertex.w directional-light bypass, normalized from 0..255. */
     std::uint8_t directional_influence{};
     /**
-     * Baked static point light arriving here, packed ABGR with alpha unused.
+     * Baked static point light RGB, packed ABGR. Alpha is a material tag:
+     * 255 for VXL terrain, 64 for authored KV6 models, 0 for effect/test cubes.
      *
      * Deliberately its own attribute rather than a spare byte: the declared
      * spare bytes carry an unresolved question about whether the bgfx layout
      * and the shader agree on normalization, and light must not inherit that.
-     * Last member so every existing positional initialiser stays valid.
      */
     std::uint32_t static_light{};
-    /** Red-channel AO lookup coordinate from retail vxl.pyd sub_10005440. */
+    /** Red-channel AO lookup, or KV6 normal x/y. */
     float ao_u{};
     float ao_v{};
-    /** Green-channel top-edge lookup coordinate from the same atlas. */
+    /** Green-channel edge lookup, or KV6 normal z in edge_u. */
     float edge_u{};
     float edge_v{};
+    /** VXL's averaged light byte / 127, applied to RGB before Legacy interpolation. */
+    float retail_baked_light{1.0F};
 };
 
-static_assert(sizeof(ChunkVertex) == 40U,
+static_assert(sizeof(ChunkVertex) == 44U,
               "the bgfx vertex layout stride must match this exactly; a mismatch "
               "silently corrupts every vertex after the first");
 

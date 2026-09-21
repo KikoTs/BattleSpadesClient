@@ -317,10 +317,13 @@ struct FrontendController::Impl final {
                     preview(value);
                 } else if constexpr (std::is_same_v<T, SettingsDefaultsCommand>) {
                     // The model emits one aggregate preview after Defaults.
-                    // Main uses master-volume as that aggregate source; the
+                    // Language now precedes the recovered Main rows, so route
+                    // the aggregate through master volume explicitly. The
                     // first Graphics row is Resolution (staged), so VSync's
-                    // recovered live behavior must be restored explicitly.
-                    if (value.tab == settings::SettingsTab::graphics) {
+                    // recovered live behavior is also restored explicitly.
+                    if (value.tab == settings::SettingsTab::main) {
+                        preview(SettingsPreviewEffect{SettingsRowId::master_volume, value.draft});
+                    } else if (value.tab == settings::SettingsTab::graphics) {
                         preview(SettingsPreviewEffect{SettingsRowId::vsync, value.draft});
                     }
                 } else if constexpr (std::is_same_v<T, SettingsCommitCommand>) {

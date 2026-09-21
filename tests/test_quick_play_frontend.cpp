@@ -151,17 +151,13 @@ void discovery_is_generation_checked_and_reproduces_server_priority() {
            "late callbacks from the previous Steam query must be discarded");
 }
 
-void start_intents_preserve_both_retail_handoffs() {
+void start_requires_a_completed_search_and_preserves_join_identity() {
     QuickPlayMenuModel menu;
     menu.set_network_available(true);
     const auto request = menu.begin_search();
     expect(request.has_value(), "search fixture should start");
 
-    const auto matchmaking = menu.activate_primary();
-    const auto* playlist =
-        matchmaking.has_value() ? std::get_if<QuickPlayPlaylistStartIntent>(&*matchmaking) : nullptr;
-    expect(playlist != nullptr && playlist->playlist_id == 1U,
-           "no chosen server must hand off to JoiningGameMenu by playlist ID");
+    expect(!menu.activate_primary(), "in-flight search cannot start a phantom connection");
 
     auto concrete = server(1U, "88.80.155.252", 0.042, 12U);
     concrete.name = "Public CTF";
@@ -169,15 +165,66 @@ void start_intents_preserve_both_retail_handoffs() {
     concrete.mode_id = "ctf";
     concrete.texture_skin = "mafia";
     concrete.classic = true;
+    concrete.identity_server_id = "88.80.155.252:32887";
+    concrete.identity_ticket = true;
     expect(menu.accept_server(*request, std::move(concrete)), "direct fixture should be admitted");
+    expect(!menu.activate_primary(), "partial discovery cannot start before completion");
+    expect(menu.finish_search(*request), "direct fixture search must finish");
     const auto direct = menu.activate_primary();
     const auto* loading =
         direct.has_value() ? std::get_if<QuickPlayDirectStartIntent>(&*direct) : nullptr;
     expect(loading != nullptr && loading->identifier == "aos://88.80.155.252:32887" &&
                loading->server_name == "Public CTF" && loading->expected_map == "CastleWars" &&
                loading->expected_mode == "ctf" && loading->expected_skin == "mafia" &&
-               loading->expected_classic,
+               loading->expected_classic && loading->identity_ticket &&
+               loading->identity_server_id == "88.80.155.252:32887",
            "concrete choice must preserve every LoadingMenu expectation field");
+}
+
+void public_discovery_routes_playlists_and_replaces_stale_results() {
+    QuickPlayMenuModel menu;
+    menu.set_network_available(true);
+    const auto request = *menu.begin_search();
+    auto response = server(0U, "127.0.0.1", 0.02, 2U);
+    response.map = "Castle Wars";
+    expect(menu.accept_public_server(request, response) == 2U,
+           "CastleWars CTF must populate Random and CTF");
+    response.players = 32U;
+    expect(menu.accept_public_server(request, response) == 2U &&
+               menu.selected().server_responses.size() == 1U &&
+               menu.selected().chosen_server() == nullptr,
+           "duplicate endpoint becoming full must replace its previous joinable response");
+    response.classic = true;
+    response.mode_id = "cctf";
+    response.map = "Classic";
+    response.players = 1U;
+    expect(menu.accept_public_server(request, response) == 1U &&
+               menu.rows()[2U].chosen_server() != nullptr,
+           "Classic CTF cannot leak into normal playlists");
+    response.mode_id = "ugc";
+    expect(menu.accept_public_server(request, response) == 0U,
+           "editor sessions cannot enter public game playlists");
+    response.classic = false;
+    response.map = "CastleWars";
+    response.mode_id = "unknown";
+    expect(menu.accept_public_server(request, response) == 0U,
+           "unknown modes cannot become TDM through a presentation fallback");
+    expect(menu.finish_search(request) && !menu.activate_primary(),
+           "a completed full/empty playlist cannot start a connection");
+    expect(menu.select_row(2U) && menu.activate_primary().has_value(),
+           "another playlist with a valid server remains joinable");
+    const auto refresh = *menu.begin_search();
+    expect(menu.accept_public_server(refresh, server(0U, "127.0.0.2", 0.04, 2U)) == 2U,
+           "refresh may accept partial responses");
+    expect(menu.fail_search(refresh) && menu.rows()[0U].server_responses.empty(),
+           "a failed search must discard partial results");
+    menu.set_network_available(false);
+    menu.set_network_available(true);
+    const auto reopened = *menu.begin_search();
+    expect(!menu.finish_search(refresh) &&
+               menu.accept_public_server(refresh, server(0U, "127.0.0.3", 0.01, 2U)) == 0U &&
+               menu.finish_search(reopened),
+           "leaving and reopening must reject callbacks from the old screen visit");
 }
 
 void pointer_contract_emits_typed_refresh_primary_and_back() {
@@ -199,8 +246,14 @@ void pointer_contract_emits_typed_refresh_primary_and_back() {
 
     menu.pointer_press(Point{450 * 8, 480 * 8});
     const auto start = menu.pointer_release(Point{450 * 8, 480 * 8});
-    expect(start.has_value() && std::holds_alternative<QuickPlayPlaylistStartIntent>(*start),
-           "primary button must emit the selected playlist handoff");
+    expect(!start, "primary stays disabled while searching without a concrete server");
+    const auto request = std::get<QuickPlaySearchIntent>(*refresh);
+    expect(menu.accept_server(request, server(3U, "127.0.0.1", 0.02, 2U)) &&
+               menu.finish_search(request), "pointer fixture discovery must complete");
+    menu.pointer_press(Point{450 * 8, 480 * 8});
+    const auto join = menu.pointer_release(Point{450 * 8, 480 * 8});
+    expect(join && std::holds_alternative<QuickPlayDirectStartIntent>(*join),
+           "primary must join the selected discovered server after completion");
 
     menu.pointer_press(std::nullopt);
     expect(!menu.pointer_release(Point{80 * 8, 556 * 8}).has_value(),
@@ -280,8 +333,10 @@ int main() {
          no_network_fails_closed_without_trapping_back_or_buy},
         {"discovery_is_generation_checked_and_reproduces_server_priority",
          discovery_is_generation_checked_and_reproduces_server_priority},
-        {"start_intents_preserve_both_retail_handoffs",
-         start_intents_preserve_both_retail_handoffs},
+        {"start_requires_a_completed_search_and_preserves_join_identity",
+         start_requires_a_completed_search_and_preserves_join_identity},
+        {"public_discovery_routes_playlists_and_replaces_stale_results",
+         public_discovery_routes_playlists_and_replaces_stale_results},
         {"pointer_contract_emits_typed_refresh_primary_and_back",
          pointer_contract_emits_typed_refresh_primary_and_back},
         {"presentation_is_complete_slide_composable_and_asset_backed",

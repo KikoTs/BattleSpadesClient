@@ -13,6 +13,7 @@ uniform vec4 u_retailViewDirection;
 SAMPLER2DSHADOW(s_shadowMap, 1);
 // x: 1 when a shadow map is bound. y: texel size. z: depth bias. w: PCF taps.
 uniform vec4 u_shadowParams;
+uniform mat4 u_shadowMatrix;
 
 // x: self-illumination gain for authored emissive voxels.
 // y: gain for light baked from placed blocks (the flare block).
@@ -76,10 +77,16 @@ vec3 retail_calculate_lighting(vec3 albedo, vec3 light_direction,
     return mix(result, albedo, directional_influence);
 }
 
+float sun_filter_tap(vec3 receiver, vec2 offset, vec2 depth_gradient)
+{
+    return shadow2D(s_shadowMap, vec3(receiver.xy + offset,
+                                    receiver.z + dot(offset, depth_gradient)));
+}
+
 void main()
 {
     vec3 albedo = v_color0.rgb;
-    if (u_modelOpacity.y > 0.0)
+    if (u_modelOpacity.y > 0.0 && u_lightParams.x > 1.5)
     {
         albedo = clamp((albedo - vec3(0.5, 0.5, 0.5)) * u_modelOpacity.z +
                            vec3(0.5, 0.5, 0.5),
@@ -117,7 +124,24 @@ void main()
             vec4 edge_sample = texture2D(s_retailAo, v_retail_uv.zw);
             lit = combined * (ao_sample.r + 0.35);
             lit += (1.0 - edge_sample.g) * albedo * 0.3;
+            // Retail vxl.pyd sub_10014A30 binds the same atlas with GL_LINEAR
+            // min/mag, CLAMP_TO_EDGE and no mipmaps, including its blue grain.
             lit *= texture2D(s_retailAo, v_retail_meta.xy).b;
+        }
+        else if (v_retail_meta.w > 0.1)
+        {
+            // model_frag.py: KV6 normals, wrapped diffuse, exponent-5 specular.
+            // GameScene.draw binds each light's color as both diffuse and specular.
+            vec3 n = normalize(vec3(normal.x, -normal.z, normal.y));
+            vec3 l0 = normalize(u_retailLight0Direction.xyz);
+            vec3 l1 = normalize(u_retailLight1Direction.xyz);
+            vec3 eye = normalize(u_retailViewDirection.xyz);
+            vec3 light = (0.75 + 0.25 * dot(n, l0) +
+                0.2 * pow(max(0.0, dot(n, normalize(l0 + eye))), 5.0)) * u_retailLight0Color.rgb;
+            light += (0.75 + 0.25 * dot(n, l1) +
+                0.2 * pow(max(0.0, dot(n, normalize(l1 + eye))), 5.0)) * u_retailLight1Color.rgb;
+            light += u_retailAmbient.rgb * u_retailAmbient.a;
+            lit = albedo * clamp(light, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));
         }
         else
         {
@@ -137,9 +161,15 @@ void main()
         // of why retail's blocks read as solid colour with gentle facing
         // variation instead of half the world falling into darkness, and
         // matching it is what makes the shading feel like the real game.
-        // Shadows still multiply the key, so occluded ground genuinely darkens.
-        float facing = max(dot(normal, light_dir), 0.28);
+        // Split the direct key from that fill so cast shadows only attenuate
+        // light that actually arrives from the sun.
+        float facing = max(dot(normal, light_dir), 0.0);
         float key = facing * u_sunDirection.w;
+        // The wrapped floor is fill light, not direct sunlight. In particular,
+        // a sun ray parallel to a wall cannot cast a shadow onto that wall.
+        // Shadowing this floor made Egypt's +/-Y faces amplify edge-on depth
+        // noise into visible speckling across otherwise flat stone.
+        float fill = max(0.28 - facing, 0.0) * u_sunDirection.w;
 
         float occlusion = mix(1.0, ao, clamp(u_lightParams.y, 0.0, 1.0));
 
@@ -147,15 +177,28 @@ void main()
         // something else was closer; ambient is deliberately left untouched, so
         // shadowed surfaces stay lit by the sky rather than going black.
         float sunlight = 1.0;
-        if (u_shadowParams.x > 0.5)
+        if (u_shadowParams.x > 0.5 && facing > 0.0001)
         {
             vec3 coord = v_shadow.xyz / max(v_shadow.w, 1e-6);
-            // bgfx hands us clip space in the backend's own depth convention.
-        #if BGFX_SHADER_LANGUAGE_GLSL
-            coord = coord * 0.5 + 0.5;
-        #else
-            coord.xy = coord.xy * vec2(0.5, -0.5) + 0.5;
-        #endif
+            // Follow the receiving plane for every PCF tap. A large constant
+            // bias hides slope acne by detaching shadows from their casters;
+            // comparing at each tap's actual plane depth preserves contact.
+            // Derive the plane from its geometric normal, not screen-space
+            // derivatives of tiny voxel triangles. The latter lose precision
+            // near silhouette edges, and clamping their slope to +/-4 makes
+            // genuinely grazing receivers shadow themselves. Project two
+            // tangents into shadow texture space; their cross product gives
+            // the same plane at every pixel and under camera movement/MSAA.
+            vec3 reference = abs(normal.z) < 0.9
+                ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+            vec3 tangent = normalize(cross(reference, normal));
+            vec3 bitangent = cross(normal, tangent);
+            vec3 shadow_tangent = mul(u_shadowMatrix, vec4(tangent, 0.0)).xyz;
+            vec3 shadow_bitangent = mul(u_shadowMatrix, vec4(bitangent, 0.0)).xyz;
+            vec3 plane = cross(shadow_tangent, shadow_bitangent);
+            vec2 depth_gradient = -plane.xy / plane.z;
+            // u_shadowMatrix already maps to this backend's texture/depth
+            // convention, using bgfx caps rather than a shader-language guess.
             // Outside the cascade there is no information, so assume lit rather
             // than shadowing the whole world beyond the map's edge.
             if (coord.x > 0.0 && coord.x < 1.0 && coord.y > 0.0 && coord.y < 1.0 &&
@@ -164,56 +207,37 @@ void main()
                 // Slope-scaled bias: a surface nearly edge-on to the sun needs
                 // far more offset than one facing it, and a constant bias large
                 // enough for the former visibly detaches the latter's contact.
-                float slope = clamp(1.0 - dot(normal, normalize(u_sunDirection.xyz)), 0.0, 1.0);
-                float bias = u_shadowParams.z * (1.0 + slope * 3.0);
+                float slope = clamp(1.0 - dot(normal, light_dir), 0.0, 1.0);
+                float bias = u_shadowParams.z * (1.0 + slope * 3.0) +
+                             dot(abs(depth_gradient), vec2(u_shadowParams.y * 0.5, u_shadowParams.y * 0.5));
                 float depth = coord.z - bias;
                 float texel = u_shadowParams.y;
 
                 if (u_shadowParams.w > 0.0)
                 {
-                    // Eight taps spiralled over a fixed disc, plus the centre.
-                    //
-                    // The penumbra a filter can produce is bounded by how far its
-                    // widest tap reaches, so the 3x3 box this replaces was only
-                    // one texel across and read almost exactly like no filter --
-                    // which is why bridge shadows looked stamped on. Two things
-                    // fix that:
-                    //
-                    //  - Width. The disc radius comes from the tier, in texels.
-                    //  - Distribution. Advancing by the golden angle and taking
-                    //    the radius as sqrt of the tap fraction places the taps
-                    //    uniformly by AREA. A plain ring puts all eight at the
-                    //    same distance, which just moves the hard edge outward
-                    //    instead of softening it.
-                    //
-                    // The pattern is deliberately NOT rotated per pixel. Rotation
-                    // is the usual advice and does hide the banding a sparse fixed
-                    // kernel produces, but it pays for that with per-pixel noise,
-                    // and this renderer has no temporal filter to resolve noise
-                    // into anything. That trade was measured for the SKYLIGHT
-                    // filter below, where a rotated kernel visibly speckled
-                    // GreatWall's plaza; here it is an argument by analogy, not a
-                    // measurement -- the two differ in that this averages a dense
-                    // binary depth test rather than a smooth height field, so a
-                    // fixed kernel may band where the skylight one does not. If
-                    // penumbra banding ever shows up on a rig capture, rotating
-                    // this kernel is the first thing to try.
+                    // Fixed area-distributed disc: stable while walking and
+                    // independent of per-backend loop/trigonometry lowering.
                     float radius = texel * u_shadowParams.w;
-                    float total = shadow2D(s_shadowMap, vec3(coord.xy, depth));
-                    for (int tap = 0; tap < 8; ++tap)
-                    {
-                        float fraction = (float(tap) + 0.5) * 0.125;
-                        float spiral = float(tap) * 2.3999632;
-                        vec2 offset = vec2(cos(spiral), sin(spiral)) *
-                                      (radius * sqrt(fraction));
-                        total += shadow2D(s_shadowMap, vec3(coord.xy + offset, depth));
-                    }
+                    vec3 receiver = vec3(coord.xy, depth);
+                    float total = shadow2D(s_shadowMap, receiver);
+                    total += sun_filter_tap(receiver, radius * vec2(0.25000000, 0.00000000), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(-0.31929008, 0.29249589), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(0.04887243, -0.55687654), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(0.40244453, 0.52491752), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(-0.73853513, -0.13063637), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(0.69960487, -0.44503150), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(-0.23400400, 0.87048385), depth_gradient);
+                    total += sun_filter_tap(receiver, radius * vec2(-0.44627149, -0.85926815), depth_gradient);
                     sunlight = total / 9.0;
                 }
                 else
                 {
                     sunlight = shadow2D(s_shadowMap, vec3(coord.xy, depth));
                 }
+                // Fade over the cascade border instead of dropping a dark
+                // rectangular edge into view whenever its camera grid moves.
+                float edge = min(min(coord.x, 1.0 - coord.x), min(coord.y, 1.0 - coord.y));
+                sunlight = mix(1.0, sunlight, smoothstep(0.0, 0.06, edge));
             }
         }
 
@@ -306,7 +330,7 @@ void main()
         // cascade only covers the near field, so beyond it an interior would
         // otherwise still receive full direct sun; the horizon has no such
         // range limit and correctly reports that the sky cannot see in.
-        float direct = key * sunlight * skylight;
+        float direct = (key * sunlight + fill) * skylight;
         lit = albedo * (ambient + u_sunColor.rgb * direct) * occlusion;
 
         // A narrow specular lobe catches the sun on block edges. Retail used
@@ -314,7 +338,7 @@ void main()
         vec3 view_dir = normalize(u_cameraPosition.xyz - v_world);
         vec3 half_vec = normalize(light_dir + view_dir);
         float specular = pow(max(dot(normal, half_vec), 0.0), u_lightParams.w);
-        lit += u_sunColor.rgb * specular * u_lightParams.z * occlusion * sunlight * skylight;
+        lit += u_sunColor.rgb * specular * u_lightParams.z * facing * occlusion * sunlight * skylight;
 
         // Extended Reinhard roll-off. Without it a sunlit floor clips to flat
         // white and loses its ambient occlusion; this keeps midtones nearly
@@ -330,7 +354,7 @@ void main()
         // colour and the receiving surface's albedo, and like emission it is
         // added after the occlusion terms: a lamp lights the inside of a bunker,
         // which is the entire point of carrying one.
-        lit += albedo * v_placed * u_emissiveParams.y;
+        lit += albedo * v_placed.rgb * u_emissiveParams.y;
 
         // Light CAST BY emissive blocks. This is what makes a neon street feel
         // inhabited rather than decorated: a green sign bleeds green onto the
@@ -396,7 +420,7 @@ void main()
     // Radial fog from the eye, evaluated per pixel. Per-vertex fog bands
     // visibly across a 16-block chunk quad at grazing angles.
     vec3  offset   = v_world - u_cameraPosition.xyz;
-    float distance = length(offset);
+    float distance = u_lightParams.x < 1.5 ? v_placed.w : length(offset);
     float d        = clamp(distance / u_fogParams.w, 0.0, 1.0);
 
     float fog;

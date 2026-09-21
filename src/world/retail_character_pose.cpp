@@ -170,7 +170,8 @@ RetailThirdPersonPose evaluate_retail_third_person_pose(std::uint8_t tool_id,
                                                         std::size_t tool_part_count,
                                                         double seconds_since_primary,
                                                         std::uint64_t action_serial,
-                                                        double aim_pitch_degrees) noexcept {
+                                                        double aim_pitch_degrees,
+                                                        bool can_display_weapon) noexcept {
     RetailThirdPersonPose result;
     result.head_pitch_degrees = aim_pitch_degrees;
     // Character.draw clamps the equipped tool's get_pitch()-adjusted value to
@@ -193,7 +194,11 @@ RetailThirdPersonPose evaluate_retail_third_person_pose(std::uint8_t tool_id,
         arm.pitch_degrees = result.weapon_pitch_degrees;
     }
 
-    result.tool_part_count = std::min(tool_part_count, RetailThirdPersonPose::maximum_tool_parts);
+    // Character.draw (0x1004F120): player arms draw at pyx 1891-1895;
+    // can_display_weapon is checked separately for the held tool at 1908.
+    result.tool_part_count = can_display_weapon
+                                ? std::min(tool_part_count, RetailThirdPersonPose::maximum_tool_parts)
+                                : 0U;
     // Character.weapon is a DisplayList rooted at (0, 0, 0.5). A Tool's model
     // transforms are children of it, but Tool.apply_transform translates them
     // before DisplayList draws/scales the KV6. Both translations are therefore

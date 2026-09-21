@@ -1,0 +1,69 @@
+{
+  "name": "PTrooper Remmington 870 MCS (Desert Digital) — PTrooperShotgunPngSight",
+  "source": "https://gamebanana.com/mods/170633",
+  "archives": [
+    {
+      "archive": "170633\\511952-ptroopershotgun.rar",
+      "extracted": "170633\\files-511952",
+      "sha256": "5aa5ec475f2ffeee6ed20c8d81116174b378687ec6b0ec4ba916c870b2fcf5af",
+      "listing": [
+        "PTrooperShotgun.pak",
+        "How to install.txt"
+      ]
+    },
+    {
+      "archive": "170633\\511953-ptroopershotgunpngsight.rar",
+      "extracted": "170633\\files-511953",
+      "sha256": "26ecaf5095c2387b11cf2c80564d78179fdfdc16ab786a6c9eb2a2c102366248",
+      "listing": [
+        "PTrooperShotgunPngSight.pak",
+        "How to install.txt"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Author",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Adaptation to the game",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripter",
+          "_idRow": "1773911",
+          "_sName": "Nuceto",
+          "_sProfileUrl": "https://gamebanana.com/members/1773911",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/60075cb236bc6.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

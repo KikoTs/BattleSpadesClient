@@ -6,6 +6,7 @@
 #include "battlespades/network/protocol168_tool_actions.hpp"
 #include "battlespades/network/protocol168_weapons.hpp"
 #include "battlespades/world/tutorial_session.hpp"
+#include "battlespades/core/frame_pacing.hpp"
 
 #include <algorithm>
 #include <array>
@@ -42,6 +43,8 @@ struct PredictedFrame final {
     bool wade{};
     bool crouch{};
     double climb_timer{};
+    bool jetpack_active{};
+    double jetpack_fuel{};
 };
 
 /**
@@ -166,7 +169,23 @@ supported_build_cell(const TutorialWorldSession& session) noexcept {
 
 void set_inputs(TutorialWorldSession& session, std::uint32_t frame,
                 bool jump_enabled, bool straight_walk,
-                bool gentle_turn) noexcept {
+                bool gentle_turn, bool flight) noexcept {
+    if (flight) {
+        // Repeated ignition, physical release, sustained depletion, and a
+        // refill interval. Keep the first build on the ground before liftoff.
+        const auto phase = frame % 1'440U;
+        const bool thrust = (phase >= 120U && phase < 200U) ||
+                            (phase >= 260U && phase < 800U) ||
+                            (phase >= 1'040U && phase < 1'160U);
+        session.set_action_held(TutorialAction::jump, thrust);
+        session.set_action_held(TutorialAction::hover, false);
+        session.set_action_held(TutorialAction::forward, phase >= 30U && phase < 360U);
+        session.set_action_held(TutorialAction::right, phase >= 360U && phase < 540U);
+        session.set_action_held(TutorialAction::crouch, phase >= 850U && phase < 900U);
+        session.set_action_held(TutorialAction::sprint, phase >= 950U && phase < 1'020U);
+        if (phase >= 300U && phase < 420U) session.apply_look_delta(3.0, 0.0);
+        return;
+    }
     if (gentle_turn) {
         session.set_action_held(TutorialAction::forward, frame >= 30U);
         session.set_action_held(TutorialAction::sprint, false);
@@ -225,6 +244,7 @@ void set_inputs(TutorialWorldSession& session, std::uint32_t frame,
 [[nodiscard]] bool is_runtime_packet(std::uint8_t id) noexcept {
     using namespace battlespades::network;
     return id == SetHpPacket::id || id == DestroyEntityPacket::id ||
+           id == KillActionPacket::id ||
            id == CreateEntityPacket::id ||
            id == CreateAmbientSoundPacket::id || id == PlaySoundPacket::id ||
            id == PlayAmbientSoundPacket::id || id == PlayMusicPacket::id ||
@@ -241,7 +261,7 @@ int main(int argc, char** argv) {
                      "[--no-player-collision] [--no-jump] [--no-build] "
                      "[--straight] [--gentle-turn] [--uplink-ms=N] "
                      "[--downlink-ms=N] [--jitter-ms=N] [--team=2|3] "
-                     "[--inbound-budget=N] [--chase-peer]\n";
+                     "[--inbound-budget=N] [--chase-peer] [--flight=66|67|68]\n";
         return 2;
     }
     const auto parsed_port = std::strtoul(argv[2], nullptr, 10);
@@ -255,6 +275,7 @@ int main(int argc, char** argv) {
     bool straight_walk{};
     bool gentle_turn{};
     bool chase_peer{};
+    std::optional<std::uint8_t> flight_pack;
     std::uint32_t uplink_delay_ms{};
     std::uint32_t downlink_delay_ms{};
     std::uint32_t jitter_ms{};
@@ -277,6 +298,10 @@ int main(int argc, char** argv) {
             gentle_turn = true;
         } else if (argument == "--chase-peer") {
             chase_peer = true;
+        } else if (argument.starts_with("--flight=")) {
+            const auto parsed = std::strtoul(argv[index] + 9, nullptr, 10);
+            if (parsed < 66UL || parsed > 68UL) return 2;
+            flight_pack = static_cast<std::uint8_t>(parsed);
         } else if (argument.starts_with("--class=")) {
             const auto parsed = std::strtoul(argv[index] + 8, nullptr, 10);
             if (parsed > 17UL) return 2;
@@ -306,6 +331,10 @@ int main(int argc, char** argv) {
     }
 
     using namespace battlespades::network;
+    if (flight_pack.has_value()) {
+        requested_class = *flight_pack == 68U ? 12U : 2U;
+        if (suppress_jump || straight_walk || gentle_turn || chase_peer) return 2;
+    }
     LiveProtocol168Connection connection;
     Protocol168SessionConfig session_config;
     session_config.player_name = "NativeMovementParity";
@@ -343,6 +372,50 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (flight_pack.has_value() &&
+        std::ranges::find(local->loadout, *flight_pack) == local->loadout.end()) {
+        // Exercise the ordinary loadout/respawn transaction for Jump Pack 66,
+        // rather than silently substituting the class's default Jetpack 67.
+        SetClassLoadoutPacket selection;
+        selection.player_id = bootstrap->local_player_id;
+        selection.class_id = requested_class;
+        selection.instant = true;
+        selection.loadout = local->loadout;
+        selection.prefabs = local->prefabs;
+        selection.ugc_tools = local->ugc_tools;
+        bool replaced{};
+        for (auto& item : selection.loadout) {
+            if (item >= 66U && item <= 69U) { item = *flight_pack; replaced = true; }
+        }
+        if (!replaced || !connection.send(encode_packet(selection))) return 1;
+        const auto equipment_deadline = std::chrono::steady_clock::now() +
+                                        std::chrono::seconds{20};
+        bool respawned{};
+        while (!respawned && std::chrono::steady_clock::now() < equipment_deadline) {
+            for (const auto& packet : connection.take_inbound(256U)) {
+                if (packet.empty()) continue;
+                const auto id = std::to_integer<std::uint8_t>(packet.front());
+                if (id == CreatePlayerPacket::id) {
+                    std::string error;
+                    if (!bootstrap->roster.apply(packet, &error)) {
+                        std::cerr << error << '\n';
+                        return 1;
+                    }
+                    local = bootstrap->roster.player(bootstrap->local_player_id);
+                    if (id == CreatePlayerPacket::id && local != nullptr &&
+                        std::ranges::find(local->loadout, *flight_pack) != local->loadout.end()) {
+                        respawned = true;
+                    }
+                }
+            }
+            if (!respawned) std::this_thread::sleep_for(std::chrono::milliseconds{5});
+        }
+        if (!respawned) {
+            std::cerr << "server did not respawn with the requested flight equipment\n";
+            return 1;
+        }
+    }
+
     Vec3 initial_position = local->position;
     Vec3 initial_orientation = local->orientation;
     Vec3 initial_velocity = local->velocity;
@@ -350,6 +423,7 @@ int main(int argc, char** argv) {
     std::uint8_t initial_action_flags = local->action_flags;
     std::uint8_t initial_state_flags = local->state_flags;
     std::uint8_t initial_pickup_id = local->pickup_id;
+    double initial_fuel{100.0};
     std::int32_t initial_ack_loop{-1};
     bool received_initial_owner_row{};
     std::array<std::size_t, 256U> packet_counts{};
@@ -361,6 +435,12 @@ int main(int argc, char** argv) {
     std::size_t dynamic_create_players{};
     std::size_t orphan_world_rows{};
     std::size_t terrain_echoes{};
+    std::optional<std::array<std::int16_t, 3U>> requested_build_cell;
+    std::optional<std::chrono::steady_clock::time_point> build_sent_at;
+    std::optional<double> build_echo_ms;
+    std::size_t flight_active_frames{};
+    std::size_t dead_owner_rows{};
+    std::size_t local_respawns{};
     double maximum_position_correction{};
     double maximum_velocity_correction{};
     double maximum_orientation_error{};
@@ -425,6 +505,7 @@ int main(int argc, char** argv) {
                 initial_action_flags = row.action_flags;
                 initial_state_flags = row.state_flags;
                 initial_pickup_id = row.pickup_id;
+                initial_fuel = row.jetpack_fuel;
                 initial_ack_loop = row.acknowledged_client_loop;
                 received_initial_owner_row = true;
             }
@@ -467,6 +548,7 @@ int main(int argc, char** argv) {
         std::cerr << "could not initialize terrain parity palette\n";
         return 1;
     }
+    simulation.apply_server_jetpack_fuel(initial_fuel);
     simulation.apply_server_movement_state(initial_action_flags,
                                            initial_state_flags,
                                            initial_pickup_id);
@@ -475,6 +557,7 @@ int main(int argc, char** argv) {
     // not carry position, so both predictors can be judged against the exact
     // same authoritative owner rows without changing server behaviour.
     TutorialWorldSession collision_shadow{bootstrap->map, simulation_config};
+    collision_shadow.apply_server_jetpack_fuel(initial_fuel);
     collision_shadow.apply_server_movement_state(initial_action_flags,
                                                  initial_state_flags,
                                                  initial_pickup_id);
@@ -496,7 +579,8 @@ int main(int argc, char** argv) {
                   "orientation_error,pred_airborne,pred_wade,pred_crouch,"
                   "pred_climb_timer,server_state_flags,"
                   "correction_x,correction_y,correction_z,"
-                  "position_correction,velocity_correction\n";
+                  "position_correction,velocity_correction,pred_jetpack_active,"
+                  "pred_jetpack_fuel,server_jetpack_active,server_jetpack_fuel,receive_client_loop,queued_downlink\n";
         trace << std::fixed << std::setprecision(6);
     }
 
@@ -523,9 +607,12 @@ int main(int argc, char** argv) {
 
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = start + std::chrono::seconds{seconds};
-    auto next_tick = start;
+    const auto fixed_delta = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>{simulation_config.fixed_dt});
+    battlespades::core::FixedStepPacer pacer{start, fixed_delta};
     std::uint32_t frame{};
     while (std::chrono::steady_clock::now() < deadline) {
+        const auto pacing = pacer.step(std::chrono::steady_clock::now());
         const auto pump_time = std::chrono::steady_clock::now();
         for (auto& packet : connection.take_inbound(1'024U)) {
             downlink.push(std::move(packet), pump_time);
@@ -554,6 +641,14 @@ int main(int argc, char** argv) {
                         continue;
                     }
                     if (row.tool_id == 0xFFU) ++sentinel_owner_tools;
+                    simulation.set_server_health(row.health);
+                    collision_shadow.set_server_health(row.health);
+                    if (row.health <= 0) {
+                        // The playable frontend hands these transforms to its
+                        // corpse presentation, not the living movement journal.
+                        ++dead_owner_rows;
+                        continue;
+                    }
                     const Vec3 server_position{row.position[0U], row.position[1U],
                                                row.position[2U]};
                     const Vec3 server_velocity{row.velocity[0U], row.velocity[1U],
@@ -579,12 +674,14 @@ int main(int argc, char** argv) {
                     }
                     simulation.note_authoritative_snapshot(
                         row.acknowledged_client_loop, server_position);
+                    simulation.apply_server_jetpack_fuel(row.jetpack_fuel, row.acknowledged_client_loop);
                     simulation.apply_server_movement_state(
-                        row.action_flags, row.state_flags, row.pickup_id);
+                        row.action_flags, row.state_flags, row.pickup_id, row.acknowledged_client_loop);
                     collision_shadow.note_authoritative_snapshot(
                         row.acknowledged_client_loop, server_position);
+                    collision_shadow.apply_server_jetpack_fuel(row.jetpack_fuel, row.acknowledged_client_loop);
                     collision_shadow.apply_server_movement_state(
-                        row.action_flags, row.state_flags, row.pickup_id);
+                        row.action_flags, row.state_flags, row.pickup_id, row.acknowledged_client_loop);
                     const auto sample = predicted.find(
                         row.acknowledged_client_loop);
                     if (sample == predicted.end()) continue;
@@ -686,7 +783,11 @@ int main(int argc, char** argv) {
                               << applied_position_delta.y << ','
                               << applied_position_delta.z << ','
                               << position_error << ','
-                              << velocity_error << '\n';
+                              << velocity_error << ','
+                              << (sample->second.jetpack_active ? 1 : 0) << ','
+                              << sample->second.jetpack_fuel << ','
+                              << ((row.action_flags & 0x04U) != 0U ? 1 : 0) << ','
+                              << row.jetpack_fuel << ',' << client_loop << ',' << downlink.size() << '\n';
                     }
                 }
             } else if (id == SetColorPacket::id || id == DamagePacket::id ||
@@ -703,20 +804,78 @@ int main(int argc, char** argv) {
                            id == BlockBuildColoredPacket::id ||
                            id == PaintBlockPacket::id) {
                     ++terrain_echoes;
+                    if (build_sent_at.has_value() && !build_echo_ms.has_value()) {
+                        bool matches{};
+                        if (id == BlockLinePacket::id) {
+                            const auto decoded = decode_terrain_packet(packet);
+                            if (decoded) {
+                                if (const auto* line = std::get_if<BlockLinePacket>(&*decoded.packet)) {
+                                    matches = line->player_id == bootstrap->local_player_id &&
+                                        line->start == *requested_build_cell && line->end == *requested_build_cell;
+                                }
+                            }
+                        } else if (id == BlockBuildPacket::id) {
+                            const auto decoded = decode_tool_action_packet(packet);
+                            if (decoded) {
+                                if (const auto* block = std::get_if<BlockBuildPacket>(&*decoded.packet)) {
+                                    matches = block->player_id == bootstrap->local_player_id &&
+                                              block->position == *requested_build_cell;
+                                }
+                            }
+                        }
+                        if (matches) build_echo_ms = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - *build_sent_at).count();
+                    }
                 }
             } else if (id == CreatePlayerPacket::id) {
                 std::string error;
+                const auto created = decode_create_player(packet);
                 if (!bootstrap->roster.apply(packet, &error)) {
                     ++malformed_packets;
                     std::cerr << error << '\n';
                 } else {
                     ++dynamic_create_players;
+                    if (created && created.packet->player_id == bootstrap->local_player_id &&
+                        !created.packet->dead) {
+                        local = bootstrap->roster.player(bootstrap->local_player_id);
+                        for (auto* session : {&simulation, &collision_shadow}) {
+                            static_cast<void>(session->apply_server_selection(local->class_id,
+                                local->loadout, local->prefabs, local->ugc_tools, local->tool_id));
+                            session->apply_server_class(local->class_id,
+                                protocol168_movement_scale(bootstrap->initial_info, local->class_id));
+                            session->apply_authoritative_transform(local->position, local->orientation);
+                            session->set_server_health(100.0);
+                            session->clear_input();
+                        }
+                        predicted.clear();
+                        shadow_predicted.clear();
+                        previous_packet_flags = 0U;
+                        ++local_respawns;
+                    }
+                }
+            } else if (id == RestockPacket::id) {
+                const auto decoded = decode_weapon_packet(packet);
+                if (!decoded) {
+                    ++malformed_packets;
+                    std::cerr << decoded.error << '\n';
+                } else if (const auto* restock = std::get_if<RestockPacket>(&*decoded.packet);
+                           restock != nullptr && restock->player_id == bootstrap->local_player_id &&
+                           (restock->type == 0U || restock->type == 6U)) {
+                    simulation.restock_jetpack_fuel();
+                    collision_shadow.restock_jetpack_fuel();
                 }
             } else if (is_runtime_packet(id)) {
                 const auto decoded = decode_runtime_packet(packet);
                 if (!decoded) {
                     ++malformed_packets;
                     std::cerr << decoded.error << '\n';
+                } else if (const auto* hp = std::get_if<SetHpPacket>(&*decoded.packet); hp != nullptr) {
+                    simulation.set_server_health(hp->health);
+                    collision_shadow.set_server_health(hp->health);
+                } else if (const auto* killed = std::get_if<KillActionPacket>(&*decoded.packet);
+                           killed != nullptr && killed->player_id == bootstrap->local_player_id) {
+                    simulation.set_server_health(0.0);
+                    collision_shadow.set_server_health(0.0);
                 } else if (const auto* pickup =
                                std::get_if<PickPickupPacket>(&*decoded.packet);
                            pickup != nullptr &&
@@ -760,9 +919,9 @@ int main(int argc, char** argv) {
             chase(collision_shadow);
         } else {
             set_inputs(simulation, frame, !suppress_jump, straight_walk,
-                       gentle_turn);
+                       gentle_turn, flight_pack.has_value());
             set_inputs(collision_shadow, frame, !suppress_jump, straight_walk,
-                       gentle_turn);
+                       gentle_turn, flight_pack.has_value());
         }
         const auto collision_bodies = protocol168_collision_bodies(
             bootstrap->roster, bootstrap->local_player_id,
@@ -776,6 +935,7 @@ int main(int argc, char** argv) {
         }
         simulation.tick();
         collision_shadow.tick();
+        if (simulation.player().jetpack_active) ++flight_active_frames;
         const auto packet_flags = simulation.movement_flags();
         const auto expected_server_flags = static_cast<std::uint8_t>(
             // Movement/jump/sprint are L-1. Crouch geometry is the only
@@ -817,7 +977,8 @@ int main(int argc, char** argv) {
             simulation.player().position, simulation.player().velocity,
             encoded_orientation, expected_server_flags,
             simulation.player().airborne, simulation.player().wade,
-            simulation.player().crouch, simulation.player().climb_timer};
+            simulation.player().crouch, simulation.player().climb_timer,
+            simulation.player().jetpack_active, simulation.jetpack_fuel()};
         shadow_predicted[client_loop] = PredictedFrame{
             collision_shadow.player().position,
             collision_shadow.player().velocity,
@@ -826,7 +987,8 @@ int main(int argc, char** argv) {
             collision_shadow.player().airborne,
             collision_shadow.player().wade,
             collision_shadow.player().crouch,
-            collision_shadow.player().climb_timer};
+            collision_shadow.player().climb_timer,
+            collision_shadow.player().jetpack_active, collision_shadow.jetpack_fuel()};
         while (predicted.size() > 2'048U) predicted.erase(predicted.begin());
         while (shadow_predicted.size() > 2'048U) {
             shadow_predicted.erase(shadow_predicted.begin());
@@ -851,6 +1013,8 @@ int main(int argc, char** argv) {
             line.player_id = bootstrap->local_player_id;
             line.start = *cell;
             line.end = *cell;
+            requested_build_cell = cell;
+            build_sent_at = send_time;
             queue_uplink(encode_packet(line), send_time);
         }
         if (!flush_uplink(send_time)) {
@@ -860,8 +1024,7 @@ int main(int argc, char** argv) {
         previous_packet_flags = packet_flags;
         ++client_loop;
         ++frame;
-        next_tick += std::chrono::microseconds{16'667};
-        std::this_thread::sleep_until(next_tick);
+        std::this_thread::sleep_until(pacing.next_tick);
     }
 
     // Give the final reliable 30 Hz owner snapshots time to cross the worker
@@ -885,6 +1048,10 @@ int main(int argc, char** argv) {
               << " player_collision=" << (suppress_player_collision ? 0 : 1)
               << " jump=" << (suppress_jump ? 0 : 1)
               << " build=" << (suppress_build ? 0 : 1)
+              << " flight_pack=" << static_cast<unsigned>(flight_pack.value_or(0U))
+              << " flight_active_frames=" << flight_active_frames
+              << " dead_owner_rows=" << dead_owner_rows
+              << " local_respawns=" << local_respawns
               << " uplink_ms=" << uplink_delay_ms
               << " downlink_ms=" << downlink_delay_ms
               << " jitter_ms=" << jitter_ms
@@ -918,6 +1085,7 @@ int main(int argc, char** argv) {
               << " dynamic_create_players=" << dynamic_create_players
               << " orphan_world_rows=" << orphan_world_rows
               << " terrain_echoes=" << terrain_echoes
+              << " build_echo_ms=" << build_echo_ms.value_or(-1.0)
               << " max_position_correction=" << maximum_position_correction
               << " max_velocity_correction=" << maximum_velocity_correction
               << " max_orientation_error=" << maximum_orientation_error
@@ -963,6 +1131,7 @@ int main(int argc, char** argv) {
         orphan_world_rows != 0U || (!suppress_build && terrain_echoes == 0U) ||
         !decoded_colors || maximum_position_correction > 0.5 ||
         maximum_velocity_correction > 0.1 ||
+        (flight_pack.has_value() && flight_active_frames < 30U) ||
         (require_peer && remote_world_rows < 30U)) {
         std::cerr << "live server/client packet parity gate failed\n";
         return 1;

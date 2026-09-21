@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -83,6 +85,25 @@ void opaque_lobby_ids_resolve_to_current_endpoints() {
            "expired lobby IDs must fail closed instead of becoming DNS names");
 }
 
+void friend_server_selection_matches_authoritative_social_ids() {
+    using namespace battlespades::network;
+    DiscoveryResult source;
+    source.error = "upstream warning";
+    source.servers = {
+        DiscoveredServer{{"127.0.0.1", 32887U}, 0U, 10U, "Friend Relay", "City",
+                         "tdm", "europe", {}, "relay-friend"},
+        DiscoveredServer{{"example.net", 32887U}, 0U, 20U, "Public", "London",
+                         "ctf", "europe", {}, "relay-other"},
+    };
+    const std::vector<std::string> ids{"relay-friend"};
+    const auto selected = select_discovered_servers(std::move(source), ids);
+    expect(selected.servers.size() == 1U &&
+               selected.servers.front().master_identifier == "relay-friend",
+           "Friends browser must retain only authoritative social server ids");
+    expect(selected.error == "upstream warning",
+           "Friends filtering must preserve discovery failures for the UI");
+}
+
 } // namespace
 
 int main() {
@@ -91,7 +112,8 @@ int main() {
         public_list_parses_real_schema_and_deduplicates();
         lan_response_uses_datagram_source_as_authority();
         opaque_lobby_ids_resolve_to_current_endpoints();
-        std::cout << "4/4 tests passed\n";
+        friend_server_selection_matches_authoritative_social_ids();
+        std::cout << "5/5 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

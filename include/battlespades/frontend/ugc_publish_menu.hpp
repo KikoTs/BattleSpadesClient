@@ -151,7 +151,7 @@ public:
     [[nodiscard]] std::optional<UgcPublishEffect> handle(ui::InputEvent event);
 
     /** Completes a previously emitted asynchronous upload request. */
-    [[nodiscard]] std::optional<UgcPublishEffect> finish_publish(bool success);
+    [[nodiscard]] std::optional<UgcPublishEffect> finish_publish(bool success, std::string item_url = {});
 
     /**
      * Completes the matching opaque deletion request. A mismatched UID is

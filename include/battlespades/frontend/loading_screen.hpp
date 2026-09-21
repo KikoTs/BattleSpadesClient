@@ -3,6 +3,7 @@
 #include "battlespades/assets/preload_service.hpp"
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -35,6 +36,14 @@ struct LoadingTextureSelection final {
     std::string infographic_asset;
 };
 
+struct LoadingScoreRow final {
+    std::string label_key;
+    std::string value;
+    /** Category headings retain an index so drawing and input share one row list. */
+    std::optional<std::size_t> section;
+    bool expanded{};
+};
+
 struct MatchLoadingSnapshot final {
     MatchLoadingState state{MatchLoadingState::connecting};
     std::string map_name;
@@ -48,6 +57,9 @@ struct MatchLoadingSnapshot final {
     double overall_progress{};
     double no_progress_seconds_remaining{30.0};
     bool start_enabled{};
+    std::array<std::string, 3U> infographic_captions;
+    std::vector<LoadingScoreRow> score_rows;
+    std::size_t score_scroll{};
 };
 
 /** Retail boot splash projection: 36 bullets backed by real preload progress. */
@@ -69,6 +81,7 @@ class MatchLoadingModel final {
 public:
     static constexpr double no_progress_timeout_seconds{30.0};
     static constexpr double automatic_tab_interval_seconds{3.0};
+    static constexpr std::size_t visible_score_rows{10U};
 
     void begin(std::string expected_map = {},
                std::string expected_mode = {},
@@ -78,7 +91,11 @@ public:
                       std::string mode_key,
                       bool classic,
                       std::string texture_skin,
-                      bool map_creator = false);
+                      bool map_creator = false,
+                      bool friendly_fire = false);
+    /** Explain real host/authentication stages without changing readiness. */
+    void set_status(std::string status);
+    void set_infographic_captions(std::array<std::string, 3U> captions);
     void receiving_packs() noexcept;
     void checking_map() noexcept;
     void receiving_map() noexcept;
@@ -89,6 +106,9 @@ public:
     void fail(std::string status_key = "LOAD_FAILED");
     void tick(double delta_seconds) noexcept;
     [[nodiscard]] bool select_tab(std::size_t index) noexcept;
+    [[nodiscard]] bool handle_score_click(double design_x, double design_y);
+    [[nodiscard]] bool scroll_scores(int rows);
+    [[nodiscard]] bool set_score_scroll(double fraction);
     [[nodiscard]] MatchLoadingSnapshot snapshot() const;
 
 private:
@@ -110,6 +130,10 @@ private:
     assets::PreloadSnapshot preload_{};
     double last_observed_progress_{};
     double no_progress_remaining_{no_progress_timeout_seconds};
+    std::array<bool, 2U> score_expanded_{true, true};
+    std::size_t score_scroll_{};
+    bool friendly_fire_{};
+    std::array<std::string, 3U> infographic_captions_;
 };
 
 [[nodiscard]] LoadingTextureSelection select_loading_textures(std::string_view map_name,

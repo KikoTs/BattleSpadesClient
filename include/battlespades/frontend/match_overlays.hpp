@@ -157,6 +157,8 @@ private:
     bool can_vote_{};
     bool allow_revote_{};
     bool hide_after_vote_{};
+    /** Only START opens a ballot; late UPDATE packets cannot reopen CLOSED. */
+    bool accepting_updates_{};
 };
 
 class GenericVotingPresentation final {
@@ -171,6 +173,9 @@ struct MatchAward final {
     std::int32_t stat_type{};
     /** Packet 67's authoritative ViewGameStats column (wire team 2/3). */
     std::uint8_t team_id{};
+    /** Retail GameStat retains its player object beyond roster removal. */
+    std::optional<std::string> player_name;
+    std::uint8_t player_team{};
 };
 
 /**
@@ -233,6 +238,8 @@ public:
     static constexpr double rank_up_fade_seconds{0.5};
 
     void apply(const network::GameStatsPacket& packet);
+    void apply(const network::GameStatsPacket& packet,
+               const network::Protocol168Roster& roster);
     void apply(const network::RankUpsPacket& packet);
     void apply(const network::ShowTextMessagePacket& packet) noexcept;
 
@@ -257,16 +264,18 @@ public:
      * lets a client that receives only StateData.has_map_ended render the
      * terminal screen while it waits for the next scene handshake.
      */
-    void on_map_ended(std::int32_t score_winner_team = 0) noexcept;
+    void on_map_ended(std::optional<std::int32_t> score_winner_team =
+                          std::nullopt) noexcept;
     /**
      * Activate ViewGameStats after its packet-67 records have arrived.
      *
      * `score_winner_team` is derived from authoritative SetScore/StateData.
-     * A single packet-67 team is accepted only as a compatibility fallback for
-     * older BattleSpades servers; retail packet 67 normally identifies which
-     * award list is being populated, not the winner.
+     * An explicit zero is an authoritative draw. Only an absent snapshot may
+     * use a single packet-67 team as the old BattleSpades compatibility winner;
+     * retail packet 67 normally selects an award list, not the winner.
      */
-    void show(std::int32_t score_winner_team = 0) noexcept;
+    void show(std::optional<std::int32_t> score_winner_team =
+                  std::nullopt) noexcept;
     void tick(double elapsed_seconds) noexcept;
     void clear() noexcept;
 
@@ -279,6 +288,10 @@ public:
     }
     [[nodiscard]] std::int32_t winner_team() const noexcept {
         return winner_team_;
+    }
+    /** Empty team packets still establish authoritative two-column results. */
+    [[nodiscard]] bool has_both_team_lists() const noexcept {
+        return observed_stats_teams_ == 0x03U;
     }
     [[nodiscard]] std::optional<std::uint8_t> message_id() const noexcept {
         return message_id_;

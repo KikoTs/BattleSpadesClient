@@ -163,10 +163,11 @@ retail_third_person_muzzle_attachment(std::uint8_t tool_id) noexcept;
  * The function is pure and safe on every thread. `action_serial` is the
  * number of accepted uses of the equipped tool and selects the alternating
  * Zombie hand exactly as ZombieHandTool.last_used_hand does.
+ * `can_display_weapon` suppresses only the held tool, never class arms.
  */
 [[nodiscard]] RetailThirdPersonPose evaluate_retail_third_person_pose(
     std::uint8_t tool_id, std::size_t tool_part_count,
     double seconds_since_primary = 1.0e9, std::uint64_t action_serial = 0U,
-    double aim_pitch_degrees = 0.0) noexcept;
+    double aim_pitch_degrees = 0.0, bool can_display_weapon = true) noexcept;
 
 } // namespace battlespades::world

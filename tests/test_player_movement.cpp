@@ -152,7 +152,7 @@ int main() {
             // The box mover stores velocity through retail's float32 pipe, so
             // the stored value is the float rounding of the double math.
             const double expected_vz = static_cast<double>(static_cast<float>(
-                (-0.36 * soldier.jump_multiplier + fixed_dt) / (1.0 + fixed_dt)));
+                static_cast<float>(static_cast<float>(-0.36F * static_cast<float>(soldier.jump_multiplier)) + static_cast<float>(fixed_dt)) / static_cast<double>(static_cast<float>(1.0 + static_cast<float>(fixed_dt)))));
             expect(std::fabs(state.velocity.z - expected_vz) < 1e-12,
                    "jump frame velocity must match the retail impulse+gravity order");
 
@@ -209,9 +209,8 @@ int main() {
             jump.jump = true;
             static_cast<void>(
                 step_player(stale_active, jump, &map, fixed_dt));
-            expect(stale_active.airborne && stale_active.velocity.z < -0.3,
-                   "a stale active bit without a selected pack must fall back "
-                   "to the ordinary jump branch");
+            expect(stale_active.airborne && stale_active.velocity.z > 0.0,
+                   "an invalid active pack must follow the original switch default without ordinary jump thrust");
         }
 
         // Hover is the UGC Builder mode at world.pyd +124. It skips gravity;
@@ -222,6 +221,7 @@ int main() {
             hover.position = {100.5, 100.5, 100.0};
             hover.airborne = true;
             hover.jetpack = 4U;
+            hover.velocity.z = 0.25;
             PlayerInputState input;
             input.hover = true;
             static_cast<void>(step_player(hover, input, &map, fixed_dt));
@@ -242,10 +242,49 @@ int main() {
             water.wade = true;
             water.crouch = true;
             static_cast<void>(step_player(water, {}, &map, fixed_dt));
-            const double crouch_buoyancy = static_cast<double>(
-                static_cast<float>(0.025 / (1.0 + fixed_dt)));
-            expect(std::fabs(water.velocity.z - crouch_buoyancy) < 1e-7,
-                   "wading crouch must use the recovered server force");
+            const double crouch_gravity = static_cast<double>(
+                static_cast<float>(fixed_dt / (1.0 + fixed_dt)));
+            expect(std::fabs(water.velocity.z - crouch_gravity) < 1e-7,
+                   "wading crouch must retain ordinary gravity without invented buoyancy");
+        }
+
+        // The shared Z/action bit must not enable UGC zero-gravity physics
+        // for ordinary players, flight packs 66/67/68 or the parachute.
+        // Compare complete trajectories, including crouched steering, so
+        // filtering gravity alone cannot leave another hover branch active.
+        for (std::uint8_t pack{}; pack <= 3U; ++pack) {
+            for (const bool parachute : {false, true}) {
+                if (parachute && pack != 0U) continue;
+                for (const bool crouch : {false, true}) {
+                    PlayerMovementState normal;
+                    normal.position = {100.5, 100.5, 100.0};
+                    normal.orientation = {1.0, 0.0, 0.0};
+                    normal.airborne = true;
+                    normal.crouch = crouch;
+                    normal.jetpack = pack;
+                    normal.jetpack_active = pack != 0U;
+                    normal.parachute = parachute;
+                    normal.parachute_active = parachute;
+                    auto with_z = normal;
+                    PlayerInputState input;
+                    input.forward = true;
+                    input.jump = pack != 0U;
+                    input.crouch = crouch;
+                    auto z_input = input;
+                    z_input.hover = true;
+                    for (int frame{}; frame < 30; ++frame) {
+                        static_cast<void>(step_player(normal, input, nullptr, fixed_dt));
+                        static_cast<void>(step_player(with_z, z_input, nullptr, fixed_dt));
+                        expect(std::fabs(normal.position.x - with_z.position.x) < 1e-12 &&
+                                   std::fabs(normal.position.z - with_z.position.z) < 1e-12 &&
+                                   std::fabs(normal.velocity.x - with_z.velocity.x) < 1e-12 &&
+                                   std::fabs(normal.velocity.z - with_z.velocity.z) < 1e-12 &&
+                                   normal.airborne == with_z.airborne,
+                               "Z must not change native movement outside UGC Builder hover");
+                    }
+                    expect(z_input.hover, "physics filtering must preserve the raw action input");
+                }
+            }
         }
 
         // A deployed parachute owns the 5% gravity branch and clears fall
@@ -266,8 +305,8 @@ int main() {
                    "parachute must apply 5% gravity and reset prior fall distance");
         }
 
-        // Retail keeps the pitch projection of the unit look vector, so
-        // looking toward the feet or sky reduces horizontal steering.
+        // The original core normalizes horizontal look before acceleration;
+        // aiming up or down must not slow forward movement.
         {
             PlayerInputState forward;
             forward.forward = true;
@@ -281,10 +320,10 @@ int main() {
             static_cast<void>(step_player(level, forward, nullptr, fixed_dt));
             static_cast<void>(step_player(pitched, forward, nullptr, fixed_dt));
             static_cast<void>(step_player(vertical, forward, nullptr, fixed_dt));
-            expect(std::fabs(pitched.velocity.x - level.velocity.x * 0.5) < 1e-7 &&
+            expect(std::fabs(pitched.velocity.x - level.velocity.x) < 1e-7 &&
                        std::fabs(vertical.velocity.x) < 1e-12 &&
                        std::fabs(vertical.velocity.y) < 1e-12,
-                   "look pitch must reduce horizontal movement by the look vector projection");
+                   "look pitch must preserve horizontal steering after normalization");
         }
 
         // A carried objective suppresses sprint while keeping the held bit
@@ -415,8 +454,8 @@ int main() {
 
         // The authoritative mover resolves nearby player bodies after
         // friction and before terrain box movement. With equal standing
-        // heights, a peer 0.25 blocks away pushes this player to the exact
-        // 0.9-diameter contact boundary in one fixed step.
+        // heights, an axis-aligned overlap uses retail's unusual +X fallback
+        // (also present in the original binary fixtures), not a signed push.
         {
             auto map = platform_world();
             PlayerMovementState state;
@@ -428,11 +467,25 @@ int main() {
                 {{start.x + 0.25, start.y, start.z}, 2.7}}};
             static_cast<void>(step_player(
                 state, {}, &map, fixed_dt, {}, peers));
-            expect(std::fabs((state.position.x - peers[0U].position.x) + 0.9) <
+            expect(std::fabs((state.position.x - start.x) - 0.65) <
                        1e-5,
-                   "peer collision must resolve the predicted horizontal overlap");
-            expect(state.velocity.x < -1.2,
+                   "axis-aligned peer collision must retain the retail +X fallback");
+            expect(state.velocity.x > 1.2,
                    "peer collision must retain the native separation impulse");
+        }
+
+        // The original landing curve multiplies in float before truncating.
+        // At exactly 31 blocks, Soldier's 70% damage must be 70, not 69.
+        {
+            auto map = platform_world();
+            PlayerMovementState state;
+            state.position = {102.5, 102.5, 197.75};
+            state.airborne = true;
+            state.velocity.z = 0.2;
+            state.fall_distance = 31.0;
+            const auto landed = step_player(state, {}, &map, fixed_dt);
+            expect(landed.landing_damage == 70,
+                   "landing damage must round the original float product before integer truncation");
         }
 
         // StateData gravity is a world scalar, not a visual hint. LunarBase
@@ -467,7 +520,7 @@ int main() {
 
             apply_crouch_request(state, true, &map);
             expect(state.crouch, "grounded crouch request must crouch");
-            expect(std::fabs(state.position.z - (standing_z + 0.9)) < 1e-9,
+            expect(std::fabs(state.position.z - static_cast<double>(static_cast<float>(standing_z + 0.9))) < 1e-9,
                    "crouching must shift the anchor down by 0.9");
             settle(state, map, 600);
 

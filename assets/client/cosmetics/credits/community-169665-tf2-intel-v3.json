@@ -1,0 +1,60 @@
+{
+  "name": "TF2 intel",
+  "source": "https://gamebanana.com/mods/169665",
+  "archive": [
+    {
+      "archive": "169665\\206117-newcrap.rar",
+      "extracted": "169665\\files-206117",
+      "sha256": "4dc79032a859ebdf27a510e5b830dded8abd951c8ccf7dd814a1636ea942c16d",
+      "listing": [
+        "Backpack intel",
+        "Brand new intel",
+        "TF2 intel",
+        "TF2 Capture point",
+        "New capture point",
+        "Backpack intel/Intel.kv6",
+        "Brand new intel/Intel.kv6",
+        "New capture point/CheckPoint.kv6",
+        "TF2 Capture point/CheckPoint.kv6",
+        "TF2 intel/Intel.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Created models",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Team Fortress 2",
+          "_sName": "Valve"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -2,6 +2,7 @@
 #include "battlespades/audio/server_audio_catalog.hpp"
 #include "battlespades/audio/sound_groups.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
+#include "battlespades/world/weapon_presentation.hpp"
 
 #if defined(__APPLE__)
 #include <OpenAL/al.h>
@@ -43,6 +44,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -1086,6 +1088,7 @@ struct OpenAlFrontendAudio::Impl final {
     }
 
     OpenAlFrontendAudioConfig config;
+    std::string playback_device_name;
     ALCdevice* device{};
     ALCcontext* context{};
     ALuint music_source{};
@@ -1120,6 +1123,9 @@ struct OpenAlFrontendAudio::Impl final {
     bool music_requested{};
     SoundHandle music_track{OpenAlFrontendAudio::main_menu_music};
     static constexpr std::size_t tool_count{65U};
+    struct CosmeticFire final { std::vector<SoundHandle> samples; float gain{1.0F}; };
+    std::map<std::string, CosmeticFire, std::less<>> cosmetic_fire_groups;
+    std::map<std::string,std::map<std::string,std::vector<SoundHandle>,std::less<>>,std::less<>> cosmetic_cues;
     std::array<std::vector<SoundHandle>, tool_count> weapon_shoot_groups;
     std::array<std::vector<SoundHandle>, tool_count> weapon_reload_groups;
     std::array<std::vector<SoundHandle>, tool_count> weapon_reload_done_groups;
@@ -1209,7 +1215,10 @@ bool valid_openal_frontend_audio_config(const OpenAlFrontendAudioConfig& config)
     return !config.asset_root.empty() && config.max_one_shot_voices > 0U &&
            config.max_one_shot_voices <= maximum_voice_count && std::isfinite(config.music_gain) &&
            config.music_gain >= 0.0F && config.music_gain <= 4.0F &&
-           std::isfinite(config.cue_gain) && config.cue_gain >= 0.0F && config.cue_gain <= 4.0F;
+           std::isfinite(config.cue_gain) && config.cue_gain >= 0.0F && config.cue_gain <= 4.0F &&
+           config.playback_device.size() <= 512U &&
+           std::ranges::none_of(config.playback_device,
+                               [](unsigned char byte) { return byte < 0x20U || byte == 0x7FU; });
 }
 
 OpenAlFrontendAudio::OpenAlFrontendAudio(OpenAlFrontendAudioConfig config)
@@ -1240,16 +1249,53 @@ bool OpenAlFrontendAudio::start() {
     try {
         impl_->last_error.clear();
         impl_->owner_thread = std::this_thread::get_id();
-        impl_->device = alcOpenDevice(nullptr);
-        if (impl_->device == nullptr) {
-            impl_->last_error = "OpenAL Soft could not open the default playback device";
-            impl_->owner_thread = {};
-            return false;
+        // Opening a WASAPI endpoint alone does not establish that it can play:
+        // disconnected Bluetooth outputs can open but reject their own mix
+        // format at alcCreateContext. Only automatic device selection may try
+        // other outputs; an explicit choice must never redirect private audio.
+        std::vector<std::string> candidates;
+        if (!impl_->config.playback_device.empty())
+            candidates.push_back(impl_->config.playback_device);
+        else
+            candidates.emplace_back();
+        const auto all_devices = alcIsExtensionPresent(nullptr, "ALC_ENUMERATE_ALL_EXT") != ALC_FALSE;
+        const auto specifier = all_devices
+                                   ? alcGetEnumValue(nullptr, "ALC_ALL_DEVICES_SPECIFIER")
+                                   : ALC_DEVICE_SPECIFIER;
+        if (impl_->config.playback_device.empty() &&
+            (all_devices || alcIsExtensionPresent(nullptr, "ALC_ENUMERATION_EXT") != ALC_FALSE)) {
+            const auto* names = alcGetString(nullptr, specifier);
+            for (std::size_t index{}; names != nullptr && *names != '\0' && index < 32U; ++index) {
+                const std::string name{names};
+                if (std::ranges::find(candidates, name) == candidates.end()) candidates.push_back(name);
+                names += name.size() + 1U;
+            }
         }
-
-        impl_->context = alcCreateContext(impl_->device, nullptr);
+        std::vector<std::string> attempted;
+        for (const auto& candidate : candidates) {
+            impl_->device = alcOpenDevice(candidate.empty() ? nullptr : candidate.c_str());
+            if (impl_->device == nullptr) continue;
+            const auto* label = alcGetString(impl_->device, specifier);
+            const std::string resolved = label != nullptr ? label : candidate;
+            if (std::ranges::find(attempted, resolved) == attempted.end()) {
+                attempted.push_back(resolved);
+                impl_->context = alcCreateContext(impl_->device, nullptr);
+            }
+            if (impl_->context != nullptr) {
+                impl_->playback_device_name = resolved;
+                if (attempted.size() > 1U || (!impl_->config.playback_device.empty() &&
+                                            candidate != impl_->config.playback_device))
+                    std::fprintf(stderr, "[audio] Using available playback device: %s\n", resolved.c_str());
+                break;
+            }
+            static_cast<void>(alcCloseDevice(impl_->device));
+            impl_->device = nullptr;
+        }
         if (impl_->context == nullptr) {
-            impl_->last_error = "OpenAL Soft could not create a playback context";
+            impl_->last_error = impl_->config.playback_device.empty()
+                                    ? "No available audio output accepted playback; reconnect your audio device and restart the game"
+                                    : "Selected audio output could not start: " + impl_->config.playback_device +
+                                          "; reconnect this device and restart the game";
             stop();
             return false;
         }
@@ -1382,6 +1428,19 @@ bool OpenAlFrontendAudio::start() {
             bind(WeaponCue::tool_extra, weapon.sounds.tool_extra);
         }
 
+        for (const auto& item : world::load_weapon_presentations(root)) {
+            Impl::CosmeticFire fire;
+            fire.gain = item.fire_gain;
+            for (const auto& stem : item.fire_samples) {
+                const auto group = impl_->load_optional_group(stem, root.parent_path()/"client/cosmetics/sounds");
+                fire.samples.insert(fire.samples.end(), group.begin(), group.end());
+            }
+            if (!fire.samples.empty()) impl_->cosmetic_fire_groups.emplace(item.id, std::move(fire));
+            for(const auto& [cue,stems]:item.cues)for(const auto& stem:stems){
+                const auto group=impl_->load_optional_group(stem,root.parent_path()/"client/cosmetics/sounds");
+                auto& samples=impl_->cosmetic_cues[item.id][cue];samples.insert(samples.end(),group.begin(),group.end());
+            }
+        }
         if (impl_->config.play_music_on_start && !impl_->play_music(main_menu_music)) {
             stop();
             return false;
@@ -1413,16 +1472,29 @@ void OpenAlFrontendAudio::play_bullet_impact(std::uint8_t variant,
     play_one_shot(samples[variant % samples.size()], position, gain);
 }
 
+bool OpenAlFrontendAudio::has_cosmetic_fire(std::string_view id) const noexcept {
+    return impl_->cosmetic_fire_groups.contains(id);
+}
+bool OpenAlFrontendAudio::play_cosmetic_cue(std::string_view id,std::string_view cue,std::uint8_t variant,SoundPosition position,float gain,bool relative){
+    const auto item=impl_->cosmetic_cues.find(id);if(item==impl_->cosmetic_cues.end())return false;
+    const auto group=item->second.find(cue);if(group==item->second.end()||group->second.empty())return false;
+    impl_->play(group->second[variant%group->second.size()],position,gain,relative);return true;
+}
+
 void OpenAlFrontendAudio::play_weapon_shoot(std::uint8_t tool_id,
                                             std::uint8_t variant,
                                             SoundPosition position,
                                             float gain,
                                             bool head_relative,
-                                            SpatialSoundProfile profile) {
+                                            SpatialSoundProfile profile,
+                                            std::string_view cosmetic_id) {
     if (tool_id >= impl_->weapon_shoot_groups.size()) {
         return;
     }
-    const auto& group = impl_->weapon_shoot_groups[tool_id];
+    const auto cosmetic = impl_->cosmetic_fire_groups.find(cosmetic_id);
+    const auto& group = cosmetic != impl_->cosmetic_fire_groups.end()
+        ? cosmetic->second.samples : impl_->weapon_shoot_groups[tool_id];
+    if (cosmetic != impl_->cosmetic_fire_groups.end()) gain *= cosmetic->second.gain;
     if (!group.empty()) {
         const auto* weapon = world::find_weapon_definition(tool_id);
         const auto pitch_bounds =
@@ -1827,6 +1899,8 @@ void OpenAlFrontendAudio::stop() noexcept {
     impl_->optional_sound_cache.clear();
     impl_->next_optional_handle = 1'000U;
     impl_->next_loop_voice = 1U;
+    impl_->cosmetic_fire_groups.clear();
+    impl_->cosmetic_cues.clear();
     for (auto& group : impl_->weapon_shoot_groups)
         group.clear();
     for (auto& group : impl_->weapon_reload_groups)
@@ -1853,6 +1927,7 @@ void OpenAlFrontendAudio::stop() noexcept {
         static_cast<void>(alcMakeContextCurrent(displaced_context));
     }
     impl_->owner_thread = {};
+    impl_->playback_device_name.clear();
 }
 
 void OpenAlFrontendAudio::set_listener(SoundPosition position) {
@@ -2162,6 +2237,22 @@ void OpenAlFrontendAudio::play_zoom_toggle(bool enabled) {
     impl_->play(enabled ? zoom_in_sound : zoom_out_sound, {}, impl_->config.cue_gain, true, true);
 }
 
+SoundHandle OpenAlFrontendAudio::preload_skin_sound(const std::filesystem::path& path) {
+    if(!impl_->context||!impl_->on_owner_thread()||path.extension()!=".ogg")return 0U;
+    const auto base=std::filesystem::weakly_canonical(impl_->config.asset_root.parent_path()/"client/cosmetics");
+    const auto resolved=std::filesystem::weakly_canonical(path);
+    const auto relative=resolved.lexically_relative(base);
+    if(relative.empty()||*relative.begin()=="..")return 0U;
+    const auto key=path_utf8(resolved);
+    if(const auto it=impl_->optional_sound_cache.find(key);it!=impl_->optional_sound_cache.end())return it->second;
+    const auto handle=impl_->next_optional_handle++;
+    if(!impl_->load_buffer(handle,resolved))return 0U;
+    impl_->optional_sound_cache.emplace(key,handle);return handle;
+}
+void OpenAlFrontendAudio::play_skin_sound(SoundHandle sound,float gain,float pitch) {
+    impl_->play(sound,{},gain,true,false,0.F,0.F,SpatialSoundProfile::ordinary,pitch);
+}
+
 void OpenAlFrontendAudio::play_respawn_countdown_beep(bool final_beat) {
     // Character.media.play('beep1'/'beep2') is a protected 2D/UI cue.
     impl_->play(final_beat ? respawn_beep1_sound : respawn_beep2_sound,
@@ -2261,6 +2352,10 @@ void OpenAlFrontendAudio::stop_ambience() noexcept {
 
 bool OpenAlFrontendAudio::is_started() const noexcept {
     return impl_->context != nullptr;
+}
+
+std::string_view OpenAlFrontendAudio::playback_device() const noexcept {
+    return impl_->playback_device_name;
 }
 
 std::size_t OpenAlFrontendAudio::active_one_shot_voices() const noexcept {

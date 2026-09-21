@@ -146,6 +146,27 @@ void localization_supports_utf8_fallback_and_live_reload() {
            "locale metadata must expose Unicode font and available languages");
 }
 
+void localization_directory_loads_one_file_per_language() {
+    TemporaryDirectory directory;
+    const auto path = directory.path / "localization";
+    std::filesystem::create_directories(path);
+    {
+        std::ofstream output{path / "en.json", std::ios::binary};
+        output << R"({"schema_version":1,"locale":"en","native_name":"English","font_asset":"","strings":{"QUIT":"Quit"}})";
+    }
+    {
+        std::ofstream output{path / "ru.json", std::ios::binary};
+        output << R"({"schema_version":1,"locale":"ru","native_name":"Русский","font_asset":"fonts/Gen_Shin_Gothic_Monospace_Bold.ttf","strings":{"QUIT":"Выход"}})";
+    }
+    battlespades::frontend::LocalizationCatalog catalog{path};
+    expect(catalog.load() && catalog.languages().size() == 2U,
+           "localization directory must discover every JSON language pack");
+    expect(catalog.set_active_locale("ru") && catalog.lookup("QUIT") == "Выход",
+           "Settings must be able to select a loaded language immediately");
+    expect(!catalog.set_active_locale("invalid/locale"),
+           "unknown or malformed locale selections must fail closed");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -163,6 +184,8 @@ int main() {
          malformed_layout_keeps_last_valid_document},
         {"localization_supports_utf8_fallback_and_live_reload",
          localization_supports_utf8_fallback_and_live_reload},
+        {"localization_directory_loads_one_file_per_language",
+         localization_directory_loads_one_file_per_language},
     };
     std::size_t failures{};
     for (const auto& test : tests) {

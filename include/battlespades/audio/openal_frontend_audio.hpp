@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <string_view>
 
 namespace battlespades::audio {
@@ -20,6 +21,8 @@ struct OpenAlFrontendAudioConfig final {
     float music_gain{1.0F};
     float cue_gain{1.0F};
     bool play_music_on_start{true};
+    /** Empty tries the system default, then available outputs; an explicit device never falls back. */
+    std::string playback_device;
 };
 
 /** Pure validation helper; does not touch the filesystem or an audio device. */
@@ -175,6 +178,8 @@ public:
     void play_one_shot(SoundHandle sound, SoundPosition position, float gain) override;
     /** Plays an owner/UI cue at the listener without world-space stereo panning. */
     void play_head_relative_one_shot(SoundHandle sound, float gain = 1.0F);
+    [[nodiscard]] SoundHandle preload_skin_sound(const std::filesystem::path& path);
+    void play_skin_sound(SoundHandle sound,float gain,float pitch=1.0F);
     void stop_all() noexcept override;
 
     /** Play non-positional retail UI cues using the configured cue gain. */
@@ -204,7 +209,11 @@ public:
                            SoundPosition position,
                            float gain = 1.0F,
                            bool head_relative = false,
-                           SpatialSoundProfile profile = SpatialSoundProfile::ordinary);
+                           SpatialSoundProfile profile = SpatialSoundProfile::ordinary,
+                           std::string_view cosmetic_id = {});
+    [[nodiscard]] bool has_cosmetic_fire(std::string_view cosmetic_id) const noexcept;
+    [[nodiscard]] bool play_cosmetic_cue(std::string_view cosmetic_id,std::string_view cue,
+        std::uint8_t variant,SoundPosition position,float gain=1.0F,bool head_relative=false);
     void play_weapon_reload(std::uint8_t tool_id,
                             std::uint8_t variant,
                             SoundPosition position,
@@ -385,6 +394,7 @@ public:
     void stop_menu_music() noexcept;
 
     [[nodiscard]] bool is_started() const noexcept;
+    [[nodiscard]] std::string_view playback_device() const noexcept;
     [[nodiscard]] std::size_t active_one_shot_voices() const noexcept;
     [[nodiscard]] std::string_view last_error() const noexcept;
 

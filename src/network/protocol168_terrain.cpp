@@ -1,6 +1,7 @@
 #include "battlespades/network/protocol168_terrain.hpp"
 
 #include "battlespades/network/protocol168_tool_actions.hpp"
+#include "battlespades/world/retail_random.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -101,19 +102,44 @@ damage_cell(const DamagePacket& packet) noexcept {
         // applying the native radius handler. Direct bullet/melee damage still
         // names an exact voxel and must fail closed on fractional coordinates.
         const bool radius_damage = packet.type == 15U || packet.type == 16U ||
-                                   packet.type == 41U;
+                                   packet.type == 21U || packet.type == 41U;
         if (!radius_damage && std::floor(value) != value) {
             return std::nullopt;
         }
-        cell[axis] = static_cast<std::uint32_t>(std::floor(value));
+        // The original turret handler receives int(round(position)) from
+        // BlockManager.handle_damage (Python 2 rounds halves away from zero).
+        // Keep the existing compact deployable protocol's truncation separate.
+        cell[axis] = static_cast<std::uint32_t>(
+            packet.type == 21U ? std::round(value) : std::floor(value));
     }
     return world::VoxelCell{cell[0U], cell[1U], cell[2U]};
 }
 
-[[nodiscard]] std::vector<world::VoxelCell>
+struct TerrainCellDamage final {
+    world::VoxelCell cell;
+    float damage;
+};
+
+[[nodiscard]] std::vector<TerrainCellDamage>
 expanded_damage_cells(const DamagePacket& packet) {
-    const auto center = damage_cell(packet);
-    if (!center.has_value()) return {};
+    if (!std::isfinite(packet.damage) || packet.damage <= 0.0F) return {};
+    std::array<std::int64_t, 3U> center{};
+    if (packet.type == 21U) {
+        // A rocket just outside the map can still damage its edge. Bound the
+        // signed centre before conversion, then clip individual candidates.
+        constexpr std::array limits{world::VxlMap::width, world::VxlMap::depth,
+                                    world::VxlMap::height};
+        for (std::size_t axis{}; axis < center.size(); ++axis) {
+            const auto value = packet.position[axis];
+            if (!std::isfinite(value) || value < -3.0F || value > limits[axis] + 3.0F)
+                return {};
+            center[axis] = static_cast<std::int64_t>(std::round(value));
+        }
+    } else {
+        const auto cell = damage_cell(packet);
+        if (!cell.has_value()) return {};
+        center = {cell->x, cell->y, cell->z};
+    }
 
     enum class Shape { single, column, cube, vertical_pair, radius_one, radius_two };
     Shape shape{Shape::single};
@@ -143,21 +169,48 @@ expanded_damage_cells(const DamagePacket& packet) {
         break;
     }
 
-    std::vector<world::VoxelCell> cells;
-    const auto add = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz) {
-        const auto x = static_cast<std::int64_t>(center->x) + dx;
-        const auto y = static_cast<std::int64_t>(center->y) + dy;
-        const auto z = static_cast<std::int64_t>(center->z) + dz;
+    std::vector<TerrainCellDamage> cells;
+    const auto add_damage = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz,
+                                float damage) {
+        const auto x = center[0U] + dx;
+        const auto y = center[1U] + dy;
+        const auto z = center[2U] + dz;
         if (x < 0 || y < 0 || z < 0 ||
             x >= static_cast<std::int64_t>(world::VxlMap::width) ||
             y >= static_cast<std::int64_t>(world::VxlMap::depth) ||
             z >= static_cast<std::int64_t>(world::VxlMap::height)) {
             return;
         }
-        cells.push_back({static_cast<std::uint32_t>(x),
-                         static_cast<std::uint32_t>(y),
-                         static_cast<std::uint32_t>(z)});
+        cells.push_back({{static_cast<std::uint32_t>(x),
+                          static_cast<std::uint32_t>(y),
+                          static_cast<std::uint32_t>(z)}, damage});
     };
+    const auto add = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz) {
+        add_damage(dx, dy, dz, packet.damage);
+    };
+
+    if (packet.type == 21U) { // ROCKET_TURRET_ROCKET_DAMAGE.
+        // gameScene.pyd: turret wrapper 0x10085FA0 (A1621 = 3), radius-list
+        // generator 0x10079680, damage handler 0x1007C3A0. Its 93 offsets are
+        // ordered Z/X/Y, with strict d^2 < 9; this is not a uniform crater.
+        world::RetailRandom random{packet.seed};
+        for (std::int32_t dz{-3}; dz <= 3; ++dz) {
+            for (std::int32_t dx{-3}; dx <= 3; ++dx) {
+                for (std::int32_t dy{-3}; dy <= 3; ++dy) {
+                    const auto distance_squared = dx * dx + dy * dy + dz * dz;
+                    if (distance_squared >= 9) continue;
+                    // Consume one CPython random sample even for air or an
+                    // out-of-map cell. Skipping it changes every later hit.
+                    const double damage = static_cast<double>(packet.damage) / 9.0 *
+                                              (9 - distance_squared) +
+                                          random.random() * 2.0;
+                    add_damage(dx, dy, dz,
+                               static_cast<float>(std::ceil(damage * 4.0) / 4.0));
+                }
+            }
+        }
+        return cells;
+    }
 
     if (shape == Shape::single) {
         add(0, 0, 0);
@@ -469,8 +522,10 @@ TerrainApplyResult apply_expanded_damage(world::VxlMap& map,
     std::vector<world::VoxelCell> destroyed_cells;
     destroyed_cells.reserve(cells.size());
 
-    for (const auto& cell : cells) {
+    for (const auto& entry : cells) {
+        const auto& cell = entry.cell;
         auto direct = packet;
+        direct.damage = entry.damage;
         direct.position = {static_cast<float>(cell.x),
                            static_cast<float>(cell.y),
                            static_cast<float>(cell.z)};
@@ -775,7 +830,9 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
                                        : std::nullopt;
                 result.mutation = apply_expanded_damage(
                     *map_, packet, block_health_);
-                if (result.mutation.accepted && center.has_value()) {
+                // The retail turret handler disables debris; Rocket.delete
+                // (DestroyEntity) already owns its explosion effects/audio.
+                if (result.mutation.accepted && center.has_value() && packet.type != 21U) {
                     const bool broad = packet.type == 10U || packet.type == 15U ||
                                        packet.type == 16U || packet.type == 33U ||
                                        packet.type == 41U;

@@ -59,6 +59,8 @@ public:
 
     void set_slots(std::vector<InventorySlot> slots,
                    std::optional<std::size_t> selected = std::nullopt) noexcept;
+    /** Refresh availability without rebuilding slots or restarting selection animation. */
+    void set_slot_ammunition(std::size_t index, bool has_ammo) noexcept;
     [[nodiscard]] bool select_slot(std::size_t index, InventorySelectionOrigin origin,
                                    bool can_swap = true) noexcept;
     [[nodiscard]] bool cycle(int direction, bool can_swap = true) noexcept;

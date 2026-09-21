@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "id": "pack-legacy-bren-smg",
+  "name": "Bren Gun",
+  "source": "https://gamebanana.com/mods/344131",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/SMG/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/SMG/barrelNbipod.kv6": "Models/Weapons/SMG/barrelNbipod.kv6",
+    "Models/Weapons/SMG/magazine.kv6": "Models/Weapons/SMG/magazine.kv6",
+    "Models/Weapons/SMG/Sight1.kv6": "Models/Weapons/SMG/Sight1.kv6",
+    "Models/Weapons/SMG/Sight2.kv6": "Models/Weapons/SMG/Sight2.kv6",
+    "Models/Weapons/SMG/stock.kv6": "Models/Weapons/SMG/stock.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMag.kv6": "Models/Weapons/SMG/WeaponNoMag.kv6",
+    "Scripts/Skin/SMG/ThirdPerson.as": "Scripts/Skin/SMG/ThirdPerson.as",
+    "Scripts/Skin/SMG/View.as": "Scripts/Skin/SMG/View.as",
+    "Sounds/Weapons/SMG/Fire3rd.wav": "Sounds/Weapons/SMG/Fire3rd.wav.ogg",
+    "Sounds/Weapons/SMG/FireFar.wav": "Sounds/Weapons/SMG/FireFar.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal.wav": "Sounds/Weapons/SMG/FireLocal.wav.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.wav": "Sounds/Weapons/SMG/ReloadLocal.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Models/Weapons/SMG/Sight3.kv6": "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6"
+  },
+  "hashes": {
+    "Models/Weapons/SMG/barrelNbipod.kv6": "6e4423589b334c30e77f801649116c6bed1643fc14797db6438350e6cc9b83f3",
+    "Models/Weapons/SMG/magazine.kv6": "6a7bc096717e71e35292b96716362cde41add0ee9c408177d799c96d47126690",
+    "Models/Weapons/SMG/Sight1.kv6": "0dea17db477eb50713692689a807d9b6c82aa8855adcd3dda900cc90210a9a84",
+    "Models/Weapons/SMG/Sight2.kv6": "f143637ea98e2f9d95c0f83d711de9cf9e10074add952aff6e55fb89895bfc9f",
+    "Models/Weapons/SMG/stock.kv6": "f3c087c1c561815f2a89e365df8bf889992b972bfb52debedb8c8dfd830a6eb2",
+    "Models/Weapons/SMG/Weapon.kv6": "194060cc64d1a24cf6b01534d6addd1b7367445567eebd93ab0615b25a7c95d5",
+    "Models/Weapons/SMG/WeaponNoMag.kv6": "de9dac998402e37401c75029f20d8f4941c0bd6f08e653fba2887f6bca26f6ce",
+    "Scripts/Skin/SMG/ThirdPerson.as": "cb50247be65ff12c89a77fc40c4adb48ef191c24d175008c5dd9057ce34100e3",
+    "Scripts/Skin/SMG/View.as": "50bbcc3f064fa83b7705c321f36fbf9bb62d8cedf4d4ad1844b517fcd0bca929",
+    "Sounds/Weapons/SMG/Fire3rd.wav": "c63651a25f0d2f4bc4f41c363409ff77b76555659637e9a89aca70276d40fd18",
+    "Sounds/Weapons/SMG/FireFar.wav": "3844058aa6e25bbf73e10964401d3d0cd397efa00430ffb152255369b87257d9",
+    "Sounds/Weapons/SMG/FireLocal.wav": "3844058aa6e25bbf73e10964401d3d0cd397efa00430ffb152255369b87257d9",
+    "Sounds/Weapons/SMG/ReloadLocal.wav": "aaf330c06b7e54797b337c40dbb3383e06229f8caae76be1cf2da4791d9443f0",
+    "Sounds/Weapons/SMG/Fire3rd.wav.ogg": "9e246285aef4ac477af52049159f7e5d413139569944f29295d5cdc7b40d273a",
+    "Sounds/Weapons/SMG/FireFar.wav.ogg": "d389e8cceb3e8bdd3a66ffc969c8937f9d58be113282b0bbf4b07d31dc0d065d",
+    "Sounds/Weapons/SMG/FireLocal.wav.ogg": "07e8243d200a84b5684a4667b9d024c4df97fc16ff513acf477e7e33c920a823",
+    "Sounds/Weapons/SMG/ReloadLocal.wav.ogg": "3ef44acb7660ca483d48f2a77c091f31c0f93caa014e714692420b73266f39a5",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Models/Weapons/SMG/Sight3.kv6": "93d3935dc5ce1bcce63d92436192f80956823c0367d9d4d505685586cd8f1465",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "group": "Key Authors",
+      "authors": [
+        {
+          "name": "Twodayudie",
+          "role": "Creator",
+          "url": "https://gamebanana.com/members/1982902"
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": []
+}

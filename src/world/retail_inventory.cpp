@@ -31,6 +31,16 @@ void RetailInventory::set_slots(std::vector<InventorySlot> slots,
     }
 }
 
+void RetailInventory::set_slot_ammunition(std::size_t index, bool has_ammo) noexcept {
+    if (index >= slots_.size()) return;
+    slots_[index].has_ammo = has_ammo;
+    // An exhausted held tool stays equipped until the player switches. If a
+    // loadout had no selectable slot, a restock can make its first slot usable.
+    if (!selected_index_.has_value() && slot_selectable(index)) {
+        selected_index_ = index;
+    }
+}
+
 bool RetailInventory::select_slot(std::size_t index, InventorySelectionOrigin origin,
                                   bool can_swap) noexcept {
     if (!can_swap || !slot_selectable(index)) {

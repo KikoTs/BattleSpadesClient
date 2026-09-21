@@ -28,6 +28,57 @@ constexpr std::size_t maximum_value_bytes{8'192U};
     });
 }
 
+[[nodiscard]] std::optional<std::string> normalized_requested_locale(std::string_view locale) {
+    if (locale.empty() || locale.size() > 32U) return std::nullopt;
+    std::string normalized;
+    normalized.reserve(locale.size());
+    for (const auto character : locale) {
+        const auto value = static_cast<unsigned char>(character);
+        if (value == '_') {
+            normalized.push_back('-');
+        } else if (std::isalnum(value) != 0 || value == '-') {
+            normalized.push_back(static_cast<char>(std::tolower(value)));
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    // Accept retail/Steam language names and ordinary OS locale spellings so
+    // migrated settings do not silently drop back to English.
+    if (normalized == "english") return std::string{"en"};
+    if (normalized == "russian") return std::string{"ru"};
+    if (normalized == "japanese") return std::string{"ja"};
+    if (normalized == "german") return std::string{"de"};
+    if (normalized == "french") return std::string{"fr"};
+    if (normalized == "spanish") return std::string{"es"};
+    if (normalized == "mexican") return std::string{"es-MX"};
+    if (normalized == "brazilian") return std::string{"pt-BR"};
+    if (normalized == "italian") return std::string{"it"};
+    if (normalized == "polish") return std::string{"pl"};
+    if (normalized == "turkish") return std::string{"tr"};
+
+    std::size_t begin{};
+    std::size_t part_index{};
+    while (begin < normalized.size()) {
+        const auto end = normalized.find('-', begin);
+        const auto length = (end == std::string::npos ? normalized.size() : end) - begin;
+        if (length == 0U) return std::nullopt;
+        if (part_index > 0U && (length == 2U || length == 3U)) {
+            for (std::size_t index = begin; index < begin + length; ++index) {
+                normalized[index] = static_cast<char>(
+                    std::toupper(static_cast<unsigned char>(normalized[index])));
+            }
+        } else if (part_index > 0U && length == 4U) {
+            normalized[begin] = static_cast<char>(
+                std::toupper(static_cast<unsigned char>(normalized[begin])));
+        }
+        if (end == std::string::npos) break;
+        begin = end + 1U;
+        ++part_index;
+    }
+    return normalized;
+}
+
 [[nodiscard]] bool valid_utf8(std::string_view value) {
     return core::utf8_code_point_prefix(value, value.size()).size() == value.size();
 }
@@ -60,51 +111,17 @@ bool LocalizationCatalog::load() {
         }
         languages_.clear();
         language_infos_.clear();
-        loaded_write_time_.reset();
+        loaded_write_times_.clear();
         active_locale_ = "en";
         fallback_locale_ = "en";
         ++generation_;
         return true;
     }
-    const auto size = std::filesystem::file_size(path_, error);
-    if (error || size > maximum_file_bytes) {
-        last_error_ = error ? "cannot inspect localization size: " + error.message()
-                            : "localization file exceeds the 8 MiB safety limit";
-        return false;
-    }
-
     try {
-        std::ifstream input{path_, std::ios::binary};
-        if (!input) {
-            last_error_ = "cannot open localization file";
-            return false;
-        }
-        const auto document = nlohmann::json::parse(input);
-        if (!document.is_object() || document.value("schema_version", 0U) != schema_version ||
-            !document.contains("locales") || !document["locales"].is_object()) {
-            last_error_ = "localization file must contain schema_version 1 and a locales object";
-            return false;
-        }
-        if (document["locales"].size() == 0U ||
-            document["locales"].size() > maximum_languages) {
-            last_error_ = "localization file has an invalid locale count";
-            return false;
-        }
-
-        const auto active = bounded_text(document.value("active_locale", nlohmann::json{"en"}),
-                                         32U);
-        const auto fallback = bounded_text(
-            document.value("fallback_locale", nlohmann::json{"en"}), 32U);
-        if (!active.has_value() || !fallback.has_value() || !valid_locale(*active) ||
-            !valid_locale(*fallback)) {
-            last_error_ = "active_locale and fallback_locale must be BCP-47 style tags";
-            return false;
-        }
-
         std::map<std::string, Language, std::less<>> parsed;
         std::vector<LanguageInfo> infos;
-        infos.reserve(document["locales"].size());
-        for (const auto& [locale, value] : document["locales"].items()) {
+        std::map<std::filesystem::path, std::filesystem::file_time_type> write_times;
+        const auto parse_language = [&](std::string locale, const nlohmann::json& value) {
             if (!valid_locale(locale) || !value.is_object() ||
                 !value.contains("strings") || !value["strings"].is_object() ||
                 value["strings"].size() > maximum_strings_per_language) {
@@ -130,19 +147,125 @@ bool LocalizationCatalog::load() {
                 }
                 language.strings.emplace(key, *translated);
             }
+            if (parsed.contains(locale)) {
+                last_error_ = "duplicate locale entry: " + locale;
+                return false;
+            }
             infos.push_back(language.info);
-            parsed.emplace(locale, std::move(language));
+            parsed.emplace(std::move(locale), std::move(language));
+            return true;
+        };
+
+        std::string requested_locale = active_locale_;
+        std::string requested_fallback{"en"};
+        if (std::filesystem::is_directory(path_, error)) {
+            if (error) {
+                last_error_ = "cannot inspect localization directory: " + error.message();
+                return false;
+            }
+            std::vector<std::filesystem::path> files;
+            for (std::filesystem::directory_iterator it{path_, error}, end; it != end && !error;
+                 it.increment(error)) {
+                if (it->is_regular_file() && it->path().extension() == ".json") {
+                    files.push_back(it->path());
+                }
+            }
+            if (error) {
+                last_error_ = "cannot enumerate localization directory: " + error.message();
+                return false;
+            }
+            std::ranges::sort(files);
+            if (files.size() > maximum_languages) {
+                last_error_ = "localization directory exceeds the 64-language limit";
+                return false;
+            }
+            for (const auto& file : files) {
+                const auto size = std::filesystem::file_size(file, error);
+                if (error || size > maximum_file_bytes) {
+                    last_error_ = error ? "cannot inspect localization file: " + error.message()
+                                        : "localization file exceeds the 8 MiB safety limit";
+                    return false;
+                }
+                std::ifstream input{file, std::ios::binary};
+                if (!input) {
+                    last_error_ = "cannot open localization file: " + file.string();
+                    return false;
+                }
+                const auto document = nlohmann::json::parse(input);
+                if (!document.is_object() ||
+                    document.value("schema_version", 0U) != schema_version) {
+                    last_error_ = "localization file must use schema_version 1: " + file.string();
+                    return false;
+                }
+                const auto locale = bounded_text(
+                    document.value("locale", nlohmann::json{file.stem().string()}), 32U);
+                if (!locale.has_value() || !parse_language(*locale, document)) return false;
+                const auto time = std::filesystem::last_write_time(file, error);
+                if (!error) write_times.emplace(file, time);
+                error.clear();
+            }
+        } else {
+            // Backward compatibility for community installs that still have
+            // the original all-in-one localization.json.
+            const auto size = std::filesystem::file_size(path_, error);
+            if (error || size > maximum_file_bytes) {
+                last_error_ = error ? "cannot inspect localization size: " + error.message()
+                                    : "localization file exceeds the 8 MiB safety limit";
+                return false;
+            }
+            std::ifstream input{path_, std::ios::binary};
+            if (!input) {
+                last_error_ = "cannot open localization file";
+                return false;
+            }
+            const auto document = nlohmann::json::parse(input);
+            if (!document.is_object() || document.value("schema_version", 0U) != schema_version ||
+                !document.contains("locales") || !document["locales"].is_object()) {
+                last_error_ = "localization file must contain schema_version 1 and a locales object";
+                return false;
+            }
+            if (document["locales"].size() == 0U ||
+                document["locales"].size() > maximum_languages) {
+                last_error_ = "localization file has an invalid locale count";
+                return false;
+            }
+            const auto active = bounded_text(
+                document.value("active_locale", nlohmann::json{"en"}), 32U);
+            const auto fallback = bounded_text(
+                document.value("fallback_locale", nlohmann::json{"en"}), 32U);
+            if (!active.has_value() || !fallback.has_value() || !valid_locale(*active) ||
+                !valid_locale(*fallback)) {
+                last_error_ = "active_locale and fallback_locale must be BCP-47 style tags";
+                return false;
+            }
+            requested_locale = *active;
+            requested_fallback = *fallback;
+            infos.reserve(document["locales"].size());
+            for (const auto& [locale, value] : document["locales"].items()) {
+                if (!parse_language(locale, value)) return false;
+            }
+            const auto time = std::filesystem::last_write_time(path_, error);
+            if (!error) write_times.emplace(path_, time);
+            error.clear();
         }
-        if (!parsed.contains(*active) || !parsed.contains(*fallback)) {
-            last_error_ = "active or fallback locale is not present in locales";
-            return false;
+
+        if (parsed.empty()) {
+            languages_.clear();
+            language_infos_.clear();
+            loaded_write_times_ = std::move(write_times);
+            active_locale_ = fallback_locale_ = "en";
+            ++generation_;
+            return true;
         }
+        fallback_locale_ = parsed.contains(requested_fallback)
+                               ? requested_fallback
+                               : (parsed.contains("en") ? std::string{"en"}
+                                                        : parsed.begin()->first);
+        active_locale_ = parsed.contains(requested_locale) ? requested_locale : fallback_locale_;
+        std::ranges::sort(infos, {}, &LanguageInfo::locale);
         languages_ = std::move(parsed);
         language_infos_ = std::move(infos);
-        active_locale_ = *active;
-        fallback_locale_ = *fallback;
-        loaded_write_time_ = std::filesystem::last_write_time(path_, error);
-        if (error) loaded_write_time_.reset();
+        loaded_write_times_ = std::move(write_times);
         ++generation_;
         return true;
     } catch (const nlohmann::json::exception& exception) {
@@ -155,11 +278,37 @@ bool LocalizationCatalog::reload_if_changed() {
     if (path_.empty()) return true;
     std::error_code error;
     if (!std::filesystem::exists(path_, error)) return !error;
-    const auto current = std::filesystem::last_write_time(path_, error);
-    if (error || (loaded_write_time_.has_value() && current == *loaded_write_time_)) {
-        return !error;
+    std::map<std::filesystem::path, std::filesystem::file_time_type> current;
+    if (std::filesystem::is_directory(path_, error)) {
+        for (std::filesystem::directory_iterator it{path_, error}, end; it != end && !error;
+             it.increment(error)) {
+            if (!it->is_regular_file() || it->path().extension() != ".json") continue;
+            current.emplace(it->path(), it->last_write_time(error));
+            if (error) break;
+        }
+    } else if (!error) {
+        current.emplace(path_, std::filesystem::last_write_time(path_, error));
     }
-    return load();
+    if (error) return false;
+    return current == loaded_write_times_ ? true : load();
+}
+
+bool LocalizationCatalog::set_active_locale(std::string_view locale) {
+    const auto normalized = normalized_requested_locale(locale);
+    if (!normalized.has_value()) return false;
+    auto resolved = *normalized;
+    if (!languages_.contains(resolved)) {
+        const auto separator = resolved.find('-');
+        if (separator == std::string::npos ||
+            !languages_.contains(resolved.substr(0U, separator))) {
+            return false;
+        }
+        resolved.resize(separator);
+    }
+    if (active_locale_ == resolved) return true;
+    active_locale_ = std::move(resolved);
+    ++generation_;
+    return true;
 }
 
 std::optional<std::string_view>

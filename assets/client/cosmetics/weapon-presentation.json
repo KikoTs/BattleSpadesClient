@@ -1,0 +1,1452 @@
+{
+  "schema_version": 1,
+  "weapons": [
+    {
+      "id": "community-aeon-mossberg-v2",
+      "model_sha256": "b1ca0c9a8a13142e50dbb301f13d1a785dafa764840f23a63557436f1ce5cad9",
+      "sight": {
+        "rear": [
+          2,
+          17,
+          -0.5
+        ],
+        "front": [
+          2,
+          36,
+          -0.5
+        ],
+        "eye_distance": 0.8
+      },
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-honey-badger-v2",
+      "model_sha256": "dca1c7de544eed556be16ae5e6ecc11c5bc70500a07ea888ddd8d90a16e797ae",
+      "sight": {
+        "rear": [
+          4.5,
+          62,
+          3
+        ],
+        "front": [
+          4.5,
+          94,
+          6.5
+        ],
+        "eye_distance": 0.95
+      },
+      "fire_samples": [
+        "community-honey-badger-v2-fire-1-13372a",
+        "community-honey-badger-v2-fire-2-96e374",
+        "community-honey-badger-v2-fire-3-46d03d",
+        "community-honey-badger-v2-fire-4-75f14a"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-honey-badger-v2-reload-1-facd44"
+        ]
+      }
+    },
+    {
+      "id": "community-bren-v2",
+      "model_sha256": "194060cc64d1a24cf6b01534d6addd1b7367445567eebd93ab0615b25a7c95d5",
+      "sight": null,
+      "fire_samples": [
+        "community-bren-v2-fire-1-9e2462"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-bren-v2-reload-1-3ef44a"
+        ]
+      }
+    },
+    {
+      "id": "community-m1a1-v2",
+      "model_sha256": "9081efa4d02975bb3a2d5af41a211835ba7e6836c9c9f835dab99af983b85126",
+      "sight": {
+        "rear": [
+          2,
+          8,
+          0
+        ],
+        "front": [
+          2,
+          30,
+          0.5
+        ],
+        "eye_distance": 0.8
+      },
+      "fire_samples": [
+        "m1a1-fire-1"
+      ],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-aeon-awp-v2",
+      "model_sha256": "a4b11ea05f438eddf623bb22ccb50340e2c533125895b3c5f6c427d5267ba652",
+      "sight": null,
+      "fire_samples": [
+        "community-aeon-awp-v2-fire-1-c0bb59",
+        "community-aeon-awp-v2-fire-2-fd71a2",
+        "community-aeon-awp-v2-fire-3-72833a",
+        "community-aeon-awp-v2-fire-4-ac2486",
+        "community-aeon-awp-v2-fire-5-ad0d95"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-aeon-awp-v2-reload-1-4117fc"
+        ],
+        "raise": [
+          "community-aeon-awp-v2-raise-1-084030"
+        ]
+      }
+    },
+    {
+      "id": "community-stg44-v2",
+      "model_sha256": "cb627e9cecb147b88e9c18125e683f5798e20e87304e4235042b45a80c1f2cb3",
+      "sight": {
+        "rear": [
+          3.5,
+          75,
+          0
+        ],
+        "front": [
+          3.5,
+          125,
+          -0.5
+        ],
+        "eye_distance": 0.9
+      },
+      "fire_samples": [
+        "community-stg44-v2-fire-1-91edff",
+        "community-stg44-v2-fire-2-f03550",
+        "community-stg44-v2-fire-3-994e2d",
+        "community-stg44-v2-fire-4-eddf37",
+        "community-stg44-v2-fire-5-35c244",
+        "community-stg44-v2-fire-6-706c77",
+        "community-stg44-v2-fire-7-17ad96",
+        "community-stg44-v2-fire-8-2a3987"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-stg44-v2-reload-1-c5e382"
+        ],
+        "raise": [
+          "community-stg44-v2-raise-1-5ad91b"
+        ]
+      }
+    },
+    {
+      "id": "community-mp5k-v2",
+      "model_sha256": "89f6d35ab8fbad021045e4a4a718b72c8e9a7b2227879b2236878ffd37692319",
+      "sight": {
+        "rear": [
+          8,
+          20,
+          4.75
+        ],
+        "front": [
+          8,
+          105,
+          3.5
+        ],
+        "eye_distance": 0.9
+      },
+      "fire_samples": [
+        "community-mp5k-v2-fire-1-05c591",
+        "community-mp5k-v2-fire-2-8a301f",
+        "community-mp5k-v2-fire-3-558be9",
+        "community-mp5k-v2-fire-4-21643e",
+        "community-mp5k-v2-fire-5-1c2f6b",
+        "community-mp5k-v2-fire-6-0a391a",
+        "community-mp5k-v2-fire-7-c035fa",
+        "community-mp5k-v2-fire-8-e07619"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-mp5k-v2-reload-1-29a89a"
+        ]
+      }
+    },
+    {
+      "id": "community-kar98-v2",
+      "model_sha256": "4d628b62981ebff6cf3f8d5e6be9f4a03a1bfb00dad6c686d435b9eef0b31a90",
+      "sight": null,
+      "fire_samples": [
+        "community-kar98-v2-fire-1-0f6678"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-kar98-v2-reload-1-414ae6"
+        ]
+      }
+    },
+    {
+      "id": "community-aeon-l115a3-v2",
+      "model_sha256": "ed417c8def9f82278fb3803abaef3cb5bb6c1e684a7f609e5507581b5dd4b645",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-aeon-hk416-v2",
+      "model_sha256": "29e2e8802ed1096334854527480dc404628c3b938a39da4948bb1d45dfcb30cf",
+      "sight": {
+        "rear": [
+          2,
+          14,
+          -0.5
+        ],
+        "front": [
+          2,
+          32,
+          1.5
+        ],
+        "eye_distance": 0.8
+      },
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-pack-169706-files-205934-tommygun-smg-v3",
+      "model_sha256": "af5f3282709f1334d6adafbc5e9d5a1600b62cab52c1b711096cf61d93de1ce5",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169706-files-205934-tommygun-smg-v3-fire-1-06b734",
+        "community-pack-169706-files-205934-tommygun-smg-v3-fire-2-de8f11",
+        "community-pack-169706-files-205934-tommygun-smg-v3-fire-3-a4fd0c",
+        "community-pack-169706-files-205934-tommygun-smg-v3-fire-4-ada6c3"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169706-files-205934-tommygun-smg-v3-reload-1-dcc783"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170209-files-205847-smg-v3",
+      "model_sha256": "e544296e2c4ca2440b0242676eba0427d4fc07a9f9241afb67dbefd201901f8a",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170209-files-205847-smg-v3-fire-1-4d1aae",
+        "community-pack-170209-files-205847-smg-v3-fire-2-3e589d",
+        "community-pack-170209-files-205847-smg-v3-fire-3-70022a",
+        "community-pack-170209-files-205847-smg-v3-fire-4-9a9075"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170209-files-205847-smg-v3-reload-1-6df078"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+      "model_sha256": "4755c8d267f01949d87e56a5209e76acf5156adb64519b30ea9db2239deb85f6",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-1-ba8c75",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-2-f3c0c3",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-3-ce194a",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-4-adcc43",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-5-bc569f",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-6-5f4ffa",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-7-912e56",
+        "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-8-f9c0a6"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170214-files-208187-reflexsight3-pak-unpack-reload-1-9c56b7",
+          "community-pack-170214-files-208187-reflexsight3-pak-unpack-reload-2-5bda9c"
+        ],
+        "raise": [
+          "community-pack-170214-files-208187-reflexsight3-pak-unpack-raise-1-20be1c"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-40417-files-343-acog-rifle-v3",
+      "model_sha256": "2af2cc5bbef5a580e1fa494ae210bf694cbf2a3d8c96ef946732a65d15723f77",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-40417-files-343-acog-rifle-v3-fire-1-dcd71d"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-40417-files-343-acog-rifle-v3-reload-1-548bcf"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-awp-78cfd-rifle-v3",
+      "model_sha256": "fec4778bee92b45e2c09c9e73867df04c5b56b4dc9046646546efddca6140000",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-awp-78cfd-rifle-v3-fire-1-12f9b8"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-awp-78cfd-rifle-v3-reload-1-98e8ff"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-axe-960ef-spade-v3",
+      "model_sha256": "2b58ec004e72069fe5f232b80beeaf47c165af8cdd8f902de2e007c02fdb96e9",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+      "model_sha256": "61202b1eb850d900e7971c30bb74fda9c9e5b8ef135fe7c8b6492ea5933206ef",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--fire-1-b88c14"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--reload-1-7e8fa6"
+        ],
+        "reload-done": [
+          "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--reload-done-1-2acf39"
+        ],
+        "raise": [
+          "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--raise-1-db924e"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+      "model_sha256": "7eb6557c6f9b8467cf3cc5b7943915525a4b04e13ac1f64af1fff4c8a859fe7c",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-1-031aa9",
+        "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-2-e533cc",
+        "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-3-9f5d55",
+        "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-4-e6dcd2"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-reload-1-e3ceeb",
+          "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-reload-2-b0fbf7"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+      "model_sha256": "c3378a270058123aa3ea791313533752c26715681f38ed59014fff23c2e342e5",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-1-c48901",
+        "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-2-e5327b",
+        "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-3-c7299f",
+        "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-4-1eee10"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-legacy-honey-badger-alternatehoneybadger-sm-reload-1-b316d5"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169961-default-v3",
+      "model_sha256": "bd27b4084813ba21a74f90845cdb78e6ae866f31013ddc5ccbd24571af77a447",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169961-default-v3-fire-1-219668",
+        "community-pack-169961-default-v3-fire-2-dc1ce0",
+        "community-pack-169961-default-v3-fire-3-39a8d3",
+        "community-pack-169961-default-v3-fire-4-780e97"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169961-default-v3-reload-1-fc4575"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170614-default-v3",
+      "model_sha256": "3ca9eadc814f5dc98820f6202a9c6a4d3e1dff83089f9ce991f044037b86e91e",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170614-default-v3-fire-1-f15ff7"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170614-default-v3-reload-1-1a7866"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170609-default-v3",
+      "model_sha256": "87b07ee022c89c0d0a67b50cbb96308a25a637d46f1fb7ccc3730643b07e9e4c",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170609-default-v3-fire-1-331e2d"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170609-default-v3-reload-1-f796d3"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170205-default-v3",
+      "model_sha256": "2c2a64f17da4fa13f3bad2c4491fbcea34eee3b681f35fc8bfb6dd0cfe3dc05e",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170205-default-v3-fire-1-4346f4",
+        "community-pack-170205-default-v3-fire-2-1351cd",
+        "community-pack-170205-default-v3-fire-3-603eb7",
+        "community-pack-170205-default-v3-fire-4-b57136"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170205-default-v3-reload-1-3fc6c3"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170191-default-v3",
+      "model_sha256": "a70d6aab1d19e05e77d2866d8d253e844f62e3251c440f94e64aa03efa50fc44",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170191-default-v3-fire-1-214068",
+        "community-pack-170191-default-v3-fire-2-cabfc8",
+        "community-pack-170191-default-v3-fire-3-fdab1f",
+        "community-pack-170191-default-v3-fire-4-f3b68a"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170191-default-v3-reload-1-10c464"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-170127-default-v3",
+      "model_sha256": "d8f262ab17f8c336281ba45a2b61e238c6d34fa2d93db05d5120124c024fd90c",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-170127-default-v3-fire-1-b2292b",
+        "community-pack-170127-default-v3-fire-2-abea37",
+        "community-pack-170127-default-v3-fire-3-ac78e8",
+        "community-pack-170127-default-v3-fire-4-ec0ed8"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-170127-default-v3-reload-1-3045c6"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-nazi-rifle-v3",
+      "model_sha256": "3b9390b6090d2e64b326e298f3013ca5b314af515e3d1af7538535a6fd06a110",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-nazi-rifle-v3-fire-1-c5d1f0"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-nazi-rifle-v3-reload-1-ba0041"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-nazi-smg-v3",
+      "model_sha256": "87b306ec4a2322170feea6556e83aa43d9c29d35a1c5b570c301ffd907f91d33",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-nazi-smg-v3-fire-1-28c314",
+        "community-pack-169749-default-nazi-smg-v3-fire-2-6b2b91",
+        "community-pack-169749-default-nazi-smg-v3-fire-3-7305f9",
+        "community-pack-169749-default-nazi-smg-v3-fire-4-02571e"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-nazi-smg-v3-reload-1-37c2cb"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-nazi-shotgun-v3",
+      "model_sha256": "9117aa15c977b9716e72dc5b01d822f8b11cf5bff3c507a21f34f9a3154663e3",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-nazi-shotgun-v3-fire-1-cff5ed"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-nazi-shotgun-v3-reload-1-256df4"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-soviet-rifle-v3",
+      "model_sha256": "fd6f46b31dfe23dc7d9384d193b323fc58990f9a63fab4b97b3c4d0cb2c6591d",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-soviet-rifle-v3-fire-1-c1ecb5"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-soviet-rifle-v3-reload-1-042add"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-soviet-smg-v3",
+      "model_sha256": "f6b861db7b8e8c2a12c97bc188fd666a9e2fc203c7c1f41ddd4af92d6522e540",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-soviet-smg-v3-fire-1-26bd0f",
+        "community-pack-169749-default-soviet-smg-v3-fire-2-a06354",
+        "community-pack-169749-default-soviet-smg-v3-fire-3-be9521",
+        "community-pack-169749-default-soviet-smg-v3-fire-4-b05b0a"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-soviet-smg-v3-reload-1-1bc38e"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169749-default-soviet-shotgun-v3",
+      "model_sha256": "613abb68dc7e7cd7589fb9c4f1e84c63fc444642016b80b5df7ac5af955f7f80",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169749-default-soviet-shotgun-v3-fire-1-a8a858"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169749-default-soviet-shotgun-v3-reload-1-2c0fb3"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+      "model_sha256": "af5f3282709f1334d6adafbc5e9d5a1600b62cab52c1b711096cf61d93de1ce5",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-1-06b734",
+        "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-2-de8f11",
+        "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-3-a4fd0c",
+        "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-4-ada6c3"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169706-files-205934-tommygun-smg-black-whit-reload-1-dcc783"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+      "model_sha256": "af5f3282709f1334d6adafbc5e9d5a1600b62cab52c1b711096cf61d93de1ce5",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-1-06b734",
+        "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-2-de8f11",
+        "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-3-a4fd0c",
+        "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-4-ada6c3"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169706-files-205934-tommygun-smg-gold-v3-reload-1-dcc783"
+        ]
+      }
+    },
+    {
+      "id": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+      "model_sha256": "af5f3282709f1334d6adafbc5e9d5a1600b62cab52c1b711096cf61d93de1ce5",
+      "sight": null,
+      "fire_samples": [
+        "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-1-06b734",
+        "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-2-de8f11",
+        "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-3-a4fd0c",
+        "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-4-ada6c3"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-reload-1-dcc783"
+        ]
+      }
+    },
+    {
+      "id": "community-170159-fn-p90-v3",
+      "model_sha256": "b6ebc4b61abd43d1f58a748ff6cdccef7bec09478e8b51df31451eb5ab898314",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-170502-ghillie-sniper-v3",
+      "model_sha256": "dd99e06cef14a00b7307e86a01f860d0c5e5ff6d9bd34ecb4350a0c21eead4d4",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-171014-crowbar-v3",
+      "model_sha256": "e35a6bd2de69d06996722d642971d1f70b47c655bd2ec6b8efe5dc9b6577fa42",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-ak47-for-smg-ak47-v3",
+      "model_sha256": "5be0a745582534062bdd3fb409c21db3bec6c20f6340f3dc93d874a36f065efe",
+      "sight": null,
+      "fire_samples": [
+        "community-ak47-for-smg-ak47-v3-fire-1-f99363"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-ak47-for-smg-ak47-v3-reload-1-f4c208"
+        ]
+      }
+    },
+    {
+      "id": "community-skin-rare-spade-a-stick-a-stick-v3",
+      "model_sha256": "779f0d1ad056215df97b284e24a6e2e13abfe11ff4b27c4a94e2ad8bc819c6e9",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-pala-pala-2-0-v3",
+      "model_sha256": "e11729e707071e4698546292a709b81e0fe0772f943d1ff19b5395400a73624b",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-smg-v3",
+      "model_sha256": "b7dc8f099dc41b79b43a8774827941a65492f547a8406fa447fa5ecc9af89642",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-shotgun-v3",
+      "model_sha256": "58764dcc2a3efe8cafd1857cc03e0370f6e778edd70ca45624f1c3d33577a81e",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-rpg-v3",
+      "model_sha256": "ba62558ddd314a6e1eb75f301aef780c771ff276c219129cc905c66ee445ce3b",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-entrega-para-sans-and-papyrus-sans-papyrus-riot-shield-v3",
+      "model_sha256": "87ead96e5011bb066d01c6627ae2d86b75f89d480c358e95a15693793579d97c",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-lee-enfield-v2",
+      "model_sha256": "0328cbb9dc82a3e90087524c18dadd8a7fffc1e6f100714b993334cc82c872f6",
+      "sight": null,
+      "fire_samples": [
+        "community-lee-enfield-v2-fire-1-371168"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-lee-enfield-v2-reload-1-081038"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-315714-1-v5",
+      "model_sha256": "16a4d12c5661f3914f1fabd908bd3903eac3888d7aa0086e7e20cd5e6a8948c1",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-315714-1-v5-fire-1-0ade60"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-315714-1-v5-reload-1-e26f99"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170218-1-v5",
+      "model_sha256": "77645613b1534a333d30ada904ac7b472ac043f23be132d0f13f5e2042cd02c9",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170218-1-v5-fire-1-f6dc4a"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170218-1-v5-reload-1-346909"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169760-1-v5",
+      "model_sha256": "b6757af5b18a197581435feb0d6e6d80d2409df530162d7ea0cfeaa27a866821",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-169760-1-v5-fire-1-e5dc9c"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-169760-1-v5-reload-1-b44c05"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-171111-1-v5",
+      "model_sha256": "3d16f6d2765fdf99d7fbed009cadd039c2f9eaad14e7f713ce1b6c9e4fcb518f",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-171111-1-v5-fire-1-4f5a8a",
+        "community-sep-171111-1-v5-fire-2-d1f68e",
+        "community-sep-171111-1-v5-fire-3-b643af",
+        "community-sep-171111-1-v5-fire-4-d18f34"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-171111-1-v5-reload-1-c03b0f"
+        ],
+        "raise": [
+          "community-sep-171111-1-v5-raise-1-b53615"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-171111-2-v5",
+      "model_sha256": "be5746fb320646d43857917ebd1f7f6847429d5e2d1ee0989f0db5ad319d7170",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-171111-2-v5-fire-1-926f41",
+        "community-sep-171111-2-v5-fire-2-f85299",
+        "community-sep-171111-2-v5-fire-3-d7185c",
+        "community-sep-171111-2-v5-fire-4-6fde68"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-171111-2-v5-reload-1-99ca8d"
+        ],
+        "raise": [
+          "community-sep-171111-2-v5-raise-1-dffe70"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169759-1-v5",
+      "model_sha256": "e8ec64e072742c4e4e7ee99cddeca8cc34fb4cfd6ad703ec772648bd4e99ef64",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-169759-1-v5-fire-1-2398b2",
+        "community-sep-169759-1-v5-fire-2-48f3a8",
+        "community-sep-169759-1-v5-fire-3-f0dcae",
+        "community-sep-169759-1-v5-fire-4-311f32"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-169759-1-v5-reload-1-f33e3c"
+        ],
+        "raise": [
+          "community-sep-169759-1-v5-raise-1-b20edb"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170222-1-v5",
+      "model_sha256": "40d5a3606eed240cec1b6ad7f1d03359ad27e707109c470e7e5d3baeb1a8e528",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170222-1-v5-fire-1-d367ef",
+        "community-sep-170222-1-v5-fire-2-2488fa",
+        "community-sep-170222-1-v5-fire-3-dcac12",
+        "community-sep-170222-1-v5-fire-4-d8e862",
+        "community-sep-170222-1-v5-fire-5-da506d"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170222-1-v5-reload-1-dc633d"
+        ],
+        "raise": [
+          "community-sep-170222-1-v5-raise-1-6a94cc"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170222-2-v5",
+      "model_sha256": "cebcc0ca7f1f52ffb2b251fff603b1ba532409592e6e89a9af23f70245d6f471",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170222-2-v5-fire-1-8cca54",
+        "community-sep-170222-2-v5-fire-2-636410",
+        "community-sep-170222-2-v5-fire-3-b84003",
+        "community-sep-170222-2-v5-fire-4-7297f8",
+        "community-sep-170222-2-v5-fire-5-ab9f02"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170222-2-v5-reload-1-43427b"
+        ],
+        "raise": [
+          "community-sep-170222-2-v5-raise-1-68513f"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-171110-1-v5",
+      "model_sha256": "bb5aad75502203cfb1590bea80eae0b4ec4b261635ea10055328b2a343ba8316",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-171110-1-v5-fire-1-98afe8",
+        "community-sep-171110-1-v5-fire-2-bf91f1",
+        "community-sep-171110-1-v5-fire-3-928ec2",
+        "community-sep-171110-1-v5-fire-4-9167c1"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-171110-1-v5-reload-1-bebfd5"
+        ],
+        "raise": [
+          "community-sep-171110-1-v5-raise-1-55014e"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-171110-2-v5",
+      "model_sha256": "ffc388af2e2532f44bab2e98f4cda2e9c9e1f33f8d9b5fa804af5f3091f107cf",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-171110-2-v5-fire-1-119f72",
+        "community-sep-171110-2-v5-fire-2-d37088",
+        "community-sep-171110-2-v5-fire-3-dfcfe6",
+        "community-sep-171110-2-v5-fire-4-d0eb76"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-171110-2-v5-reload-1-9174eb"
+        ],
+        "raise": [
+          "community-sep-171110-2-v5-raise-1-4e5326"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170227-1-v5",
+      "model_sha256": "40c98bec9463260c85335555dc925945a2c92f4cf61f3b91edcd9e9c21994fdf",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170227-1-v5-fire-1-c48de2",
+        "community-sep-170227-1-v5-fire-2-ebf8ae",
+        "community-sep-170227-1-v5-fire-3-07033b"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170227-1-v5-reload-1-b6b344",
+          "community-sep-170227-1-v5-reload-2-890e0e",
+          "community-sep-170227-1-v5-reload-3-6640c8"
+        ],
+        "reload-done": [
+          "community-sep-170227-1-v5-reload-done-1-3948f9"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170633-1-v5",
+      "model_sha256": "928b217766861ed415c7567c8eb4e128b4ae15eab4bd16e2050000517dd57ec3",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170633-1-v5-fire-1-7967af"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170633-1-v5-reload-1-f8eced"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170633-2-v5",
+      "model_sha256": "928b217766861ed415c7567c8eb4e128b4ae15eab4bd16e2050000517dd57ec3",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170633-2-v5-fire-1-137644"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170633-2-v5-reload-1-fa2f13"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170241-1-v5",
+      "model_sha256": "d1ced697b0410bb7050d264cc7ed70de15462e3732f95878be5be20b1dc71d7e",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170241-1-v5-fire-1-0103d1"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170241-1-v5-reload-1-a10654"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169996-1-v5",
+      "model_sha256": "0bad11e8118e81ff298c3dadd23cfc45c5f0b52b674b8552c564781b43e6315a",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-169996-1-v5-fire-1-e4aec9",
+        "community-sep-169996-1-v5-fire-2-292dfd",
+        "community-sep-169996-1-v5-fire-3-cae138",
+        "community-sep-169996-1-v5-fire-4-aa0901"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-169996-1-v5-reload-1-c5664a"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170269-1-v5",
+      "model_sha256": "e16e7b0ce81e179d5ba7ef9ba505774dd95f910bbae38bf0a745b47db246601c",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170269-1-v5-fire-1-890e3b",
+        "community-sep-170269-1-v5-fire-2-d65ff1",
+        "community-sep-170269-1-v5-fire-3-877bda"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170269-1-v5-reload-1-61c00c"
+        ],
+        "raise": [
+          "community-sep-170269-1-v5-raise-1-4a10c0"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170403-1-v5",
+      "model_sha256": "271f7aed043d36cfa6f1a1ecd3efb47c4e186d6f13681c750f044c76a24ba242",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170403-1-v5-fire-1-b0061e"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170403-1-v5-reload-1-ae688a"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170563-1-v5",
+      "model_sha256": "8cefef3e08e75bde25fa016e18168174e4d175084d816003e817d4068aa49223",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170563-1-v5-fire-1-d48067"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170563-1-v5-reload-1-b64bee"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170189-1-v5",
+      "model_sha256": "3ea65f252d40e1c32be873dd49e39241a18c07ef99d5d3b6c186492691455d45",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170189-1-v5-fire-1-48e67b"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170189-1-v5-reload-1-c4f11d"
+        ],
+        "raise": [
+          "community-sep-170189-1-v5-raise-1-50ffd0"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170189-2-v5",
+      "model_sha256": "9222c65d911f5546ab81af459b35377a4b7df1c93ef8ba6ca8fc223a0a41be95",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170189-2-v5-fire-1-5d28fb"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170189-2-v5-reload-1-da46d7"
+        ],
+        "raise": [
+          "community-sep-170189-2-v5-raise-1-8d7202"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170097-1-v5",
+      "model_sha256": "2aa5a5b4f5912f1f0ffb3f487aec85d3b0832f328c87ff481ae06003b9b57ce5",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170097-1-v5-fire-1-323aa1",
+        "community-sep-170097-1-v5-fire-2-163bba",
+        "community-sep-170097-1-v5-fire-3-48d6a5",
+        "community-sep-170097-1-v5-fire-4-034ff5"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170097-1-v5-reload-1-6dad9a"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170512-1-v5",
+      "model_sha256": "150fe9a2a7bf0062fdf5edcfc2cbe25fdc3d97a3f4c0df2f9f1d35361661a2ef",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170512-1-v5-fire-1-37da78"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170512-1-v5-reload-1-88b6fa"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170500-1-v5",
+      "model_sha256": "bcfaa3b9b98ca36f4e053f1f0465b44ee37415028622c536592d2ec3dae6d91b",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170500-1-v5-fire-1-57d4f8"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170500-1-v5-reload-1-56f6f3"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170592-1-v5",
+      "model_sha256": "e261a53da59bffeb24c2577852c7d3933d1eacfa519835cc86e1df9dfa0e6d25",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170592-1-v5-fire-1-ff50c8",
+        "community-sep-170592-1-v5-fire-2-291f10",
+        "community-sep-170592-1-v5-fire-3-cdcd70",
+        "community-sep-170592-1-v5-fire-4-e84ed5"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170592-1-v5-reload-1-b13b6e"
+        ],
+        "raise": [
+          "community-sep-170592-1-v5-raise-1-81f461"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170187-1-v5",
+      "model_sha256": "5bae99f4dcbd946cac97827d1657bd5a2ee06c957279f6fc80251479e6d15e6f",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170187-1-v5-fire-1-d0129a",
+        "community-sep-170187-1-v5-fire-2-39e19d",
+        "community-sep-170187-1-v5-fire-3-ce14eb",
+        "community-sep-170187-1-v5-fire-4-e3b5d1"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170187-1-v5-reload-1-dcd61c"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170554-1-v5",
+      "model_sha256": "fca2f6190bfe3e57051b349ab3dfc3f895b70e0a1fa5ae848b40dfdf7492761f",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170554-1-v5-fire-1-07f0ad"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170554-1-v5-reload-1-fc8f98"
+        ],
+        "raise": [
+          "community-sep-170554-1-v5-raise-1-1878ed"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169726-2-v5",
+      "model_sha256": "5bae99f4dcbd946cac97827d1657bd5a2ee06c957279f6fc80251479e6d15e6f",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-169726-2-v5-fire-1-4bafb7",
+        "community-sep-169726-2-v5-fire-2-45b425",
+        "community-sep-169726-2-v5-fire-3-020e27",
+        "community-sep-169726-2-v5-fire-4-dabdbd"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-169726-2-v5-reload-1-fa04aa"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169726-3-v5",
+      "model_sha256": "db6a14d7a2d310faad7f48fd528d8c8d2cd344bd86cbdf87ced13e620437f15b",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-169726-3-v5-fire-1-55c1d0"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-169726-3-v5-reload-1-a065f0"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-169726-4-v5",
+      "model_sha256": "f88d73a8a2a3baf6076ecb9d814dc49c2e38db467284165067a447c2f023425e",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-sep-170082-1-v5",
+      "model_sha256": "a3989d75a069bc5779cb590c3fd076790524fa79936cb8b84d6752b644a81943",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170082-1-v5-fire-1-020226",
+        "community-sep-170082-1-v5-fire-2-e464be",
+        "community-sep-170082-1-v5-fire-3-2f0a34",
+        "community-sep-170082-1-v5-fire-4-b948de"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170082-1-v5-reload-1-55001f"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170208-1-v5",
+      "model_sha256": "202e1023ef813fb8d9b8d2ff5bba081501ff89eda1414f0bdb5bc23739d49426",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170208-1-v5-fire-1-05f5e7",
+        "community-sep-170208-1-v5-fire-2-4c18cb",
+        "community-sep-170208-1-v5-fire-3-aaa096",
+        "community-sep-170208-1-v5-fire-4-8ee178"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170208-1-v5-reload-1-f50fe5"
+        ],
+        "raise": [
+          "community-sep-170208-1-v5-raise-1-af6663"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-1-v5",
+      "model_sha256": "d4e25759d8f093ab8d8b41ddf0bdc02694ef513f4f90b20935cff4353832bc4d",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-1-v5-fire-1-654bd9",
+        "community-sep-170204-1-v5-fire-2-0d0aea",
+        "community-sep-170204-1-v5-fire-3-c9ddf0",
+        "community-sep-170204-1-v5-fire-4-261b86"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-1-v5-reload-1-0b6487"
+        ],
+        "raise": [
+          "community-sep-170204-1-v5-raise-1-8991f9"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-2-v5",
+      "model_sha256": "f00fe9478eb0caa073cda51bad9429376d72183f28db9abab4c8d90ed967de11",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-2-v5-fire-1-5b3159",
+        "community-sep-170204-2-v5-fire-2-ce263b",
+        "community-sep-170204-2-v5-fire-3-0174fe",
+        "community-sep-170204-2-v5-fire-4-02efdb"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-2-v5-reload-1-c9c15a"
+        ],
+        "raise": [
+          "community-sep-170204-2-v5-raise-1-61bab2"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-3-v5",
+      "model_sha256": "cd59a4b9ef026f4228e9a1dcf37309b1bcf66dbee3da4dba4ca98649efac507c",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-3-v5-fire-1-b2801c",
+        "community-sep-170204-3-v5-fire-2-16ab84",
+        "community-sep-170204-3-v5-fire-3-7bc8fc",
+        "community-sep-170204-3-v5-fire-4-97568b"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-3-v5-reload-1-9314dc"
+        ],
+        "raise": [
+          "community-sep-170204-3-v5-raise-1-c2e85b"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-4-v5",
+      "model_sha256": "e4292d54d717547644f7a4aad5d39845e92706023f6d1240d7c2b42049d7fc27",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-4-v5-fire-1-d92a9b",
+        "community-sep-170204-4-v5-fire-2-5ad4ac",
+        "community-sep-170204-4-v5-fire-3-b55330",
+        "community-sep-170204-4-v5-fire-4-66cf76"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-4-v5-reload-1-0501b8"
+        ],
+        "raise": [
+          "community-sep-170204-4-v5-raise-1-c2f668"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-5-v5",
+      "model_sha256": "cd59a4b9ef026f4228e9a1dcf37309b1bcf66dbee3da4dba4ca98649efac507c",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-5-v5-fire-1-4c323a",
+        "community-sep-170204-5-v5-fire-2-dbcc3f",
+        "community-sep-170204-5-v5-fire-3-afd1a1",
+        "community-sep-170204-5-v5-fire-4-790461"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-5-v5-reload-1-31b826"
+        ],
+        "raise": [
+          "community-sep-170204-5-v5-raise-1-a8327b"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170204-6-v5",
+      "model_sha256": "e4292d54d717547644f7a4aad5d39845e92706023f6d1240d7c2b42049d7fc27",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170204-6-v5-fire-1-5efc32",
+        "community-sep-170204-6-v5-fire-2-32bcc7",
+        "community-sep-170204-6-v5-fire-3-2ae603",
+        "community-sep-170204-6-v5-fire-4-2c313d"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170204-6-v5-reload-1-91cf12"
+        ],
+        "raise": [
+          "community-sep-170204-6-v5-raise-1-d6781a"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170458-1-v5",
+      "model_sha256": "329b937b243e068a8fc8ff3530d4a74f5e2459802b333450dde6dbb0f0f45c97",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170458-1-v5-fire-1-2be6fd"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170458-1-v5-reload-1-c2fb71"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170145-1-v5",
+      "model_sha256": "cee7f7556aa5916284a056c47d0b1372b68156c31ed0cc06b3cb2182879fcab4",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170145-1-v5-fire-1-fa7e09",
+        "community-sep-170145-1-v5-fire-2-7c51df",
+        "community-sep-170145-1-v5-fire-3-c57323",
+        "community-sep-170145-1-v5-fire-4-e6f67e"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170145-1-v5-reload-1-5f3271"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170779-1-v5",
+      "model_sha256": "fba2442888a601a783286e07bd666f71e1e6dc29cbc682046ac251009b4d0ebc",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170779-1-v5-fire-1-3927b9"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170779-1-v5-reload-1-3b97b9"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170147-1-v5",
+      "model_sha256": "5b6963a744fcd3e694fd17ffcd516e9bac9dc68679e05032fd781bf49ae5b6eb",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170147-1-v5-fire-1-f3d5b6",
+        "community-sep-170147-1-v5-fire-2-f6f19c",
+        "community-sep-170147-1-v5-fire-3-6eec97",
+        "community-sep-170147-1-v5-fire-4-c4f42c"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170147-1-v5-reload-1-2db6f9"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170216-1-v5",
+      "model_sha256": "048bf8307166f189b6442135efe0417bb22a6532d361871c6a1d73dcf1bd7179",
+      "sight": null,
+      "fire_samples": [
+        "community-sep-170216-1-v5-fire-1-a5b813",
+        "community-sep-170216-1-v5-fire-2-fb55c9",
+        "community-sep-170216-1-v5-fire-3-025e9a",
+        "community-sep-170216-1-v5-fire-4-f11a64"
+      ],
+      "fire_gain": 0.75,
+      "cues": {
+        "reload": [
+          "community-sep-170216-1-v5-reload-1-d2991e"
+        ]
+      }
+    },
+    {
+      "id": "community-sep-170516-browning-m1911-v5",
+      "model_sha256": "6accb5e56b737744705e01604ff4b0ecb79c18e07a5b52cab22a82b383a08b75",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-sep-170950-hd-grenade-v5",
+      "model_sha256": "8593c1d066e8c41ffcdb8a02bf200caf133c0c9146fb3f869baafb79734d4ae3",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    },
+    {
+      "id": "community-sep-169726-ww1-grenade-v5",
+      "model_sha256": "8c83b236332e7c1b50485cc9803e9a55b9bb0972a4756f9002622eac7a990060",
+      "sight": null,
+      "fire_samples": [],
+      "fire_gain": 0.75,
+      "cues": {}
+    }
+  ]
+}

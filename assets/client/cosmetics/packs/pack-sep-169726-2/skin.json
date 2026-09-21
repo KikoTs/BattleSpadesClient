@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-169726-2",
+  "name": "World War 1 Skin Pack — SMG",
+  "source": "https://gamebanana.com/mods/169726",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/SMG/Casing.kv6": "Models/Weapons/SMG/Casing.kv6",
+    "Models/Weapons/SMG/Magazine.kv6": "Models/Weapons/SMG/Magazine.kv6",
+    "Models/Weapons/SMG/Sight1.kv6": "Models/Weapons/SMG/Sight1.kv6",
+    "Models/Weapons/SMG/Sight2.kv6": "Models/Weapons/SMG/Sight2.kv6",
+    "Models/Weapons/SMG/Sight3.kv6": "Models/Weapons/SMG/Sight3.kv6",
+    "Models/Weapons/SMG/Tracer.kv6": "Models/Weapons/SMG/Tracer.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine-old.kv6": "Models/Weapons/SMG/WeaponNoMagazine-old.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/SMG/V2AmbienceSmall1.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall2.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall3.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceSmall4.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge1.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge2.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge3.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg",
+    "Sounds/Weapons/SMG/V2AmbienceLarge4.opus": "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local1.opus": "Fallback/Sounds/Weapons/SMG/V2Local1.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local2.opus": "Fallback/Sounds/Weapons/SMG/V2Local2.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local3.opus": "Fallback/Sounds/Weapons/SMG/V2Local3.opus.ogg",
+    "Sounds/Weapons/SMG/V2Local4.opus": "Fallback/Sounds/Weapons/SMG/V2Local4.opus.ogg",
+    "Sounds/Weapons/SMG/FireFar.opus": "Fallback/Sounds/Weapons/SMG/FireFar.opus.ogg",
+    "Sounds/Weapons/SMG/FireStereo.opus": "Fallback/Sounds/Weapons/SMG/FireStereo.opus.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.opus": "Fallback/Sounds/Weapons/SMG/ReloadLocal.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/SMG/Casing.kv6": "881ba394e7d69d5707e0ed4d421341ba354db3f0dd55496ab5ad9c14e9dff231",
+    "Models/Weapons/SMG/Magazine.kv6": "42b9dd7dffa174e4e56b84a34a7f21f3221c9906d0ad88abaf2fda22e3853997",
+    "Models/Weapons/SMG/Sight1.kv6": "bbb2f52cf57a91b70dea21745f5f2c005ea71418edb81c0becbf62dd29044f90",
+    "Models/Weapons/SMG/Sight2.kv6": "df4d372b40ca0d74d362df82fa1bf3cbb84338e8e4f3a96ef2ff30d3867182d6",
+    "Models/Weapons/SMG/Sight3.kv6": "93d3935dc5ce1bcce63d92436192f80956823c0367d9d4d505685586cd8f1465",
+    "Models/Weapons/SMG/Tracer.kv6": "cc39de045f631d080c3c29cd0d60d7977a5358ebfeeb1d2d880af968be95674a",
+    "Models/Weapons/SMG/Weapon.kv6": "5bae99f4dcbd946cac97827d1657bd5a2ee06c957279f6fc80251479e6d15e6f",
+    "Models/Weapons/SMG/WeaponNoMagazine-old.kv6": "7b3c3110bf71887a718d3c2e2fb55a2311eeb6f57ad3b78aab9df3a4746d82b6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "e2537daf1c71d9063acaf23adb8205efc6dd29790076e068f3cc82660b33a3c1",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall1.opus.ogg": "e37a66bc1dd9c170e8cb5bc9232721a9d376ab021c045273e8239d5075ace365",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall2.opus.ogg": "3ffb3b3027430d3d69fe0cf1c0ce9aa6b7acb4ece5188ec556ae98daa040e060",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall3.opus.ogg": "b4401456b8c18998ebdc9130f3e38dd559e9395208f612c3b42a65963a7729cc",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceSmall4.opus.ogg": "c356248de66c0bf5814295679d519720d941b7ec85af55916df2365bec11eedf",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge1.opus.ogg": "525f9b97004b013dfda5eb7f8473eb4445b109a495a2c4c6c23710515dc074e0",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge2.opus.ogg": "2607462cb8c935368e1ccca5739cc703bb013cfca478e6a849cc9f19fa92113e",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge3.opus.ogg": "10b5d202897b75b3275f92f060aa48d123bfc6a58807a203180e1f53efe09b03",
+    "Fallback/Sounds/Weapons/SMG/V2AmbienceLarge4.opus.ogg": "21b97cb6197fde5861b270bd9df80061732d36406bb5c02287d708cc72e2543b",
+    "Fallback/Sounds/Weapons/SMG/V2Local1.opus.ogg": "4bafb7f11764539ee680eeb57f8bdfe6a2a33376435575946d37fe854df88858",
+    "Fallback/Sounds/Weapons/SMG/V2Local2.opus.ogg": "45b425c5144bdcfa09195b52aa82e0821e238f808eeb345d5647db37fe879451",
+    "Fallback/Sounds/Weapons/SMG/V2Local3.opus.ogg": "020e272202a68def4b5e86908ce17c2ab0f8b7ec1f2691d9fb5a3ba15e94577e",
+    "Fallback/Sounds/Weapons/SMG/V2Local4.opus.ogg": "dabdbdc1ca062138a177de8fd54e9e9d6b95205972fbbaa2fa7406a007df697b",
+    "Fallback/Sounds/Weapons/SMG/FireFar.opus.ogg": "24f79135839296147536a94596217a35563dcc313c81035c1e8dbf9c3dee20a6",
+    "Fallback/Sounds/Weapons/SMG/FireStereo.opus.ogg": "569740b2b8f9d2179d728cb49b71b86118e89fc074a5322587fa9087171c5e9a",
+    "Fallback/Sounds/Weapons/SMG/ReloadLocal.opus.ogg": "fa04aa3f24e3581d00a92df7bf242f8945a1d12caa95f1bedcc37f92c030dd70",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "054ac2e986357a185a8d544beaacbfd17a23b63edef04ed0c1fbf7e00cbf7e5f",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Cereator, modeler, textures",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "For being awesome.",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceSmall1.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceSmall1.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceSmall2.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceSmall2.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceSmall3.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceSmall3.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceSmall4.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceSmall4.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceLarge1.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceLarge1.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceLarge2.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceLarge2.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceLarge3.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceLarge3.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2AmbienceLarge4.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2AmbienceLarge4.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2Local1.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2Local1.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2Local2.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2Local2.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2Local3.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2Local3.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/V2Local4.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/V2Local4.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/FireFar.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/FireStereo.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/FireStereo.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/SMG/ReloadLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/SMG/ReloadLocal.opus"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "OpenSpades base SMG animation fitted to supplied model parts",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

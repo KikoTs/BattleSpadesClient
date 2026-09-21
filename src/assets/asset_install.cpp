@@ -39,6 +39,23 @@ constexpr int installer_cancel_exit_code{2};
 constexpr std::size_t maximum_discovery_children{64U};
 constexpr std::size_t maximum_reported_candidates{8U};
 
+// Steam language depots do not always install these alongside an English
+// copy. Import them only when the player's selected Windows installation has
+// the exact recovered retail bytes; they remain optional and are never
+// redistributed by this repository.
+const std::array optional_language_fonts{
+    AssetManifestEntry{
+        "fonts/Gen_Shin_Gothic_Monospace_Bold.ttf",
+        4'952'384U,
+        "6c2e1490357ab477c7e9663244689dd365b2aaaffb9ef88a01c6bdaa99cc9250",
+    },
+    AssetManifestEntry{
+        "fonts/NotoSansJP-SemiBold.ttf",
+        5'726'852U,
+        "4881d1b63b7300452b9385f69a70d00c3607ff0728c35a0c5ce99705b97c2b2a",
+    },
+};
+
 [[nodiscard]] std::string path_text(const std::filesystem::path& path) {
     return path.string();
 }
@@ -627,6 +644,29 @@ AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source
             state.bytes_completed += entry.size;
             if (progress) {
                 progress(state);
+            }
+        }
+
+        for (const auto& entry : optional_language_fonts) {
+            const auto source_file = source / entry.relative_path;
+            const auto status = std::filesystem::symlink_status(source_file, code);
+            if (code || !std::filesystem::is_regular_file(status) ||
+                std::filesystem::is_symlink(status)) {
+                code.clear();
+                continue;
+            }
+            const auto normalized_source = std::filesystem::weakly_canonical(source_file, code);
+            if (code || !path_below(source, normalized_source)) {
+                code.clear();
+                continue;
+            }
+            std::string ignored_error;
+            const auto target_file = staging / entry.relative_path;
+            if (!copy_and_hash(normalized_source, target_file, entry, ignored_error)) {
+                // A different depot/font revision must not poison a valid
+                // base install or become executable input to FreeType.
+                std::filesystem::remove(target_file, code);
+                code.clear();
             }
         }
 

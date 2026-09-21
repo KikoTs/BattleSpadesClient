@@ -135,6 +135,12 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             continue;
         }
 #if AOS_ENABLE_DEVELOPER_TOOLS
+        if (argument == "--tutorial-cosmetic") {
+            if (++index>=arguments.size() || !safe_asset_stem(arguments[index]))
+                return failure("--tutorial-cosmetic requires a bundled cosmetic id");
+            options.tutorial_debug_cosmetic=std::string{arguments[index]};
+            continue;
+        }
         if (argument == "--tutorial-tool") {
             if (++index >= arguments.size()) {
                 return failure("--tutorial-tool requires an integer from 0 to 64");
@@ -252,13 +258,21 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
         if (argument == "--debug-ui") {
             if (++index >= arguments.size()) {
                 return failure(
-                    "--debug-ui requires leaderboard|scoreboard|endgame|chat|vote");
+                    "--debug-ui requires leaderboard|scoreboard|endgame|chat|vote|inventory|inventory/empty|inventory/crates|inventory/packs|inventory/reveal|inventory/stg44|create_match|create_match/notice|friends|friends/requests|friends/invites|friends/lobby|friends/offline|friends/busy|loading/map|loading/mode|loading/scores|loading/hosting|loading/error|ugc_lobby|ugc_browser|ugc_loadout");
             }
             const auto value = arguments[index];
             if (value != "leaderboard" && value != "scoreboard" &&
-                value != "endgame" && value != "chat" && value != "vote") {
+                value != "endgame" && value != "chat" && value != "vote" &&
+                value != "inventory" && value != "inventory/crates" && value != "inventory/packs" &&
+                value != "inventory/reveal" && value != "inventory/stg44" &&
+                value != "inventory/empty" && value != "create_match" && value != "create_match/notice" &&
+                value != "friends" && value != "friends/requests" && value != "friends/invites" &&
+                value != "friends/lobby" && value != "friends/offline" && value != "friends/busy" &&
+                value != "loading/map" && value != "loading/mode" && value != "loading/scores" &&
+                value != "loading/hosting" && value != "loading/error" &&
+                value != "ugc_lobby" && value != "ugc_browser" && value != "ugc_loadout") {
                 return failure(
-                    "--debug-ui requires leaderboard|scoreboard|endgame|chat|vote");
+                    "--debug-ui requires leaderboard|scoreboard|endgame|chat|vote|inventory|inventory/empty|inventory/crates|inventory/packs|inventory/reveal|inventory/stg44|create_match|create_match/notice|friends|friends/requests|friends/invites|friends/lobby|friends/offline|friends/busy|loading/map|loading/mode|loading/scores|loading/hosting|loading/error|ugc_lobby|ugc_browser|ugc_loadout");
             }
             options.debug_ui = std::string{value};
             continue;
@@ -338,6 +352,7 @@ std::string_view command_line_usage() noexcept {
 #if AOS_ENABLE_DEVELOPER_TOOLS
            "  --tutorial-tool ID  Equip tool 0..64 in the local Tutorial lab\n"
            "  --tutorial-aim      Start the Tutorial lab with aiming toggled on\n"
+           "  --tutorial-cosmetic ID  Preview a bundled cosmetic in the local Tutorial lab\n"
            "  --tutorial-map N    Load map N from assets/original/maps instead\n"
            "  --tutorial-skydome N  Override the skydome, e.g. Tokyo.txt\n"
            "  --tutorial-spawn X,Y,Z  Spawn at a canonical voxel position\n"
@@ -345,7 +360,9 @@ std::string_view command_line_usage() noexcept {
            "  --tutorial-look X,Y,Z   Aim the camera at a canonical position\n"
            "  --debug-vfx NAME    Offline corpse|grave|grenade|rocket visual oracle\n"
            "  --debug-vfx-age S   Freeze the oracle at exact simulated age S\n"
-           "  --debug-ui NAME     Offline leaderboard|scoreboard|endgame|chat|vote UI oracle\n"
+           "  --debug-ui NAME     Offline leaderboard|scoreboard|endgame|chat|vote|inventory|inventory/empty|inventory/crates|inventory/packs|inventory/reveal|inventory/stg44|create_match|ugc_lobby|ugc_browser|ugc_loadout UI oracle\n"
+           "                      Also loading/map|loading/mode|loading/scores|loading/hosting|loading/error|create_match/notice\n"
+           "                      Also friends|friends/requests|friends/invites|friends/lobby|friends/offline|friends/busy\n"
            "  --ui-editor        Enable offline drag/resize layout editing (F11)\n"
 #endif
            "  --shader-quality T  Force a tier: compatibility|low|medium|high|ultra\n"

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace battlespades::world {
 namespace {
@@ -150,9 +151,11 @@ EntityPhysicsStep step_entity_terrain_physics(LocalEntity& entity,
     const auto maximum_displacement = std::max({std::abs(entity.velocity.x * dt),
                                                 std::abs(entity.velocity.y * dt),
                                                 std::abs(predicted_vertical_speed * dt)});
-    const auto requested_steps = static_cast<std::size_t>(
-        std::max(1.0, std::ceil(maximum_displacement / maximum_sweep_distance)));
-    const auto steps = std::min(requested_steps, maximum_sweep_steps);
+    // Finite input components can overflow when multiplied by dt. Bound the
+    // floating-point result before integer conversion, including infinity.
+    const auto steps = static_cast<std::size_t>(std::clamp(
+        std::ceil(maximum_displacement / maximum_sweep_distance), 1.0,
+        static_cast<double>(maximum_sweep_steps)));
     const auto step_dt = dt / static_cast<double>(steps);
 
     for (std::size_t step = 0U; step < steps; ++step) {
@@ -286,6 +289,57 @@ EntityFaceRotation entity_face_rotation(std::uint8_t face) noexcept {
     }
 }
 
+EntityAimRotation entity_aim_rotation(std::uint8_t entity_type,
+                                      double yaw,
+                                      double pitch) noexcept {
+    if (entity_type == 8U) {
+        // rocketTurret.py sets GL yaw then adds local GL-X pitch. After the
+        // KV6 conversion the barrel points along map +Y: pitch is map -X and
+        // yaw is map -Z. Character-style Y pitch merely rolled this barrel.
+        return {0U, -pitch, -yaw};
+    }
+    return {1U, -pitch, yaw};
+}
+
+void LauncherMuzzleTracker::remember(std::uint8_t tool, Vec3 position, Vec3 velocity,
+                                    Clock::time_point now) noexcept {
+    const auto type = static_cast<std::uint8_t>(
+        tool == 12U ? 21U : (tool == 13U || tool == 46U) ? 22U : 0U);
+    if (type == 0U || !finite(position) || !finite(velocity)) {
+        return;
+    }
+    shots_[next_] = {position, velocity, now, type};
+    next_ = (next_ + 1U) % shots_.size();
+}
+
+bool LauncherMuzzleTracker::consume(const LocalEntity& entity, Clock::time_point now) noexcept {
+    // Packet 10/21 vectors use signed 1/64-block fixed point. Compare the
+    // queued float origin with its round-tripped wire value, not the player's
+    // current position or selected tool, which may change during the RTT.
+    const auto matches = [](Vec3 sent, Vec3 received) noexcept {
+        constexpr double quantum{1.0 / 64.0};
+        return std::abs(sent.x - received.x) <= quantum &&
+               std::abs(sent.y - received.y) <= quantum &&
+               std::abs(sent.z - received.z) <= quantum;
+    };
+    for (auto& shot : shots_) {
+        if (now < shot.created || now - shot.created >= std::chrono::seconds{2}) {
+            shot.entity_type = 0U;
+        }
+        if (shot.entity_type != 0U && shot.entity_type == entity.type &&
+            matches(shot.position, entity.position) && matches(shot.velocity, entity.velocity)) {
+            shot.entity_type = 0U;
+            return true;
+        }
+    }
+    return false;
+}
+
+void LauncherMuzzleTracker::clear() noexcept {
+    shots_ = {};
+    next_ = 0U;
+}
+
 Vec3 entity_presentation_position(const LocalEntity& entity, const EntityModelPart& part) noexcept {
     auto x = entity.position.x;
     auto y = entity.position.y;
@@ -334,6 +388,51 @@ Vec3 entity_presentation_position(const LocalEntity& entity, const EntityModelPa
     }
 }
 
+std::array<float, 16U> entity_presentation_transform(
+    const LocalEntity& entity,
+    const EntityDefinition& definition,
+    const EntityModelPart& part,
+    double contact_adjustment) noexcept {
+    const float scale = definition.model_size * part.scale;
+    std::array<std::array<float, 3U>, 3U> basis{{{scale, 0.0F, 0.0F},
+                                               {0.0F, scale, 0.0F},
+                                               {0.0F, 0.0F, scale}}};
+    const auto rotate = [&basis](std::uint8_t axis, float degrees) {
+        const auto radians = static_cast<float>(degrees * std::numbers::pi / 180.0);
+        const float c = std::cos(radians);
+        const float s = std::sin(radians);
+        for (auto& v : basis) {
+            const auto before = v;
+            if (axis == 0U) {
+                v[1U] = before[1U] * c - before[2U] * s;
+                v[2U] = before[1U] * s + before[2U] * c;
+            } else if (axis == 1U) {
+                v[0U] = before[0U] * c + before[2U] * s;
+                v[2U] = -before[0U] * s + before[2U] * c;
+            } else {
+                v[0U] = before[0U] * c - before[1U] * s;
+                v[1U] = before[0U] * s + before[1U] * c;
+            }
+        }
+    };
+    // Undo the KV6 loader's Rx(+90), then reproduce Entity.draw's face and
+    // per-part articulation. Keeping this shared makes the ghost truthful.
+    rotate(0U, -90.0F);
+    const auto face = entity_face_rotation(entity.face);
+    if (face.degrees != 0.0F) rotate(face.axis, face.degrees);
+    const auto aim = entity_aim_rotation(entity.type, entity.aim_yaw, entity.aim_pitch);
+    if (part.rotation_mode >= 2U)
+        rotate(aim.pitch_axis, static_cast<float>(aim.pitch_degrees));
+    if (part.rotation_mode >= 1U)
+        rotate(2U, static_cast<float>(aim.yaw_degrees));
+    const auto origin = entity_presentation_position(entity, part);
+    return {basis[0U][0U], basis[0U][1U], basis[0U][2U], 0.0F,
+            basis[1U][0U], basis[1U][1U], basis[1U][2U], 0.0F,
+            basis[2U][0U], basis[2U][1U], basis[2U][2U], 0.0F,
+            static_cast<float>(origin.x), static_cast<float>(origin.y),
+            static_cast<float>(origin.z + contact_adjustment), 1.0F};
+}
+
 double entity_vertical_contact_adjustment(const LocalEntity& entity,
                                           const EntityDefinition& definition,
                                           const EntityModelPart& contact_part,
@@ -356,7 +455,27 @@ double entity_vertical_contact_adjustment(const LocalEntity& entity,
         static_cast<double>(definition.model_size) * static_cast<double>(contact_part.scale);
     const auto visual_bottom_z =
         contact_origin.z - static_cast<double>(mesh_minimum_y) * model_scale;
-    return entity.position.z - visual_bottom_z;
+    // A server placement may point inside its supporting solid voxel. Use
+    // that voxel's top surface after contact, not the fractional interior.
+    const auto support_z = entity.grounded ? std::floor(entity.position.z) : entity.position.z;
+    return support_z - visual_bottom_z;
+}
+
+double entity_rig_vertical_contact_adjustment(const LocalEntity& entity,
+                                             const EntityDefinition& definition,
+                                             std::span<const EntityModelPart> parts,
+                                             std::span<const float> mesh_minimum_y) noexcept {
+    std::optional<double> adjustment;
+    for (std::size_t index = 0U; index < std::min(parts.size(), mesh_minimum_y.size()); ++index) {
+        // Yaw preserves ground contact; a pitched barrel must never move the
+        // entire machine as it tracks a target.
+        if (parts[index].rotation_mode >= 2U || !std::isfinite(mesh_minimum_y[index])) {
+            continue;
+        }
+        const double part = entity_vertical_contact_adjustment(entity, definition, parts[index], mesh_minimum_y[index]);
+        adjustment = adjustment ? std::min(*adjustment, part) : part;
+    }
+    return adjustment.value_or(0.0);
 }
 
 std::optional<Vec3> health_crate_spot_shadow_position(const LocalEntity& entity,

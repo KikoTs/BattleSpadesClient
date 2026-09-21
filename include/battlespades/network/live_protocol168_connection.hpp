@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -31,7 +32,23 @@ struct LiveProtocol168Status final {
     std::size_t queued_inbound{};
     std::size_t queued_outbound{};
     std::string error;
+    /** Raw retail ENet disconnect data, including ERROR_MATCH_ENDED (18). */
+    std::optional<std::uint32_t> disconnect_reason;
 };
+
+/** Loading clients can receive ERROR_MATCH_ENDED without packet 52 first. */
+[[nodiscard]] inline bool protocol168_should_reconnect_after_map_change(
+    const LiveProtocol168Status& status, bool map_transition_armed) noexcept {
+    if (status.phase == LiveProtocol168Phase::disconnected && status.disconnect_reason) {
+        if (*status.disconnect_reason == 18U) return true;
+        // An explicit rejection (ban, kick, incompatible data, etc.) remains final,
+        // even if the previous scene had already announced a map change.
+        if (*status.disconnect_reason != 0U) return false;
+    }
+    return map_transition_armed &&
+           (status.phase == LiveProtocol168Phase::disconnected ||
+            status.phase == LiveProtocol168Phase::failed);
+}
 
 /**
  * Bound the amount of ordered protocol work applied by one presentation tick.
@@ -77,7 +94,10 @@ struct Protocol168WorldBootstrap final {
  *
  * ENet, compression and the raw peer stay confined to one worker thread.
  * The render/simulation thread exchanges complete plain protocol packets via
- * bounded queues and never blocks on DNS, sockets, compression or shutdown.
+ * bounded queues (16 MiB / 16,384 live inbound packets). request_stop()
+ * signals cancellation without waiting; stop()
+ * and destruction join the worker, including any in-flight system DNS lookup,
+ * so the UI should retire connections on its background cleanup executor.
  * Queue overflow fails the connection explicitly; gameplay packets are never
  * silently discarded because that would manufacture client/server desync.
  */
@@ -93,6 +113,8 @@ public:
 
     [[nodiscard]] bool start(EnetProtocol168Config transport,
                              Protocol168SessionConfig session);
+    /** Signal cancellation immediately; stop() later joins and releases ENet. */
+    void request_stop() noexcept;
     void stop() noexcept;
 
     [[nodiscard]] LiveProtocol168Status status() const;

@@ -1,0 +1,110 @@
+{
+  "name": "M107A1 - Desert Ops",
+  "source": "https://gamebanana.com/mods/170554",
+  "archives": [
+    {
+      "archive": "170554\\199567-m107a1_-_desert_ops.zip",
+      "extracted": "170554\\files-199567",
+      "sha256": "4efb9c4d807f46b5f7e94fa3c741287df01db5340c9de75fe92f8c447f20b08e",
+      "listing": [
+        "M107A1 - Desert Ops/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/000.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/001.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/002.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/003.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/004.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/005.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/006.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/007.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/008.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/009.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/010.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/011.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/012.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/013.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/014.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/015.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/016.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/017.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/018.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Flash/Weapons/Rifle/019.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Killfeed/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Killfeed/a-Rifle.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Gfx/Rifle.png",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/Casing.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/Magazine.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/MagazineEmpty.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/MagazineLoaded.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/Weapon.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Scripts/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Scripts/Skin/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Scripts/Skin/Rifle/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Scripts/Skin/Rifle/ThirdPerson.as",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Scripts/Skin/Rifle/View.as",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/.DS_Store",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/Fire.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/FireFar.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/FireLocal.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/FireMedium.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/FireStereo.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/RaiseLocal.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/Reload.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/ShellDrop1.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/ShellDrop2.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/ShellWater.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/firelocal.wav",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/Old/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/Old2/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/Old3/",
+        "M107A1 - Desert Ops/Barrett M107A1 V2.5 - Desert Ops/Sounds/Weapons/Rifle/_Assets_/Old4/",
+        "M107A1 - Desert Ops/CFG/",
+        "M107A1 - Desert Ops/CFG/SPConfig.cfg",
+        "M107A1 - Desert Ops/Readme.txt",
+        "M107A1 - Desert Ops/To Resources/",
+        "M107A1 - Desert Ops/To Resources/pak011-Gui.pak"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Weapon Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_sName": "sidex15"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

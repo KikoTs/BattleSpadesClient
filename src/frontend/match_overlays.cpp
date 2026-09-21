@@ -383,6 +383,8 @@ private:
         std::pair<std::string_view, std::string_view>{
             "VOTE_MAP_DESCRIPTION",
             "Please select the map you would like to play next:"},
+        std::pair<std::string_view, std::string_view>{
+            "MAP_VOTED_MESSAGE", "Next map will be {0}"},
         std::pair<std::string_view, std::string_view>{"VOTE_TO_KICK_TITLE",
                                                       "Vote Kick"},
         std::pair<std::string_view, std::string_view>{
@@ -795,6 +797,13 @@ std::string GenericVotingModel::decode_retail_literal(
 void GenericVotingModel::apply(
     const network::GenericVoteMessagePacket& packet) {
     const auto replace_candidates = [this, &packet]() {
+        // Count broadcasts may reorder candidates. Retain confirmation by the
+        // exact server token, never by a row index or its localized label.
+        const auto selected_token = voted_index_.has_value() &&
+                                            *voted_index_ < choices_.size()
+                                        ? std::optional<std::string>{
+                                              choices_[*voted_index_].wire_name}
+                                        : std::nullopt;
         std::vector<VoteChoice> replacement;
         replacement.reserve(std::min<std::size_t>(packet.candidates.size(), 3U));
         for (const auto& candidate : packet.candidates) {
@@ -804,9 +813,17 @@ void GenericVotingModel::apply(
                  candidate.votes});
         }
         choices_ = std::move(replacement);
-        // set_candidates_to_vote resets both fields even for a count-only
-        // UPDATE; this is a non-obvious retail invariant, not an optimization.
+        // Retail reset this marker for every UPDATE, making a successful vote
+        // appear unregistered as soon as the server broadcast its new count.
         voted_index_.reset();
+        if (selected_token.has_value()) {
+            for (std::size_t index{}; index < choices_.size(); ++index) {
+                if (choices_[index].wire_name == *selected_token) {
+                    voted_index_ = index;
+                    break;
+                }
+            }
+        }
         result_text_.clear();
     };
 
@@ -821,15 +838,17 @@ void GenericVotingModel::apply(
         replace_candidates();
         allow_revote_ = packet.allow_revote;
         hide_after_vote_ = packet.hide_after_vote;
+        accepting_updates_ = true;
         visible_ = true;
         break;
     case network::GenericVoteMessagePacket::update:
         // Retail changes only candidate data/counts here. Packet flags, title,
         // description, and visibility remain owned by the START transition.
-        replace_candidates();
+        if (accepting_updates_) replace_candidates();
         break;
     case network::GenericVoteMessagePacket::closed:
         can_vote_ = false;
+        accepting_updates_ = false;
         visible_ = false;
         // CLOSED immediately replaces show(False) with a six-second,
         // server-authored result message. It does not clear the candidate list.
@@ -876,18 +895,19 @@ void GenericVotingModel::clear() noexcept {
     can_vote_ = false;
     allow_revote_ = false;
     hide_after_vote_ = false;
+    accepting_updates_ = false;
 }
 
 std::optional<std::string_view> GenericVotingModel::cast(
     std::size_t candidate_index) {
-    if (!visible_ || !can_vote_) return std::nullopt;
+    if (!visible_ || !can_vote_ || candidate_index >= choices_.size()) {
+        return std::nullopt;
+    }
 
-    // GameScene first calls on_vote_cast(index, hide_after_vote, 5.0). The HUD
-    // therefore remembers even an invalid index and schedules (rather than
-    // immediately performing) hide-after-vote.
+    // A one/two-choice ballot still shares the F1/F2/F3 controls. Pressing an
+    // absent option must not mark a row or dismiss the still-unanswered vote.
     voted_index_ = candidate_index;
     if (hide_after_vote_) hide_menu_seconds_ = hide_after_cast_seconds;
-    if (candidate_index >= choices_.size()) return std::nullopt;
 
     // GameScene disables further input only after retrieving a valid candidate
     // and only when allow_vote_changing is false.
@@ -1010,7 +1030,10 @@ void MatchResultsModel::apply(const network::GameStatsPacket& packet) {
     // send two packet-67 records before packet 53. Clearing here silently
     // discarded the first team, while treating team_id as a winner made the
     // second packet announce a false green victory.
-    if (awards_.empty()) {
+    if (packet.team_id != 0 && packet.team_id != 2 && packet.team_id != 3) {
+        return;
+    }
+    if (observed_stats_teams_ == 0U && awards_.empty()) {
         // A fresh result batch invalidates incomplete reset evidence from a
         // prior malformed/stale SetScore stream.  The second official team
         // packet appends to the same batch and therefore preserves the mask.
@@ -1025,9 +1048,33 @@ void MatchResultsModel::apply(const network::GameStatsPacket& packet) {
                              awards_.size() + packet.entries.size()));
     for (const auto& entry : packet.entries) {
         if (awards_.size() >= maximum_awards) break;
+        if (entry.player_id < 0 || entry.player_id > 255 ||
+            entry.stat_type < 0 || entry.stat_type >= 30) {
+            continue;
+        }
         awards_.push_back({static_cast<std::uint8_t>(entry.player_id),
                            entry.stat_type,
-                           static_cast<std::uint8_t>(packet.team_id)});
+                           static_cast<std::uint8_t>(packet.team_id),
+                           std::nullopt, 0U});
+    }
+}
+
+void MatchResultsModel::apply(const network::GameStatsPacket& packet,
+                              const network::Protocol168Roster& roster) {
+    const auto first_new_award = awards_.size();
+    apply(packet);
+    for (std::size_t index{first_new_award}; index < awards_.size();) {
+        auto& award = awards_[index];
+        if (const auto* player = roster.player(award.player_id);
+            player != nullptr) {
+            award.player_name = player->name;
+            award.player_team = player->team;
+            ++index;
+        } else {
+            // An unresolved packet-time player must not later resolve to an
+            // unrelated newcomer who happens to receive the same numeric ID.
+            awards_.erase(awards_.begin() + static_cast<std::ptrdiff_t>(index));
+        }
     }
 }
 
@@ -1054,7 +1101,7 @@ void MatchResultsModel::observe_team_score(std::uint8_t wire_team,
 }
 
 void MatchResultsModel::on_map_ended(
-    std::int32_t score_winner_team) noexcept {
+    std::optional<std::int32_t> score_winner_team) noexcept {
     // LoadingMenu.start_pressed in the preserved client routes both
     // state_data.has_map_ended and game_statistics_active through
     // show_game_statistics(True).  Packet 52 freezes that scene; it does not
@@ -1076,14 +1123,16 @@ void apply_map_ended_overlay_boundary(
     static_cast<void>(vote);
 }
 
-void MatchResultsModel::show(std::int32_t score_winner_team) noexcept {
+void MatchResultsModel::show(
+    std::optional<std::int32_t> score_winner_team) noexcept {
     winner_team_ = score_winner_team == 2 || score_winner_team == 3
-                       ? score_winner_team
+                       ? *score_winner_team
                        : 0;
-    if (winner_team_ == 0) {
+    if (!score_winner_team.has_value()) {
         // Compatibility for the older revival server's one mixed award packet,
         // which used packet.team_id as its winner. Never use this fallback
-        // after both retail team lists have been observed.
+        // after both retail team lists have been observed, or when an explicit
+        // authoritative score snapshot says the round was a draw (zero).
         if (observed_stats_teams_ == 0x01U) winner_team_ = 2;
         if (observed_stats_teams_ == 0x02U) winner_team_ = 3;
     }
@@ -1378,13 +1427,16 @@ ui::DrawList MatchResultsPresentation::build(
             packet_team_mask |= static_cast<std::uint8_t>(
                 1U << static_cast<unsigned>(award.team_id - 2U));
         }
-        if (const auto* player = roster.player(award.player_id);
-            player != nullptr && (player->team == 2U || player->team == 3U)) {
+        const auto* player = roster.player(award.player_id);
+        const auto player_team = award.player_name.has_value()
+                                     ? award.player_team
+                                     : player != nullptr ? player->team : 0U;
+        if (player_team == 2U || player_team == 3U) {
             roster_team_mask |= static_cast<std::uint8_t>(
-                1U << static_cast<unsigned>(player->team - 2U));
+                1U << static_cast<unsigned>(player_team - 2U));
         }
     }
-    const bool mixed_single_packet =
+    const bool mixed_single_packet = !model.has_both_team_lists() &&
         (packet_team_mask == 0U || packet_team_mask == 0x01U ||
          packet_team_mask == 0x02U) &&
         roster_team_mask == 0x03U;
@@ -1393,9 +1445,12 @@ ui::DrawList MatchResultsPresentation::build(
     for (const auto& award : model.awards()) {
         auto column_team = award.team_id;
         const auto* player = roster.player(award.player_id);
+        const auto player_team = award.player_name.has_value()
+                                     ? award.player_team
+                                     : player != nullptr ? player->team : 0U;
         if ((mixed_single_packet || (column_team != 2U && column_team != 3U)) &&
-            player != nullptr && (player->team == 2U || player->team == 3U)) {
-            column_team = player->team;
+            (player_team == 2U || player_team == 3U)) {
+            column_team = static_cast<std::uint8_t>(player_team);
         }
         if (column_team != 2U && column_team != 3U) continue;
         auto& destination = team_awards[column_team - 2U];
@@ -1455,9 +1510,14 @@ ui::DrawList MatchResultsPresentation::build(
         for (std::size_t index{}; index < std::min<std::size_t>(awards.size(), 3U);
              ++index) {
             const auto* player = roster.player(awards[index].player_id);
-            if (player == nullptr) continue;
-            const auto player_tint = player->team == 3U ? retail_team2_ui
-                                                         : retail_team1_ui;
+            const auto& award = awards[index];
+            if (!award.player_name.has_value() && player == nullptr) continue;
+            const auto& player_name = award.player_name.has_value()
+                                          ? *award.player_name : player->name;
+            const auto player_team = award.player_name.has_value()
+                                         ? award.player_team : player->team;
+            const auto player_tint = player_team == 3U ? retail_team2_ui
+                                                        : retail_team1_ui;
             const auto background = retail_blend_color(
                 index % 2U == 0U ? retail_list_light : retail_list_dark,
                 player_tint, retail_list_blend);
@@ -1467,7 +1527,7 @@ ui::DrawList MatchResultsPresentation::build(
             list.push(sprite("png/high/white.png", {x, row_y, width, 16.0},
                              ui::DrawSpace::design_pixels, background, 1'000U,
                              1.0));
-            list.push(text(player->name,
+            list.push(text(player_name,
                            {x + 13.14, text_baseline, 86.06, 0.0}, 11.0,
                            ui::DrawSpace::design_pixels,
                            ui::HorizontalTextAlignment::left, player_tint,
@@ -1495,20 +1555,22 @@ ui::DrawList MatchResultsPresentation::build(
     // These are direct Font.draw calls, not the rectangle-fitting helpers used
     // by the team headings below.  Retail's coordinates are bottom-left
     // baselines; converting them to our top-left canvas gives y=435 and y=420.
-    // A zero-width centered destination reproduces Font.draw(center=True)
-    // without introducing a fabricated fit box that can shrink the glyphs.
+    // Bounded centred destinations keep those exact anchors and the authored
+    // size for ordinary labels, while fitting long server names to the frame.
     // score_text_font.draw(text_box_text.upper(), 400, 165, ..., center=True)
-    list.push(text(std::move(result_title), {400.0, 435.0, 0.0, 0.0}, 14.0,
+    list.push(text(std::move(result_title), {64.0, 435.0, 672.0, 0.0}, 14.0,
                    ui::DrawSpace::design_pixels,
                    ui::HorizontalTextAlignment::center, menu_gold,
                    "fonts/Spades.ttf", ui::TextTransform::uppercase,
-                   ui::TextFit::none, ui::VerticalTextAlignment::baseline));
+                   ui::TextFit::retail_width_scale,
+                   ui::VerticalTextAlignment::baseline));
     // title_font.draw(mode_text, 400, 180, ..., center=True)
-    list.push(text(std::move(mode_title), {400.0, 420.0, 0.0, 0.0}, 46.0,
+    list.push(text(std::move(mode_title), {74.0, 420.0, 652.0, 0.0}, 46.0,
                    ui::DrawSpace::design_pixels,
                    ui::HorizontalTextAlignment::center, menu_gold,
                    "fonts/Spades.ttf", ui::TextTransform::uppercase,
-                   ui::TextFit::none, ui::VerticalTextAlignment::baseline));
+                   ui::TextFit::retail_width_scale,
+                   ui::VerticalTextAlignment::baseline));
 
     const auto rank_up = model.rank_up_frame();
     if (!rank_up.has_value()) {

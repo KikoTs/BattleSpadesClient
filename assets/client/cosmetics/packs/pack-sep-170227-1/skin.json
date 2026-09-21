@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170227-1",
+  "name": "Classic pistol — Silver",
+  "source": "https://gamebanana.com/mods/170227",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Gfx/semi.png": "Gfx/semi.png",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "Scripts/Skin/Rifle/ThirdPerson.as",
+    "Scripts/Skin/Rifle/View.as": "Scripts/Skin/Rifle/View.as",
+    "Sounds/Weapons/Rifle/Fire.wav": "Sounds/Weapons/Rifle/Fire.wav.ogg",
+    "Sounds/Weapons/Rifle/Reload.wav": "Sounds/Weapons/Rifle/Reload.wav.ogg",
+    "Sounds/Weapons/Shotgun/Cock.wav": "Sounds/Weapons/Shotgun/Cock.wav.ogg",
+    "Sounds/Weapons/Shotgun/Fire.wav": "Sounds/Weapons/Shotgun/Fire.wav.ogg",
+    "Sounds/Weapons/Shotgun/Reload.wav": "Sounds/Weapons/Shotgun/Reload.wav.ogg",
+    "Sounds/Weapons/SMG/Fire.wav": "Sounds/Weapons/SMG/Fire.wav.ogg",
+    "Sounds/Weapons/SMG/Reload.wav": "Sounds/Weapons/SMG/Reload.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png"
+  },
+  "hashes": {
+    "Gfx/semi.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Models/Weapons/Rifle/Magazine.kv6": "8f25fc5e31309f6e92305566f56cd17cef532f851cba847e13bb7da43d41057f",
+    "Models/Weapons/Rifle/Weapon.kv6": "40c98bec9463260c85335555dc925945a2c92f4cf61f3b91edcd9e9c21994fdf",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "601ddcc9bd0a8cab987968e622d2956594a1895f18682f0f2c8ae05f4f69f49e",
+    "Scripts/Skin/Rifle/ThirdPerson.as": "a475f5a74c23228a5ca4445bcc9cd9cea41eeea066cdcc816d8d40bbd31478c0",
+    "Scripts/Skin/Rifle/View.as": "208f12c61f9780dd477534afe613d1afca07f4eafba55e3298ff57b871d0ad2c",
+    "Sounds/Weapons/Rifle/Fire.wav.ogg": "c48de2065a514852bb9144d184d1412eb0e1c5149c9c58cdd495d35fd02c12ad",
+    "Sounds/Weapons/Rifle/Reload.wav.ogg": "b6b34474a1e9111af5396cc5c45482b0cbe3f69aa3c71fb4644ed671a35ce19d",
+    "Sounds/Weapons/Shotgun/Cock.wav.ogg": "3948f959f279849cf9cacc2550c08d316c35e8b1a42ec792b4efb1ccd90fa1bd",
+    "Sounds/Weapons/Shotgun/Fire.wav.ogg": "ebf8aec5ebd97596da8635343735cd0685b72cb2ad06287d038a5dd052073003",
+    "Sounds/Weapons/Shotgun/Reload.wav.ogg": "890e0ee985da31482b1a1590a641465fd221012910bf18b6dc1252784e3ee284",
+    "Sounds/Weapons/SMG/Fire.wav.ogg": "07033b8e73df8a4ece016b857ac9a7afd6ae8d561aaaba6af49a7595e0609f51",
+    "Sounds/Weapons/SMG/Reload.wav.ogg": "6640c806ebb2beb8be5cc5dbba74272e491ed0d1c2c969574d80691341fb30ba",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "3d77e1313edb08870e685e8e92eba80eb0064e380d6532793609df90773fdd62",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Modelador",
+          "_idRow": "1753013",
+          "_sName": "Martinserna577",
+          "_sProfileUrl": "https://gamebanana.com/members/1753013",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [
+    "Keep the actual weapon and hands visible for iron-sight ADS; replace the empty full-screen sight image with the native aiming mark.",
+    "Aligned pistol ADS to the supplied model sight height and centre."
+  ],
+  "animation_source": "Original OpenSpades skin script",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

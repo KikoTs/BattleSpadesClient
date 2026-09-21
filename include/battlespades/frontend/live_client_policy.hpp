@@ -1,9 +1,33 @@
 #pragma once
 
+#include "battlespades/network/protocol168_weapons.hpp"
+
 #include <cstdint>
 #include <optional>
 
 namespace battlespades::frontend {
+
+/** Spectators still publish scene readiness, but never character input. */
+[[nodiscard]] constexpr bool local_player_is_spectator(
+    std::uint8_t team, bool spectator_enabled) noexcept {
+    return team == 0U && spectator_enabled;
+}
+
+/**
+ * A neutral packet keeps the post-map roster reveal progressing even before
+ * a spectator has a chase target. It deliberately contains no tool actions,
+ * movement, palette state, or weapon-display flag.
+ */
+[[nodiscard]] inline network::ClientDataPacket spectator_client_data(
+    std::int32_t loop_count, std::uint8_t player_id,
+    std::array<float, 3U> orientation) noexcept {
+    network::ClientDataPacket packet;
+    packet.loop_count = loop_count;
+    packet.player_id = player_id;
+    packet.orientation = orientation;
+    packet.opaque_state = network::protocol168_client_data_opaque_state(loop_count);
+    return packet;
+}
 
 /**
  * Whether the fixed-step world should continue below a frontend overlay.

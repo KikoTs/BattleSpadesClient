@@ -1,0 +1,44 @@
+{
+  "name": "Headshot PDEAD v1",
+  "source": "https://gamebanana.com/mods/169613",
+  "archive": [
+    {
+      "archive": "169613\\212279-pdead_hshot.rar",
+      "extracted": "169613\\files-212279",
+      "sha256": "ba3731fe31635681571a70276c7d1f0b25d02fed2d8e05f0440b97771370b744",
+      "listing": [
+        "PDead HShot/playerdead.kv6",
+        "PDead HShot/README!.txt",
+        "PDead HShot"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "DRago",
+      "_aAuthors": [
+        {
+          "_sRole": "slab6",
+          "_sName": "DRagomon"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

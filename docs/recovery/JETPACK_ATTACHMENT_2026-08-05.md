@@ -1,5 +1,7 @@
 # Retail third-person jetpack attachment
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 Scope: client presentation only. No server or original-client file was changed.
 
 ## Proven model rows
@@ -44,4 +46,3 @@ be retained across the one-second corpse fuse.
 renderer must convert those model-space values through its established KV6
 axis convention exactly once; baking another correction into the pack model
 would double-offset the death path.
-

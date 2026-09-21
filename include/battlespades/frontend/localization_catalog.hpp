@@ -31,6 +31,8 @@ public:
     [[nodiscard]] const std::filesystem::path& path() const noexcept;
     [[nodiscard]] bool load();
     [[nodiscard]] bool reload_if_changed();
+    /** Selects an already loaded locale without reparsing translation files. */
+    [[nodiscard]] bool set_active_locale(std::string_view locale);
     [[nodiscard]] std::optional<std::string_view> lookup(std::string_view key) const noexcept;
     [[nodiscard]] std::string_view active_locale() const noexcept;
     [[nodiscard]] std::string_view active_font_asset() const noexcept;
@@ -51,7 +53,7 @@ private:
     std::vector<LanguageInfo> language_infos_;
     std::string active_locale_{"en"};
     std::string fallback_locale_{"en"};
-    std::optional<std::filesystem::file_time_type> loaded_write_time_;
+    std::map<std::filesystem::path, std::filesystem::file_time_type> loaded_write_times_;
     std::uint64_t generation_{};
     std::string last_error_;
 };

@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace battlespades::render {
@@ -284,6 +285,7 @@ struct BgfxUiRenderer::Impl final {
         TextureFilter filter{TextureFilter::linear};
         std::uint32_t generation{1U};
         std::uint32_t references{};
+        bool updatable{};
     };
 
     using CacheKey = std::pair<std::filesystem::path, TextureFilter>;
@@ -471,6 +473,59 @@ struct BgfxUiRenderer::Impl final {
         return true;
     }
 
+    [[nodiscard]] bool submit_geometry(const UiGeometry& draw) {
+        const auto* texture = find(draw.texture);
+        if (!texture || !draw.mesh) return fail("markup geometry references released resources");
+        const auto& mesh = *draw.mesh;
+        if (mesh.vertices.empty() || mesh.indices.empty()) return true;
+        std::optional<UiRect> clip;
+        if (draw.clip) {
+            const ui::DesignCanvas canvas{static_cast<std::int32_t>(design.width),
+                                          static_cast<std::int32_t>(design.height)};
+            const auto viewport = canvas.viewport({static_cast<std::int32_t>(drawable.width),
+                                                   static_cast<std::int32_t>(drawable.height)});
+            if (!viewport) return true;
+            const auto scale = static_cast<float>(viewport->scale);
+            clip = intersect({static_cast<float>(viewport->x) + draw.clip->x * scale,
+                              static_cast<float>(viewport->y) + draw.clip->y * scale,
+                              draw.clip->width * scale, draw.clip->height * scale},
+                             {0, 0, static_cast<float>(drawable.width), static_cast<float>(drawable.height)});
+            if (!clip) return true;
+        }
+        bgfx::TransientVertexBuffer vertices{};
+        bgfx::TransientIndexBuffer indices{};
+        if (!bgfx::allocTransientBuffers(&vertices, vertex_layout,
+                static_cast<std::uint32_t>(mesh.vertices.size()), &indices,
+                static_cast<std::uint32_t>(mesh.indices.size()), true)) {
+            ++dropped_draws;
+            return true;
+        }
+        auto* output = reinterpret_cast<UiVertex*>(vertices.data);
+        const auto& m = draw.transform;
+        for (std::size_t i{}; i < mesh.vertices.size(); ++i) {
+            const auto& v = mesh.vertices[i];
+            const float x = v.x + draw.x, y = v.y + draw.y;
+            const float w = m[3] * x + m[7] * y + m[15];
+            const float inverse = std::abs(w) > 0.00001F ? 1.0F / w : 1.0F;
+            output[i] = {(m[0]*x + m[4]*y + m[12])*inverse,
+                         (m[1]*x + m[5]*y + m[13])*inverse, 0, v.u, v.v, v.abgr};
+        }
+        std::memcpy(indices.data, mesh.indices.data(), mesh.indices.size()*sizeof(std::uint32_t));
+        bgfx::setVertexBuffer(0, &vertices);
+        bgfx::setIndexBuffer(&indices);
+        bgfx::setTexture(0, sampler, texture->native);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_MSAA |
+                       BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+        if (clip) {
+            const auto x = std::floor(clip->x), y = std::floor(clip->y);
+            bgfx::setScissor(static_cast<std::uint16_t>(x), static_cast<std::uint16_t>(y),
+                static_cast<std::uint16_t>(std::ceil(clip->x + clip->width) - x),
+                static_cast<std::uint16_t>(std::ceil(clip->y + clip->height) - y));
+        }
+        bgfx::submit(ui_view_id, program);
+        return true;
+    }
+
     [[nodiscard]] bool submit_sprite(const UiSprite& sprite) {
         const auto* texture = find(sprite.texture);
         if (texture == nullptr) {
@@ -521,7 +576,8 @@ struct BgfxUiRenderer::Impl final {
                                          vertices_per_sprite,
                                          &index_buffer,
                                          indices_per_sprite)) {
-            return fail("bgfx transient UI geometry budget was exhausted");
+            ++dropped_draws;
+            return true;
         }
 
         const auto inverse_width = 1.0F / static_cast<float>(texture->extent.width);
@@ -574,7 +630,9 @@ struct BgfxUiRenderer::Impl final {
         // composite the desktop through the game window. RGB still uses
         // straight-alpha blending; retaining the destination alpha preserves
         // the opaque value established by the frame clear.
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | (sprite.additive
+            ? BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE)
+            : BGFX_STATE_BLEND_ALPHA) | BGFX_STATE_MSAA);
         if (drawable_clip.has_value()) {
             const auto left = std::floor(drawable_clip->x);
             const auto top = std::floor(drawable_clip->y);
@@ -602,11 +660,20 @@ struct BgfxUiRenderer::Impl final {
     std::vector<TextureSlot> textures{};
     std::vector<std::uint32_t> free_slots{};
     std::map<CacheKey, std::uint32_t> texture_cache{};
-    std::vector<UiSprite> sprites{};
+    // Keep markup and sprite submissions interleaved. Separate queues put a
+    // later tooltip/backdrop underneath every earlier markup draw.
+    std::vector<std::variant<UiSprite, UiGeometry>> draws{};
+    bgfx::FrameBufferHandle preview_framebuffer{bgfx::kInvalidHandle};
+    bgfx::TextureHandle preview_depth{bgfx::kInvalidHandle};
+    bgfx::VertexBufferHandle preview_vertices{bgfx::kInvalidHandle};
+    bgfx::IndexBufferHandle preview_indices{bgfx::kInvalidHandle};
+    UiTextureInfo preview_texture{}, preview_white{};
     std::thread::id owner_thread{};
     std::string error{};
     bool initialized{false};
     bool frame_open{false};
+    std::size_t dropped_draws{};
+    std::size_t last_dropped_draws{};
 };
 
 BgfxUiRenderer::BgfxUiRenderer() : impl_{std::make_unique<Impl>()} {}
@@ -624,6 +691,11 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     }
     if (!config.drawable_extent.is_valid() || !config.design_extent.is_valid()) {
         return impl_->fail("drawable and design extents must be non-zero");
+    }
+    if (config.drawable_extent.width > UINT16_MAX || config.drawable_extent.height > UINT16_MAX ||
+        config.design_extent.width > static_cast<std::uint32_t>(INT32_MAX) ||
+        config.design_extent.height > static_cast<std::uint32_t>(INT32_MAX)) {
+        return impl_->fail("drawable or design extent exceeds the UI coordinate limits");
     }
 
     std::error_code error_code;
@@ -705,17 +777,38 @@ void BgfxUiRenderer::shutdown() noexcept {
         return;
     }
 
-    impl_->sprites.clear();
+    impl_->draws.clear();
+    if (bgfx::isValid(impl_->preview_framebuffer)) bgfx::destroy(impl_->preview_framebuffer);
+    if (bgfx::isValid(impl_->preview_depth)) bgfx::destroy(impl_->preview_depth);
+    if (bgfx::isValid(impl_->preview_vertices)) bgfx::destroy(impl_->preview_vertices);
+    if (bgfx::isValid(impl_->preview_indices)) bgfx::destroy(impl_->preview_indices);
+    impl_->preview_framebuffer = BGFX_INVALID_HANDLE;
+    impl_->preview_depth = BGFX_INVALID_HANDLE;
+    impl_->preview_vertices = BGFX_INVALID_HANDLE;
+    impl_->preview_indices = BGFX_INVALID_HANDLE;
+    impl_->preview_texture = {};
+    impl_->preview_white = {};
     impl_->frame_open = false;
-    for (auto& texture : impl_->textures) {
+    impl_->dropped_draws = 0U;
+    impl_->last_dropped_draws = 0U;
+    impl_->free_slots.clear();
+    for (std::size_t index{}; index < impl_->textures.size(); ++index) {
+        auto& texture = impl_->textures[index];
         if (bgfx::isValid(texture.native)) {
             bgfx::destroy(texture.native);
             texture.native = BGFX_INVALID_HANDLE;
+            if (++texture.generation == 0U) texture.generation = 1U;
         }
+        texture.canonical_path.clear();
+        texture.extent = {};
+        texture.references = 0U;
+        texture.updatable = false;
+        impl_->free_slots.push_back(static_cast<std::uint32_t>(index));
     }
     impl_->texture_cache.clear();
-    impl_->free_slots.clear();
-    impl_->textures.clear();
+    // Preserve the slot generations across initialize/shutdown cycles. A
+    // texture retained by a frontend cache must not alias a new GPU resource
+    // when a graphics backend is restarted.
     if (bgfx::isValid(impl_->program)) {
         bgfx::destroy(impl_->program);
         impl_->program = BGFX_INVALID_HANDLE;
@@ -749,12 +842,19 @@ GraphicsBackend BgfxUiRenderer::active_backend() const noexcept {
     return backend_from_type(bgfx::getRendererType());
 }
 
+std::size_t BgfxUiRenderer::last_frame_dropped_draws() const noexcept {
+    return impl_->last_dropped_draws;
+}
+
 bool BgfxUiRenderer::resize(UiExtent drawable_extent) {
     if (!impl_->initialized || !impl_->check_thread()) {
         return impl_->fail("cannot resize an uninitialized bgfx UI renderer");
     }
     if (impl_->frame_open) {
         return impl_->fail("cannot resize while a UI frame is open");
+    }
+    if (drawable_extent.width > UINT16_MAX || drawable_extent.height > UINT16_MAX) {
+        return impl_->fail("drawable extent exceeds bgfx's 16-bit view rectangle limit");
     }
     impl_->drawable = drawable_extent;
     if (!drawable_extent.is_valid()) {
@@ -841,7 +941,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::load_texture(const std::filesystem:
         return std::nullopt;
     }
 
-    constexpr auto texture_limit = static_cast<std::uint32_t>(UINT16_MAX);
+    const auto texture_limit = std::min<std::uint32_t>(UINT16_MAX, bgfx::getCaps()->limits.maxTextureSize);
     if (image->m_width == 0U || image->m_height == 0U || image->m_width > texture_limit ||
         image->m_height > texture_limit || image->m_depth != 1U || image->m_numLayers != 1U ||
         image->m_cubeMap) {
@@ -886,6 +986,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::load_texture(const std::filesystem:
     slot.extent = extent;
     slot.filter = filter;
     slot.references = 1U;
+    slot.updatable = false;
     impl_->texture_cache.emplace(key, index);
     impl_->error.clear();
     return UiTextureInfo{UiTexture{index, slot.generation}, extent};
@@ -901,9 +1002,9 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
         impl_->fail("cannot create a texture while a UI frame is open");
         return std::nullopt;
     }
-    constexpr auto texture_limit = static_cast<std::uint32_t>(UINT16_MAX);
+    const auto texture_limit = std::min<std::uint32_t>(UINT16_MAX, bgfx::getCaps()->limits.maxTextureSize);
     if (!extent.is_valid() || extent.width > texture_limit || extent.height > texture_limit) {
-        impl_->fail("RGBA8 texture extent exceeds bgfx's 16-bit texture limit");
+        impl_->fail("RGBA8 texture extent exceeds the graphics backend's texture limit");
         return std::nullopt;
     }
 
@@ -915,19 +1016,24 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
         return std::nullopt;
     }
 
-    const auto* texture_memory =
-        bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
+    // Runtime textures support update_texture_rgba8. Initial data passed into
+    // createTexture2D makes a D3D11 immutable resource; later thumbnail/minimap
+    // updates then appear successful but never change its pixels. Allocate a
+    // mutable texture first and upload its initial contents through the update.
     const auto native = bgfx::createTexture2D(static_cast<std::uint16_t>(extent.width),
                                               static_cast<std::uint16_t>(extent.height),
                                               false,
                                               1U,
                                               bgfx::TextureFormat::RGBA8,
                                               texture_flags(filter),
-                                              texture_memory);
+                                              nullptr);
     if (!bgfx::isValid(native)) {
         impl_->fail("bgfx could not create an RGBA8 runtime texture");
         return std::nullopt;
     }
+    bgfx::updateTexture2D(native,0U,0U,0U,0U,static_cast<std::uint16_t>(extent.width),
+        static_cast<std::uint16_t>(extent.height),
+        bgfx::copy(pixels.data(),static_cast<std::uint32_t>(pixels.size())));
 
     std::uint32_t index{};
     if (!impl_->free_slots.empty()) {
@@ -950,6 +1056,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
     slot.extent = extent;
     slot.filter = filter;
     slot.references = 1U;
+    slot.updatable = true;
     impl_->error.clear();
     return UiTextureInfo{UiTexture{index, slot.generation}, extent};
 }
@@ -964,6 +1071,9 @@ bool BgfxUiRenderer::update_texture_rgba8(UiTexture texture, std::span<const std
     auto* slot = impl_->find(texture);
     if (slot == nullptr || slot->references == 0U) {
         return impl_->fail("cannot update a stale texture handle");
+    }
+    if (!slot->updatable) {
+        return impl_->fail("only runtime RGBA8 textures can be updated");
     }
     const auto required_size = static_cast<std::uint64_t>(slot->extent.width) *
                                static_cast<std::uint64_t>(slot->extent.height) * 4U;
@@ -991,6 +1101,9 @@ bool BgfxUiRenderer::release_texture(UiTexture texture) {
     if (impl_->frame_open) {
         return impl_->fail("cannot release a texture while a UI frame is open");
     }
+    if (texture == impl_->preview_texture.texture || texture == impl_->preview_white.texture) {
+        return impl_->fail("model preview textures are owned by the renderer");
+    }
     auto* slot = impl_->find(texture);
     if (slot == nullptr || slot->references == 0U) {
         return impl_->fail("cannot release a stale texture handle");
@@ -1005,6 +1118,7 @@ bool BgfxUiRenderer::release_texture(UiTexture texture) {
         slot->native = BGFX_INVALID_HANDLE;
         slot->canonical_path.clear();
         slot->extent = {};
+        slot->updatable = false;
         ++slot->generation;
         if (slot->generation == 0U) {
             slot->generation = 1U;
@@ -1015,6 +1129,116 @@ bool BgfxUiRenderer::release_texture(UiTexture texture) {
     return true;
 }
 
+std::optional<UiTextureInfo> BgfxUiRenderer::set_model_preview(const world::ChunkMesh& mesh) {
+    if (!impl_->initialized || !impl_->check_thread() || impl_->frame_open ||
+        mesh.vertices.empty() || mesh.indices.empty() || mesh.vertices.size() > 1'000'000U ||
+        mesh.indices.size() > 3'000'000U || mesh.indices.size() % 3U != 0U ||
+        std::ranges::any_of(mesh.indices, [&](auto index) { return index >= mesh.vertices.size(); }) ||
+        std::ranges::any_of(mesh.vertices, [](const auto& vertex) {
+            return !std::isfinite(vertex.x) || !std::isfinite(vertex.y) || !std::isfinite(vertex.z);
+        })) {
+        impl_->fail("model preview requires a valid bounded triangle mesh outside an open frame");
+        return std::nullopt;
+    }
+    for (std::size_t axis{}; axis < 3U; ++axis) {
+        if (!std::isfinite(mesh.minimum[axis]) || !std::isfinite(mesh.maximum[axis]) ||
+            mesh.minimum[axis] > mesh.maximum[axis]) {
+            impl_->fail("model preview bounds must be finite and ordered");
+            return std::nullopt;
+        }
+    }
+    if (!bgfx::isValid(impl_->preview_framebuffer)) {
+        constexpr UiExtent extent{640U, 320U};
+        const std::vector<std::uint8_t> empty(extent.width * extent.height * 4U, 0U);
+        const std::array<std::uint8_t,4U> white{255,255,255,255};
+        const auto texture = create_texture_rgba8(empty, extent, TextureFilter::linear);
+        const auto pixel = create_texture_rgba8(white, {1,1}, TextureFilter::nearest);
+        if (!texture || !pixel) {
+            if (texture) static_cast<void>(release_texture(texture->texture));
+            if (pixel) static_cast<void>(release_texture(pixel->texture));
+            return std::nullopt;
+        }
+        const auto color = bgfx::createTexture2D(640, 320, false, 1, bgfx::TextureFormat::RGBA8,
+            BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+        const auto depth_format=bgfx::isTextureValid(0,false,1,bgfx::TextureFormat::D24S8,BGFX_TEXTURE_RT_WRITE_ONLY)
+            ?bgfx::TextureFormat::D24S8:bgfx::TextureFormat::D32F;
+        const auto depth = bgfx::createTexture2D(640,320,false,1,depth_format,BGFX_TEXTURE_RT_WRITE_ONLY);
+        bgfx::FrameBufferHandle framebuffer=BGFX_INVALID_HANDLE;
+        if (bgfx::isValid(color) && bgfx::isValid(depth)) {
+            const std::array attachments{color,depth};
+            framebuffer=bgfx::createFrameBuffer(2,attachments.data(),false);
+        }
+        if (!bgfx::isValid(framebuffer)) {
+            if (bgfx::isValid(color)) bgfx::destroy(color);
+            if (bgfx::isValid(depth)) bgfx::destroy(depth);
+            static_cast<void>(release_texture(texture->texture));
+            static_cast<void>(release_texture(pixel->texture));
+            return std::nullopt;
+        }
+        auto* slot=impl_->find(texture->texture);
+        bgfx::destroy(slot->native); slot->native=color; slot->updatable=false;
+        impl_->preview_texture=*texture; impl_->preview_white=*pixel;
+        impl_->preview_depth=depth; impl_->preview_framebuffer=framebuffer;
+    }
+    std::array<float,3U> center{};
+    float diameter{};
+    for (std::size_t i{}; i<3U; ++i) {
+        center[i] = (mesh.minimum[i] + mesh.maximum[i]) * 0.5F;
+        diameter = std::max(diameter, mesh.maximum[i] - mesh.minimum[i]);
+    }
+    const auto scale = std::min(3.4F / std::max(0.01F,diameter),
+                               1.65F / std::max(0.01F,mesh.maximum[1]-mesh.minimum[1]));
+    std::vector<UiVertex> vertices;
+    vertices.reserve(mesh.vertices.size());
+    for (const auto& v : mesh.vertices) {
+        std::uint32_t color = 0xff000000U;
+        for (std::uint32_t channel{}; channel<3U; ++channel) {
+            const auto linear = static_cast<float>((v.abgr >> (channel*8U)) & 255U) / 255.0F;
+            const auto light=0.8F+0.1F*static_cast<float>(v.face%3U);
+            const auto lit = std::clamp(std::pow(linear*light, 1.0F/2.2F)*255.0F, 0.0F, 255.0F);
+            color |= static_cast<std::uint32_t>(lit) << (channel*8U);
+        }
+        vertices.push_back({(v.x-center[0])*scale, (v.y-center[1])*scale,
+                            (v.z-center[2])*scale, 0.5F, 0.5F, color});
+    }
+    const auto vb = bgfx::createVertexBuffer(bgfx::copy(vertices.data(),
+        static_cast<std::uint32_t>(vertices.size()*sizeof(UiVertex))), impl_->vertex_layout);
+    const auto ib = bgfx::createIndexBuffer(bgfx::copy(mesh.indices.data(),
+        static_cast<std::uint32_t>(mesh.indices.size()*sizeof(std::uint32_t))), BGFX_BUFFER_INDEX32);
+    if (!bgfx::isValid(vb) || !bgfx::isValid(ib)) {
+        if (bgfx::isValid(vb)) bgfx::destroy(vb);
+        if (bgfx::isValid(ib)) bgfx::destroy(ib);
+        return std::nullopt;
+    }
+    if (bgfx::isValid(impl_->preview_vertices)) bgfx::destroy(impl_->preview_vertices);
+    if (bgfx::isValid(impl_->preview_indices)) bgfx::destroy(impl_->preview_indices);
+    impl_->preview_vertices = vb;
+    impl_->preview_indices = ib;
+    return impl_->preview_texture;
+}
+
+void BgfxUiRenderer::render_model_preview(float yaw, float pitch, float zoom) {
+    if (!impl_->initialized || !impl_->check_thread() || !bgfx::isValid(impl_->preview_vertices) ||
+        !std::isfinite(yaw) || !std::isfinite(pitch) || !std::isfinite(zoom)) return;
+    std::array<float,16U> model{}, view{}, projection{};
+    const float size = 1.05F / std::clamp(zoom, 0.65F, 1.6F);
+    bx::mtxRotateXY(model.data(), pitch, yaw);
+    bx::mtxIdentity(view.data());
+    bx::mtxOrtho(projection.data(), -size * 640.0F/320.0F, size * 640.0F/320.0F,
+                  -size, size, -4.0F, 4.0F, 0.0F, bgfx::getCaps()->homogeneousDepth);
+    if (bgfx::getCaps()->originBottomLeft) projection[5]=-projection[5];
+    bgfx::setViewFrameBuffer(inventory_preview_view_id, impl_->preview_framebuffer);
+    bgfx::setViewRect(inventory_preview_view_id, 0, 0, 640, 320);
+    bgfx::setViewClear(inventory_preview_view_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00000000U);
+    bgfx::setViewTransform(inventory_preview_view_id, view.data(), projection.data());
+    bgfx::setTransform(model.data());
+    bgfx::setVertexBuffer(0, impl_->preview_vertices);
+    bgfx::setIndexBuffer(impl_->preview_indices);
+    bgfx::setTexture(0, impl_->sampler, impl_->find(impl_->preview_white.texture)->native);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS);
+    bgfx::submit(inventory_preview_view_id, impl_->program);
+}
+
 bool BgfxUiRenderer::begin_frame() {
     if (!impl_->initialized || !impl_->check_thread()) {
         return impl_->fail("cannot begin a frame before renderer initialization");
@@ -1022,11 +1246,12 @@ bool BgfxUiRenderer::begin_frame() {
     if (impl_->frame_open) {
         return impl_->fail("a UI frame is already open");
     }
-    impl_->sprites.clear();
+    impl_->draws.clear();
     if (!impl_->configure_views()) {
         return false;
     }
     impl_->frame_open = true;
+    impl_->dropped_draws = 0U;
     impl_->error.clear();
     return true;
 }
@@ -1056,8 +1281,39 @@ bool BgfxUiRenderer::draw(const UiSprite& sprite) {
     if (!std::isfinite(sprite.rotation_degrees)) {
         return impl_->fail("sprite rotation must be finite");
     }
-    impl_->sprites.push_back(sprite);
+    impl_->draws.emplace_back(sprite);
     impl_->error.clear();
+    return true;
+}
+
+bool BgfxUiRenderer::draw(const ViewModelSprite& sprite) {
+    if(!impl_->frame_open||!impl_->check_thread())return impl_->fail("viewmodel sprite requires an open frame");
+    const auto* texture=impl_->find(sprite.texture);
+    if(!texture)return impl_->fail("viewmodel sprite references a stale texture");
+    if(!std::ranges::all_of(sprite.position,[](float v){return std::isfinite(v);})||
+       !std::isfinite(sprite.radius)||sprite.radius<=0||!std::isfinite(sprite.rotation))
+        return impl_->fail("invalid viewmodel sprite geometry");
+    if(sprite.position[2]>=-.01F)return true;
+    if(bgfx::getAvailTransientVertexBuffer(4,impl_->vertex_layout)<4||bgfx::getAvailTransientIndexBuffer(6)<6) {
+        ++impl_->dropped_draws;
+        impl_->error.clear();
+        return true;
+    }
+    bgfx::TransientVertexBuffer vb;bgfx::TransientIndexBuffer ib;
+    bgfx::allocTransientVertexBuffer(&vb,4,impl_->vertex_layout);bgfx::allocTransientIndexBuffer(&ib,6);
+    auto* vertices=reinterpret_cast<UiVertex*>(vb.data);
+    const float c=std::cos(sprite.rotation),s=std::sin(sprite.rotation);
+    constexpr std::array<std::array<float,2>,4> corners{{{-1,1},{1,1},{1,-1},{-1,-1}}};
+    constexpr std::array<std::array<float,2>,4> uv{{{0,0},{1,0},{1,1},{0,1}}};
+    for(std::size_t i=0;i<4;++i){const auto x=corners[i][0]*sprite.radius,y=corners[i][1]*sprite.radius;
+        vertices[i]={sprite.position[0]+c*x-s*y,sprite.position[1]+s*x+c*y,sprite.position[2],uv[i][0],uv[i][1],pack_abgr(sprite.tint)};}
+    constexpr std::array<std::uint16_t,6> indices{0,1,2,0,2,3};std::memcpy(ib.data,indices.data(),sizeof(indices));
+    std::array<float,16> identity{};bx::mtxIdentity(identity.data());bgfx::setTransform(identity.data());
+    bgfx::setScissor(UINT16_MAX);bgfx::setVertexBuffer(0,&vb);bgfx::setIndexBuffer(&ib);
+    bgfx::setTexture(0,impl_->sampler,texture->native);
+    bgfx::setState(BGFX_STATE_WRITE_RGB|BGFX_STATE_DEPTH_TEST_LESS|BGFX_STATE_MSAA|
+        (sprite.additive?BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,BGFX_STATE_BLEND_ONE):BGFX_STATE_BLEND_ALPHA));
+    bgfx::submit(view_model_view_id,impl_->program);
     return true;
 }
 
@@ -1132,20 +1388,52 @@ bool BgfxUiRenderer::draw(const UiThreeSlice& three_slice) {
     return true;
 }
 
+bool BgfxUiRenderer::draw(const UiGeometry& geometry) {
+    if (!impl_->frame_open || !impl_->check_thread() || !geometry.mesh ||
+        !impl_->find(geometry.texture)) return impl_->fail("invalid markup draw state");
+    if (geometry.mesh->vertices.size() > 1'000'000U || geometry.mesh->indices.size() > 3'000'000U)
+        return impl_->fail("markup geometry is too large");
+    if (!std::isfinite(geometry.x) || !std::isfinite(geometry.y) ||
+        std::ranges::any_of(geometry.transform,[](float v){return !std::isfinite(v);}) ||
+        std::ranges::any_of(geometry.mesh->vertices, [](const auto& vertex) {
+            return !std::isfinite(vertex.x) || !std::isfinite(vertex.y) ||
+                   !std::isfinite(vertex.z) || !std::isfinite(vertex.u) || !std::isfinite(vertex.v);
+        }) ||
+        std::ranges::any_of(geometry.mesh->indices,[&](auto i){return i>=geometry.mesh->vertices.size();}))
+        return impl_->fail("markup geometry contains invalid coordinates or indices");
+    if (geometry.clip) {
+        if (!is_finite(*geometry.clip))
+            return impl_->fail("markup clip rectangle must be finite");
+        // RmlUi can retain geometry beneath an empty scissor while a panel is
+        // hidden or an overflow intersection collapses. This is a successful
+        // draw with no visible pixels, not a malformed frame.
+        if (!geometry.clip->has_area()) {
+            impl_->error.clear();
+            return true;
+        }
+    }
+    impl_->draws.emplace_back(geometry);
+    impl_->error.clear();
+    return true;
+}
+
 bool BgfxUiRenderer::end_frame() {
     if (!impl_->frame_open || !impl_->check_thread()) {
         return impl_->fail("end_frame requires an open UI frame on the renderer thread");
     }
 
     bool submitted = true;
-    for (const auto& sprite : impl_->sprites) {
-        if (!impl_->submit_sprite(sprite)) {
+    for (const auto& draw : impl_->draws) {
+        const auto* sprite = std::get_if<UiSprite>(&draw);
+        if (!(sprite ? impl_->submit_sprite(*sprite)
+                     : impl_->submit_geometry(std::get<UiGeometry>(draw)))) {
             submitted = false;
             break;
         }
     }
-    impl_->sprites.clear();
+    impl_->draws.clear();
     impl_->frame_open = false;
+    impl_->last_dropped_draws = impl_->dropped_draws;
     static_cast<void>(bgfx::frame());
     if (submitted) {
         impl_->error.clear();

@@ -1,0 +1,132 @@
+{
+  "name": "WW1 — russian",
+  "source": "https://gamebanana.com/mods/169726",
+  "archives": [
+    {
+      "archive": "169726\\199830-ww1pack.rar",
+      "extracted": "169726\\files-199830",
+      "sha256": "6a2783ed2422e579a21b4b82d8b0c36ce2fe504140e18499e800ca7406ebfe2f",
+      "listing": [
+        "Weapons/Grenade/Grenade.kv6",
+        "Weapons/Rifle/Casing.kv6",
+        "Weapons/Rifle/Magazine.kv6",
+        "Weapons/Rifle/Sight1.kv6",
+        "Weapons/Rifle/Sight2.kv6",
+        "Weapons/Rifle/Tracer.kv6",
+        "Weapons/Rifle/Weapon.kv6",
+        "Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Weapons/Shotgun/Casing.kv6",
+        "Weapons/Shotgun/Pump.kv6",
+        "Weapons/Shotgun/Sight1.kv6",
+        "Weapons/Shotgun/Sight2.kv6",
+        "Weapons/Shotgun/Tracer.kv6",
+        "Weapons/Shotgun/Weapon.kv6",
+        "Weapons/Shotgun/WeaponNoPump.kv6",
+        "Weapons/SMG/.DS_Store",
+        "Weapons/SMG/Casing.kv6",
+        "Weapons/SMG/Magazine.kv6",
+        "Weapons/SMG/Sight1.kv6",
+        "Weapons/SMG/Sight2.kv6",
+        "Weapons/SMG/Sight3.kv6",
+        "Weapons/SMG/Tracer.kv6",
+        "Weapons/SMG/Weapon.kv6",
+        "Weapons/SMG/WeaponNoMagazine-old.kv6",
+        "Weapons/SMG/WeaponNoMagazine.kv6",
+        "Weapons/Spade/Spade.kv6",
+        "Player/back-up/Arm.kv6",
+        "Player/back-up/Arms.kv6",
+        "Player/back-up/Dead.kv6",
+        "Player/back-up/Head.kv6",
+        "Player/back-up/Leg.kv6",
+        "Player/back-up/LegCrouch.kv6",
+        "Player/back-up/Torso.kv6",
+        "Player/back-up/TorsoCrouch.kv6",
+        "Player/back-up/UpperArm.kv6",
+        "Player/british/Arm.kv6",
+        "Player/british/Arms.kv6",
+        "Player/british/Dead.kv6",
+        "Player/british/Head.kv6",
+        "Player/british/Leg.kv6",
+        "Player/british/LegCrouch.kv6",
+        "Player/british/Torso.kv6",
+        "Player/british/TorsoCrouch.kv6",
+        "Player/british/UpperArm.kv6",
+        "Player/german/Arm.kv6",
+        "Player/german/Arms.kv6",
+        "Player/german/Dead.kv6",
+        "Player/german/Head.kv6",
+        "Player/german/Leg.kv6",
+        "Player/german/LegCrouch.kv6",
+        "Player/german/Torso.kv6",
+        "Player/german/TorsoCrouch.kv6",
+        "Player/german/UpperArm.kv6",
+        "Player/russian/Arm.kv6",
+        "Player/russian/Dead.kv6",
+        "Player/russian/Head.kv6",
+        "Player/russian/Leg.kv6",
+        "Player/russian/LegCrouch.kv6",
+        "Player/russian/Torso.kv6",
+        "Player/russian/TorsoCrouch.kv6",
+        "Player/russian/UpperArm.kv6",
+        "Weapons/Grenade",
+        "Weapons/Rifle",
+        "Weapons/Shotgun",
+        "Weapons/SMG",
+        "Weapons/Spade",
+        "Player/back-up",
+        "Player/british",
+        "Player/german",
+        "Player/russian",
+        "Weapons",
+        "Player",
+        "Player/Choose One of them.txt",
+        "Thank you for download.txt"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Cereator, modeler, textures",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "For being awesome.",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

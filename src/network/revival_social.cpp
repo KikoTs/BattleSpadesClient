@@ -60,6 +60,7 @@ using Json = nlohmann::json;
     result.friendship_status = text(value, "friendship_status", 24U);
     result.direction = text(value, "direction", 24U);
     result.current_lobby_id = text(value, "current_lobby_id", 64U);
+    result.current_server_id = text(value, "current_server_id", 128U);
     if (result.legacy_id.empty() || (result.nickname.empty() && result.username.empty())) {
         return std::nullopt;
     }
@@ -113,9 +114,13 @@ using Json = nlohmann::json;
     result.owner_id = text(value, "owner_id", 64U);
     result.name = text(value, "name", 64U);
     result.privacy = text(value, "privacy", 24U);
+    result.lobby_type = text(value, "lobby_type", 16U);
+    if (result.lobby_type.empty()) result.lobby_type = "normal";
+    result.member_count = bounded_size(value, "member_count", 0U, maximum_members);
     result.state = text(value, "state", 24U);
     result.revision = text(value, "revision", 64U);
     result.server_id = text(value, "server_id", 128U);
+    result.start_id = text(value, "start_id", 64U);
     result.maximum_members = bounded_size(value, "max_members", 24U, maximum_members);
     if (const auto settings = value.find("settings");
         settings != value.end() && settings->is_object()) {
@@ -132,7 +137,7 @@ using Json = nlohmann::json;
             }
         }
     }
-    if (result.id.empty()) return std::nullopt;
+    if (result.id.empty() || result.state == "closed") return std::nullopt;
     if (result.name.empty()) result.name = "Revival Lobby";
     if (result.privacy.empty()) result.privacy = "invite";
     if (result.state.empty()) result.state = "idle";
@@ -227,9 +232,34 @@ RevivalSocialResult parse_revival_social_response(RevivalSocialRequest request,
 
     result.snapshot.cursor = text(body, "cursor", 64U);
     if (result.snapshot.cursor.empty()) result.snapshot.cursor = result.request.cursor;
+    result.has_friends = body.contains("friends") && body["friends"].is_array();
+    result.has_lobby = body.contains("lobby");
+    result.has_invitations = body.contains("invitations") && body["invitations"].is_array();
+    if ((body.contains("friends") && !result.has_friends) ||
+        (body.contains("invitations") && !result.has_invitations)) {
+        result.error_code = "invalid_response";
+        result.error = "AoSPlay returned malformed social collections.";
+        return result;
+    }
     parse_friends(body, "friends", bounds.maximum_friends, result.snapshot.friends);
+    if (const auto players = body.find("players");
+        players != body.end() && players->is_array()) {
+        std::set<std::string, std::less<>> seen;
+        for (const auto& value : *players) {
+            if (result.found_players.size() >= bounds.maximum_friends) break;
+            auto row = friend_record(value);
+            if (row.has_value() && seen.insert(row->legacy_id).second) {
+                result.found_players.push_back(std::move(*row));
+            }
+        }
+    }
     if (const auto player = body.find("player"); player != body.end()) {
         result.found_player = friend_record(*player);
+    }
+    if (!result.found_player.has_value() && !result.found_players.empty()) {
+        result.found_player = result.found_players.front();
+    } else if (result.found_player.has_value() && result.found_players.empty()) {
+        result.found_players.push_back(*result.found_player);
     }
 
     if (const auto invitations = body.find("invitations");
@@ -246,6 +276,11 @@ RevivalSocialResult parse_revival_social_response(RevivalSocialRequest request,
 
     if (const auto current = body.find("lobby"); current != body.end() && !current->is_null()) {
         result.snapshot.lobby = lobby_record(*current, bounds.maximum_members);
+        if (!result.snapshot.lobby) {
+            result.error_code = "invalid_response";
+            result.error = "AoSPlay returned malformed lobby membership.";
+            return result;
+        }
     }
     if (const auto lobbies = body.find("lobbies"); lobbies != body.end() && lobbies->is_array()) {
         std::set<std::string, std::less<>> seen;
@@ -280,6 +315,8 @@ RevivalSocialResult parse_revival_social_response(RevivalSocialRequest request,
     return result;
 }
 
+std::string new_revival_social_id() { return make_client_instance_id(); }
+
 class RevivalSocialClient::Impl final {
 public:
     struct Lane final {
@@ -308,6 +345,11 @@ public:
     [[nodiscard]] bool enqueue(RevivalSocialRequest request) {
         std::scoped_lock lock{mutex};
         if (closing || request.generation == 0U) return false;
+        // Writes always share one ordered lane, including callers that omit
+        // the priority hint. A friend action must not wait behind a slow poll.
+        if (request.kind == RevivalSocialRequestKind::friend_action ||
+            request.kind == RevivalSocialRequestKind::create_lobby ||
+            request.kind == RevivalSocialRequestKind::lobby_action) request.priority = true;
         auto& lane = request.priority ? priority : normal;
         const auto maximum = request.priority ? config.maximum_priority_requests
                                               : config.maximum_normal_requests;
@@ -317,6 +359,8 @@ public:
             });
         }
         if (lane.queue.size() >= maximum) return false;
+        request.submission_sequence = next_submission_sequence++;
+        if (request.priority) newest_priority_submission = request.submission_sequence;
         lane.queue.push_back(std::move(request));
         wake.notify_all();
         return true;
@@ -348,9 +392,17 @@ public:
 
     void tick(std::chrono::steady_clock::time_point now) {
         std::scoped_lock lock{mutex};
-        if (!enabled || closing || now < next_poll || poll_pending_locked()) return;
+        // A priority mutation and a sync must never begin together.  A sync
+        // already running before the mutation is rejected in drain() using
+        // submission_sequence; holding new polls here closes the opposite
+        // ordering where a later-enqueued poll reaches AoSPlay first.
+        if (!enabled || closing || now < next_poll || poll_pending_locked() ||
+            priority.active || !priority.queue.empty()) {
+            return;
+        }
         RevivalSocialRequest request;
         request.generation = next_generation++;
+        request.submission_sequence = next_submission_sequence++;
         request.kind = RevivalSocialRequestKind::sync;
         request.coalesce_key = "social-sync";
         request.cursor = snapshot.cursor;
@@ -372,13 +424,35 @@ public:
             auto result = std::move(results.front());
             results.pop_front();
             if (result) filter_new_events_locked(result.snapshot);
+            if (result.request.kind == RevivalSocialRequestKind::sync &&
+                result.request.submission_sequence != 0U &&
+                result.request.submission_sequence < newest_priority_submission) {
+                auto events = std::move(result.snapshot.events);
+                result.snapshot = snapshot;
+                result.snapshot.events = std::move(events);
+                next_poll = now;
+                output.push_back(std::move(result));
+                continue;
+            }
             if (result.request.kind == RevivalSocialRequestKind::sync) {
                 if (result) {
+                    if (older_lobby(result.snapshot.lobby) ||
+                        (!result.has_lobby && !result.snapshot.lobby)) {
+                        result.snapshot.lobby = snapshot.lobby;
+                    }
+                    if (!result.has_friends && result.snapshot.friends.empty())
+                        result.snapshot.friends = snapshot.friends;
+                    if (!result.has_invitations && result.snapshot.invitations.empty())
+                        result.snapshot.invitations = snapshot.invitations;
                     snapshot = result.snapshot;
                     connected = true;
                     last_error.clear();
                     backoff = snapshot.lobby.has_value() ? config.active_lobby_poll_interval
                                                          : config.menu_poll_interval;
+                    // A discarded pre-mutation read is not evidence of the
+                    // current state.  Poll again immediately after the
+                    // mutation lane settles instead of showing stale data for
+                    // another full menu interval.
                     next_poll = now + backoff;
                 } else {
                     last_error = result.error;
@@ -395,14 +469,48 @@ public:
                 } else if (result.http_status == 0L) {
                     connected = false;
                 }
+                // A timed-out write may have committed server-side.  Force an
+                // authoritative read so the UI can converge on the outcome
+                // instead of asking the player to repeat a non-idempotent
+                // action blindly.
+                next_poll = now;
+            } else if (result.request.kind == RevivalSocialRequestKind::friend_action &&
+                       (result.has_friends || !result.snapshot.friends.empty())) {
+                connected = true;
+                snapshot.friends = result.snapshot.friends;
+                next_poll = now;
+            } else if (result.snapshot.lobby.has_value() && older_lobby(result.snapshot.lobby)) {
+                result.snapshot.lobby = snapshot.lobby;
+                next_poll = now;
             } else if (result.snapshot.lobby.has_value()) {
                 connected = true;
                 snapshot.lobby = result.snapshot.lobby;
                 next_poll = now + config.active_lobby_poll_interval;
             } else if (result.request.kind == RevivalSocialRequestKind::lobby_action &&
-                       result.request.action == "leave") {
-                snapshot.lobby.reset();
+                       (result.has_lobby || result.request.action == "leave" || result.request.action == "close") &&
+                       !result.snapshot.lobby.has_value()) {
+                // A late acknowledgement from another lobby must not erase a
+                // newer membership. Leave/Close responses are authoritative nulls.
+                if (!snapshot.lobby || snapshot.lobby->id == result.request.lobby_id)
+                    snapshot.lobby.reset();
                 next_poll = now;
+            }
+            if (result && result.request.kind != RevivalSocialRequestKind::sync) {
+                connected = true;
+                last_error.clear();
+                if (result.has_invitations) {
+                    snapshot.invitations = result.snapshot.invitations;
+                } else if (result.request.kind == RevivalSocialRequestKind::lobby_action &&
+                           (result.request.action == "join" ||
+                            result.request.action == "decline_invite")) {
+                    const auto invitation = result.request.payload.find("invitation_id");
+                    if (invitation != result.request.payload.end() && invitation->is_string()) {
+                        const auto id = invitation->get<std::string>();
+                        std::erase_if(snapshot.invitations, [&](const auto& row) {
+                            return row.id == id;
+                        });
+                    }
+                }
             }
             output.push_back(std::move(result));
         }
@@ -439,6 +547,7 @@ public:
             !client_instance_id.empty() && priority.queue.size() < config.maximum_priority_requests) {
             RevivalSocialRequest request;
             request.generation = next_generation++;
+            request.submission_sequence = next_submission_sequence++;
             request.kind = RevivalSocialRequestKind::presence_offline;
             request.priority = true;
             request.client_instance_id = client_instance_id;
@@ -496,6 +605,19 @@ public:
         });
     }
 
+    [[nodiscard]] bool older_lobby(const std::optional<RevivalSocialLobby>& incoming) const {
+        if (!incoming || !snapshot.lobby || incoming->id != snapshot.lobby->id) return false;
+        auto left = std::string_view{incoming->revision};
+        auto right = std::string_view{snapshot.lobby->revision};
+        const auto decimal = [](std::string_view value) {
+            return !value.empty() && std::ranges::all_of(value, [](char c) { return c >= '0' && c <= '9'; });
+        };
+        if (!decimal(left) || !decimal(right)) return false;
+        while (left.size() > 1U && left.front() == '0') left.remove_prefix(1U);
+        while (right.size() > 1U && right.front() == '0') right.remove_prefix(1U);
+        return left.size() < right.size() || (left.size() == right.size() && left < right);
+    }
+
     void push_result_locked(RevivalSocialResult result) {
         if (results.size() >= config.maximum_results) {
             const auto stale_sync = std::ranges::find_if(results, [](const RevivalSocialResult& queued) {
@@ -543,6 +665,8 @@ public:
     Json metadata{Json::object()};
     std::string last_error;
     std::uint64_t next_generation{1U};
+    std::uint64_t next_submission_sequence{1U};
+    std::uint64_t newest_priority_submission{};
     bool enabled{};
     bool connected{};
     bool closing{};

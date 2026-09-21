@@ -90,13 +90,15 @@ bool JetpackDeathPresentation::begin(std::uint8_t player_id,
     }
     auto& state = states_[player_id];
     if (state.has_value() && state->generation == generation) {
-        state->position = position;
-        return true;
+        return update_authority(player_id, generation, position);
     }
     state = JetpackDeathSnapshot{player_id,
                                  generation,
                                  jetpack_id,
                                  position,
+                                 position,
+                                 position,
+                                 0.0,
                                  deterministic_rotation_axis(player_id, generation),
                                  {}};
     return true;
@@ -112,7 +114,20 @@ bool JetpackDeathPresentation::update_authority(std::uint8_t player_id,
     if (!state.has_value() || state->generation != generation) {
         return false;
     }
-    state->position = position;
+    if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))
+        return false;
+    if (position.x == state->authoritative_position.x &&
+        position.y == state->authoritative_position.y &&
+        position.z == state->authoritative_position.z) return true;
+    const Vec3 delta{position.x - state->position.x, position.y - state->position.y,
+                     position.z - state->position.z};
+    // Do not slide a teleport through geometry. Ordinary 30 Hz corpse rows
+    // become continuous 60 Hz motion without extrapolating beyond authority.
+    if (delta.x * delta.x + delta.y * delta.y + delta.z * delta.z > 16.0)
+        state->position = position;
+    state->interpolation_start = state->position;
+    state->authoritative_position = position;
+    state->interpolation_elapsed = 0.0;
     return true;
 }
 
@@ -127,6 +142,13 @@ void JetpackDeathPresentation::tick(double dt) noexcept {
         if (!state.has_value()) {
             continue;
         }
+        state->interpolation_elapsed = std::min(1.0 / 30.0, state->interpolation_elapsed + dt);
+        const double blend = state->interpolation_elapsed * 30.0;
+        const auto& start = state->interpolation_start;
+        const auto& target = state->authoritative_position;
+        state->position = {start.x + (target.x - start.x) * blend,
+                           start.y + (target.y - start.y) * blend,
+                           start.z + (target.z - start.z) * blend};
         state->rotation_degrees.x += state->rotation_axis.x * retail_frames;
         state->rotation_degrees.y += state->rotation_axis.y * retail_frames;
         state->rotation_degrees.z += state->rotation_axis.z * retail_frames;
@@ -154,6 +176,7 @@ std::optional<JetpackDeathSnapshot> JetpackDeathPresentation::finish(
         return std::nullopt;
     }
     auto result = states_[player_id];
+    if (result.has_value()) result->position = result->authoritative_position;
     states_[player_id].reset();
     return result;
 }

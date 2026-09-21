@@ -1,5 +1,7 @@
 # Player Profile Frontend Parity
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This note records the static reconstruction of the retail Player Profile menu.
 It is intentionally separate from the score-service adapter: the frontend owns
 layout, controls, filtering and rendering, while an adapter converts historic

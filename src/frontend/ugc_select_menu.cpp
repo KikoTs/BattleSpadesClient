@@ -103,8 +103,7 @@ std::uint32_t UgcSelectMenuModel::steam_app_id() const noexcept {
 }
 
 std::string UgcSelectMenuModel::workshop_url() const {
-    return "http://steamcommunity.com/workshop/browse/?appid=" +
-           std::to_string(steam_app_id_);
+    return "https://www.aosplay.net/workshop";
 }
 
 bool UgcSelectMenuModel::set_steam_app_id(std::uint32_t app_id) noexcept {

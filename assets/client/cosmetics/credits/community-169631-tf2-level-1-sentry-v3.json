@@ -1,0 +1,50 @@
+{
+  "name": "TF2 Level 1 Sentry",
+  "source": "https://gamebanana.com/mods/169631",
+  "archive": [
+    {
+      "archive": "169631\\214472-tf2_lv1_sentry.zip",
+      "extracted": "169631\\files-214472",
+      "sha256": "6bea4c65b96e274405b1d142060ee5c24729717ccf3c7fc3dc696b4eab779644",
+      "listing": [
+        "TF2 LV1 Sentry/kv6/",
+        "TF2 LV1 Sentry/kv6/Turret_ball.kv6",
+        "TF2 LV1 Sentry/kv6/Turret_base.kv6",
+        "TF2 LV1 Sentry/kv6/Turret_gun.kv6",
+        "TF2 LV1 Sentry/png/",
+        "TF2 LV1 Sentry/png/ui/",
+        "TF2 LV1 Sentry/png/ui/weapons/",
+        "TF2 LV1 Sentry/png/ui/weapons/rocket_turret.png",
+        "TF2 LV1 Sentry/TF2 Lv1 Sentry.jpg"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Author",
+          "_sName": "1Shot1Kill"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

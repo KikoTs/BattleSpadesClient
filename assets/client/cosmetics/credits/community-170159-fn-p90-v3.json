@@ -1,0 +1,47 @@
+{
+  "name": "FN P90",
+  "source": "https://gamebanana.com/mods/170159",
+  "archive": [
+    {
+      "archive": "170159\\214447-p90_26.rar",
+      "extracted": "170159\\files-214447",
+      "sha256": "5d0e33092d27ae00c60d68be3e1869fb3b83520986b17ef071ca750aa2e60adf",
+      "listing": [
+        "smg_sightzoom.kv6",
+        "smg.kv6",
+        "Readme.txt",
+        "smg_sight.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Author",
+      "_aAuthors": [
+        {
+          "_sRole": "Everything.",
+          "_idRow": "1401219",
+          "_sName": "MiCrOwAv3s",
+          "_sProfileUrl": "https://gamebanana.com/members/1401219",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5418b65597c44.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod",
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially"
+    ],
+    "ask": [
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

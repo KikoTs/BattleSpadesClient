@@ -1,0 +1,47 @@
+{
+  "name": "Vector",
+  "source": "https://gamebanana.com/mods/169759",
+  "archives": [
+    {
+      "archive": "169759\\526089-vector_69011.rar",
+      "extracted": "169759\\files-526089",
+      "sha256": "25996d0394a1f1614a0af028d67d1bac38603f407f7939a1ce0704b331ec0706",
+      "listing": [
+        "Vector.pak",
+        "How Install.txt"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Author",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler/Scripter",
+          "_idRow": "1773911",
+          "_sName": "Nuceto",
+          "_sProfileUrl": "https://gamebanana.com/members/1773911",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/60075cb236bc6.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

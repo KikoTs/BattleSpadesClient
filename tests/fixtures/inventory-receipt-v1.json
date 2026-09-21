@@ -1,0 +1,55 @@
+{
+  "item": {
+    "id": "officer-profile-badge-v1",
+    "kind": "profile_badge",
+    "rarity": "legendary",
+    "name": "Officer Service Badge",
+    "description": "An earned cosmetic finish. Original shape and team markings are preserved.",
+    "slots": [
+      "profile_badge"
+    ],
+    "asset": "png/ui/kill_types/grave.png",
+    "sha256": "edb9be8b724ba308c2dbd153d4814b828c74ffbefc36adc9738c1ac7e3e0be3d",
+    "palette": [
+      203,
+      168,
+      61
+    ],
+    "minimum_content_version": 1,
+    "enabled": true,
+    "author": "AoS Revival",
+    "license": "Requires the original game assets; no original assets are redistributed.",
+    "fallback": "original"
+  },
+  "pity_after": [
+    0,
+    0,
+    0
+  ],
+  "pity_before": [
+    9,
+    39,
+    99
+  ],
+  "candidate_counts": [
+    0,
+    0,
+    0,
+    0,
+    4
+  ],
+  "guarantee_banked": false,
+  "roll_digest": "0ec10c845415bbb52d547abdcf568f0be9eb00b77b60ff55087219f062d726fd",
+  "pity_snapshot_hash": "1a000ff6b9b8223c9e7c9ba0cfdb1a888ba68cc51eb87762b3b038a3230e5bfd",
+  "seed": "0303030303030303030303030303030303030303030303030303030303030303",
+  "client_nonce": "abababababababababababababababababababababababababababababababab",
+  "commitment": "0f25165afd25f557601593913dab3a3ba9e7fa9332ab67001c98dbd3b966c953",
+  "algorithm": "aos-crate-v1",
+  "schema_version": 1,
+  "crate_id": "11111111-1111-4111-8111-111111111111",
+  "account_id": "22222222-2222-4222-8222-222222222222",
+  "catalog_version": "supply-v1",
+  "catalog_digest": "fd384484898c98fc63180f3e4d52953399bac62d95dcaf4e4633a2c6fc42ab84",
+  "opened_at": "2026-09-05T00:00:00.000Z",
+  "inventory_revision": "1"
+}

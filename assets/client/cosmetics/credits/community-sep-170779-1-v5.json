@@ -1,0 +1,50 @@
+{
+  "name": "Double Barrels",
+  "source": "https://gamebanana.com/mods/170779",
+  "archives": [
+    {
+      "archive": "170779\\208357-double_barrels.zip",
+      "extracted": "170779\\files-208357",
+      "sha256": "0025d9923303b917bef3f0681061a8a70cdc8a469e09dda697284be3d921f042",
+      "listing": [
+        "Shotgun/Pump.kv6",
+        "Shotgun/Sight2.kv6",
+        "Shotgun/Sounds/",
+        "Shotgun/Sounds/Fire.wav",
+        "Shotgun/Sounds/FireLocal.wav",
+        "Shotgun/Sounds/Reload.wav",
+        "Shotgun/Sounds/ReloadLocal.wav",
+        "Shotgun/Weapon.kv6",
+        "Shotgun/WeaponNoPump.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "No group",
+      "_aAuthors": [
+        {
+          "_sRole": "The guy who made the skin",
+          "_sName": "SpongePierre"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

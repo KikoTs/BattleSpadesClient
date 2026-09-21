@@ -1,0 +1,44 @@
+{
+  "name": "Openspades .950 JDJ",
+  "source": "https://gamebanana.com/mods/170614",
+  "archive": [
+    {
+      "archive": "170614\\208926-950_jdj.7z",
+      "extracted": "170614\\files-208926",
+      "sha256": "21228d5994ef77d98cff69c870b707d1bd03609165059ffefea4201da134ac40",
+      "listing": [
+        ".950 JDJ/Magazine.kv6",
+        ".950 JDJ/Sight1.kv6",
+        ".950 JDJ/Sight2.kv6",
+        ".950 JDJ/WeaponNoMagazine.kv6",
+        ".950 JDJ/"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "design and modling",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

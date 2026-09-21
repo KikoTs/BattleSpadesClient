@@ -24,6 +24,8 @@ enum class MainMenuAction : std::uint8_t;
 struct NativeFrontendConfig final {
     /** Directory containing this executable and its optional Steam bridge. */
     std::filesystem::path executable_directory{"."};
+    /** Project-owned assets shipped with every build (fonts/icons, never retail content). */
+    std::filesystem::path client_asset_root{"assets/client"};
     std::filesystem::path asset_root{"assets/original"};
     std::filesystem::path shader_root{"assets/generated/shaders"};
     std::string player_name{"Player"};
@@ -35,6 +37,7 @@ struct NativeFrontendConfig final {
     std::filesystem::path tutorial_map_path{"../BattleSpades/maps/Training.vxl"};
     /** Optional deterministic tool selection used by graphical parity smokes. */
     std::optional<std::uint8_t> tutorial_debug_tool;
+    std::optional<std::string> tutorial_debug_cosmetic;
     /** Enter the selected tool's recovered RMB aim state when the lab starts. */
     bool tutorial_debug_aim{false};
     /** Developer visual verification; see core::LaunchOptions for the rationale. */
@@ -83,7 +86,7 @@ struct NativeFrontendConfig final {
     /** Offline production-UI oracle selected by --debug-ui. */
     std::optional<std::string> debug_ui;
     /** Editable UTF-8 catalogue loaded beside the executable. */
-    std::filesystem::path localization_path{"localization.json"};
+    std::filesystem::path localization_path{"localization"};
     /** Persistent design-pixel layout overrides loaded beside the executable. */
     std::filesystem::path ui_layout_path{"ui-layout.json"};
     /** Starts the offline F11 layout surface immediately. */

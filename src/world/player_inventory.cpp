@@ -261,7 +261,7 @@ void PlayerInventory::rebuild_toolbar(bool preserve_selection) noexcept {
 
 bool PlayerInventory::select_tool(std::uint8_t tool_id,
                                   InventorySelectionOrigin origin) noexcept {
-    const auto slots = toolbar_.slots();
+    const auto& slots = toolbar_.slots();
     const auto found = std::ranges::find_if(slots, [tool_id](const auto& slot) {
         return slot.tool_id == tool_id;
     });
@@ -367,7 +367,7 @@ bool PlayerInventory::cycle_selected_ugc_item_variant() noexcept {
     if (next == *current) {
         return false;
     }
-    const auto slots = toolbar_.slots();
+    const auto& slots = toolbar_.slots();
     for (std::size_t index{}; index < slots.size(); ++index) {
         if (slots[index].kind == InventorySlotKind::ugc_tool &&
             slots[index].tool_id == ugc_entity_tool && slots[index].variant_id == next) {
@@ -378,19 +378,17 @@ bool PlayerInventory::cycle_selected_ugc_item_variant() noexcept {
 }
 
 void PlayerInventory::refresh_toolbar_ammunition() noexcept {
-    auto slots = toolbar_.slots();
-    std::vector<InventorySlot> refreshed{slots.begin(), slots.end()};
-    for (auto& slot : refreshed) {
+    const auto& slots = toolbar_.slots();
+    for (std::size_t index{}; index < slots.size(); ++index) {
+        const auto& slot = slots[index];
         const auto* weapon = find_weapon_definition(slot.tool_id);
         const auto* state = ammo(slot.tool_id);
         const bool finite = weapon != nullptr &&
             (weapon->clip_size != 0U || weapon->retail.ammo.maximum_count.value_or(0U) != 0U ||
              weapon->retail.ammo.magazine_capacity.has_value());
-        slot.has_ammo = !finite || (state != nullptr &&
-            (state->magazine > 0U || state->reserve > 0U));
+        toolbar_.set_slot_ammunition(index, !finite || (state != nullptr &&
+            (state->magazine > 0U || state->reserve > 0U)));
     }
-    const auto selected = toolbar_.selected_index();
-    toolbar_.set_slots(std::move(refreshed), selected);
     if (const auto tool = toolbar_.selected_tool_id(); tool.has_value() &&
         weapons_.replication().selected_tool() != tool) {
         static_cast<void>(weapons_.select(*tool));
@@ -398,8 +396,7 @@ void PlayerInventory::refresh_toolbar_ammunition() noexcept {
 }
 
 std::string prefab_preview_asset(std::string_view prefab_name) {
-    if (prefab_name.size() < 8U || prefab_name.size() > 96U ||
-        !prefab_name.starts_with("prefab_")) {
+    if (prefab_name.size() < 8U || prefab_name.size() > 96U) {
         return {};
     }
     const bool safe = std::ranges::all_of(prefab_name, [](char value) {
@@ -407,7 +404,13 @@ std::string prefab_preview_asset(std::string_view prefab_name) {
         return std::isalnum(byte) != 0 || value == '_' || value == '-';
     });
     if (!safe) return {};
-    return "prefabs/" + std::string{prefab_name} + ".png";
+    std::string canonical{prefab_name};
+    std::ranges::transform(canonical, canonical.begin(), [](unsigned char value) {
+        return static_cast<char>(std::tolower(value));
+    });
+    if (canonical.starts_with("ugc_prefab_")) return "ugc/prefabs/" + canonical + ".png";
+    if (!canonical.starts_with("prefab_")) return {};
+    return "prefabs/" + canonical + ".png";
 }
 
 std::string prefab_preview_asset(const std::filesystem::path& asset_root,

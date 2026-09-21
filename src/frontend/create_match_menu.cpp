@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <iterator>
 #include <limits>
 #include <utility>
@@ -520,8 +521,33 @@ const CreateMatchConfiguration& CreateMatchMenuModel::configuration() const noex
 
 const std::string& CreateMatchMenuModel::lobby_name() const noexcept { return lobby_name_; }
 
+bool CreateMatchMenuModel::host_authority() const noexcept { return host_authority_; }
+
+void CreateMatchMenuModel::apply_authoritative_configuration(
+    CreateMatchConfiguration configuration) {
+    // The lobby pump can deliver the same snapshot every frame. It must not
+    // turn a background refresh into keyboard navigation after a wheel/drag.
+    if(configuration==configuration_)return;
+    CreateMatchMenuModel normalized{std::move(configuration)};
+    configuration_ = normalized.configuration_;
+    retail_defaults_ = normalized.retail_defaults_;
+    clamp_scroll();
+    repair_focus(false);
+}
+
+void CreateMatchMenuModel::set_host_authority(bool host) noexcept {
+    host_authority_ = host;
+}
+
+void CreateMatchMenuModel::set_match_join_available(bool available, bool busy) noexcept {
+    match_join_available_ = available;
+    match_join_busy_ = available && busy;
+}
+
 void CreateMatchMenuModel::set_players(std::vector<CreateMatchPlayer> players) {
     players_ = std::move(players);
+    first_visible_player_ = std::min(first_visible_player_,
+        players_.empty() ? 0U : ((players_.size() - 1U) / 8U) * 8U);
     // Retail fills the editable header with PLAYER_SQUAD.format(leader_name)
     // as soon as the owner appears in the newly-created lobby.
     if (lobby_name_ == "Private Match") {
@@ -533,6 +559,71 @@ void CreateMatchMenuModel::set_players(std::vector<CreateMatchPlayer> players) {
         }
     }
 }
+
+void CreateMatchMenuModel::set_chat_lines(std::vector<CreateMatchChatLine> lines) {
+    constexpr std::size_t maximum_chat_history{32U};
+    for (auto& line : lines) {
+        line.author = line.author.empty() ? std::string{"Player"} :
+                                            std::string{line.author};
+        line.author = std::string{line.author.begin(), line.author.end()};
+        line.message = std::string{line.message.begin(), line.message.end()};
+    }
+    std::erase_if(lines, [](const CreateMatchChatLine& line) {
+        return line.message.empty() ||
+               !valid_utf8_with_code_point_limit(line.author, 32U) ||
+               !valid_utf8_with_code_point_limit(line.message, 160U);
+    });
+    if (lines.size() > maximum_chat_history) {
+        lines.erase(lines.begin(), lines.end() -
+                                      static_cast<std::ptrdiff_t>(maximum_chat_history));
+    }
+    chat_lines_ = std::move(lines);
+}
+
+bool CreateMatchMenuModel::append_chat_text(std::string_view utf8) {
+    if (!chat_focused_ || utf8.empty()) return false;
+    auto next = chat_draft_;
+    next.append(utf8);
+    if (!valid_utf8_with_code_point_limit(next, 160U)) return false;
+    if (std::ranges::any_of(next, [](char value) {
+            const auto byte = static_cast<unsigned char>(value);
+            return byte < 0x20U && byte != '\t';
+        })) {
+        return false;
+    }
+    chat_draft_ = std::move(next);
+    return true;
+}
+
+bool CreateMatchMenuModel::erase_chat_code_point() noexcept {
+    if (!chat_focused_ || chat_draft_.empty()) return false;
+    auto index = chat_draft_.size() - 1U;
+    while (index > 0U &&
+           (static_cast<unsigned char>(chat_draft_[index]) & 0xC0U) == 0x80U) {
+        --index;
+    }
+    chat_draft_.erase(index);
+    return true;
+}
+
+bool CreateMatchMenuModel::submit_chat() {
+    if (!chat_focused_) return false;
+    const auto first = chat_draft_.find_first_not_of(" \t");
+    if (first == std::string::npos) return false;
+    const auto last = chat_draft_.find_last_not_of(" \t");
+    auto message = chat_draft_.substr(first, last - first + 1U);
+    if (!valid_utf8_with_code_point_limit(message, 160U)) return false;
+    effects_.push_back(CreateMatchChatEffect{std::move(message)});
+    chat_draft_.clear();
+    return true;
+}
+
+void CreateMatchMenuModel::cancel_chat() noexcept {
+    chat_focused_ = false;
+    chat_draft_.clear();
+}
+
+bool CreateMatchMenuModel::chat_focused() const noexcept { return chat_focused_; }
 
 bool CreateMatchMenuModel::set_lobby_name(std::string value) {
     if (!valid_utf8_with_code_point_limit(value, 19U) || value == lobby_name_) {
@@ -684,16 +775,22 @@ void CreateMatchMenuModel::reveal_focus() {
     clamp_scroll();
 }
 
-void CreateMatchMenuModel::repair_focus() {
+void CreateMatchMenuModel::repair_focus(bool reveal) {
     const auto keys = expanded_row_keys();
     if (keys.empty()) {
         focused_key_.reset();
         return;
     }
     if (!focused_key_ || std::find(keys.begin(), keys.end(), *focused_key_) == keys.end()) {
-        focused_key_ = keys.front();
+        const auto frame=presentation();
+        const bool valid_button=focused_key_&&std::ranges::any_of(frame.buttons,[&](const auto& button){
+            return button.enabled&&button.stable_key==*focused_key_;
+        });
+        if(!valid_button)focused_key_=keys[reveal?0U:std::min(first_visible_row_,keys.size()-1U)];
     }
-    reveal_focus();
+    // Explicit keyboard navigation reveals focus. Server updates only repair
+    // removed controls and clamp shorter lists, retaining the user's viewport.
+    if(reveal)reveal_focus();
 }
 
 void CreateMatchMenuModel::emit_configuration_changed() {
@@ -765,13 +862,16 @@ bool CreateMatchMenuModel::activate_done() {
         // Retail calls this Confirm and returns to the previous lobby panel.
         return activate_back();
     }
+    if (match_join_busy_ || (!host_authority_ && !match_join_available_)) return false;
     effects_.push_back(CreateMatchSoundEffect{CreateMatchSound::confirm});
     effects_.push_back(CreateMatchRouteEffect{
-        CreateMatchRouteAction::start_game, configuration_});
+        match_join_available_ ? CreateMatchRouteAction::join_game
+                              : CreateMatchRouteAction::start_game, configuration_});
     return true;
 }
 
 void CreateMatchMenuModel::activate_defaults() {
+    if (!host_authority_) return;
     if (page_ == CreateMatchPage::match_settings) {
         configuration_ = retail_defaults_;
     } else if (page_ == CreateMatchPage::game_rules) {
@@ -785,8 +885,21 @@ void CreateMatchMenuModel::activate_defaults() {
     emit_configuration_changed();
 }
 
+bool CreateMatchMenuModel::activate_local_game() {
+    if (page_ != CreateMatchPage::match_settings || !host_authority_ ||
+        match_join_available_ || players_.size() > 1U)
+        return false;
+    effects_.push_back(CreateMatchSoundEffect{CreateMatchSound::confirm});
+    effects_.push_back(CreateMatchRouteEffect{
+        CreateMatchRouteAction::start_local_game, configuration_});
+    return true;
+}
+
 bool CreateMatchMenuModel::set_focus(std::string_view stable_key) {
-    const auto keys = expanded_row_keys();
+    auto keys = expanded_row_keys();
+    for (const auto& button : presentation().buttons) {
+        if (button.enabled) keys.push_back(button.stable_key);
+    }
     if (std::find(keys.begin(), keys.end(), stable_key) == keys.end()) return false;
     focused_key_ = std::string{stable_key};
     reveal_focus();
@@ -794,6 +907,17 @@ bool CreateMatchMenuModel::set_focus(std::string_view stable_key) {
 }
 
 bool CreateMatchMenuModel::activate_focused() {
+    if (focused_key_) {
+        for (const auto& button : presentation().buttons) {
+            if (button.enabled && button.stable_key == *focused_key_) {
+                const ui::Point center{button.bounds.x + button.bounds.width / 2,
+                                       button.bounds.y + button.bounds.height / 2};
+                pointer_press(center);
+                pointer_release(center);
+                return true;
+            }
+        }
+    }
     return focused_key_.has_value() && activate_row(*focused_key_);
 }
 
@@ -805,6 +929,7 @@ bool CreateMatchMenuModel::activate_row(std::string_view key) {
         return adjust_row(key, 1);
     }
     if (page_ == CreateMatchPage::choose_game_mode) {
+        if (!host_authority_) return false;
         const auto found = std::find_if(modes.begin(), modes.end(), [&](const auto& mode) {
             return mode.mode_key == key;
         });
@@ -824,6 +949,7 @@ bool CreateMatchMenuModel::activate_row(std::string_view key) {
             return set_category_expanded(key,
                                          expanded == expanded_categories_.end() || !expanded->second);
         }
+        if (!host_authority_) return false;
         if (!contains(selected_mode().maps, key)) return false;
         if (configuration_.map_name != key) {
             configuration_.map_name = std::string{key};
@@ -839,6 +965,7 @@ bool CreateMatchMenuModel::activate_row(std::string_view key) {
     if (category != expanded_categories_.end()) {
         return set_category_expanded(key, !category->second);
     }
+    if (!host_authority_) return false;
     const auto definition = std::find_if(rules().begin(), rules().end(), [&](const auto& rule) {
         return rule.rule_key == key;
     });
@@ -851,7 +978,7 @@ bool CreateMatchMenuModel::activate_row(std::string_view key) {
 }
 
 bool CreateMatchMenuModel::adjust_row(std::string_view key, std::int32_t direction) {
-    if (direction == 0) return false;
+    if (direction == 0 || !host_authority_) return false;
     const auto step_index = [direction](std::size_t index, std::size_t count) {
         if (count == 0U) return std::size_t{};
         if (direction > 0) return std::min(index + 1U, count - 1U);
@@ -923,6 +1050,7 @@ bool CreateMatchMenuModel::adjust_row(std::string_view key, std::int32_t directi
 }
 
 bool CreateMatchMenuModel::set_rule_value(std::string_view key, std::string_view value) {
+    if (!host_authority_) return false;
     const auto definition = std::find_if(rules().begin(), rules().end(), [&](const auto& rule) {
         return rule.rule_key == key;
     });
@@ -973,8 +1101,26 @@ bool CreateMatchMenuModel::mouse_wheel(std::int32_t vertical_steps) {
     return set_scroll(clamped);
 }
 
+void CreateMatchMenuModel::set_member_management_enabled(bool enabled) noexcept {
+    member_management_enabled_ = enabled;
+}
+
+bool CreateMatchMenuModel::request_member_action(std::uint64_t account_id, bool kick) {
+    if (!host_authority_ || !member_management_enabled_) return false;
+    const auto member = std::ranges::find(players_, account_id, &CreateMatchPlayer::account_id);
+    if (member == players_.end() || member->in_game || (kick && member->host)) return false;
+    const std::uint8_t next_team = member->team_key == "TEAM1_COLOR" ? 3U
+                                 : member->team_key == "TEAM2_COLOR" ? 0U : 2U;
+    effects_.push_back(CreateMatchMemberEffect{account_id, kick, next_team});
+    return true;
+}
+
 bool CreateMatchMenuModel::handle(ui::InputEvent event) {
     if (!event.triggers_action()) return false;
+    if (event.action == ui::InputAction::cancel && chat_focused_) {
+        cancel_chat();
+        return true;
+    }
     if (event.action == ui::InputAction::cancel) return activate_back();
     if (event.action == ui::InputAction::activate) return activate_focused();
     if (event.action == ui::InputAction::navigate_left) {
@@ -989,7 +1135,10 @@ bool CreateMatchMenuModel::handle(ui::InputEvent event) {
         event.action != ui::InputAction::focus_previous) {
         return false;
     }
-    const auto keys = expanded_row_keys();
+    auto keys = expanded_row_keys();
+    for (const auto& button : presentation().buttons) {
+        if (button.enabled) keys.push_back(button.stable_key);
+    }
     if (keys.empty()) return false;
     const auto current = focused_key_
                              ? std::find(keys.begin(), keys.end(), *focused_key_)
@@ -1018,6 +1167,10 @@ CreateMatchMenuModel::row_with_key(std::string_view stable_key) const {
 void CreateMatchMenuModel::pointer_move(std::optional<ui::Point> point) {
     hovered_key_.reset();
     if (!point) return;
+    if (scrollbar_dragging_) {
+        scroll_from_pointer(*point);
+        return;
+    }
     const auto frame = presentation();
     for (const auto& row : frame.rows) {
         const auto whole_row = row.kind == CreateMatchRowKind::category ||
@@ -1036,8 +1189,69 @@ void CreateMatchMenuModel::pointer_move(std::optional<ui::Point> point) {
     }
 }
 
-void CreateMatchMenuModel::pointer_release(ui::Point point) {
+void CreateMatchMenuModel::scroll_from_pointer(ui::Point point) {
     const auto frame = presentation();
+    if (!frame.show_scrollbar || frame.maximum_scroll == 0U) return;
+    constexpr std::int32_t arrow_height{22};
+    constexpr std::int32_t track_padding{2};
+    const auto track_top = frame.scrollbar_bounds.y + arrow_height + track_padding;
+    const auto track_bottom = frame.scrollbar_bounds.y + frame.scrollbar_bounds.height -
+                              arrow_height - track_padding;
+    const auto clamped_y = std::clamp(point.y, track_top, track_bottom);
+    const auto span = std::max(1, track_bottom - track_top);
+    const auto ratio = static_cast<double>(clamped_y - track_top) /
+                       static_cast<double>(span);
+    static_cast<void>(set_scroll(static_cast<std::size_t>(
+        std::lround(ratio * static_cast<double>(frame.maximum_scroll)))));
+}
+
+void CreateMatchMenuModel::pointer_press(std::optional<ui::Point> point) {
+    scrollbar_dragging_ = false;
+    pressed_member_key_.reset();
+    if (!point) return;
+    const auto frame = presentation();
+    for (const auto& button : frame.buttons) {
+        if ((button.stable_key.starts_with("TEAM:") || button.stable_key.starts_with("KICK:"))
+            && button.enabled && button.bounds.contains(*point)) {
+            pressed_member_key_ = button.stable_key;
+            return;
+        }
+    }
+    if (!frame.show_scrollbar || !frame.scrollbar_bounds.contains(*point)) return;
+    constexpr std::int32_t arrow_height{22};
+    const ui::Rect up{frame.scrollbar_bounds.x,
+                      frame.scrollbar_bounds.y,
+                      frame.scrollbar_bounds.width,
+                      arrow_height};
+    const ui::Rect down{frame.scrollbar_bounds.x,
+                        frame.scrollbar_bounds.y + frame.scrollbar_bounds.height - arrow_height,
+                        frame.scrollbar_bounds.width,
+                        arrow_height};
+    if (up.contains(*point)) {
+        if (first_visible_row_ > 0U) static_cast<void>(set_scroll(first_visible_row_ - 1U));
+        return;
+    }
+    if (down.contains(*point)) {
+        static_cast<void>(set_scroll(first_visible_row_ + 1U));
+        return;
+    }
+    scrollbar_dragging_ = true;
+    scroll_from_pointer(*point);
+}
+
+void CreateMatchMenuModel::pointer_release(ui::Point point) {
+    if (scrollbar_dragging_) {
+        scroll_from_pointer(point);
+        scrollbar_dragging_ = false;
+        return;
+    }
+    const auto frame = presentation();
+    if (frame.chat_input.contains(point)) {
+        chat_focused_ = true;
+        focused_key_.reset();
+        return;
+    }
+    chat_focused_ = false;
     for (const auto& row : frame.rows) {
         if (!row.enabled) continue;
         if (row.kind == CreateMatchRowKind::category ||
@@ -1073,9 +1287,27 @@ void CreateMatchMenuModel::pointer_release(ui::Point point) {
     }
     for (const auto& button : frame.buttons) {
         if (!button.enabled || !button.bounds.contains(point)) continue;
-        if (button.stable_key == "DEFAULTS") activate_defaults();
-        else if (button.stable_key == "CONFIRM" || button.stable_key == "START_GAME") {
+        if (button.stable_key.starts_with("TEAM:") || button.stable_key.starts_with("KICK:")) {
+            if (pressed_member_key_ != button.stable_key) return;
+            pressed_member_key_.reset();
+            for (const auto& member : players_) {
+                if (button.stable_key == "TEAM:" + std::to_string(member.account_id) ||
+                    button.stable_key == "KICK:" + std::to_string(member.account_id)) {
+                    static_cast<void>(request_member_action(member.account_id,
+                        button.stable_key.starts_with("KICK:")));
+                    break;
+                }
+            }
+        } else if (button.stable_key == "PLAYERS_PREV") {
+            first_visible_player_ = first_visible_player_ >= 8U ? first_visible_player_ - 8U : 0U;
+        } else if (button.stable_key == "PLAYERS_NEXT") {
+            if (first_visible_player_ + 8U < players_.size()) first_visible_player_ += 8U;
+        } else if (button.stable_key == "DEFAULTS") activate_defaults();
+        else if (button.stable_key == "CONFIRM" || button.stable_key == "START_GAME" ||
+                 button.stable_key == "JOIN_GAME") {
             static_cast<void>(activate_done());
+        } else if (button.stable_key == "START_LOCAL") {
+            static_cast<void>(activate_local_game());
         } else if (button.stable_key == "BACK") {
             static_cast<void>(activate_back());
         } else if (button.stable_key == "INVITE") {
@@ -1093,6 +1325,11 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
     frame.panel_title_key = create_match_page_title(page_);
     frame.lobby_name = lobby_name_;
     frame.players = players_;
+    frame.first_visible_player = first_visible_player_;
+    frame.member_management = host_authority_ && member_management_enabled_;
+    frame.chat_lines = chat_lines_;
+    frame.chat_draft = chat_draft_;
+    frame.chat_focused = chat_focused_;
     frame.first_visible_row = first_visible_row_;
     frame.maximum_scroll = maximum_scroll();
     frame.show_scrollbar = frame.maximum_scroll > 0U;
@@ -1117,7 +1354,7 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
         CreateMatchRowPresentation row;
         row.stable_key = key;
         row.label_key = key;
-        row.enabled = true;
+        row.enabled = host_authority_;
         row.selected = false;
         row.expanded = false;
 
@@ -1125,6 +1362,9 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
             row.kind = key == "PLAYLIST" || key == "MAP_ROTATION_FILENAME" || key == "GAME_RULES"
                            ? CreateMatchRowKind::menu_link
                            : CreateMatchRowKind::stepped_choice;
+            // Members may inspect nested Mode/Map/Rules panels, but only the
+            // authoritative owner can change the values inside them.
+            if (row.kind == CreateMatchRowKind::menu_link) row.enabled = true;
             if (key == "PRIVACY") {
                 row.value_index = static_cast<std::size_t>(configuration_.privacy);
                 row.value_count = privacy_values.size();
@@ -1176,6 +1416,7 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
             row.kind = category ? CreateMatchRowKind::category
                                 : CreateMatchRowKind::selectable_item;
             if (category) {
+                row.enabled = true;
                 const auto state = expanded_categories_.find(key);
                 row.expanded = state == expanded_categories_.end() || state->second;
             } else {
@@ -1187,6 +1428,7 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
             });
             if (definition == rules().end()) {
                 row.kind = CreateMatchRowKind::category;
+                row.enabled = true;
                 const auto state = expanded_categories_.find(key);
                 row.expanded = state == expanded_categories_.end() || state->second;
                 if (key == selected_mode().mode_key) row.label_key = std::string{selected_mode().label_key};
@@ -1199,7 +1441,7 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
                                    contains(definition->values, "OFF")
                                ? CreateMatchRowKind::toggle
                                : CreateMatchRowKind::stepped_choice;
-                row.enabled = rule_enabled(*definition);
+                row.enabled = host_authority_ && rule_enabled(*definition);
                 row.selected = value == "ON";
             }
         }
@@ -1246,16 +1488,43 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
             "DEFAULTS",
             "DEFAULTS",
             ui::Rect{410, 415, 80, 30},
-            true,
-            state_for("DEFAULTS", true, focused_key_, hovered_key_)});
+            host_authority_,
+            state_for("DEFAULTS", host_authority_, focused_key_, hovered_key_)});
     }
     const auto nested = page_ != CreateMatchPage::match_settings;
+    const auto local_option = !nested && host_authority_ && !match_join_available_ && players_.size() <= 1U;
+    if (local_option) {
+        frame.buttons.push_back(CreateMatchButtonPresentation{
+            "START_LOCAL", "LOCAL MATCH", ui::Rect{405, 456, 162, 50}, true,
+            state_for("START_LOCAL", true, focused_key_, hovered_key_)});
+    }
+    const auto action_key = nested ? "CONFIRM" : match_join_available_ ? "JOIN_GAME" : "START_GAME";
+    const auto action_enabled = nested || (!match_join_busy_ && (host_authority_ || match_join_available_));
     frame.buttons.push_back(CreateMatchButtonPresentation{
-        nested ? "CONFIRM" : "START_GAME",
-        nested ? "CONFIRM" : "START_GAME",
-        ui::Rect{405, 456, 332, 50},
-        true,
-        state_for(nested ? "CONFIRM" : "START_GAME", true, focused_key_, hovered_key_)});
+        action_key,
+        match_join_available_ && !nested ? "JOIN GAME" : action_key,
+        local_option ? ui::Rect{575, 456, 162, 50} : ui::Rect{405, 456, 332, 50},
+        action_enabled,
+        state_for(action_key, action_enabled, focused_key_, hovered_key_)});
+    if (players_.size() > 8U) {
+        frame.buttons.push_back({"PLAYERS_PREV", "<", {186, 367, 30, 20},
+                                 first_visible_player_ > 0U});
+        frame.buttons.push_back({"PLAYERS_NEXT", ">", {246, 367, 30, 20},
+                                 first_visible_player_ + 8U < players_.size()});
+    }
+    if (frame.member_management) {
+        const auto member_end = std::min(players_.size(), first_visible_player_ + 8U);
+        for (auto index = first_visible_player_; index < member_end; ++index) {
+            const auto& member = players_[index];
+            const auto member_y = 157 + static_cast<std::int32_t>(index - first_visible_player_) * 25;
+            frame.buttons.push_back({"TEAM:" + std::to_string(member.account_id),
+                member.team_key, {277, member_y, 100, 21}, !member.in_game});
+            if (!member.host && !member.in_game) {
+                frame.buttons.push_back({"KICK:" + std::to_string(member.account_id),
+                    "Kick", {229, member_y, 43, 21}, true});
+            }
+        }
+    }
     const auto invite_enabled = players_.size() < configuration_.max_players;
     frame.buttons.push_back(CreateMatchButtonPresentation{
         "INVITE",

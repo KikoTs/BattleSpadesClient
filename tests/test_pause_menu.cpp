@@ -239,15 +239,16 @@ int main() {
             "png/ui/in_game_menus/view_scores_content_frames.png");
         expect(score_frame != nullptr &&
                    score_frame->destination ==
-                       battlespades::ui::DrawRect{49.0, 89.0, 702.0, 421.0},
-               "hold-TAB scoreboard must retain the measured retail frame");
+                       battlespades::ui::DrawRect{49.0, 89.0, 702.0, 421.0} &&
+                   score_frame->modulation.opacity_per_mille == 800U,
+               "hold-TAB scoreboard must retain the measured retail frame and its 0.8 opacity");
         const auto* mode_title = find_text(score_draw, "TEAM DEATHMATCH!");
         expect(mode_title != nullptr &&
                    mode_title->destination ==
-                       battlespades::ui::DrawRect{400.0, 137.0, 0.0, 0.0} &&
+                       battlespades::ui::DrawRect{74.0, 137.0, 652.0, 0.0} &&
                    mode_title->horizontal_alignment ==
                        battlespades::ui::HorizontalTextAlignment::center &&
-                   mode_title->fit == battlespades::ui::TextFit::none &&
+                   mode_title->fit == battlespades::ui::TextFit::retail_width_scale &&
                    mode_title->vertical_alignment ==
                        battlespades::ui::VerticalTextAlignment::baseline,
                "ViewScores title must use the recovered retail (400,463) baseline");
@@ -265,13 +266,13 @@ int main() {
                        battlespades::ui::DrawRect{49.0, 511.0, 702.0, 28.0} &&
                    message_text != nullptr &&
                    message_text->destination ==
-                       battlespades::ui::DrawRect{400.0, 530.0, 0.0, 0.0} &&
+                       battlespades::ui::DrawRect{64.0, 530.0, 672.0, 0.0} &&
                    message_text->requested_font_size_pixels == 14.0 &&
                    message_text->transform ==
                        battlespades::ui::TextTransform::uppercase &&
                    message_text->horizontal_alignment ==
                        battlespades::ui::HorizontalTextAlignment::center &&
-                   message_text->fit == battlespades::ui::TextFit::none &&
+                   message_text->fit == battlespades::ui::TextFit::retail_width_scale &&
                    message_text->vertical_alignment ==
                        battlespades::ui::VerticalTextAlignment::baseline,
                "ShowTextMessage must populate ViewScores' recovered bottom banner");
@@ -341,8 +342,36 @@ int main() {
                              score_last_row->destination.height) -
                             482.0) < 1.0e-9,
                "ViewScores sixteen-row body must end at retail top-left y=482");
-        expect(sixteenth != nullptr && excluded == nullptr,
-               "scoreboard must expose all sixteen retail roster rows");
+        expect(sixteenth != nullptr && excluded != nullptr &&
+                   std::abs(excluded->destination.x - 468.95) < 1.0e-9 &&
+                   excluded->destination.y == 231.0 + 15.0 * 263.0 / 16.0 &&
+                   excluded->modulation.color ==
+                       battlespades::ui::ColorRgba8{44U, 117U, 179U, 255U},
+               "ViewScores must put a team's seventeenth player at the bottom of the other column in its own team colour");
+        ChangeTeamServerState spectators_state;
+        spectators_state.team1_players = {{"Blue player", 1, 12, 0, false, 1}};
+        spectators_state.team2_players = {{"Green player", 1, 12, 0, false, 2}};
+        spectators_state.spectator_players = {
+            {"Watcher1", 10, 13, 0, false, 3},
+            {"Watcher2", 8, 14, 0, false, 4},
+            {"Watcher3", 6, 15, 0, false, 5}};
+        const auto spectator_draw = scoreboard.build(spectators_state,
+            "Team Deathmatch!", {800, 600});
+        const auto* watcher1 = find_text(spectator_draw, "Watcher1");
+        const auto* watcher2 = find_text(spectator_draw, "Watcher2");
+        const auto* watcher3 = find_text(spectator_draw, "Watcher3");
+        expect(watcher1 != nullptr && watcher2 != nullptr && watcher3 != nullptr &&
+                   std::abs(watcher1->destination.x - 133.95) < 1.0e-9 &&
+                   watcher1->destination.y == 231.0 + 15.0 * 263.0 / 16.0 &&
+                   std::abs(watcher2->destination.x - 468.95) < 1.0e-9 &&
+                   watcher2->destination.y == 231.0 + 14.0 * 263.0 / 16.0 &&
+                   watcher3->destination.y == 231.0 + 15.0 * 263.0 / 16.0 &&
+                   watcher1->modulation.color ==
+                       battlespades::ui::ColorRgba8{194U, 194U, 194U, 255U},
+               "retail spectators must split across free bottom rows with neutral text");
+        teams.configure(spectators_state);
+        expect(find_text(team_presentation.build(teams, {800, 600}), "Watcher1") == nullptr,
+               "ChangeTeam must keep its own roster layout without ViewScores extra rows");
         expect(find_sprite(sorted_draw, "png/ui/icons/deuce_head_2.png") != nullptr &&
                    find_sprite(sorted_draw, "png/ui/icons/deuce_head_1.png") != nullptr,
                "scoreboard must retain retail's deliberately swapped team heads");

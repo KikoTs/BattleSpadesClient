@@ -1,5 +1,7 @@
 # Join Match Frontend Recovery
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](../README.md) for present operating instructions and recheck historical findings against current source.
+
 This note records the retail evidence used by the renderer-neutral Join Match
 implementation. Coordinates are from the retail 800x600 bottom-left canvas;
 the native models convert them to top-left eighth-pixels.

@@ -118,6 +118,7 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
         .add(bgfx::Attrib::Color1, 4U, bgfx::AttribType::Uint8, normalized)
         .add(bgfx::Attrib::Color2, 4U, bgfx::AttribType::Uint8, true)
         .add(bgfx::Attrib::TexCoord0, 4U, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord1, 1U, bgfx::AttribType::Float)
         .end();
     return layout;
 }
@@ -200,6 +201,8 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     const auto skylight_sampler = bgfx::createUniform("s_skylight", bgfx::UniformType::Sampler);
     const auto retail_ao_sampler =
         bgfx::createUniform("s_retailAo", bgfx::UniformType::Sampler);
+    const auto retail_noise_sampler =
+        bgfx::createUniform("s_retailNoise", bgfx::UniformType::Sampler);
 
     const auto light_params = bgfx::createUniform("u_lightParams", bgfx::UniformType::Vec4);
     const auto fog_params = bgfx::createUniform("u_fogParams", bgfx::UniformType::Vec4);
@@ -229,6 +232,7 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     bgfx::setUniform(shadow_matrix, kIdentity.data());
     bgfx::setUniform(shadow_params, kZero.data());
     bgfx::setTexture(0U, retail_ao_sampler, retail_ao_texture);
+    bgfx::setTexture(4U, retail_noise_sampler, retail_ao_texture);
     bgfx::setTexture(1U, shadow_sampler, shadow_texture);
     bgfx::setTexture(2U, skylight_sampler, skylight_texture);
     bgfx::setTransform(kIdentity.data());
@@ -263,6 +267,7 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     bgfx::destroy(shadow_sampler);
     bgfx::destroy(skylight_sampler);
     bgfx::destroy(retail_ao_sampler);
+    bgfx::destroy(retail_noise_sampler);
     bgfx::destroy(retail_ao_texture);
     bgfx::destroy(shadow_texture);
     bgfx::destroy(skylight_texture);

@@ -1,0 +1,56 @@
+{
+  "name": "SWAT player reskin for AoS",
+  "source": "https://gamebanana.com/mods/170855",
+  "archive": [
+    {
+      "archive": "170855\\229563-433_swat_3.zip",
+      "extracted": "170855\\files-229563",
+      "sha256": "3e1bb3768a285139eee40ed9216be1e91c08bf674bc318ea4e7d91cb227c4050",
+      "listing": [
+        "kv6/",
+        "kv6/playerarms.kv6",
+        "kv6/playerdead.kv6",
+        "kv6/playerhead.kv6",
+        "kv6/playerleg.kv6",
+        "kv6/playerlegc.kv6",
+        "kv6/playertorso.kv6",
+        "kv6/playertorsoc.kv6",
+        "readme.txt",
+        "screen1.jpg",
+        "screen2.jpg",
+        "screen3.jpg",
+        "screen4.jpg",
+        "screen5.jpg",
+        "screen6.jpg"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creating",
+          "_sName": "FBalazs"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "[AoS/OpenSpades/AoS Steam] Heckler & Koch HK416",
+  "source": "https://gamebanana.com/mods/170191",
+  "archive": [
+    {
+      "archive": "170191\\215500-hk_hk416_2.zip",
+      "extracted": "170191\\files-215500",
+      "sha256": "56d8b9e41daf000b7b243664e07de08b4eea195287c3ed5c5430b6f17817f5f8",
+      "listing": [
+        "HK HK416/Ace of Spades Steam/",
+        "HK HK416/Ace of Spades Steam/HK HK416.png",
+        "HK HK416/Ace of Spades Steam/HK416.dae",
+        "HK HK416/Ace of Spades Steam/HK416.zip",
+        "HK HK416/Ace of Spades Steam/HK416_texture0.png",
+        "HK HK416/Ace of Spades Steam/kv6/",
+        "HK HK416/Ace of Spades Steam/kv6/smg.kv6",
+        "HK HK416/Ace of Spades Steam/kv6/smg_sight.kv6",
+        "HK HK416/Ace of Spades Steam/png/",
+        "HK HK416/Ace of Spades Steam/png/ui/",
+        "HK HK416/Ace of Spades Steam/png/ui/weapons/",
+        "HK HK416/Ace of Spades Steam/png/ui/weapons/smg.png",
+        "HK HK416/Ace of Spades/",
+        "HK HK416/Ace of Spades/smg.kv6",
+        "HK HK416/HK HK416.jpg",
+        "HK HK416/HK HK416.png",
+        "HK HK416/OpenSpades/",
+        "HK HK416/OpenSpades/SMG/",
+        "HK HK416/OpenSpades/SMG/Magazine.kv6",
+        "HK HK416/OpenSpades/SMG/Weapon.kv6",
+        "HK HK416/OpenSpades/SMG/WeaponNoMagazine.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "1Shot1Kill"
+        }
+      ]
+    }
+  ],
+  "license": "1. Any modifications of my mods that will be distributed will need my permission and credit.\r\n2. Any of my mods that will be re-distributed will need my permission and credit.\r\n3. Do not use adf.ly or any other advert links to link to my mods.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

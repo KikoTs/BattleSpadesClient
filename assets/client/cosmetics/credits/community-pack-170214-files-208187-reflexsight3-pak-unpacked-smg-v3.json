@@ -1,0 +1,55 @@
+{
+  "name": "Silver Side-Charging M4 (OpenSpades)",
+  "source": "https://gamebanana.com/mods/170214",
+  "archive": [
+    {
+      "archive": "170214\\208187-m4_magpul_mod_3.rar",
+      "extracted": "170214\\files-208187",
+      "sha256": "76c86e3a9388f06936aaaee93370920278e95b9875a006c749ab89eec0b74444",
+      "listing": [
+        "reflexsight3.pak",
+        "Custom Reticles.zip"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Modders",
+      "_aAuthors": [
+        {
+          "_sRole": "Model Modder",
+          "_idRow": "1436907",
+          "_sName": "TheRedCyndaquil23",
+          "_sProfileUrl": "https://gamebanana.com/members/1436907",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5709bffd3844e.jpg",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Made The Model",
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

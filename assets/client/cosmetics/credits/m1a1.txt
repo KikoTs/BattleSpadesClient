@@ -1,0 +1,52 @@
+M1A1 Thompson
+Original authors: Azeitona, Cod Team
+https://gamebanana.com/mods/169765
+
+{
+  "id": "m1a1",
+  "name": "M1A1 Thompson",
+  "archive": "m1a1_v2_recommended_e31e4.zip",
+  "archive_sha256": "ac2f8869b40675bd114adbc64786aeee1ab539068c1318d0246e4c322d833f3d",
+  "source": "https://gamebanana.com/mods/169765",
+  "credits": [
+    {
+      "group": "Me",
+      "authors": [
+        {
+          "name": "Azeitona",
+          "role": "Made the skin",
+          "url": null
+        }
+      ]
+    },
+    {
+      "group": "Activion",
+      "authors": [
+        {
+          "name": "Cod Team",
+          "role": "Made the sounds",
+          "url": null
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "9081efa4d02975bb3a2d5af41a211835ba7e6836c9c9f835dab99af983b85126"
+}

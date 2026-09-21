@@ -1,5 +1,7 @@
 #include "battlespades/text/text_rasterizer.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <array>
 #include <exception>
@@ -31,6 +33,22 @@ void expect(bool condition, std::string_view message) {
     throw std::runtime_error{"AOS_TEST_ASSET_ROOT is not defined"};
 #else
     return std::filesystem::path{AOS_TEST_ASSET_ROOT};
+#endif
+}
+
+[[nodiscard]] std::filesystem::path client_asset_root() {
+#ifndef AOS_TEST_CLIENT_ASSET_ROOT
+    throw std::runtime_error{"AOS_TEST_CLIENT_ASSET_ROOT is not defined"};
+#else
+    return std::filesystem::path{AOS_TEST_CLIENT_ASSET_ROOT};
+#endif
+}
+
+[[nodiscard]] std::filesystem::path localization_root() {
+#ifndef AOS_TEST_LOCALIZATION_ROOT
+    throw std::runtime_error{"AOS_TEST_LOCALIZATION_ROOT is not defined"};
+#else
+    return std::filesystem::path{AOS_TEST_LOCALIZATION_ROOT};
 #endif
 }
 
@@ -145,9 +163,19 @@ void valid_utf8_is_preserved_for_player_names_and_invalid_utf8_is_rejected() {
     }};
     expect(rasterizer.ready(), std::string{rasterizer.initialization_error()});
 
+    // Use the Unicode fallback face that the frontend selects for player-provided
+    // names. A750 intentionally has retail-era coverage gaps and now fails closed
+    // instead of silently shaping those gaps as question-mark/tofu glyphs.
+    TextRasterizer unicode_names{TextRasterizerConfig{
+        client_asset_root(),
+        "fonts/NotoSansJP-SemiBold.ttf",
+        16U,
+        {},
+    }};
+    expect(unicode_names.ready(), std::string{unicode_names.initialization_error()});
     const std::string player_name{"Kiko \xC5\xBD"}; // U+017D LATIN CAPITAL LETTER Z WITH CARON.
-    const auto player =
-        rasterizer.rasterize(TextRasterRequest{player_name, TextCase::preserve, std::nullopt});
+    const auto player = unicode_names.rasterize(
+        TextRasterRequest{player_name, TextCase::preserve, std::nullopt});
     expect(player && player.output->transformed_utf8 == player_name,
            "valid UTF-8 player names must remain byte-for-byte intact");
     const auto name_plate = rasterizer.rasterize(
@@ -195,6 +223,180 @@ void every_retail_ui_font_face_initializes_and_rasterizes() {
         expect(output && output.output->metrics.glyph_count > 0U &&
                    output.output->bitmap.width > 0U && output.output->bitmap.height > 0U,
                std::string{font_asset} + " must emit visible UI glyphs");
+    }
+}
+
+void unicode_coverage_is_detected_before_missing_glyphs_are_shaped() {
+    TextRasterizer display{spades_config()};
+    TextRasterizer unicode{TextRasterizerConfig{
+        asset_root(),
+        "fonts/Tuffy_Bold.ttf",
+        20U,
+        {},
+    }};
+    expect(display.ready() && unicode.ready(), "coverage fixture fonts must initialize");
+    expect(display.supports_text("SETTINGS") && unicode.supports_text("SETTINGS"),
+           "both retail faces must report their shared Latin coverage");
+    constexpr std::string_view cyrillic_with_yo{"Ёлка"};
+    expect(!display.supports_text(cyrillic_with_yo),
+           "the Spades display face must reject unsupported Cyrillic glyphs");
+    expect(unicode.supports_text(cyrillic_with_yo),
+           "Tuffy must expose complete Cyrillic coverage before shaping");
+    expect(!unicode.supports_text(std::string{"broken\xE2\x82"}),
+           "coverage checks must fail closed for malformed UTF-8");
+}
+
+void legacy_player_symbols_use_missing_glyphs_without_stopping_the_ui() {
+    // Captured from the live 192.248.177.80:32887 roster: U+1F1F7 has no
+    // glyph in any bundled face. This used to abort the entire frontend.
+    const std::string name{"beta keks\xF0\x9F\x87\xB7"};
+    TextRasterizerConfig config{asset_root(), "fonts/Tuffy_Bold.ttf", 20U, {}};
+    TextRasterizer strict{config};
+    config.allow_missing_glyphs = true;
+    TextRasterizer live{config};
+    TextRasterizer display{spades_config()};
+    TextRasterizer japanese{{client_asset_root(), "fonts/NotoSansJP-SemiBold.ttf", 20U, {}}};
+    expect(strict.ready() && live.ready() && display.ready() && japanese.ready(),
+           "legacy name fixture fonts must load");
+    expect(!live.supports_text(name) && !japanese.supports_text(name),
+           "rendering fallback must not falsely claim actual symbol coverage");
+    std::array<TextRasterizer*, 5U> candidates{nullptr, &live, &live, &display, &japanese};
+    auto* selected = select_text_font(candidates, name);
+    expect(selected == &live, "an uncovered name must retain a ready UI face");
+    const TextRasterRequest request{name, TextCase::preserve, 20U};
+    const auto result = selected->rasterize(request);
+    expect(result && result.output->transformed_utf8 == name &&
+               result.output->metrics.glyph_count == 10U &&
+               result.output->bitmap.width > 0U && result.output->bitmap.height > 0U,
+           "legacy names must render with a placeholder without changing identity text");
+    const auto repeat = selected->rasterize(request);
+    expect(repeat && repeat.from_cache && repeat.output == result.output,
+           "unsupported symbols must reuse the bounded raster cache");
+    expect(strict.cache_key(request).key != live.cache_key(request).key,
+           "strict and live glyph policies must have distinct texture identities");
+    const auto strict_result = strict.rasterize(request);
+    expect(!strict_result && strict_result.error_code == TextErrorCode::font_error,
+           "strict font/translation validation must still detect absent glyphs");
+    const auto outlined = live.rasterize({name, TextCase::unicode_uppercase, 20U, true});
+    expect(outlined && outlined.output->transformed_utf8 == "BETA KEKS\xF0\x9F\x87\xB7",
+           "outlined and uppercase HUD paths must also tolerate unsupported symbols");
+    const auto symbol = live.rasterize({"\xF0\x9F\x87\xB7", TextCase::preserve, 20U});
+    expect(symbol && symbol.output->bitmap.width > 0U &&
+               symbol.output->metrics.advance_width_pixels > 0,
+           "an entirely unsupported name must still have a visible placeholder");
+    expect(select_text_font(candidates, "Settings") == &live &&
+               select_text_font(candidates, "日本語") == &japanese,
+           "complete fallback coverage must still win over missing-glyph rendering");
+    const std::array<TextRasterizer*, 2U> absent{nullptr, nullptr};
+    expect(select_text_font(absent, name) == nullptr, "missing fonts remain an initialization error");
+    const auto invalid = live.rasterize({"bad\xF0\x9F\x87", TextCase::preserve, 20U});
+    expect(!invalid && invalid.error_code == TextErrorCode::invalid_utf8,
+           "glyph fallback must not bypass UTF-8 validation");
+    const auto oversized = live.rasterize(
+        {std::string(config.limits.maximum_utf8_bytes + 1U, 'A'), TextCase::preserve, 20U});
+    expect(!oversized && oversized.error_code == TextErrorCode::resource_limit,
+           "live glyph fallback must retain the resource bounds");
+}
+
+void major_language_runs_rasterize_as_unicode_not_question_marks() {
+    TextRasterizer cyrillic{TextRasterizerConfig{
+        asset_root(),
+        "fonts/Tuffy_Bold.ttf",
+        24U,
+        {},
+    }};
+    const std::string russian{"Настройки — Ёлка"};
+    expect(cyrillic.ready() && cyrillic.supports_text(russian),
+           "Tuffy must cover the recovered Russian UI run");
+    const auto russian_output = cyrillic.rasterize(
+        TextRasterRequest{russian, TextCase::preserve, 24U});
+    expect(russian_output && russian_output.output->transformed_utf8 == russian &&
+               russian_output.output->metrics.glyph_count > 10U &&
+               russian_output.output->bitmap.width > 0U,
+           "Russian must survive UTF-8 shaping and produce visible glyphs");
+    const std::string russian_mixed_case{"Настройки — ёлка"};
+    const std::string russian_uppercase{"НАСТРОЙКИ — ЁЛКА"};
+    expect(cyrillic.supports_text(russian_mixed_case, TextCase::unicode_uppercase),
+           "font selection must validate the transformed Cyrillic run");
+    const auto uppercase_output = cyrillic.rasterize(
+        TextRasterRequest{russian_mixed_case, TextCase::unicode_uppercase, 24U});
+    expect(uppercase_output &&
+               uppercase_output.output->transformed_utf8 == russian_uppercase,
+           "localized uppercase labels must case Cyrillic instead of only ASCII");
+
+    TextRasterizer japanese{TextRasterizerConfig{
+        client_asset_root(),
+        "fonts/NotoSansJP-SemiBold.ttf",
+        24U,
+        {},
+    }};
+    const std::string label{"設定・プレイヤープロフィール"};
+    expect(japanese.ready() && japanese.supports_text(label),
+           "the bundled Noto face must cover recovered Japanese UI text");
+    const auto japanese_output = japanese.rasterize(
+        TextRasterRequest{label, TextCase::preserve, 24U});
+    expect(japanese_output && japanese_output.output->transformed_utf8 == label &&
+               japanese_output.output->metrics.glyph_count > 5U &&
+               japanese_output.output->bitmap.width > 0U,
+           "Japanese must survive UTF-8 shaping and produce visible glyphs");
+
+    const std::string recovered_ugc_label{"購読"};
+    TextRasterizer display{spades_config()};
+    expect(!display.supports_text(recovered_ugc_label),
+           "the Latin display face must not claim Japanese UGC glyph coverage");
+    expect(japanese.supports_text(recovered_ugc_label),
+           "the bundled Noto face must cover the recovered Japanese UGC label");
+    const auto ugc_output = japanese.rasterize(
+        TextRasterRequest{recovered_ugc_label, TextCase::preserve, 43U});
+    expect(ugc_output && ugc_output.output->transformed_utf8 == recovered_ugc_label &&
+               ugc_output.output->bitmap.width > 0U,
+           std::string{"recovered Japanese UGC label failed: "} + ugc_output.error);
+
+    const std::string polish_no_break_space{"Pobierz pełną\xC2\xA0wersję"};
+    const auto polish_output = cyrillic.rasterize(
+        TextRasterRequest{polish_no_break_space, TextCase::preserve, 24U});
+    expect(polish_output &&
+               polish_output.output->transformed_utf8 == "Pobierz pełną wersję",
+           "unsupported Unicode no-break spacing must normalize to a visible-font space");
+
+}
+
+void bundled_faces_cover_every_shipped_translation() {
+    const auto verify_pack = [](std::string_view locale,
+                                std::initializer_list<TextRasterizer*> faces) {
+        const auto path = localization_root() / (std::string{locale} + ".json");
+        std::ifstream input{path, std::ios::binary};
+        expect(static_cast<bool>(input), "language pack fixture must open");
+        const auto document = nlohmann::json::parse(input);
+        const auto verify = [&](std::string_view key, const std::string& value) {
+            const auto covered = std::ranges::any_of(faces, [&](const auto* face) {
+                return face != nullptr && face->supports_text(value);
+            });
+            expect(covered,
+                   std::string{locale} + " font is missing glyphs for " + std::string{key});
+        };
+        verify("native_name", document.at("native_name").get_ref<const std::string&>());
+        for (const auto& [key, value] : document.at("strings").items()) {
+            verify(key, value.get_ref<const std::string&>());
+        }
+    };
+
+    TextRasterizer cyrillic{TextRasterizerConfig{
+        asset_root(), "fonts/Tuffy_Bold.ttf", 24U, {}}};
+    TextRasterizer japanese{TextRasterizerConfig{
+        client_asset_root(), "fonts/NotoSansJP-SemiBold.ttf", 24U, {}}};
+    expect(cyrillic.ready() && japanese.ready(),
+           "bundled Unicode coverage faces must initialize");
+    // The runtime resolves a whole run through this same fallback family.
+    // Checking every shipped pack catches code-page damage and obscure glyph
+    // gaps in long UGC/tutorial strings, not merely the handful of labels a
+    // screenshot happens to exercise.
+    constexpr std::array<std::string_view, 14U> locales{
+        "bg", "cs", "de", "en", "es", "es-MX", "fr",
+        "it", "ja", "pl", "pt-BR", "ru", "tr", "uk",
+    };
+    for (const auto locale : locales) {
+        verify_pack(locale, {&cyrillic, &japanese});
     }
 }
 
@@ -328,6 +530,14 @@ int main() {
          valid_utf8_is_preserved_for_player_names_and_invalid_utf8_is_rejected},
         {"every_retail_ui_font_face_initializes_and_rasterizes",
          every_retail_ui_font_face_initializes_and_rasterizes},
+        {"unicode_coverage_is_detected_before_missing_glyphs_are_shaped",
+         unicode_coverage_is_detected_before_missing_glyphs_are_shaped},
+        {"major_language_runs_rasterize_as_unicode_not_question_marks",
+         major_language_runs_rasterize_as_unicode_not_question_marks},
+        {"legacy_player_symbols_use_missing_glyphs_without_stopping_the_ui",
+         legacy_player_symbols_use_missing_glyphs_without_stopping_the_ui},
+        {"bundled_faces_cover_every_shipped_translation",
+         bundled_faces_cover_every_shipped_translation},
         {"retail_ftgl_outline_uses_a_distinct_cache_entry_and_expands_ink",
          retail_ftgl_outline_uses_a_distinct_cache_entry_and_expands_ink},
         {"executable_assets_can_live_below_a_unicode_directory",

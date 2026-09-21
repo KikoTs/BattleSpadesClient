@@ -24,7 +24,7 @@ QualityProfile profile_for(settings::ShaderQuality quality,
 
     switch (quality) {
     case settings::ShaderQuality::compatibility:
-        // Legacy: the recovered baked tables, straight to the backbuffer. No
+        // Legacy: recovered VXL/KV6 lighting, straight to the backbuffer. No
         // offscreen target, so nothing downstream can alter a retail-parity
         // capture. Every enhancement stays off.
         break;
@@ -32,7 +32,6 @@ QualityProfile profile_for(settings::ShaderQuality quality,
     case settings::ShaderQuality::low:
         // Lighting and a single tonemap, but no shadow map: the cascade pass
         // re-renders terrain geometry and is the first real cost on the frame.
-        profile.hdr_target = true;
         profile.enhanced_lighting = true;
         profile.dynamic_lights = 2U;
         // Two ALU and zero memory, so emission is affordable at every tier
@@ -44,7 +43,6 @@ QualityProfile profile_for(settings::ShaderQuality quality,
     case settings::ShaderQuality::medium:
         // One cascade covers the near field, which is where cast shadows are
         // actually read; distant shadows cost the same and are barely seen.
-        profile.hdr_target = true;
         profile.enhanced_lighting = true;
         profile.shadow_cascades = 1U;
         // Raised from 1024/1-tap. A single hardware comparison tap is a hard
@@ -56,32 +54,26 @@ QualityProfile profile_for(settings::ShaderQuality quality,
         profile.shadow_pcf_taps = 9U;
         profile.shadow_softness = 1.6F;
         profile.dynamic_lights = 4U;
-        profile.bloom_levels = 4U;
         // Raised from 1.0: neon and lanterns are the only thing making a night
         // map feel alive until light spill lands, so they carry more weight.
         profile.emissive_gain = 1.4F;
         break;
 
     case settings::ShaderQuality::high:
-        profile.hdr_target = true;
         profile.enhanced_lighting = true;
         profile.shadow_cascades = 1U;
         profile.shadow_resolution = 1536U;
         profile.shadow_pcf_taps = 9U;
         profile.shadow_softness = 2.0F;
-        profile.ssao_samples = 8U;
-        profile.ssao_half_resolution = true;
         profile.dynamic_lights = 8U;
         profile.particle_lighting = true;
-        profile.bloom_levels = 5U;
         profile.emissive_gain = 1.15F;
         break;
 
     case settings::ShaderQuality::ultra:
-        // Full-resolution SSAO, a larger shadow map and the widest filter.
+        // A larger shadow map and the widest filter.
         // Everything here is refinement over High rather than a new capability
         // -- notably NOT more cascades, because the renderer still draws one.
-        profile.hdr_target = true;
         profile.enhanced_lighting = true;
         profile.shadow_cascades = 1U;
         profile.shadow_resolution = 2048U;
@@ -89,11 +81,8 @@ QualityProfile profile_for(settings::ShaderQuality quality,
         // Wider in texels AND at higher resolution, so Ultra's penumbra is a
         // touch broader than High's while being better sampled inside it.
         profile.shadow_softness = 2.4F;
-        profile.ssao_samples = 16U;
-        profile.ssao_half_resolution = false;
         profile.dynamic_lights = 8U;
         profile.particle_lighting = true;
-        profile.bloom_levels = 6U;
         profile.emissive_gain = 1.3F;
         break;
     }

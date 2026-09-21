@@ -132,6 +132,7 @@ void normalization_is_bounded_and_deterministic() {
     malformed.schema_version = 99U;
     malformed.main.master_volume = std::numeric_limits<double>::quiet_NaN();
     malformed.main.music_volume = -4.0;
+    malformed.main.audio_device = "Speakers\n[graphics]";
     malformed.graphics.resolution = {0U, 99'999U};
     malformed.graphics.graphics_api = static_cast<GraphicsApi>(99U);
     malformed.graphics.antialiasing = static_cast<Antialiasing>(7U);
@@ -152,6 +153,8 @@ void normalization_is_bounded_and_deterministic() {
            "normalization must repair the schema version");
     expect(normalized.main.master_volume == 1.0 && normalized.main.music_volume == 0.0,
            "non-finite values must restore defaults and finite values must clamp");
+    expect(normalized.main.audio_device.empty(),
+           "invalid device labels must normalize to automatic selection");
     expect(normalized.graphics.resolution == Resolution{320U, 16'384U},
            "resolution must clamp to safe platform-independent bounds");
     expect(normalized.graphics.antialiasing == Antialiasing::off &&
@@ -307,9 +310,14 @@ void toml_round_trip_is_human_readable_and_atomic() {
     TomlSettingsStore store{path};
 
     auto settings = battlespades::settings::retail_default_settings();
+    settings.main.language = "ru";
     settings.main.master_volume = 0.375;
     settings.main.music_volume = 0.1;
+    settings.main.audio_device = "OpenAL Soft on Speakers (Player's \"Headset\")";
     settings.main.fullscreen = false;
+    settings.main.show_skins = false;
+    settings.main.show_other_skins = false;
+    settings.main.weapon_motion = false;
     settings.graphics.resolution = {1'680U, 1'050U};
     settings.graphics.graphics_api = GraphicsApi::vulkan;
     settings.graphics.antialiasing = Antialiasing::samples_4;
@@ -326,7 +334,8 @@ void toml_round_trip_is_human_readable_and_atomic() {
                text.find("[graphics]") != std::string::npos &&
                text.find("[controls.bindings]") != std::string::npos,
            "saved settings must use readable TOML sections");
-    expect(text.find("resolution = \"1680x1050\"") != std::string::npos &&
+    expect(text.find("language = \"ru\"") != std::string::npos &&
+               text.find("resolution = \"1680x1050\"") != std::string::npos &&
                text.find("graphics_api = \"vulkan\"") != std::string::npos &&
                text.find("toggle_hud = \"keyboard:backquote\"") != std::string::npos,
            "saved settings must use readable option and binding values");
@@ -402,6 +411,18 @@ void malformed_files_never_install_partial_state() {
            "failed atomic save must preserve the previous destination");
 }
 
+void local_skin_visibility_preserves_independent_preferences() {
+    battlespades::settings::MainSettings preferences;
+    expect(preferences.skins_visible(true)&&preferences.skins_visible(false)&&preferences.weapon_motion,
+           "existing installs retain all skins and movement");
+    preferences.show_other_skins=false;
+    expect(preferences.skins_visible(true)&&!preferences.skins_visible(false), "mine only hides remote skins");
+    preferences.show_skins=false;
+    expect(!preferences.skins_visible(true)&&!preferences.skins_visible(false), "master toggle hides every skin");
+    preferences.show_skins=true;
+    expect(preferences.skins_visible(true)&&!preferences.skins_visible(false), "master toggle preserves mine-only choice");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -411,6 +432,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"local_skin_visibility_preserves_independent_preferences",local_skin_visibility_preserves_independent_preferences},
         {"retail_defaults_cover_every_recovered_option",
          retail_defaults_cover_every_recovered_option},
         {"normalization_is_bounded_and_deterministic", normalization_is_bounded_and_deterministic},

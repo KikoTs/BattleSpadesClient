@@ -1,0 +1,105 @@
+{
+  "name": "Rifolver",
+  "source": "https://gamebanana.com/mods/315714",
+  "archives": [
+    {
+      "archive": "315714\\641637-twodayudie_riflolver.zip",
+      "extracted": "315714\\files-641637",
+      "sha256": "65eeb7eb3183c589d5b681f545325631e240dfec715fa4af155ce0be60570798",
+      "listing": [
+        "Gfx/scopecross.png",
+        "Models/Weapons/",
+        "Models/Weapons/Rifle/",
+        "Models/Weapons/Rifle/barrel.kv6",
+        "Models/Weapons/Rifle/Barrelhandle.kv6",
+        "Models/Weapons/Rifle/bullet.kv6",
+        "Models/Weapons/Rifle/bulletchamber.kv6",
+        "Models/Weapons/Rifle/bulletchamber2.kv6",
+        "Models/Weapons/Rifle/bulletcyl.kv6",
+        "Models/Weapons/Rifle/Casing.kv6",
+        "Models/Weapons/Rifle/hammer.kv6",
+        "Models/Weapons/Rifle/Scope.kv6",
+        "Models/Weapons/Rifle/scopeDot.kv6",
+        "Models/Weapons/Rifle/SingleVoxel.kv6",
+        "Models/Weapons/Rifle/speedloader.kv6",
+        "Models/Weapons/Rifle/speedloaderfull.kv6",
+        "Models/Weapons/Rifle/Stock.kv6",
+        "Models/Weapons/Rifle/Weapon.kv6",
+        "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Models/Weapons/Rifle/WeaponNoMagazine2.kv6",
+        "Scripts/Skin/",
+        "Scripts/Skin/Rifle/",
+        "Scripts/Skin/Rifle/ThirdPerson.as",
+        "Scripts/Skin/Rifle/View.as",
+        "Sounds/Weapons/",
+        "Sounds/Weapons/Rifle/",
+        "Sounds/Weapons/Rifle/FireLocal.wav",
+        "Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Models/Weapons/Rifle/Casing4.kv6",
+        "Models/Weapons/Rifle/Casing1.kv6",
+        "Models/Weapons/Rifle/Casing5.kv6",
+        "Models/Weapons/Rifle/Casing2.kv6",
+        "Models/Weapons/Rifle/Casing3.kv6",
+        "Models/Weapons/Rifle/Casing6.kv6",
+        "Models/Weapons/Rifle/Casing7.kv6",
+        "Models/Weapons/Rifle/Casing8.kv6",
+        "Models/Weapons/Rifle/Casing9.kv6",
+        "Models/Weapons/Rifle/Casing10.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Models/animations",
+          "_idRow": 1982902,
+          "_sName": "Twodayudie",
+          "_sProfileUrl": "https://gamebanana.com/members/1982902",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/61c492515b28e.png",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scope Model, parts of animation script",
+          "_idRow": 1415230,
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "OpenSpades creator",
+          "_sName": "YVT"
+        }
+      ]
+    }
+  ],
+  "license": "You are free to use anything from this mod to make your own or customize you own. <br><br>Just make sure to give credit where credit is due.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

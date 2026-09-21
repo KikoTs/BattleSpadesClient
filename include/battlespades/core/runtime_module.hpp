@@ -10,6 +10,9 @@ struct TickContext final {
     std::uint64_t index{};
     std::chrono::nanoseconds fixed_delta{};
     std::chrono::nanoseconds elapsed{};
+    // Catch-up steps still poll input and advance simulation, but must not
+    // submit another expensive presentation. Unpaced runs keep true.
+    bool present{true};
 };
 
 enum class TickDecision {

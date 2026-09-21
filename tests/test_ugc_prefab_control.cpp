@@ -69,6 +69,30 @@ void asymmetric_horizontal_rotations_match_retail() {
            "EAST + right + pitch 1 must use the retail single pitch turn");
 }
 
+void direction_changes_and_repeat_timing_stay_responsive() {
+    using namespace battlespades::world;
+    UgcPrefabControl control;
+    control.prime({{100, 200, 30}, {102.0, 203.0, 32.0}, {4, 6, 4}});
+    expect(control.activate(), "activate direction-change fixture");
+    control.set_input(UgcPrefabControlInput::forward, true);
+    control.tick(1.0 / 60.0, {0.0, -1.0, 0.0});
+    control.set_input(UgcPrefabControlInput::forward, false);
+    control.set_input(UgcPrefabControlInput::backward, true);
+    control.tick(1.0 / 60.0, {0.0, -1.0, 0.0});
+    expect_near(control.placement().center[1U], 203.0, "reversing a nudge must respond immediately");
+
+    for (const auto rate : {30, 60, 120}) {
+        control.reset();
+        control.prime({{100, 200, 30}, {102.0, 203.0, 32.0}, {4, 6, 4}});
+        expect(control.activate(), "activate repeat fixture");
+        control.set_input(UgcPrefabControlInput::forward, true);
+        control.tick(0.0, {0.0, -1.0, 0.0});
+        for (int tick{}; tick < rate; ++tick) control.tick(1.0 / rate, {0.0, -1.0, 0.0});
+        expect_near(control.placement().center[1U], 192.0,
+                    "one second of held nudging must not depend on frame partitioning");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -78,6 +102,7 @@ int main() {
     using battlespades::world::Vec3;
 
     try {
+        direction_changes_and_repeat_timing_stay_responsive();
         UgcPrefabControl control;
         expect(!control.activate(), "stage two must reject an absent stage-one ghost");
         control.prime(UgcPrefabPlacement{{100, 200, 30}, {102.0, 203.0, 32.0}, {4, 6, 4}});
@@ -131,6 +156,21 @@ int main() {
         expect(!control.take_carve_request(), "erase repeat must remain closed before 0.1 s");
         control.tick(0.05, Vec3{1.0, 0.0, 0.0});
         expect(control.take_carve_request(), "held C must repeat at 0.1 s");
+
+        control.set_input(UgcPrefabControlInput::forward, true);
+        control.set_input(UgcPrefabControlInput::rotate_right, true);
+        control.tick(0.1, Vec3{1.0, 0.0, 0.0});
+        const auto stopped = control.placement();
+        control.clear_inputs();
+        for (int tick{}; tick < 600; ++tick) control.tick(1.0 / 60.0, Vec3{1.0, 0.0, 0.0});
+        expect(control.active() && control.placement().anchor == stopped.anchor &&
+                   control.placement().yaw == stopped.yaw && control.placement().pitch == stopped.pitch &&
+                   control.placement().roll == stopped.roll && !control.take_carve_request(),
+               "focus loss must retain the blueprint without stuck movement, rotation or carving");
+        control.set_input(UgcPrefabControlInput::forward, true);
+        control.tick(1.0 / 60.0, Vec3{1.0, 0.0, 0.0});
+        expect(control.placement().center != stopped.center,
+               "fresh input must respond immediately after returning to the editor");
 
         control.deactivate();
         expect(!control.active() && !control.activate(),

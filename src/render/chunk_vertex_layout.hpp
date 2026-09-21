@@ -39,6 +39,7 @@ namespace battlespades::render {
         .add(bgfx::Attrib::Color2, 4U, bgfx::AttribType::Uint8, true)
         // Retail AO atlas red-channel UV and green-channel edge UV.
         .add(bgfx::Attrib::TexCoord0, 4U, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord1, 1U, bgfx::AttribType::Float)
         .end();
     return layout;
 }

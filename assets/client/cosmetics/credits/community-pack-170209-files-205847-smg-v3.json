@@ -1,0 +1,111 @@
+{
+  "name": "M4A4 | Desert Strike",
+  "source": "https://gamebanana.com/mods/170209",
+  "archive": [
+    {
+      "archive": "170209\\205847-m4a4_9.rar",
+      "extracted": "170209\\files-205847",
+      "sha256": "4ca838de8a1e7e80745d1c7e84d3849e1a78c16b68b368e9804e73f069c19478",
+      "listing": [
+        "Weapon.kv6",
+        "WeaponNoMagazine.kv6",
+        "ChargingHandle.kv6",
+        "MagazineEmpty.kv6",
+        "MagazineLoaded.kv6",
+        "SightsFront.kv6",
+        "SightsPin.kv6",
+        "SightsReflex.kv6",
+        "Scripts/Skin/SMG/ThirdPerson.as",
+        "Scripts/Skin/SMG/View.as",
+        "Scripts/Skin/SMG",
+        "Scripts/Skin",
+        "Scripts",
+        "Gfx/Bullet/9mm.tga",
+        "Gfx/Flash/Weapons/SMG/000.png",
+        "Gfx/Flash/Weapons/SMG/001.png",
+        "Gfx/Flash/Weapons/SMG/002.png",
+        "Gfx/Flash/Weapons/SMG/003.png",
+        "Gfx/Flash/Weapons/SMG/004.png",
+        "Gfx/Flash/Weapons/SMG/005.png",
+        "Gfx/Flash/Weapons/SMG/006.png",
+        "Gfx/Flash/Weapons/SMG/007.png",
+        "Gfx/Flash/Weapons/SMG/008.png",
+        "Gfx/Flash/Weapons/SMG/009.png",
+        "Gfx/Flash/Weapons/SMG/010.png",
+        "Gfx/Flash/Weapons/SMG/011.png",
+        "Gfx/Flash/Weapons/SMG/012.png",
+        "Gfx/Flash/Weapons/SMG/013.png",
+        "Gfx/Flash/Weapons/SMG/014.png",
+        "Gfx/Flash/Weapons/SMG/015.png",
+        "Gfx/Flash/Weapons/SMG/016.png",
+        "Gfx/Flash/Weapons/SMG/017.png",
+        "Gfx/Flash/Weapons/SMG/018.png",
+        "Gfx/Flash/Weapons/SMG/019.png",
+        "Gfx/Killfeed/b-SMG.png",
+        "Gfx/Killfeed/b-SMG.tga",
+        "Gfx/ReflexRound.png",
+        "Gfx/Flash/Weapons/SMG",
+        "Gfx/Flash/Weapons",
+        "Gfx/Bullet",
+        "Gfx/Flash",
+        "Gfx/Killfeed",
+        "Gfx"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Magpul M4",
+          "_sName": "PTrooper"
+        },
+        {
+          "_sRole": "CS:GO M4A4",
+          "_sName": "Valve"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "Helped me with this model",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

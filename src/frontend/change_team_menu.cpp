@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -133,24 +134,59 @@ void append_key_display(ui::DrawList& list, int key, double center_x,
  */
 void append_player_lists(ui::DrawList& list,
                          const ChangeTeamServerState& state,
-                         double vertical_offset, double list_height) {
+                         double vertical_offset, double list_height,
+                         bool scoreboard_extras = false) {
     constexpr double list_width{313.0};
     const double row_height = list_height / 16.0;
-    const auto append_team = [&](bool team2) {
-        const double x = team2 ? 412.0 : 77.0;
-        // draw_player_list deliberately separates the authored HUD palette
-        // from Team.color. Roster bands, labels, score and Deuce head use
-        // UI_TEAM_COLOURS; only a living class/VIP portrait follows the
-        // server-authored character colour.
-        const auto& team_ui_color = team2 ? retail_team2_ui : retail_team1_ui;
-        const auto& character_color = team2 ? state.team2_color : state.team1_color;
-        auto players = team2 ? state.team2_players : state.team1_players;
+    const auto sorted = [](std::vector<TeamRosterPlayer> players) {
         std::ranges::stable_sort(players, [](const TeamRosterPlayer& left,
                                             const TeamRosterPlayer& right) {
             if (left.score != right.score) return left.score > right.score;
             if (left.player_id != right.player_id) return left.player_id < right.player_id;
             return left.name < right.name;
         });
+        return players;
+    };
+    const std::array teams{sorted(state.team1_players), sorted(state.team2_players)};
+    const auto spectators = sorted(state.spectator_players);
+    struct ExtraPlayer final {
+        const TeamRosterPlayer* player{};
+        std::uint8_t team{};
+    };
+    std::array<std::vector<ExtraPlayer>, 2U> extras;
+    if (scoreboard_extras) {
+        // ViewScores.update (hud.pyd 0x1005EBE0): a full team's overflow
+        // follows the spectators at the foot of the opposite column.
+        if (teams[0U].size() >= 16U || teams[1U].size() >= 16U) {
+            const std::size_t full_team = teams[0U].size() >= 16U ? 0U : 1U;
+            auto& destination = extras[1U - full_team];
+            for (const auto& player : spectators) destination.push_back({&player, 0U});
+            for (std::size_t index{16U}; index < teams[full_team].size(); ++index) {
+                destination.push_back({&teams[full_team][index],
+                                       static_cast<std::uint8_t>(full_team + 2U)});
+            }
+        } else if (!spectators.empty()) {
+            const auto left_space = 16U - teams[0U].size();
+            const auto right_space = 16U - teams[1U].size();
+            auto left_count = spectators.size() / 2U;
+            if (left_count > left_space) left_count = left_space;
+            else if (spectators.size() - left_count > right_space) {
+                left_count = spectators.size() - right_space;
+            }
+            for (std::size_t index{}; index < spectators.size(); ++index) {
+                extras[index < left_count ? 0U : 1U].push_back({&spectators[index], 0U});
+            }
+        }
+    }
+    const auto append_team = [&](bool team2) {
+        const auto column = team2 ? 1U : 0U;
+        const double x = team2 ? 412.0 : 77.0;
+        // draw_player_list deliberately separates the authored HUD palette
+        // from Team.color. Roster bands, labels, score and Deuce head use
+        // UI_TEAM_COLOURS; only a living class/VIP portrait follows the
+        // server-authored character colour.
+        const auto& team_ui_color = team2 ? retail_team2_ui : retail_team1_ui;
+        const auto& players = teams[column];
         const auto& name = team2 ? state.team2_name : state.team1_name;
         const auto score = team2 ? state.team2_score : state.team1_score;
         const bool show_score = team2 ? state.team2_show_score : state.team1_show_score;
@@ -221,24 +257,47 @@ void append_player_lists(ui::DrawList& list,
 
         // Retail iterates xrange(17): one header plus sixteen player rows.
         for (std::size_t row{}; row < 16U; ++row) {
+            const TeamRosterPlayer* row_player = row < players.size() ? &players[row] : nullptr;
+            std::uint8_t row_team = team2 ? 3U : 2U;
+            bool extra_player{};
+            const auto first_extra = std::ptrdiff_t{16} -
+                static_cast<std::ptrdiff_t>(extras[column].size());
+            if (row_player == nullptr && static_cast<std::ptrdiff_t>(row) >= first_extra) {
+                const auto index = static_cast<std::size_t>(
+                    static_cast<std::ptrdiff_t>(row) - first_extra);
+                if (index < extras[column].size()) {
+                    row_player = extras[column][index].player;
+                    row_team = extras[column][index].team;
+                    extra_player = true;
+                }
+            }
             const double row_y = 166.0 + vertical_offset +
                                  static_cast<double>(row) * row_height;
             // The retail loop index includes its header. The first player is
             // therefore i=1 and uses LIST_COLOR2; the second uses LIST_COLOR1.
+            constexpr std::array<std::uint8_t, 3U> spectator_color{194U, 194U, 194U};
+            const auto& row_ui_color = row_team == 0U ? spectator_color
+                                          : row_team == 3U ? retail_team2_ui : retail_team1_ui;
+            const auto& band_color = extra_player && row_player != nullptr &&
+                                            !row_player->dead && !row_player->demo_player
+                                        ? row_ui_color : team_ui_color;
             const auto background = retail_blend_color(
                 row % 2U == 0U ? ui::ColorRgba8{35U, 35U, 35U, 255U}
                                : ui::ColorRgba8{10U, 10U, 10U, 255U},
-                team_ui_color, 0.2);
+                band_color, 0.2);
             list.push(sprite("png/high/white.png",
                              {x, row_y, list_width, row_height}, background));
-            if (row >= players.size()) continue;
+            if (row_player == nullptr) continue;
 
-            const auto& player = players[row];
+            const auto& player = *row_player;
             const auto player_color = player.dead
                                           ? dead_player_color
                                           : player.demo_player
                                                 ? demo_player_color
-                                                : color(team_ui_color);
+                                                : color(row_ui_color);
+            const auto& character_color = row_team == 3U ? state.team2_color
+                                             : row_team == 2U ? state.team1_color
+                                                              : spectator_color;
             const auto alive_icon_color = retail_blend_color(
                 color(character_color), {255U, 255U, 255U}, 0.4);
             const auto* klass = world::find_class_definition(player.class_id);
@@ -256,8 +315,8 @@ void append_player_lists(ui::DrawList& list,
                 list.push(sprite("png/ui/score_icon_crown.png",
                                  {x + 11.54, row_y + 0.82, 17.92, 15.36},
                                  alive_icon_color));
-            } else if (klass != nullptr) {
-                const auto team_index = team2 ? 1U : 0U;
+            } else if (klass != nullptr && row_team >= 2U) {
+                const auto team_index = row_team == 3U ? 1U : 0U;
                 list.push(sprite(std::string{klass->team_icon_assets[team_index]},
                                  {x + 12.404, row_y - 0.596,
                                   16.192, 16.192},
@@ -584,17 +643,19 @@ ui::DrawList ScoreboardPresentation::build(
     static_cast<void>(window);
     ui::DrawList list;
     list.reserve(140U);
+    // ViewScores.draw sets glColor4f(1,1,1,.8) for this frame, then the
+    // roster helper restores full opacity for heads and individual rows.
     list.push(sprite("png/ui/in_game_menus/view_scores_content_frames.png",
-                     {49.0, 89.0, 702.0, 421.0}));
+                     {49.0, 89.0, 702.0, 421.0}, {}, 1'000U, 800U));
     // ViewScores.draw calls title_font.draw(..., 400, 463, center=True).
-    // Preserve that baseline exactly: a width-bearing layout box subtly
-    // shifted the title and could shrink long localized mode names.
-    list.push(text(std::move(mode_title), {400.0, 137.0, 0.0, 0.0}, 46.0,
+    // Preserve its centre and baseline, fitting only overflow. Server-authored
+    // names must not run beyond the frame on narrow windows.
+    list.push(text(std::move(mode_title), {74.0, 137.0, 652.0, 0.0}, 46.0,
                    ui::HorizontalTextAlignment::center, menu_color,
                    "fonts/Spades.ttf", ui::TextTransform::uppercase,
-                   ui::TextFit::none, 1'000U,
+                   ui::TextFit::retail_width_scale, 1'000U,
                    ui::VerticalTextAlignment::baseline));
-    append_player_lists(list, state, 53.0, 263.0);
+    append_player_lists(list, state, 53.0, 263.0, true);
     if (message_id.has_value()) {
         // ViewScores.draw: score_text_frame is a 1098x45 centre-anchored image
         // scaled with int(source * .64), blitted at retail bottom-left
@@ -603,10 +664,10 @@ ui::DrawList ScoreboardPresentation::build(
                          {49.0, 511.0, 702.0, 28.0}));
         list.push(text(retail_match_result_message(state, message_id,
                                                    winner_team),
-                       {400.0, 530.0, 0.0, 0.0}, 14.0,
+                       {64.0, 530.0, 672.0, 0.0}, 14.0,
                        ui::HorizontalTextAlignment::center, menu_color,
                        "fonts/Spades.ttf", ui::TextTransform::uppercase,
-                       ui::TextFit::none, 1'000U,
+                       ui::TextFit::retail_width_scale, 1'000U,
                        ui::VerticalTextAlignment::baseline));
     }
     return list;

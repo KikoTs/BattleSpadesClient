@@ -1,0 +1,82 @@
+{
+  "name": "MaschinenPistole-40",
+  "source": "https://gamebanana.com/mods/170082",
+  "archives": [
+    {
+      "archive": "170082\\202109-mp40_35607.rar",
+      "extracted": "170082\\files-202109",
+      "sha256": "542cfaa0d43be967a0ce23f844fcc6d0c488c642eb20a0c66c893c3536318e5f",
+      "listing": [
+        "Models",
+        "Models/Weapons",
+        "Models/Weapons/SMG",
+        "Models/Weapons/SMG/MagazineLoaded.kv6",
+        "Models/Weapons/SMG/SightsFront.kv6",
+        "Models/Weapons/SMG/SightsPin.kv6",
+        "Models/Weapons/SMG/SightsReflex.kv6",
+        "Models/Weapons/SMG/Tracer.kv6",
+        "Models/Weapons/SMG/Weapon.kv6",
+        "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+        "Models/Weapons/SMG/Casing.kv6",
+        "Models/Weapons/SMG/ChargingHandle.kv6",
+        "Models/Weapons/SMG/MagazineEmpty.kv6",
+        "Gfx",
+        "Gfx/ReflexRound.png",
+        "Scripts",
+        "Scripts/Skin",
+        "Scripts/Skin/SMG",
+        "Scripts/Skin/SMG/laser.wav",
+        "Scripts/Skin/SMG/laserLocal.wav",
+        "Scripts/Skin/SMG/Raygun.as",
+        "Scripts/Skin/SMG/ThirdPerson.as",
+        "Scripts/Skin/SMG/View.as"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Model",
+          "_sName": "DaLemon"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Scripts, Base M4 Model",
+          "_sName": "Ptrooper"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "God of models",
+          "_sName": "PTrooper"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

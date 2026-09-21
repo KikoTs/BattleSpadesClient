@@ -1,5 +1,7 @@
 # Protocol 168 Untrusted-Client Hardening Specification
 
+> **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
+
 Status: implementation specification  
 Audit date: 2026-07-30  
 Audited server: `G:\AoSRevival\BattleSpades`  
@@ -424,4 +426,3 @@ safe from modified-client equipment abuse.
 - Production diagnostics are unreachable from gameplay transport.
 - Malformed-packet fuzzing and a two-client retail soak produce no crash,
   unbounded logs, gameplay-thread blocking, or memory growth.
-

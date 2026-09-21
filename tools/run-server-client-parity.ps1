@@ -1,3 +1,4 @@
+[CmdletBinding()]
 param(
     [string]$ServerRoot = "G:\AoSRevival\BattleSpades",
     [string]$BuildRoot = "G:\AoSRevival\BattleSpadesClient\out\build\native-dev",
@@ -5,7 +6,9 @@ param(
     [int]$Seconds = 12,
     [ValidateRange(0, 17)]
     [int]$Class = 1,
-    [string]$TracePath = "G:\AoSRevival\BattleSpadesClient\out\movement-parity.csv"
+    [string]$TracePath = "G:\AoSRevival\BattleSpadesClient\out\movement-parity.csv",
+    # Optional probe flags, including bounded uplink/downlink delay and jitter.
+    [string[]]$ClientArguments = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,11 +28,17 @@ if ($traceDirectory) {
 }
 $stdout = Join-Path $env:TEMP "battlespades-parity-server-$Port.stdout.log"
 $stderr = Join-Path $env:TEMP "battlespades-parity-server-$Port.stderr.log"
-$python = (Get-Command py.exe -ErrorAction Stop).Source
+if (Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue) {
+    throw "Parity port UDP $Port is already in use. Choose a free -Port."
+}
+# Own the actual server process, not py.exe's short-lived launcher.
+$python = (& py.exe -3.12 -c 'import sys; print(sys.executable)').Trim()
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $python -PathType Leaf)) {
+    throw 'Python 3.12 could not be resolved'
+}
 $arguments = @(
-    "-3.12",
     "run_server.py",
-    "--config", $config,
+    "--config", ('"' + $config + '"'),
     "--port", $Port
 )
 
@@ -43,13 +52,14 @@ try {
         if ($server.HasExited) {
             throw "Parity server exited early. stdout=$stdout stderr=$stderr"
         }
-        $udp = Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue
+        $udp = Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue |
+            Where-Object OwningProcess -eq $server.Id
     } while (-not $udp -and [DateTime]::UtcNow -lt $deadline)
     if (-not $udp) {
         throw "Parity server did not bind UDP $Port. stdout=$stdout stderr=$stderr"
     }
 
-    & $client "127.0.0.1" $Port $Seconds $TracePath "--class=$Class"
+    & $client "127.0.0.1" $Port $Seconds $TracePath "--class=$Class" @ClientArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Server/client parity gate failed with exit code $LASTEXITCODE"
     }

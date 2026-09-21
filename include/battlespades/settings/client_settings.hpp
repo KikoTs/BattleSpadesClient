@@ -19,10 +19,22 @@ enum class SettingsTab : std::uint8_t {
 
 /** Preferences exposed by the retail Main settings tab. */
 struct MainSettings final {
+    /** BCP-47-style locale selected from the external localization directory. */
+    std::string language{"en"};
     double master_volume{1.0};
     double music_volume{1.0};
     bool fullscreen{true};
     bool invert_mouse{false};
+    bool show_skins{true};
+    bool show_other_skins{true};
+    bool weapon_motion{true};
+    /** Playback endpoint for the next launch; empty follows the system default. */
+    std::string audio_device;
+
+    /** Local presentation only; never changes inventory or advertised equipment. */
+    [[nodiscard]] constexpr bool skins_visible(bool local_player) const noexcept {
+        return show_skins && (local_player || show_other_skins);
+    }
 
     [[nodiscard]] friend constexpr bool operator==(const MainSettings&,
                                                    const MainSettings&) = default;

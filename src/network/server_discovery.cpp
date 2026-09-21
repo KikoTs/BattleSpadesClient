@@ -466,6 +466,18 @@ std::optional<DiscoveredServer> find_discovered_server(
     return found == servers.end() ? std::nullopt : std::optional{*found};
 }
 
+DiscoveryResult select_discovered_servers(
+    DiscoveryResult source,
+    std::span<const std::string> identifiers) {
+    std::erase_if(source.servers, [&](const DiscoveredServer& server) {
+        return std::ranges::none_of(identifiers, [&](const std::string& identifier) {
+            return server.master_identifier == identifier ||
+                   server.game.identifier() == identifier;
+        });
+    });
+    return source;
+}
+
 DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config,
                                         std::stop_token stop) {
     DiscoveryResult output;

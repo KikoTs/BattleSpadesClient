@@ -1,0 +1,52 @@
+AEON HK416
+Original authors: iSkyte., 1Shot_1Kill
+https://gamebanana.com/mods/319114
+
+{
+  "id": "aeon-hk416",
+  "name": "AEON HK416",
+  "archive": "b_s_aeon_hk416.zip",
+  "archive_sha256": "da263cf0de23fda317d7b5561cc482a165874132bde1aae3b501c1c435881e0d",
+  "source": "https://gamebanana.com/mods/319114",
+  "credits": [
+    {
+      "group": "Skin",
+      "authors": [
+        {
+          "name": "iSkyte.",
+          "role": "Skin Maker",
+          "url": "https://gamebanana.com/members/1992661"
+        }
+      ]
+    },
+    {
+      "group": "Model",
+      "authors": [
+        {
+          "name": "1Shot_1Kill",
+          "role": "Original Model",
+          "url": "https://gamebanana.com/members/1394077"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "29e2e8802ed1096334854527480dc404628c3b938a39da4948bb1d45dfcb30cf"
+}

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170779-1",
+  "name": "Double Barrels",
+  "source": "https://gamebanana.com/mods/170779",
+  "class": "ViewShotgunSkin",
+  "category": "Shotgun",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Shotgun/Pump.kv6": "Models/Weapons/Shotgun/Pump.kv6",
+    "Models/Weapons/Shotgun/Sight2.kv6": "Models/Weapons/Shotgun/Sight2.kv6",
+    "Models/Weapons/Shotgun/Weapon.kv6": "Models/Weapons/Shotgun/Weapon.kv6",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "Models/Weapons/Shotgun/WeaponNoPump.kv6",
+    "Sounds/Weapons/Shotgun/Fire.wav": "Sounds/Weapons/Shotgun/Fire.wav.ogg",
+    "Sounds/Weapons/Shotgun/FireLocal.wav": "Sounds/Weapons/Shotgun/FireLocal.wav.ogg",
+    "Sounds/Weapons/Shotgun/Reload.wav": "Sounds/Weapons/Shotgun/Reload.wav.ogg",
+    "Sounds/Weapons/Shotgun/ReloadLocal.wav": "Sounds/Weapons/Shotgun/ReloadLocal.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Shotgun/FireLocal.opus": "Sounds/Weapons/Shotgun/FireLocal.wav.ogg",
+    "Sounds/Weapons/Shotgun/FireFar.opus": "Fallback/Sounds/Weapons/Shotgun/FireFar.opus.ogg",
+    "Sounds/Weapons/Shotgun/FireStereo.opus": "Fallback/Sounds/Weapons/Shotgun/FireStereo.opus.ogg",
+    "Sounds/Weapons/Shotgun/ReloadLocal.opus": "Sounds/Weapons/Shotgun/ReloadLocal.wav.ogg",
+    "Sounds/Weapons/Shotgun/CockLocal.opus": "Fallback/Sounds/Weapons/Shotgun/CockLocal.opus.ogg",
+    "Sounds/Weapons/Shotgun/V2AmbienceSmall.opus": "Fallback/Sounds/Weapons/Shotgun/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Shotgun/V2AmbienceLarge.opus": "Fallback/Sounds/Weapons/Shotgun/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Shotgun/Pump.kv6": "0800383c1411c4c4b04b92ee72fd9aa96d037f26246b87649765b69682419419",
+    "Models/Weapons/Shotgun/Sight2.kv6": "85b5716051dd580cb9362ad9b164d913e795a290284b4468595e4133d4805fe5",
+    "Models/Weapons/Shotgun/Weapon.kv6": "fba2442888a601a783286e07bd666f71e1e6dc29cbc682046ac251009b4d0ebc",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "12ed49c2028936ef6cfc93c00a27a9b7771cb6315f9d6888b25f2dbcd3b4dc17",
+    "Sounds/Weapons/Shotgun/Fire.wav.ogg": "3927b9d7d90e047f2d96284ce2bebed5ff1284ff19ec5b6884123c9840dd5194",
+    "Sounds/Weapons/Shotgun/FireLocal.wav.ogg": "e5abab2f2551c639e3272026d2fffde5577ff7f743119f66a8354a85e577e414",
+    "Sounds/Weapons/Shotgun/Reload.wav.ogg": "6d1471fde5ea1527d1a8ea7841a108622b15ed2d180161ff4c7bd707bd3c16a0",
+    "Sounds/Weapons/Shotgun/ReloadLocal.wav.ogg": "3b97b9ad48f0f12cf3f66e84abf352c67bedf6b3d57117e692d1c0c98bfa44bd",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/Shotgun/FireFar.opus.ogg": "4d3e8c6ab936eb83b55d5cdbc5393aa9cd1b9cb7cea3e09fead1893a295ce23a",
+    "Fallback/Sounds/Weapons/Shotgun/FireStereo.opus.ogg": "0a0787de3dd75d06c62cdb8c5ddee4f3843b044f359c3b717971cd5ebb5ecb3e",
+    "Fallback/Sounds/Weapons/Shotgun/CockLocal.opus.ogg": "ab44b7a7d96de6c391ae0e67c98ca0f9edbc5ca2a8a82f66cc51f9e2349e2610",
+    "Fallback/Sounds/Weapons/Shotgun/V2AmbienceSmall.opus.ogg": "ef4574f98f25a678d3676c6654cda79ef8014dbe0d64dc4fafb262f6c8fcbace",
+    "Fallback/Sounds/Weapons/Shotgun/V2AmbienceLarge.opus.ogg": "8dfbb6024c3dbc74df19ffb086d61a162b838ede82e6ce236e5238867682f92e",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "14e00448b921b7fe56a65b3a5061405c84ee81166bc50a5f761b6a0262ae158c",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "No group",
+      "_aAuthors": [
+        {
+          "_sRole": "The guy who made the skin",
+          "_sName": "SpongePierre"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/Shotgun/FireFar.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Shotgun/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Shotgun/FireStereo.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Shotgun/FireStereo.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Shotgun/CockLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Shotgun/CockLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Shotgun/V2AmbienceSmall.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Shotgun/V2AmbienceSmall.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Shotgun/V2AmbienceLarge.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Shotgun/V2AmbienceLarge.opus"
+    }
+  ],
+  "adaptations": [
+    "Omitted absent optional sight mesh: Models/Weapons/Shotgun/Sight1.kv6"
+  ],
+  "animation_source": "OpenSpades base Shotgun animation fitted to supplied model parts",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "pack-shotgun_a10ea-shotgun-pak-unpacked-shotgun",
+  "name": "shotgun_a10ea.zip",
+  "source": "User-provided archive",
+  "class": "ViewShotgunSkin",
+  "category": "Shotgun",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Shotgun/View.as"
+  ],
+  "resources": {
+    "Gfx/shotgun.png": "Gfx/shotgun.png",
+    "Gfx/sight.tga": "Gfx/sight.tga.png",
+    "Models/Weapons/Shotgun/casing.kv6": "Models/Weapons/Shotgun/casing.kv6",
+    "Models/Weapons/Shotgun/Pump.kv6": "Models/Weapons/Shotgun/Pump.kv6",
+    "Models/Weapons/Shotgun/Weapon.kv6": "Models/Weapons/Shotgun/Weapon.kv6",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "Models/Weapons/Shotgun/WeaponNoPump.kv6",
+    "Scripts/Skin/Shotgun/ThirdPerson.as": "Scripts/Skin/Shotgun/ThirdPerson.as",
+    "Scripts/Skin/Shotgun/View.as": "Scripts/Skin/Shotgun/View.as",
+    "Sounds/Weapons/Shotgun/Cock.wav": "Sounds/Weapons/Shotgun/Cock.wav.ogg",
+    "Sounds/Weapons/Shotgun/Fire.wav": "Sounds/Weapons/Shotgun/Fire.wav.ogg",
+    "Sounds/Weapons/Shotgun/RaiseLocal.opus": "Sounds/Weapons/Shotgun/RaiseLocal.opus.ogg",
+    "Sounds/Weapons/Shotgun/Reload.wav": "Sounds/Weapons/Shotgun/Reload.wav.ogg",
+    "Gfx/Sight.tga": "Gfx/sight.tga.png"
+  },
+  "hashes": {
+    "Gfx/shotgun.png": "42e8ea896f88fc6c03a6c00ae2563d38b5e3d65057c8ec0a519e6e7c8e5b8ee5",
+    "Gfx/sight.tga": "7a410bccff90b2e966ca37f554ebe32bce79ac7098f3c6a40d57011ebc3a77c1",
+    "Models/Weapons/Shotgun/casing.kv6": "2a2b9e6964ba37a352d53ebf2b901c6eda6262735911b7cb3674917ffea328a8",
+    "Models/Weapons/Shotgun/Pump.kv6": "f77df6704c61e5fdadeb6251bcec92d44964d4f03f657cf3c238f512a51690ef",
+    "Models/Weapons/Shotgun/Weapon.kv6": "61202b1eb850d900e7971c30bb74fda9c9e5b8ef135fe7c8b6492ea5933206ef",
+    "Models/Weapons/Shotgun/WeaponNoPump.kv6": "dd6f34df40e2f926aff6150ba08d4da0f11cf5843f73c0542afcaf27c858b60f",
+    "Scripts/Skin/Shotgun/ThirdPerson.as": "b87ae93fa9e8e5cca1d28bcb1ea6a2e5b352c03d54fee973eb4bfe33a221f5dd",
+    "Scripts/Skin/Shotgun/View.as": "bfda8a2eb742732d99d9bd3cd10fbc90ee33e1391f880f785dbb63378659fe3a",
+    "Sounds/Weapons/Shotgun/Cock.wav": "ae1af2070cb0eda373acd2000d8f797b0aec5f10e7ab5b83086becb20fa9db64",
+    "Sounds/Weapons/Shotgun/Fire.wav": "ee383c8355147f93d170f2ed704aed053aa5b7609992da76cfd75ec9ebbaa950",
+    "Sounds/Weapons/Shotgun/RaiseLocal.opus": "0a168f9e57097c7eab11263e2e6231c54a5226aac7b49ac239009c5110702d71",
+    "Sounds/Weapons/Shotgun/Reload.wav": "04dc49cfba1ce2a055a7630f827f5c3b17231d49fb855ce271c366e2b833a89c",
+    "Sounds/Weapons/Shotgun/Cock.wav.ogg": "2acf39a4db5154edfa06bda73066c4a867802204bbb09a8acf2dfa181f163022",
+    "Sounds/Weapons/Shotgun/Fire.wav.ogg": "b88c14d758bf32d6c920910a6f7504b16968971c35d445df8c591ad5057c04e7",
+    "Sounds/Weapons/Shotgun/RaiseLocal.opus.ogg": "db924ed29b68ef239ac69e1f9bac00c8a7494d36c7ca71b2ff6cf3e5301b96b6",
+    "Sounds/Weapons/Shotgun/Reload.wav.ogg": "7e8fa61229885d7569abeb83f891f61db2cde9223c2fb9805da2ecd173b4a983",
+    "Gfx/sight.tga.png": "a146b38c69695b21d63215c1d71b7cb6141f1efb7422fded7cdc0f6b558968ca",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "See original archive notices",
+  "credits": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": []
+}

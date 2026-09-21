@@ -1,0 +1,70 @@
+{
+  "name": "Glock Custom — GlockCustom",
+  "source": "https://gamebanana.com/mods/171110",
+  "archives": [
+    {
+      "archive": "171110\\514520-glockcustom.rar",
+      "extracted": "171110\\files-514520",
+      "sha256": "4d6b0856b8fd2cb522803580c1c7e4f732e9d69c63137f97b23d4472c180d790",
+      "listing": [
+        "GlockCustom.pak",
+        "How to install.txt"
+      ]
+    },
+    {
+      "archive": "171110\\514521-glockcustomdotsight.rar",
+      "extracted": "171110\\files-514521",
+      "sha256": "d32867072a0ce099e33d9a0f038b26b3af1e96f08d8cf7d5bcd4cb5ce06f1d13",
+      "listing": [
+        "How to install.txt",
+        "GlockCustomDotSight.pak"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_idRow": "1773911",
+          "_sName": "Nuceto",
+          "_sProfileUrl": "https://gamebanana.com/members/1773911",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/60075cb236bc6.png",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Animations",
+      "_aAuthors": [
+        {
+          "_sRole": "Desert Eagle Script",
+          "_idRow": "1241800",
+          "_sName": "sidex15",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/58e433bf81e2a.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1241800",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5561092f6405c.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

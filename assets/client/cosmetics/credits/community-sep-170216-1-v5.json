@@ -1,0 +1,97 @@
+{
+  "name": "SIG SG 552 Tactical",
+  "source": "https://gamebanana.com/mods/170216",
+  "archives": [
+    {
+      "archive": "170216\\214395-sig_sg_552.zip",
+      "extracted": "170216\\files-214395",
+      "sha256": "4d8db84c8e37df60fe51cbdcb3c135dae29762c7a50fb552f8a2e805903a7785",
+      "listing": [
+        "SIG SG 552/Ace of Spades Steam/",
+        "SIG SG 552/Ace of Spades Steam/kv6/",
+        "SIG SG 552/Ace of Spades Steam/kv6/smg.kv6",
+        "SIG SG 552/Ace of Spades Steam/kv6/smg_sight.kv6",
+        "SIG SG 552/Ace of Spades Steam/png/",
+        "SIG SG 552/Ace of Spades Steam/png/ui/",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target_bottom_left.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target_bottom_right.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target_centre.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target_top_left.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/target_top_right.png",
+        "SIG SG 552/Ace of Spades Steam/png/ui/weapons/",
+        "SIG SG 552/Ace of Spades Steam/png/ui/weapons/smg.png",
+        "SIG SG 552/Ace of Spades/",
+        "SIG SG 552/Ace of Spades/smg.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/GFX/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/GFX/ReflexSight.png",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/Magazine.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/Sight1.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/Sight2.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/Sight3.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/Weapon.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Models/Weapons/SMG/WeaponNoMagazine.kv6",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Scripts/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Scripts/Skin/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Scripts/Skin/SMG/",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Scripts/Skin/SMG/ThirdPerson.as",
+        "SIG SG 552/OpenSpades (Insert into pak010-BaseSkin.pak)/Scripts/Skin/SMG/View.as",
+        "SIG SG 552/Screenshots/",
+        "SIG SG 552/Screenshots/2014-09-17_00003.jpg",
+        "SIG SG 552/Screenshots/2014-09-17_00004.jpg",
+        "SIG SG 552/Screenshots/Weapon.png",
+        "SIG SG 552/Screenshots/Weapon1.png",
+        "SIG SG 552/Screenshots/Weapon2.png",
+        "SIG SG 552/SIG SG 552 HD.jpg",
+        "SIG SG 552/SIG SG 552.jpg",
+        "SIG SG 552/VoxelShop Files/",
+        "SIG SG 552/VoxelShop Files/SIG SG 552 Custom With Foregrip & Scope.vsd",
+        "SIG SG 552/VoxelShop Files/SIG SG 552 Custom With Foregrip.vsd",
+        "SIG SG 552/VoxelShop Files/SIG SG 552 Custom.vsd",
+        "SIG SG 552/VoxelShop Files/SIG SG 552 HD.vsd",
+        "SIG SG 552/VoxelShop Files/SIG SG 552.vsd"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Author",
+          "_idRow": "1394077",
+          "_sName": "1Shot_1Kill",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/540329fa88a08.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1394077",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/53cacd9314c8b.jpg",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Half-sized model scripts for OpenSpades",
+          "_sName": "Roman_Rus"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-169726-4",
+  "name": "World War 1 Skin Pack — Spade",
+  "source": "https://gamebanana.com/mods/169726",
+  "class": "ViewSpadeSkin",
+  "category": "Spade",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Spade/Spade.kv6": "Models/Weapons/Spade/Spade.kv6",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png"
+  },
+  "hashes": {
+    "Models/Weapons/Spade/Spade.kv6": "f88d73a8a2a3baf6076ecb9d814dc49c2e38db467284165067a447c2f023425e",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "c582a2703c3c1ec85ee40190d327dece13eb14e707bdb23c8dbbf3ac8d2b38a2",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Cereator, modeler, textures",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Special Thanks",
+      "_aAuthors": [
+        {
+          "_sRole": "For being awesome.",
+          "_idRow": "1481386",
+          "_sName": "Ucho",
+          "_sProfileUrl": "https://gamebanana.com/members/1481386",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5745acece9847.jpg",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "OpenSpades base Spade animation fitted to supplied model parts",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

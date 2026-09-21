@@ -1,0 +1,2855 @@
+[
+  {
+    "item": "community-honey-badger-v2",
+    "cue": "fire",
+    "stem": "community-honey-badger-v2-fire-1-13372a",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "13372ac713682756b37f160acfaa4d75cb14ed47e64682bdd9f7c805e6197f8e",
+    "output_sha256": "acbdafef5da567bf21d9a0a08832cf18d9992c33dda66c883fbfefff2dac1fed",
+    "fallback": true
+  },
+  {
+    "item": "community-honey-badger-v2",
+    "cue": "fire",
+    "stem": "community-honey-badger-v2-fire-2-96e374",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "96e3744166581ea9fac3b0ce80d3b4cdd8f7f98cbda039d0b22f7e0c760172ce",
+    "output_sha256": "f7fb333c000344200edf519260f742e5b9452aa58f6a2cdb51be343ddb57db76",
+    "fallback": true
+  },
+  {
+    "item": "community-honey-badger-v2",
+    "cue": "fire",
+    "stem": "community-honey-badger-v2-fire-3-46d03d",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "46d03d1c49aab97fd4477217cf74254a77dd030ecc1d363a3b046a3d5702eec1",
+    "output_sha256": "d988cf5a8df56eeac7d24d4500f1c720629023b5ba100bc82d8990d8061da488",
+    "fallback": true
+  },
+  {
+    "item": "community-honey-badger-v2",
+    "cue": "fire",
+    "stem": "community-honey-badger-v2-fire-4-75f14a",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "75f14a4bc77f618c576d93546e8f836f65213147dee043b99a9e39cff92d49a7",
+    "output_sha256": "a116e29883c927f1dcfb31918e07b854cc5dca7cae366f180ba1f4463ad27356",
+    "fallback": true
+  },
+  {
+    "item": "community-honey-badger-v2",
+    "cue": "reload",
+    "stem": "community-honey-badger-v2-reload-1-facd44",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "facd4493539e35ce44e8c351fae1c08f521240185e0e83f2e8dc6b5aad41897a",
+    "output_sha256": "6970708b6cb4859210d9d4f358c246d478241c685d780df89d4c303efc6d7058",
+    "fallback": true
+  },
+  {
+    "item": "community-bren-v2",
+    "cue": "fire",
+    "stem": "community-bren-v2-fire-1-9e2462",
+    "source_file": "Sounds/Weapons/SMG/Fire3rd.wav",
+    "source_sha256": "9e246285aef4ac477af52049159f7e5d413139569944f29295d5cdc7b40d273a",
+    "output_sha256": "202d9475db557d6cce2f921a49cd68f932737671b91f309d91c14d7b0de4357f",
+    "fallback": false
+  },
+  {
+    "item": "community-bren-v2",
+    "cue": "reload",
+    "stem": "community-bren-v2-reload-1-3ef44a",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "3ef44acb7660ca483d48f2a77c091f31c0f93caa014e714692420b73266f39a5",
+    "output_sha256": "4ddc4f5acea92dca33ecb54abd852265e5b750bd630dadd532d33be0b3d4ef3f",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "fire",
+    "stem": "community-aeon-awp-v2-fire-1-c0bb59",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "c0bb599bf38ea59d051b5170a711bae42507e104a4c0d4c3d683af8ffe73c031",
+    "output_sha256": "6e09c572bf37c4361f2930158a922a882ac080c7f7e238898d14e8b7231f1e08",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "fire",
+    "stem": "community-aeon-awp-v2-fire-2-fd71a2",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "fd71a2eadda0f9539e06353de98c0de06d54478e0b61ea132e3dfbbe9a295f45",
+    "output_sha256": "37f8a431e456b4a32896eb2238b589f01b4c8e423bd9d468ada3a5d522eb58e8",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "fire",
+    "stem": "community-aeon-awp-v2-fire-3-72833a",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "72833aa4d1ce0aa1216c1bb5729a6af7e52da4f240fcbc2bf69e1504221a5f5e",
+    "output_sha256": "4e349a65b7a2ac09276d6f2f0ecbe2f4a60f134a7c1f7211e089d0b464c76692",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "fire",
+    "stem": "community-aeon-awp-v2-fire-4-ac2486",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "ac24860f5c7c1db68d7e56194eadd8d9a255e1815179cdbeb44ae7b6c11f590f",
+    "output_sha256": "67ebf757eba929a70fe889c365f5e014ce55fd2d97ad325264be35b54ad3afb0",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "fire",
+    "stem": "community-aeon-awp-v2-fire-5-ad0d95",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.wav",
+    "source_sha256": "ad0d952f7b9c620b95b347ada155e609f525904a5f7406080b2d57e30294276e",
+    "output_sha256": "9ba3a532e546a5588f60b257577e0bfb182b724a2de535931381687b1da23a36",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "reload",
+    "stem": "community-aeon-awp-v2-reload-1-4117fc",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "4117fc485d641d63303e6e7012c53e15480ae2c50f575352b36695a3734dbc49",
+    "output_sha256": "31019e7c99380ac89f245be6f1451280a953654238ba4aa2d99e2b3a2c3f1984",
+    "fallback": false
+  },
+  {
+    "item": "community-aeon-awp-v2",
+    "cue": "raise",
+    "stem": "community-aeon-awp-v2-raise-1-084030",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "0840303325a9a3d7ebae74d32091802dfafb0583f440b85459da36bfa32136a7",
+    "output_sha256": "19a89c9b2561bf5937d7e8ce0b2acb00e7ae69432282c7227354c881aa29a1f8",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-1-91edff",
+    "source_file": "Sounds/Fire1.wav",
+    "source_sha256": "91edff161436600ea9481a2584cecc58c1e819916875c51a3bb925267c87c6b7",
+    "output_sha256": "651c1f9977563bdcac655ebbf13d875d8ccb2b6ff671b7ddc557cbec7cf54e23",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-2-f03550",
+    "source_file": "Sounds/Fire2.wav",
+    "source_sha256": "f03550e41af70622da2c5af86649796e955ce1373d384f571e768923e79a4e7f",
+    "output_sha256": "a6193a96e5ee7b092e7bc5c72b8b45c35ab5376fe21070c826def847cfea5576",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-3-994e2d",
+    "source_file": "Sounds/Fire3.wav",
+    "source_sha256": "994e2db40df70bd2953e26acdf7eaed24abacb4f0befdc423937c964c6405aa3",
+    "output_sha256": "ed3d7c1e1a2a59787fa2ce01877dd0eb02f53406c80571acbee3a2841ac64069",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-4-eddf37",
+    "source_file": "Sounds/Fire4.wav",
+    "source_sha256": "eddf37267212bac29c59ea355d27983241da4184e10ac9b7cb983614b7042f0b",
+    "output_sha256": "46f96486821a9ee6c8252832843a3e0b0e210b533861221a6810736f36413c17",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-5-35c244",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "35c244ee66c9a2127f2514fbd250692fa5df0cacfac940e949daeaa111a76cf2",
+    "output_sha256": "beb03fe65f1fcc98a867977fb9731ae6ebd7c6553ff8537661be2c8ce605720e",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-6-706c77",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "706c77767c9131ebc1fe3f379e5f68a19e84f790ab426c72cd615c215538c63f",
+    "output_sha256": "a27ee0cba5c0339b6280967a220d4bff2c058d2b0674e0f741d63fc2f445b9cb",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-7-17ad96",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "17ad9642bf2227d5b2991eed56908046475792a034a49323fac2357c565e2418",
+    "output_sha256": "513fcdd4dd7e715e56597ad6f1f73a5dffc9fbd9f1568aedf73fbe1e466b5ac3",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "fire",
+    "stem": "community-stg44-v2-fire-8-2a3987",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "2a3987e96d542423981cb6570ebda0236c284206720a164b9efa61b885fdf433",
+    "output_sha256": "e9a682dd419afc28dc53867aba5571dc3b970671dcd6d951cd5592c01b6d397f",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "reload",
+    "stem": "community-stg44-v2-reload-1-c5e382",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "c5e382175c23e91720c99f2c814815ce7ef1faecb457a64cb12d17568c2c0276",
+    "output_sha256": "5fee921ea3c5fc759225b0386ad8f2cdb65d746ca10fc64c97457f012addcd37",
+    "fallback": false
+  },
+  {
+    "item": "community-stg44-v2",
+    "cue": "raise",
+    "stem": "community-stg44-v2-raise-1-5ad91b",
+    "source_file": "Sounds/RaiseLocal.wav",
+    "source_sha256": "5ad91b3e08ffd5c60f6e8aed60e7248de3b6602c09ceb621d487cfd45da3d43c",
+    "output_sha256": "adcb3a303772764145a6242322625fb19f0dca4f331ac90fd120747cab0454ef",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-1-05c591",
+    "source_file": "Sounds/Weapons/SMG/spV2Third1.wav",
+    "source_sha256": "05c591e8a1581923a1c3e595bce579b0b502e32a81a2058f634e06f88875d03f",
+    "output_sha256": "4991cee2ffefcdfec1b7ab62da5c47398a927fa1723644391cbe8137dcd18fa6",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-2-8a301f",
+    "source_file": "Sounds/Weapons/SMG/spV2Third2.wav",
+    "source_sha256": "8a301f07b6e34ac36a07bb72152866ab64b968a81a64d0b4399e2f236104fe8b",
+    "output_sha256": "bfe9cb32329f28d9c57e8cf581de2be0929db789f14770ee7ef73a69d0ab60b1",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-3-558be9",
+    "source_file": "Sounds/Weapons/SMG/spV2Third3.wav",
+    "source_sha256": "558be9fd2070b70c1ff59466e5c9f7de7247866404489d2f4101f2fed6882c19",
+    "output_sha256": "27b661422999abd27960e02cae4e972a86388d0320bd4b5145d3dc3106451b38",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-4-21643e",
+    "source_file": "Sounds/Weapons/SMG/spV2Third4.wav",
+    "source_sha256": "21643e19c01b10658ff28d6bb33379cb2e6f89bcec347188c1104ab0c2116c17",
+    "output_sha256": "f29ab270b97cc9caa46dbc127196c9eea59f0462d4447c3b7d7dc4a5a390cb24",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-5-1c2f6b",
+    "source_file": "Sounds/Weapons/SMG/V2Third1.wav",
+    "source_sha256": "1c2f6b689123720cd9f0709b611ff8abaf4a250764e9d008f905e7d3cfd206be",
+    "output_sha256": "34c40ffb7aba778f3e06a951e65ae4ed0dad0c216c37f3879badeb059c0dd95c",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-6-0a391a",
+    "source_file": "Sounds/Weapons/SMG/V2Third2.wav",
+    "source_sha256": "0a391a48d7af0a4183b843cf56dc2980f372a898732a1300d68f1ee9ac1bff59",
+    "output_sha256": "2a60b8770c4a121f231bfba0c8cb61abb433c83c9d73a787e82a60990f0fab10",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-7-c035fa",
+    "source_file": "Sounds/Weapons/SMG/V2Third3.wav",
+    "source_sha256": "c035fa05f12ac84bee89670605774160b7eeb48ce0927fd64757e729c76a2155",
+    "output_sha256": "2bcafa8b51a42c22bd3b6125c83ae786ad21f2739049fdc33d4fa7167cb82d7f",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "fire",
+    "stem": "community-mp5k-v2-fire-8-e07619",
+    "source_file": "Sounds/Weapons/SMG/V2Third4.wav",
+    "source_sha256": "e0761900b9072524bf260bf5105a43ca1ef462bb63fe44037ef94d6a842f2a5b",
+    "output_sha256": "683a5dc7ad7744d6339a1a08547c0ab8872127c005bb8f64de08af5b36279a99",
+    "fallback": false
+  },
+  {
+    "item": "community-mp5k-v2",
+    "cue": "reload",
+    "stem": "community-mp5k-v2-reload-1-29a89a",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "29a89aa38bf540e77cd2178347ac79e9a4a11cf829a103d95553d8979442d238",
+    "output_sha256": "71c612f1d2799f5b02936e0a8995fae9dda5a3d0a9019e1faac13cfa3d02a7de",
+    "fallback": false
+  },
+  {
+    "item": "community-kar98-v2",
+    "cue": "fire",
+    "stem": "community-kar98-v2-fire-1-0f6678",
+    "source_file": "Sounds/Weapons/Rifle/Fire3rd.wav",
+    "source_sha256": "0f6678fbd3dbde1603727b93daf4a705aceddbf8d7311c00103dcf397fb99141",
+    "output_sha256": "86b374b43bb3192b5b1383ca553268067717a170deb130a5d4a49fc85b74bca3",
+    "fallback": false
+  },
+  {
+    "item": "community-kar98-v2",
+    "cue": "reload",
+    "stem": "community-kar98-v2-reload-1-414ae6",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "414ae668c969ec13080cd79f2355b5dcafc3f10b797ae7148497cf32170855ae",
+    "output_sha256": "2008c707e4a3a0ee0f972ca0dfce7fd7f1248d2efc5be5df0ef1cd0d913a205b",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-v3-fire-1-06b734",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "06b734ecad422e94cc2a1e3e39091b74186c42afb8895583cf2f3be3d878481d",
+    "output_sha256": "f141593ae239ef9cb804adeb121ee6c0560607a2508420a351fe0bd846aea603",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-v3-fire-2-de8f11",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "de8f11328df7c143376089c50f62de057c3b3fac77826ba273badf9001f8c0ee",
+    "output_sha256": "c0e86b5f9e05bad2382bcee7e07f99e74abc5c1d0e73c9d5cb104d5a7e1f5334",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-v3-fire-3-a4fd0c",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "a4fd0cb87e9379c464def3181f0b67cd4be39b6cea6dce7bd17856e9452cdd44",
+    "output_sha256": "4f40a2af6e54f1a5665cadb6a240aef27582a3b22af5149ada21714445df3ff6",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-v3-fire-4-ada6c3",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "ada6c33439e88ddaa7640155ddbb6091ab60f26cddfa293d0fbc3100bd781487",
+    "output_sha256": "ec95f9708ec0ff84d3f4f2d4bf04cd7916d5c461a100139b7d6ff53abde59eee",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-v3-reload-1-dcc783",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "dcc7835869793aa4f38ab32fd98f32f827440e5da3d449ee5cfc5e12659a78d1",
+    "output_sha256": "4232f166861f5d8574c976e7842086ba1f8ea450b1835c8844b7f262f54a4a6a",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170209-files-205847-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170209-files-205847-smg-v3-fire-1-4d1aae",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "4d1aae2715e85263129b9f0650395b49a245e0281a7f2f0166b301073d1d2c23",
+    "output_sha256": "7c4af97b64759dd02c3e2e8b0ceb500852926cae83927c38264d842d0dafe277",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170209-files-205847-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170209-files-205847-smg-v3-fire-2-3e589d",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "3e589df1733c954b4625e0fd0e53e33704cdfe505faa710a269f0762bb72a2d6",
+    "output_sha256": "fed2b41619e911fce08b778bf3d6bce673cec78f946655686cc824898ecb27d2",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170209-files-205847-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170209-files-205847-smg-v3-fire-3-70022a",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "70022acd0fb8d52d0783d66d6f6d8dbc0f1cf02f2be39d5f08f97316c23bb1bc",
+    "output_sha256": "990f1763d12797b6dcec03ea7722649491de731f60c3059c323e110bd783440e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170209-files-205847-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170209-files-205847-smg-v3-fire-4-9a9075",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "9a9075026cdebae28e21b414ae3723819af8bcdeaa8f241e0e158c0b6b655d01",
+    "output_sha256": "a82ef4064c72d18274ad7a9aa1a8976ae6ad29ad970b9a2705163f895ce1d76b",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170209-files-205847-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-170209-files-205847-smg-v3-reload-1-6df078",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "6df078762970e038c2f0918f9c4cfd7975efccd8daccde68e0594ea99ef1e1cf",
+    "output_sha256": "ed65ff9e5c709a7bc69ef2c61cbefdc822ca5a95813b305699fccc5129ca40a5",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-1-ba8c75",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "ba8c750870c668d27e268e56f03c1e1455cc7d15a6c95489905f5bcb015d08b6",
+    "output_sha256": "4bd66e6f02c59c1659479932b00e3d39b17ea1d4ced46dd856844c28846be803",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-2-f3c0c3",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "f3c0c3233e53b5c12a3e305a96e7c8a00151cdf594f311785cb8fe776e316c0d",
+    "output_sha256": "550f81bb1d992a22743efb65cf67fbbdc2f1a11f2947543774df847e74a8ae87",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-3-ce194a",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "ce194a7beadd2bb9530685d4d6509e5812a11e2dac563c061bc7486d63d53cf7",
+    "output_sha256": "6f7141302f6ce295adb980755c93c2868e3801c2cd1f635d7ce3635f68f95885",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-4-adcc43",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "adcc43e51975d1e6721de096d345675f6b91e4d4db4993aa2987746a59ed23e3",
+    "output_sha256": "7de5dbedf1f4705ebe52b109b676db657d3cd2b873b35ceef5c529f6407007b4",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-5-bc569f",
+    "source_file": "Sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "bc569fd015d74ec37f10b602d8d46c8c1596d54019787ebe21e4d69d0cc66983",
+    "output_sha256": "8e9f31f6afc3516ec977974a8d5418bb08905d786e9d4160a2b2df59fadc4827",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-6-5f4ffa",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.wav",
+    "source_sha256": "5f4ffafff4eb36aaa6cc86f5fd84dfbdeba2e0bbbef214353df6bc0e7635a2fd",
+    "output_sha256": "fcdec0192decd0453c857857fe1b8fe95fbbeea51852c116c4aa055b1022e2bd",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-7-912e56",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal1.wav",
+    "source_sha256": "912e562cbe8ce3eaa18b38e8cff7f10a082f0bc487cd01d92f7d9b87bc97f616",
+    "output_sha256": "15510754446a1d675b88b76859e9899f58fee41e84aadab4e57c485839a79b5a",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-fire-8-f9c0a6",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal2.wav",
+    "source_sha256": "f9c0a6f415ef8529a7c8ad8d428499dc557b79ac70f978a0fcef0254eab06829",
+    "output_sha256": "bcfc25aa0d29d12d23d0c99c97ca858bb3badd7df57fba4a0c2f86db1c6bd8a5",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-reload-1-9c56b7",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "9c56b7909e495b24112e20bde6263dc82f291bcc2a2097850510d6308d76d698",
+    "output_sha256": "a76fb449f7671cda9d5480f5300bed4e42afcc00c9fa19b0823d3b778dcb8aeb",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-reload-2-5bda9c",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "5bda9c26f26aeb804a52e563b050a375c338c837f4810280e4898a36999fc7ac",
+    "output_sha256": "ce345e19475a5b1c4e2baf1d0bc2933393c2f63be8a7978ca0c18c560a71cfe3",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-170214-files-208187-reflexsight3-pak-unpacked-smg-v3",
+    "cue": "raise",
+    "stem": "community-pack-170214-files-208187-reflexsight3-pak-unpack-raise-1-20be1c",
+    "source_file": "Sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "20be1cc0cbcbe69bb7b396d4b17f879acadb3a09bdcfb711f596b5e34780f96c",
+    "output_sha256": "7081fd06222b546a8580d188ff0b3c8b15b543671ccb1e1785dede3ab177cf6b",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-40417-files-343-acog-rifle-v3",
+    "cue": "fire",
+    "stem": "community-pack-40417-files-343-acog-rifle-v3-fire-1-dcd71d",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "dcd71d6de4394927e0fd624bb0c8eca81c409c241ef7849d552736788443aff3",
+    "output_sha256": "3e03f883bd81cfede2064a7655c7009ae7bfa4fd912591d5b3ac2bc303d1539d",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-40417-files-343-acog-rifle-v3",
+    "cue": "reload",
+    "stem": "community-pack-40417-files-343-acog-rifle-v3-reload-1-548bcf",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "548bcff3184496fba2d53b16649551ee60938bcc3b320fbb663e7fb035206c2f",
+    "output_sha256": "f96331648bf73b801e81ba1495f689e82a4f5413a76a7486f994cd8df5d26808",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-awp-78cfd-rifle-v3",
+    "cue": "fire",
+    "stem": "community-pack-awp-78cfd-rifle-v3-fire-1-12f9b8",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.wav",
+    "source_sha256": "12f9b8d39d15c1a9a22cecbc8bee437c0109120e00dffd9c09d914e562c6ca5a",
+    "output_sha256": "90982f96c8947e659b43ba8f69fff8ca88687e2623abba5db0fa0554044c6eab",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-awp-78cfd-rifle-v3",
+    "cue": "reload",
+    "stem": "community-pack-awp-78cfd-rifle-v3-reload-1-98e8ff",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "98e8ffac645050ae3abaef92469bf86a5349ae0190a45157a3da6c22340a7641",
+    "output_sha256": "464249f5c26114a6361ea1724da565b300570fd23c796919acb8137424241945",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+    "cue": "fire",
+    "stem": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--fire-1-b88c14",
+    "source_file": "Sounds/Weapons/Shotgun/Fire.wav",
+    "source_sha256": "b88c14d758bf32d6c920910a6f7504b16968971c35d445df8c591ad5057c04e7",
+    "output_sha256": "a57a16421203364cf73440e4e1c55a468e26f15ffe86ff0d9c3113fe326dc73f",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+    "cue": "reload",
+    "stem": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--reload-1-7e8fa6",
+    "source_file": "Sounds/Weapons/Shotgun/Reload.wav",
+    "source_sha256": "7e8fa61229885d7569abeb83f891f61db2cde9223c2fb9805da2ecd173b4a983",
+    "output_sha256": "926a0bfcf1040a74f1479e596b1b3e046bb506772eb2ea46a56cb8cb68122f24",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+    "cue": "reload-done",
+    "stem": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--reload-done-1-2acf39",
+    "source_file": "Sounds/Weapons/Shotgun/Cock.wav",
+    "source_sha256": "2acf39a4db5154edfa06bda73066c4a867802204bbb09a8acf2dfa181f163022",
+    "output_sha256": "7541cc9cd464a772032dbaf8254922396b19db25b8711fb6888c338cdd742809",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun-v3",
+    "cue": "raise",
+    "stem": "community-pack-shotgun-a10ea-shotgun-pak-unpacked-shotgun--raise-1-db924e",
+    "source_file": "Sounds/Weapons/Shotgun/RaiseLocal.opus",
+    "source_sha256": "db924ed29b68ef239ac69e1f9bac00c8a7494d36c7ca71b2ff6cf3e5301b96b6",
+    "output_sha256": "858c2ee679e62dea893c0540acc705aca16440c49141c5c7cc4e30201b2ebf7f",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-1-031aa9",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "031aa96f9897ce323a3295aa4d0068913386beb0173661eeb36bb4ac743043b2",
+    "output_sha256": "c4b3cd6a0c46858adfa1d74bbb935bd372c6244d58df00d1d6289603ad72014b",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-2-e533cc",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "e533ccd8741e683112f5d33fe4262d2ad177dda767c3a8fc9dda9957c9f68150",
+    "output_sha256": "7881d880a0768455510d50c9aff0f7ea86bb08e5be0ac5405eb6bcd6e180cae2",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-3-9f5d55",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "9f5d55bf78040106c9201178d13dceb4482920583d827d2851ffa7cacde7e277",
+    "output_sha256": "45b129b0379473ed2ec6e1a39c36aac6a04e45239bcb13f7260231296f4fcd02",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-fire-4-e6dcd2",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "e6dcd28c96ddcf1066ac1aa5e8d51d61f9d850778f52d7513dbadc72332e04b1",
+    "output_sha256": "ca04fde02c223f7cd93735fca42468138c91ad6534fcf1329d82b571ad5300db",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-reload-1-e3ceeb",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "e3ceeb4af139a2339ae6dcd0cfbbbf042884d634e16eff7a7d4413684f508773",
+    "output_sha256": "aece72bd65619384d48580a3bc9c912526b4f3be190348a9af6f32c77dd5ebcb",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-smg-ak47-paratrooper-v100-0a4ef-smg-v3-reload-2-b0fbf7",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "b0fbf7fb3778b8e653137aaebaa51bbe47445621ca6618b2b3d0c882d18bee81",
+    "output_sha256": "2e07e497f9e682728f1dbdac6fefedbef2490bbb356355585beee52891207685",
+    "fallback": false
+  },
+  {
+    "item": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-1-c48901",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "c489015c06fcecc2363af267f93c7bd121da38ac97b079ef251581dc33fd7bb0",
+    "output_sha256": "22749a7444226425a3b16f4ade562240955481eb4c73ada281f2fcc8687bbd33",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-2-e5327b",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "e5327b84aa79db69cbba206983c19ebadf59e9ca470e81e4c49e716de9bdb8d6",
+    "output_sha256": "48a750cc69887822ceb48439258e99738637646bbbfaebf6539320e3506f89ce",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-3-c7299f",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "c7299fa21a89b546abf24e9db59217d160785c92e9b5afea0fed23730c95deea",
+    "output_sha256": "d3bd07f02a0a3d813980f42108a0c0122c0b7a01e147f775424277e883186c8a",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-legacy-honey-badger-alternatehoneybadger-sm-fire-4-1eee10",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "1eee100304e5d1b14280fbfe400cc9bb60a3a7cd3049bc456677466af72e5953",
+    "output_sha256": "263e6530c239c1b02c70bbad5b00c9c7c3a3166f0707e23bf746f32d845084fb",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-legacy-honey-badger-alternatehoneybadger-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-legacy-honey-badger-alternatehoneybadger-sm-reload-1-b316d5",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "b316d577f9c2dbcb7d0ee3926e4141eee83396810aab370fa955c7be82a37da7",
+    "output_sha256": "a6a9b193365787dd3ed03be080d8e004a11a915ce28790a4148432505f904d52",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169961-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-169961-default-v3-fire-1-219668",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "2196682f12def378ebe0016b38e1ae466356cd9fdfe82d887f62b23067d4b3ce",
+    "output_sha256": "7dde442d4520a9fa235e26b5601400554d62834362621827a8d73edfa608fa66",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169961-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-169961-default-v3-fire-2-dc1ce0",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "dc1ce077daca7cc6998a9ad0eeb6733bef3b7fdca8d5b699fbce0f257d29bf1e",
+    "output_sha256": "a0d49f66d6ede94540e7dc0ee51a665596071a1303edbc9a484c94e2680259f8",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169961-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-169961-default-v3-fire-3-39a8d3",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "39a8d31783d407622126083699ce063cfc5ac3124fb64ecc2f11aa4581cf7df1",
+    "output_sha256": "26eaca581e1ee8226b0e619d1d18d7fe55bd5c545e47d167f8aad7164e6bf4ff",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169961-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-169961-default-v3-fire-4-780e97",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "780e9717d0f32226f8bf009fbedff8eb3a13c0c081fd12ccf8da3e2bf66b8125",
+    "output_sha256": "69f32203f1009c6fedf389a298f5e228781c3f11a9ccf46fc2c5895e6c7fd1a7",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169961-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-169961-default-v3-reload-1-fc4575",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "fc45751f19980d077b49a0fbe7a2c70d7b7079df7dfba5c69ee9cce0657e2c11",
+    "output_sha256": "3a0d026199c0acbd6af76af2821e6b16260bad9bd6d7752f752bb35aa2b0eb6a",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170614-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170614-default-v3-fire-1-f15ff7",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "f15ff7877dd6526aad176e96edd43184781a3f31edc38624924b46c39d01554d",
+    "output_sha256": "bec1e98f0d5784627260debff6488bbf47fdf11b7aefb32e2fe86839e31b22bd",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170614-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-170614-default-v3-reload-1-1a7866",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "1a786608102e6cdf09139b189a28d98cde9f7e1dda12c7d17375184da5b71ceb",
+    "output_sha256": "14e52c799c9f8d2dbbd5d60404c64a0ed5baa5df6f28ca612e2091f28d2219a0",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170609-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170609-default-v3-fire-1-331e2d",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "331e2ded72152304328a2bc060704fbaea08483838a38fcc8b85ebf1d1aba784",
+    "output_sha256": "f6319d3e78fca50ccd722e1231d46c7b565ebaa9495da70d59f151b836644e33",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170609-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-170609-default-v3-reload-1-f796d3",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "f796d398839673b548e0f99e433779c8cc47ccd93da937c042d76584f1c06796",
+    "output_sha256": "4ea9f89c135127d9c64f73358fdc07247a454072baafa6dcd0521fb5120bbb12",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170205-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170205-default-v3-fire-1-4346f4",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "4346f4b0e5e3921423f46ccb37dbc535b9804b7d48da603a29e0d87485d73340",
+    "output_sha256": "9e847222021964183e97832b5d6f319db602d0b0bb4abb13fc0767b17f18f728",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170205-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170205-default-v3-fire-2-1351cd",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "1351cdeadba3bae47e2fddedd6df54b58d4e43bff7021d906a064a7ea26c738a",
+    "output_sha256": "49fe0978e9d19707555cafce01295db05d16a9e25ae194a927ac8c6f9fefbe24",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170205-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170205-default-v3-fire-3-603eb7",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "603eb74eb4b69a8b38498d625c82e269e5d306e3d1e00884a9b35d5f6ce3a349",
+    "output_sha256": "3decc35d58bcaa922dde69371873cd3b8c552a5115e828172cc94374d4aa12a2",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170205-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170205-default-v3-fire-4-b57136",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "b5713669598cbd7d23e88c3a1a71df1509071f923e6ce441e20f227e6f7b2d82",
+    "output_sha256": "482774e0181273406c83af0c0a259ae5cb9fc0799e2f066fd5af50953db28b75",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170205-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-170205-default-v3-reload-1-3fc6c3",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "3fc6c36ff9a6f1dce01195461ba2e6dc2fdae6b65e1b6d05dfee922007421c99",
+    "output_sha256": "f425748d3c9199aed921820416f6800768c993aad6d9bc9fd5a2fd71bab918ba",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170191-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170191-default-v3-fire-1-214068",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "214068a8bfeb2c9de099bcc07b060eca3ca1eac9fb62f2a12e9218cb045105fe",
+    "output_sha256": "25bf134199c5a22953e8adea0ff637f94e69de13e9f3f274653f7b197f389745",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170191-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170191-default-v3-fire-2-cabfc8",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "cabfc890707382b4e4cc1297ecf29b70be8d86f8937f2873ce5b41b6ccac2024",
+    "output_sha256": "4e055447b080a784a5c29f1f1a37d23e04ecbb07db8facc8fa787de5607c43f0",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170191-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170191-default-v3-fire-3-fdab1f",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "fdab1f788ff2ad8c431cc1685ec5759020cbfacb5b679eed9f5b560ba1bf379c",
+    "output_sha256": "0d0488fb88fd4289dcebb10c331a5e0f940fb96c125ed9906b6953a778830b52",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170191-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170191-default-v3-fire-4-f3b68a",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "f3b68a79e5cb5047ff04caeddb4591afd475acdad73e9aad7ebd53d4a9bc6b84",
+    "output_sha256": "f663d5f2be3372a8783c7a68b0a70a540c47116d18cade49849688e18c99774e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170191-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-170191-default-v3-reload-1-10c464",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "10c4642eab001b172691ae6cbf2e364819efdc33d5ad8231458f2c0755de776f",
+    "output_sha256": "e059bdecc9b18dde5feacd23ccf67a69121590a337ce64b9ca905df9e91277c5",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170127-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170127-default-v3-fire-1-b2292b",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "b2292b3df96830421a2d5a16f894afc432b16d740a62512c83c59af346199ef1",
+    "output_sha256": "3c3d82f6251cdb5f41600d08b00a9e6df18be868741a5f2f5cdd26baf19d78db",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170127-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170127-default-v3-fire-2-abea37",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "abea3765e5430a11403ad8a5c2d49b51c370f699c5cb95c7b4a5bce688d21f73",
+    "output_sha256": "baa2b84d37de3bad3630aefb0fe4c98c7be4d757eb43232929cdbc0ea8318a36",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170127-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170127-default-v3-fire-3-ac78e8",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "ac78e8821e67908f8f190430828a32a859bbcbae52b1aa2c090af55035ff044c",
+    "output_sha256": "78454a3d24d5b78e276769e978c9932036a037f3d2a400e86767b7c403cf8e77",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170127-default-v3",
+    "cue": "fire",
+    "stem": "community-pack-170127-default-v3-fire-4-ec0ed8",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "ec0ed853a18a15959d8a438831b1055dab6bb8cf11bb435157fafa9117adef21",
+    "output_sha256": "e272d57cf143882e048461de00e5e9bb322b2878d2ec5c18d534ad23ead0ac5e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-170127-default-v3",
+    "cue": "reload",
+    "stem": "community-pack-170127-default-v3-reload-1-3045c6",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "3045c6e12ba64adab7e4aa5740dc091aff39e713567fa5fc697c5baea3b08527",
+    "output_sha256": "8e4706727b08edda9ad142462bcd9f8ab35821a4869e40a6def6cf0ecbbf76d4",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-rifle-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-rifle-v3-fire-1-c5d1f0",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "c5d1f04e6c50c89472f300a00b0817352b0149f4645baf77c469c9120dca203b",
+    "output_sha256": "937aff4aecd8484c13bf618b442d055f8989e2291ab917be2ef22e100d31e197",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-rifle-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-nazi-rifle-v3-reload-1-ba0041",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "ba0041da6ac2f62670bd951dab3f26b8d7f33d2979134fb7358a8f6e0cdcb849",
+    "output_sha256": "6869215d2b892e9e4c26d3ef9039433bd957c04eb0c84600b90879307364682e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-smg-v3-fire-1-28c314",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "28c3146345493d3a2807bf5afd05d1bbff6938fd5c279c992fd7f9ce93251d31",
+    "output_sha256": "ac3259edda31593828c570ab18d7735157c99218ba9a7ffab74a90c228d4c7dc",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-smg-v3-fire-2-6b2b91",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "6b2b915fb0ac5ce7c4dc64d0049b4c559d0ac9b3ac187a1f06570288fa1eed24",
+    "output_sha256": "e4f6f98f38b0dbf5eb54d8a9ba4bc81bc83f325dca181b19b2a4a2809d03668b",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-smg-v3-fire-3-7305f9",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "7305f9593d3ecdcff8a3315183761a2c61a987d15fdfcdf0158fd410e6148db3",
+    "output_sha256": "47e3e969361cd52fc0281b2d6b2f51a2557f2b43f9ff05419f63d8ce5c2940f9",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-smg-v3-fire-4-02571e",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "02571e4a1385ba4f9b9ed9e4bad45e49fc4568461bae96c592201f97033c8b89",
+    "output_sha256": "b5a91af1d780b29a427b786df40076a2610f744dacfcfa2279b0a417ea3a015e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-nazi-smg-v3-reload-1-37c2cb",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "37c2cb8567bbeef6b4a7297211ca5c6fb9d00f21c24086f1620d3ace9b027015",
+    "output_sha256": "d9985cc2a5f59ec263cfe1ea235da7e4fd47724363dc4bf6e05754191bbd73c0",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-shotgun-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-nazi-shotgun-v3-fire-1-cff5ed",
+    "source_file": "Sounds/Weapons/Shotgun/FireLocal.opus",
+    "source_sha256": "cff5ed9a162309aee9ed31651dd7e7f4fcf8ff37d33238c7c3545940cf48e3ae",
+    "output_sha256": "ae11d49a482cdb42c7b2a4e42d38d05db73a3037776ed26181e42b6b8c08ee29",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-nazi-shotgun-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-nazi-shotgun-v3-reload-1-256df4",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "256df4675773ee7946d2d2c336d7ce8f2f8fa59f5f07fb885ae2d1bbfc251929",
+    "output_sha256": "b46ef56494885ba866b2c813f246a7f1f4aef41d2800ada37ffd5b04d17db207",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-rifle-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-rifle-v3-fire-1-c1ecb5",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "c1ecb5a534c1500ae7c14b3b2faf319633412c27552008511f43c6940c48a6e3",
+    "output_sha256": "ff2acd2498494a09c13ac62552a391209872d5be98bfe5592bf4e8b442403bc0",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-rifle-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-soviet-rifle-v3-reload-1-042add",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "042addc3f3233a7496b1e7fabfd19dda0d7b3acbaf64171b869f327bfc1d3d5a",
+    "output_sha256": "f6e922adfe90143699f6d46a42ff3b69eda3a8bfa98f65bc44c924f76d9fde43",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-smg-v3-fire-1-26bd0f",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "26bd0f3599beb95e753823baaee35049abf3c0f484dfb5c8655a829bef14e256",
+    "output_sha256": "c2a9cd13f7eab87f6931158d53db07df009856c7fc6a2e0790cac7ed7f959c5e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-smg-v3-fire-2-a06354",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "a063548128c4f8fb6ec53a9ae31a298af8aa1689def1db26604f907c2430a111",
+    "output_sha256": "06789ffed790f5e29db37f4a9bc8b2f0d37a99e8a9e49e7885322a04bc012d64",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-smg-v3-fire-3-be9521",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "be9521e918e40c40f50feaca75c9a758f578d27b9a25066c16504462d02d0249",
+    "output_sha256": "40d64ff87ed196c27c5b97e9970ee96199ebe927cb18928c0b43d86e7aa1850e",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-smg-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-smg-v3-fire-4-b05b0a",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "b05b0a7547a147f3bac30289b8b560abfc97d1b62650b367aeab57ec003e3717",
+    "output_sha256": "a792a5e2fe0780d0594f98320f31971434619725802e071d53f1ed1e1e63eb72",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-smg-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-soviet-smg-v3-reload-1-1bc38e",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "1bc38e66ed6abba02cd410d5049c45aa702bc26f740539a329ddb8a8f344c426",
+    "output_sha256": "b13cbe4ea760f945f84b9b657d075f3ae7a1f6d42b3329287fd2ad55badaa6aa",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-shotgun-v3",
+    "cue": "fire",
+    "stem": "community-pack-169749-default-soviet-shotgun-v3-fire-1-a8a858",
+    "source_file": "Sounds/Weapons/Shotgun/FireLocal.opus",
+    "source_sha256": "a8a85857c72346d4000ce9de159c96d35e970ceec5332e04f0d47f8ca51f3313",
+    "output_sha256": "b46faa8d58e941068e658fe79af15e91873b4f65e824021c1bf09b18f82b462a",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169749-default-soviet-shotgun-v3",
+    "cue": "reload",
+    "stem": "community-pack-169749-default-soviet-shotgun-v3-reload-1-2c0fb3",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "2c0fb3909ec0b6fad2d08182bf34aa2f2d5f2e2937b897068890fc770a9aea52",
+    "output_sha256": "68a5c2e05bfe440aa44236d9932ed63395cb047a5d9d3c1f9238bcd484f2618b",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-1-06b734",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "06b734ecad422e94cc2a1e3e39091b74186c42afb8895583cf2f3be3d878481d",
+    "output_sha256": "dc0eacfe1b3b66efa17d67337cc12f477d0deef8d7c360fc624c6e6fc4aba56c",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-2-de8f11",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "de8f11328df7c143376089c50f62de057c3b3fac77826ba273badf9001f8c0ee",
+    "output_sha256": "1b4c42892198a1f40a99648e3eb8646e57363e69219a1d62b0ff1ae20bbc7ff3",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-3-a4fd0c",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "a4fd0cb87e9379c464def3181f0b67cd4be39b6cea6dce7bd17856e9452cdd44",
+    "output_sha256": "079d58000b8e76eef630dd29eddfa8eec6d92ac877985b65fcf8ea1a4912f56f",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-black-whit-fire-4-ada6c3",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "ada6c33439e88ddaa7640155ddbb6091ab60f26cddfa293d0fbc3100bd781487",
+    "output_sha256": "78aae6b7ca8d2214de70bf406b7d629ed0a575b02f2f663fe77873c322f8af1c",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-black-white-v3",
+    "cue": "reload",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-black-whit-reload-1-dcc783",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "dcc7835869793aa4f38ab32fd98f32f827440e5da3d449ee5cfc5e12659a78d1",
+    "output_sha256": "e8649582f687c784ab764096d8b9cccf163074de1249fba4efd46965f2427db3",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-1-06b734",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "06b734ecad422e94cc2a1e3e39091b74186c42afb8895583cf2f3be3d878481d",
+    "output_sha256": "93d837752d597f71c738039b37f4ed299f3df99d8b93f40d8001d81add5e65c9",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-2-de8f11",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "de8f11328df7c143376089c50f62de057c3b3fac77826ba273badf9001f8c0ee",
+    "output_sha256": "f773aa5fb97a26539a3aac11bb0a5872386246d0acd8e1b199f9467b0918a75d",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-3-a4fd0c",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "a4fd0cb87e9379c464def3181f0b67cd4be39b6cea6dce7bd17856e9452cdd44",
+    "output_sha256": "305d08574d287bcebc63dbbdcfbdde799072d0b9538063caa8c0b31d89aa53dc",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-gold-v3-fire-4-ada6c3",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "ada6c33439e88ddaa7640155ddbb6091ab60f26cddfa293d0fbc3100bd781487",
+    "output_sha256": "a80156cc9bc591e18c72fa77c0e1dc31c0cd38254776c4333b2bfea3c6996cf8",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-gold-v3",
+    "cue": "reload",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-gold-v3-reload-1-dcc783",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "dcc7835869793aa4f38ab32fd98f32f827440e5da3d449ee5cfc5e12659a78d1",
+    "output_sha256": "d0250f357ae634a5500e3419eeb78f865713add9ec343a7f899299901a02fcf1",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-1-06b734",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "06b734ecad422e94cc2a1e3e39091b74186c42afb8895583cf2f3be3d878481d",
+    "output_sha256": "cb0d49fed52bec9d61eaf73cac20b657ac5d80c5ceb165dcc6d12725f70bf83d",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-2-de8f11",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "de8f11328df7c143376089c50f62de057c3b3fac77826ba273badf9001f8c0ee",
+    "output_sha256": "7c70b480ac1ca88d2dcd6411f5454c9b51b76bcbfdff3c9345a37bbe013a3b0f",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-3-a4fd0c",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "a4fd0cb87e9379c464def3181f0b67cd4be39b6cea6dce7bd17856e9452cdd44",
+    "output_sha256": "7b2846d57f6a520a1937d36a740cd5986329244de06cbc6baae0cec2ce6a91e5",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+    "cue": "fire",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-fire-4-ada6c3",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "ada6c33439e88ddaa7640155ddbb6091ab60f26cddfa293d0fbc3100bd781487",
+    "output_sha256": "705cb8bfbd5c7f6f3251ae23428e1a1a074bee654777fef1e7e5b4556c9b0483",
+    "fallback": true
+  },
+  {
+    "item": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3",
+    "cue": "reload",
+    "stem": "community-pack-169706-files-205934-tommygun-smg-us-camo-v3-reload-1-dcc783",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "dcc7835869793aa4f38ab32fd98f32f827440e5da3d449ee5cfc5e12659a78d1",
+    "output_sha256": "79c671450ca9cc7d2dd6b9d15fdce476c55a2af448295529e0d3c45b6a48c0f9",
+    "fallback": true
+  },
+  {
+    "item": "community-ak47-for-smg-ak47-v3",
+    "cue": "fire",
+    "stem": "community-ak47-for-smg-ak47-v3-fire-1-f99363",
+    "source_file": "files/AK47 for SMG/wav/smgshoot.wav",
+    "source_sha256": "f9936362d04a2a1cb80349f11e1cf32197d701915b63ccdc555e6de89a5f731b",
+    "output_sha256": "fcc729c5d36fe4ce5a3a6cb8d679f3a55db191293424dfe6a5cd729eda0455ac",
+    "fallback": false
+  },
+  {
+    "item": "community-ak47-for-smg-ak47-v3",
+    "cue": "reload",
+    "stem": "community-ak47-for-smg-ak47-v3-reload-1-f4c208",
+    "source_file": "files/AK47 for SMG/wav/smgreload.wav",
+    "source_sha256": "f4c2080686e985cb2d91049566c34cd58fc539576e5598551473cf9add943437",
+    "output_sha256": "b8a72ebd1b7deda8aa00ae364667d64a2559e741386f7fbf5f1038325f06043e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169726-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-1-v5-fire-1-371168",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "371168a0204638d22128f4bb7f947975cb23e3c819aeb957529c416b5c6216b2",
+    "output_sha256": "903793d2dbe8e636a42ab78b035d3fe2792f40bbd07c3f8bacce3b597e472dba",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-169726-1-v5-reload-1-081038",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "081038085fa7e8fb1d46d62c5044bc72284f3ee71c9e9f337f983ef5014db018",
+    "output_sha256": "43c7faab28424651597ffb8412ce1b07be0bdb801238f86007d0a0c32bc0a148",
+    "fallback": true
+  },
+  {
+    "item": "community-lee-enfield-v2",
+    "cue": "fire",
+    "stem": "community-lee-enfield-v2-fire-1-371168",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "371168a0204638d22128f4bb7f947975cb23e3c819aeb957529c416b5c6216b2",
+    "output_sha256": "f9e4bdac19b0f430dbad4c6edeca29d0985ae63ebd5b5334e8bb863652c284b2",
+    "fallback": true
+  },
+  {
+    "item": "community-lee-enfield-v2",
+    "cue": "reload",
+    "stem": "community-lee-enfield-v2-reload-1-081038",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "081038085fa7e8fb1d46d62c5044bc72284f3ee71c9e9f337f983ef5014db018",
+    "output_sha256": "7028d5073bea5e292183a2444d4961396ee067425e4a19e47f6741185232bac6",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-315714-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-315714-1-v5-fire-1-0ade60",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.wav",
+    "source_sha256": "0ade6067d52168063bc8021a89b52e4e281601ba5a40250b5386da274a9b0efb",
+    "output_sha256": "ec6dc24e65dcee38780d05dfeeff6f58f8e4f6faa58b8d5c9947619d3a816c24",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-315714-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-315714-1-v5-reload-1-e26f99",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "e26f99cb032d70f1ca445559113b309616c6ffe4a5baae534e6e45fe72ccfab5",
+    "output_sha256": "4478a92ebde7ed8b92b1d7fcb3d4fe743fff41ce66f71b353b6e33c3f1c10475",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170218-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170218-1-v5-fire-1-f6dc4a",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "f6dc4a228c705fc98ed3a8712dcdb4840fc6d18e49da697007e1afc624c10337",
+    "output_sha256": "4a4693ac5edca712c3be286ca82ca50e904167c27ef131934e5db5c676b9ba1f",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170218-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170218-1-v5-reload-1-346909",
+    "source_file": "Sounds/Weapons/Rifle/Reload.wav",
+    "source_sha256": "3469094311ac1888779fdf25062d97f984c96d399562af1f1538bd483f7cb3f7",
+    "output_sha256": "071b3511bcaf9e4aa4071fd764acdd93a6e6fe4d0bba15512de9744b28884b71",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169760-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169760-1-v5-fire-1-e5dc9c",
+    "source_file": "Sounds/Weapons/SMG/Fire.wav",
+    "source_sha256": "e5dc9c6ac70c57534dc94d21b208b0b0d070541e19a034c0caa48ab205499068",
+    "output_sha256": "b5b232c0f460752704c35ff7f8b4855f569d580b433c400299c83f640b29fcc7",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169760-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-169760-1-v5-reload-1-b44c05",
+    "source_file": "Sounds/Weapons/SMG/Reload.wav",
+    "source_sha256": "b44c05c9d0524a04d7bda0f33228270c546ff892e54c187ec745dae23dd5ba0f",
+    "output_sha256": "84639e306013ff6e79997b97ffdcba1a46ec6d46a0525c7c152d2e580850c58e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-1-v5-fire-1-4f5a8a",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "4f5a8afdf0bf08644f9fda4491917ca5f728d618259ae17fa87075b3087aacba",
+    "output_sha256": "e64f11a4830f51c2404c4f36dcce48f3f3169a9e62fbf4b62c59b134b821759c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-1-v5-fire-2-d1f68e",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "d1f68e29924ff2b317d747557fd1152a7bab6329710cceb3dd33426fd2562dd5",
+    "output_sha256": "a34241efa47d2fbab21e5b83c6a62d3b1fc1a3964fd999406851a2e042c4cf23",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-1-v5-fire-3-b643af",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "b643afa85502a4ee4020501e6bc4a3070707c82ea98d5642b5237af8cef1f604",
+    "output_sha256": "9f95b85ec593aaa96921b425b407adc6010f4404512e87c41f0ff5771883841c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-1-v5-fire-4-d18f34",
+    "source_file": "Sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "d18f34430a6847d338e66e3b525e849040126fb73ff0099b82b890600282f5ed",
+    "output_sha256": "860eb69e71c966efb57d355c48114e7cd31483cbebfd24b110233b9faf8c9526",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-171111-1-v5-reload-1-c03b0f",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "c03b0f26f9a98ae5e6d61bb5ef3c0e368cfde01b0b9a4a44c8ce91af2519ef55",
+    "output_sha256": "c3ddb1b874687adf8ad8012ce42bad33253d22c5e9ee419157d334f7f57b1c1c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-171111-1-v5-raise-1-b53615",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "b5361514038b37d9625c42932e7079b235fbd9a19c8671851535510c4fccc257",
+    "output_sha256": "bc130863797437d0d1284e1a5529014f34ad78852844190ec1e3e7677e5ed1ee",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-2-v5-fire-1-926f41",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "926f41609bd1bf6b0082dcec99c43fe1021ebdc892dc20bf1bd3c699f13c2ad5",
+    "output_sha256": "7d0ef3b3f230b61f76c0c3d5e2aca623a8e1569d8c88d9fe390587613c87f610",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-2-v5-fire-2-f85299",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "f85299dbb8a24b7ac88c8b081240afc483da14c23cd219916b9a5fcf6bec3f54",
+    "output_sha256": "f4dad690ea17b9cc8e45af4631a745430a82d78eef1c8cef4ea1070bcdb6eb32",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-2-v5-fire-3-d7185c",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "d7185c67576a2de88404829f7667d9b34b47fe4344e1c940a65aeb19e606a2fe",
+    "output_sha256": "69594a9ba92845ee6fadd53697b9b9d6b2811f376eaa55054eb488003f2ac2a9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171111-2-v5-fire-4-6fde68",
+    "source_file": "Sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "6fde680e8259fce034b913e08f2aadf41e4ab4cc5fa0f201597700440058bf99",
+    "output_sha256": "c93e5a6611d24746c7cc72ea4ac6abdc8cbb1370fa27ed4c9f2c8f8b575370ea",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-171111-2-v5-reload-1-99ca8d",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "99ca8d5ce59bc1d6c57e6fc9965e8998ddb7e8013d2696d000818c6c47170c96",
+    "output_sha256": "129b03b53a8476bb0cb5ee5eedb24dafa247646d64c41142f9a440fc6bb07df6",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171111-2-v5",
+    "cue": "raise",
+    "stem": "community-sep-171111-2-v5-raise-1-dffe70",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "dffe70af83a3641970e8d6dec575244b83674cd1d9eb40f90b2e1786aa87cbb2",
+    "output_sha256": "386d16af49b3e08ebf41b7d6a9099d5cfd27b9e70a3f3546d7d0ca99268e0e60",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169759-1-v5-fire-1-2398b2",
+    "source_file": "Sounds/Weapons/SMG/V2Third1.wav",
+    "source_sha256": "2398b2df0c7305c21bc3831aa337713243ccb13f73d0202bc80b76b6948ece72",
+    "output_sha256": "942550e859020ae8b2e99183a5720d362305e283348c394cb6f7065d7cd48396",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169759-1-v5-fire-2-48f3a8",
+    "source_file": "Sounds/Weapons/SMG/V2Third2.wav",
+    "source_sha256": "48f3a8da5a4733c0ddf48a1943179e24c7f2cd88073906b0dae4dc49a7482138",
+    "output_sha256": "074cab26c7a75c3fcfe2fea854bfc45ec8c7dcc90138f68b4abbda5e17869463",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169759-1-v5-fire-3-f0dcae",
+    "source_file": "Sounds/Weapons/SMG/V2Third3.wav",
+    "source_sha256": "f0dcaee518c1aba75d20de83ec9ed7f532a58e5ab049fe11d584575fb48c7d98",
+    "output_sha256": "e5ca6d5958639a11885723b8649885cc02662b55155c48d66e2bc57670766993",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169759-1-v5-fire-4-311f32",
+    "source_file": "Sounds/Weapons/SMG/V2Third4.wav",
+    "source_sha256": "311f329356da4525c31162f0bfa29601c9e7f9ead1bd4a6d19c09a5fa44812d4",
+    "output_sha256": "ba320e050733782b28d4a84831b6abf656469548522ab7f4c7565489cb57a728",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-169759-1-v5-reload-1-f33e3c",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "f33e3c9df012d803c6ffb590570f217f78cbf1eff8c6a7e3bf348c60960d3c96",
+    "output_sha256": "d55961ff22d45c08336ca07eec8243e66f5f5782bbcf6c49de53fa13c2692d93",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169759-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-169759-1-v5-raise-1-b20edb",
+    "source_file": "Sounds/Weapons/SMG/RaiseLocal.opus",
+    "source_sha256": "b20edb7b40e7367bfcd5c575642e8909b9a727a4825dbf9605d7885fdcb8cb40",
+    "output_sha256": "e03173f5c0ed9f9b9b8be63baa74a84c4c4a3494ca01ea7f4df35a259a521adf",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-1-v5-fire-1-d367ef",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "d367ef7a9171a5e20a46bed651c4e41068ef83bb8721004639ee713f50322db6",
+    "output_sha256": "e81358e0368ece41bea9ebd12f503944ca070e0c6794283b6c68237f5c0121b7",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-1-v5-fire-2-2488fa",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "2488fa982602e1305f838c6197ca4a4ae484520689718cb02e8c9d470e87b2d0",
+    "output_sha256": "c5a4e06f8c8e41b4995036131ba2d413f395656f1add7494aa7f313cc32d3f21",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-1-v5-fire-3-dcac12",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "dcac121c65435100ff32b9034e628ba261626058c86d1d7d23f32adbf1068279",
+    "output_sha256": "1cea163c9b09ff3730452bd2d4869dc43f0b123984080d72e517324679bf4a49",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-1-v5-fire-4-d8e862",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "d8e862ae44aba386b78c493e37601ece09dbff74f3fc6bbd625600127509d93d",
+    "output_sha256": "c828f179cc9228741c3da8a7623756ead12b66388485818a1aa00af70f31ac80",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-1-v5-fire-5-da506d",
+    "source_file": "Sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "da506d6a9334ac1bc1a4472a98c3dd9cad635cdb13aea09ae81e1ea42172d3b1",
+    "output_sha256": "d863eda1402ef877f0404f1ce8da14bdcd52c0b1d77ca68f358b4945b9ffcc90",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170222-1-v5-reload-1-dc633d",
+    "source_file": "Sounds/Weapons/Rifle/reloadLocal.wav",
+    "source_sha256": "dc633d9dc6a4590b945c2c030bf07611993739f248bcd845477784fd66abea85",
+    "output_sha256": "a84c026b6c8e25c5a163f5c78e13dfc9bd1fad0bcb8f6d69c5c6ba6894e3deb9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170222-1-v5-raise-1-6a94cc",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "6a94ccc85a727f3ec047670f7b213fb0f1c7230970df61057579314494f6dd51",
+    "output_sha256": "6a9d0df6579c9a13834a9269826b27d5eb24eb30a59bb28c872abaa938cb02ad",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-2-v5-fire-1-8cca54",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "8cca5460871e6a823ad6fb56b0a6e031c2cd0100e7fc2ff89328f66549d51bd3",
+    "output_sha256": "d3a3971125cd44b4efea52e2aea3479bc42a228e0811abe608724f53321973a9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-2-v5-fire-2-636410",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "63641089912850f15a5e97b462395efd9009e5a6cd3ccdef9f7cf55f770d806a",
+    "output_sha256": "c9ef80e54ab8cef4c5f5f3aad72241bcbca1f6c62f7319c10156cb70995dac1b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-2-v5-fire-3-b84003",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "b840037a28cd007474129a5e55700c96b03fed896b2ac4c0660b000be7cdaac5",
+    "output_sha256": "95d7eeefbc79506eba669d0efd213e7d4d0b9dda753d2cb5ca4e56d146861766",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-2-v5-fire-4-7297f8",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "7297f857d533397911d4ac6167f11c67da6f75a65943162a7f5b6eac666fdeb3",
+    "output_sha256": "d29d9bfd9e870477f31b01a8d6501b085927f03f58ebbd3b4bb2900b8ffea2c1",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170222-2-v5-fire-5-ab9f02",
+    "source_file": "Sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "ab9f02eccc5b81af20229a83c444f33dbd46f60c660133f1611c4c6e4c9d9c53",
+    "output_sha256": "888fe589efdfeecb65d10e4e858142e79d6560ab4c2a643e3b1e2656531ff814",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-170222-2-v5-reload-1-43427b",
+    "source_file": "Sounds/Weapons/Rifle/reloadLocal.wav",
+    "source_sha256": "43427bbf32c127f00153426dc23a753488be850076c2ed693d738481f5d31f34",
+    "output_sha256": "01ed5385574829a85a57fe29e6be29e8b72c4b4f036890a86d91851959035706",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170222-2-v5",
+    "cue": "raise",
+    "stem": "community-sep-170222-2-v5-raise-1-68513f",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "68513f9a74eee50c24e44c1d00623a259e91fc2a73284ed85571724585aff69c",
+    "output_sha256": "e78f85727acd87989a0efb6488062ff9b80659ec44100a9f14ed3d13598f399c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-1-v5-fire-1-98afe8",
+    "source_file": "sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "98afe840668c73e0a1c20ccd7e2699b78d7d14e70b73d5a4f4bfd48e86d0b056",
+    "output_sha256": "98e308379eb43d07513028c33ab12dd3c15acd6a05966736f2efee9275c03424",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-1-v5-fire-2-bf91f1",
+    "source_file": "sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "bf91f1e4086677cc10e3437f8426badc7e3f616a3443420b1e7d54c724938529",
+    "output_sha256": "5bc701dc2c0b73568fa23626d34219456dfbde6ce0292793bb9a25c3c9fb3e8e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-1-v5-fire-3-928ec2",
+    "source_file": "sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "928ec2283058914a2729f6744e439a6281a2092be53ca17de687057badda6acc",
+    "output_sha256": "eccd397bf840742001a7216b2e616c459de8208a882446ee9cfca03b1ef1acdf",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-1-v5-fire-4-9167c1",
+    "source_file": "sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "9167c1f01a1ea0b919c2db08790896edaf241ee25493d47d38019160763c10bf",
+    "output_sha256": "d9d1906d9b3a8e8ae362462058c196ac73d78fe9ac21c37de476bad8517564ad",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-171110-1-v5-reload-1-bebfd5",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "bebfd59511a837d538397dc717e00106412e899867d43e74713174901d5fa31c",
+    "output_sha256": "679fe8909d3757297c92a1d3524e44828d0aaf8a258d1f97865907cdc7016f8c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-171110-1-v5-raise-1-55014e",
+    "source_file": "sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "55014ecf9297fba0c9d811bac5d4f87875e4b6824ef13a82f06cc43fa99655b9",
+    "output_sha256": "1b0f4d81a2bdc775c5fb271ef08db222f45af107addbe838c66b4c88b2bfa903",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-2-v5-fire-1-119f72",
+    "source_file": "sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "119f72afe6f70cfef77f7e8bc4869f9c773964db0177bf024f61fd75446a57f3",
+    "output_sha256": "62de63674cb73979a018b95b70f11304066790f895e59d500e2b60462329bbe2",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-2-v5-fire-2-d37088",
+    "source_file": "sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "d3708805331fe5fc175b16863439655de6f17b362827799c14714a11903472d4",
+    "output_sha256": "c1e5901a5ee69de4c6d27d4d187241ec651f84e3eb50bd231948d7b4770a4f1a",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-2-v5-fire-3-dfcfe6",
+    "source_file": "sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "dfcfe6375037a720d9c4c070b72ff45d00d9aab080a4365682bb74d754d24ecb",
+    "output_sha256": "816ffd838a4a59329caadfc4fbf99867c410fa2f9ef0bdc54e7bd7c8654920cd",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-171110-2-v5-fire-4-d0eb76",
+    "source_file": "sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "d0eb76dad6489af65cda42003400da63c5f0fca6418e9f94d2f4ef7d1d8ae941",
+    "output_sha256": "37a14f18de6159222d8bd948f1e3139f7e8007b53eacc495b7b277507e84201b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-171110-2-v5-reload-1-9174eb",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "9174eb3dee31997e3b0ad3eb20c8f474f4c2a1fe96995103d8d61bfd8d55c802",
+    "output_sha256": "c65f1ba1faf0e09a2c6c780215378af3e08810e8b0db4e481945e172dcb0d5bc",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-171110-2-v5",
+    "cue": "raise",
+    "stem": "community-sep-171110-2-v5-raise-1-4e5326",
+    "source_file": "sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "4e5326141144c9742e713d3345e330ffdbd6b05f5d21c61fd39799d8e0489c57",
+    "output_sha256": "949133b44750042add1c9cbe2dbf2deadd8e1aa4a2245aa86682efd605df65c4",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170227-1-v5-fire-1-c48de2",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "c48de2065a514852bb9144d184d1412eb0e1c5149c9c58cdd495d35fd02c12ad",
+    "output_sha256": "15a545b118771c8b98816313ff90de09f0ef42ff28fb6f67d47acd6ac410ee31",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170227-1-v5-fire-2-ebf8ae",
+    "source_file": "Sounds/Weapons/Shotgun/Fire.wav",
+    "source_sha256": "ebf8aec5ebd97596da8635343735cd0685b72cb2ad06287d038a5dd052073003",
+    "output_sha256": "8502c1f2c9e9393a3b23a845edbf9ac35fba2d9122df569a5821f532bd3bd47b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170227-1-v5-fire-3-07033b",
+    "source_file": "Sounds/Weapons/SMG/Fire.wav",
+    "source_sha256": "07033b8e73df8a4ece016b857ac9a7afd6ae8d561aaaba6af49a7595e0609f51",
+    "output_sha256": "658ad4e72c1e31a3f206ccb418e0cc94f60894987661b36dd84a44b8b3b6761b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170227-1-v5-reload-1-b6b344",
+    "source_file": "Sounds/Weapons/Rifle/Reload.wav",
+    "source_sha256": "b6b34474a1e9111af5396cc5c45482b0cbe3f69aa3c71fb4644ed671a35ce19d",
+    "output_sha256": "9743b592cd52a841431199198e7fe7fd394d9fb8e82f1f63592c0dd8bc477623",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170227-1-v5-reload-2-890e0e",
+    "source_file": "Sounds/Weapons/Shotgun/Reload.wav",
+    "source_sha256": "890e0ee985da31482b1a1590a641465fd221012910bf18b6dc1252784e3ee284",
+    "output_sha256": "da91cb54febbec585ba7aabb9320c6117093826e99c37e54ca1de182565c61af",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170227-1-v5-reload-3-6640c8",
+    "source_file": "Sounds/Weapons/SMG/Reload.wav",
+    "source_sha256": "6640c806ebb2beb8be5cc5dbba74272e491ed0d1c2c969574d80691341fb30ba",
+    "output_sha256": "4e1a0f779faa8df7657067a11dbbf68bfb144308276ffbe423718e839a140138",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170227-1-v5",
+    "cue": "reload-done",
+    "stem": "community-sep-170227-1-v5-reload-done-1-3948f9",
+    "source_file": "Sounds/Weapons/Shotgun/Cock.wav",
+    "source_sha256": "3948f959f279849cf9cacc2550c08d316c35e8b1a42ec792b4efb1ccd90fa1bd",
+    "output_sha256": "19f209e11c6095998cfcce54c2c8491a8b85d283a9a89109010ef5cf2a9afe0f",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170633-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170633-1-v5-fire-1-7967af",
+    "source_file": "Sounds/Weapons/Shotgun/FireLocal.opus",
+    "source_sha256": "7967af7165b568a4045a6a538c90d1725f2712305f8d9a22508831fea2540bf2",
+    "output_sha256": "657088e3e2ea9dc5c2e9820e46ca4c1cdad2951826ea892a5f2735ea7759ac46",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170633-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170633-1-v5-reload-1-f8eced",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "f8eceddc3a2f856be3a7aaed7bc1b029e0fa157a45b79ceb469868ac0c0a14d8",
+    "output_sha256": "1be41efdb85ba7b2f40c913349db107a883c36fc3daf4559209153c6cdd22226",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170633-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170633-2-v5-fire-1-137644",
+    "source_file": "Sounds/Weapons/Shotgun/FireLocal.opus",
+    "source_sha256": "1376442b852214475293223c790bb2058afdaa50340dc28df32c84f32883526f",
+    "output_sha256": "926fc512afc9523646a8dc10e357bd7fd195987fe54debbd9462fc037c8d07e1",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170633-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-170633-2-v5-reload-1-fa2f13",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "fa2f13977749a2582fd61e215040d5768a2f351226431fb35c3d9ffcbfa70edc",
+    "output_sha256": "113d06002c33c17da373ba0dd022ff001ada46bc161fb0250a67a20ce1570007",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170241-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170241-1-v5-fire-1-0103d1",
+    "source_file": "Sounds/Weapons/Rifle/FireStereo.wav",
+    "source_sha256": "0103d1d14a0fd0ec256202f259703144ee6505d99be46cc7110c888a27e12367",
+    "output_sha256": "2253a5d725d015148b234e6330f00b46de5a71f894b87ce2a51df81764ee975b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170241-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170241-1-v5-reload-1-a10654",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "a1065482058a8d2ce36b4ad3815c65c2dba1b95bd890953c29c20d9bcea59ad8",
+    "output_sha256": "4a75a826e62d4a4a9323cf143990b41e77e29503f0e8e3dba46901847e1052ca",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169996-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169996-1-v5-fire-1-e4aec9",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "e4aec90c75f3ea7c2dc2c3dbf4b15f6600d7fd69184ea3205eae0b976f168e10",
+    "output_sha256": "df366cb18743f31795f52b07fd3dd6c6274f58db0433db9489324bb3c7859261",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169996-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169996-1-v5-fire-2-292dfd",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "292dfdcee853d8b01485d70a139d32dd5271aabcf2e26661d4db691d397277e0",
+    "output_sha256": "1404800b94c86549964a8b92493b0e28c7d1effc10642c7f2c48c5941c8371bc",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169996-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169996-1-v5-fire-3-cae138",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "cae138342c83273574962df7744bbf0904ad5f77ba3a215d1fd5c5afce21e0b6",
+    "output_sha256": "ef650306f725285b9cb5faf124669118fed6246674d9ec406868f281f8394d46",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169996-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-169996-1-v5-fire-4-aa0901",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "aa0901471f4c98824ef8d625d611b1a34bdda176fbf6856cd1b17d5b1a091ee5",
+    "output_sha256": "3628a5ed3931df6da8363aff19b9f4352c96ed9c70c7984d81dcb0fb4514c1de",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169996-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-169996-1-v5-reload-1-c5664a",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "c5664af2e37690866354512f497242771f2945c9b20f8eaaefd43826029cb14c",
+    "output_sha256": "4d9a55fda8dcc8bf460705267546fdd20c1b971c82c70a6ff8f8bd417ba1bb12",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170269-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170269-1-v5-fire-1-890e3b",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "890e3b7ae9dced872d1194c79e336f2797bc809be4126a40df3e2d5067424490",
+    "output_sha256": "16359bb9acf099e64c0be957f5f30820dd28f2c2f93937ad0d2fe654e74c9da9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170269-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170269-1-v5-fire-2-d65ff1",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "d65ff1b8eb7ed6589889e0c5f620c3ef8c5ef98a42d2be6a7b09cd40b4199cb1",
+    "output_sha256": "137552758298104a84694777b661bd7614046693c20547e54178c7246af1f34e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170269-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170269-1-v5-fire-3-877bda",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "877bda22506c3c639e58558db8226c21b05ac645fd56731830e24cad977aa1d2",
+    "output_sha256": "82ff2250a4d02e857ae4870c34b2a72cf80e548d312a2da6b6fe7e40aa488aeb",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170269-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170269-1-v5-reload-1-61c00c",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "61c00c9fafd50f820bf08b2712457c5b300994320427390137e311bb59a41719",
+    "output_sha256": "fa03197dde1bf1c520d05ae4b7fff8b03c349e5a59d5898849697a6b68062078",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170269-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170269-1-v5-raise-1-4a10c0",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "4a10c0f64ad3feda20af40216044c04455a5a21d9a229e2159b9b0df6a9b26ba",
+    "output_sha256": "ae82b92c8d10b6f9bd51cf36860e9fd4e28ecd6a73266b238c703c398c8b5c17",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170403-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170403-1-v5-fire-1-b0061e",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "b0061eddce8ca555f94f415c5e21efc5e01b9eecf4ca18cf78360d097f8cf366",
+    "output_sha256": "69d142e507bedd79c539414f4f8beaf9d92aadeea55dc84b6d66cc13a6253942",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170403-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170403-1-v5-reload-1-ae688a",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "ae688a39d4ae77555e544ae3690a1c3625ff5355061b1a7aadb725cc6b2d4d47",
+    "output_sha256": "921dae5125d43601b2ba50cd65f72d9cd1c4def03fe9faae04765d4e91d91605",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170563-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170563-1-v5-fire-1-d48067",
+    "source_file": "Sounds/Weapons/Rifle/FireStereo.wav",
+    "source_sha256": "d480673035b10e50b007fdf923ab39062740e1410adb650eae3768cbe7d2b4cb",
+    "output_sha256": "e6d5339b3bcc09b7c587cfed1d445efdfaf097dc4508222be1d07369c7837304",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170563-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170563-1-v5-reload-1-b64bee",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "b64bee8f535d83512809043669223455a9e0e75e901d48cfbf993b576c1dec44",
+    "output_sha256": "32e4916cfe205b57a97d970893903f92b9f5ebaf15636b16ec4e065b91df6c50",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170189-1-v5-fire-1-48e67b",
+    "source_file": "Sounds/Weapons/SMG/Fire.wav",
+    "source_sha256": "48e67b723e12d021f10b0421306a1fdca268b3f168d00a9a8d6cdd74c72c7bdd",
+    "output_sha256": "fa3e86dbc6417e4db9959a4f3480d33bb62a78efa499f26a0630193abae5a99e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170189-1-v5-reload-1-c4f11d",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "c4f11db4fd2354e077bff9469c292a69ece13a13a94c039e339a20a102718e39",
+    "output_sha256": "9f393956ebd3feac3458243dab885cfd9c6429e21fd6fd14f1e7f7ee9913f6d5",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170189-1-v5-raise-1-50ffd0",
+    "source_file": "Sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "50ffd0a90de9eeafeb29a37f399a5846b7ce1838db1d5c98537e452c2f9e14f2",
+    "output_sha256": "680a1f6f3faceeaaaed438668aed29f4989a4ab9c50ca1c83b132b1ac2eed135",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170189-2-v5-fire-1-5d28fb",
+    "source_file": "Sounds/Weapons/SMG/Fire.wav",
+    "source_sha256": "5d28fb8cfe031f4a1c46d1b625249b5f7a438917215ae21dd8a5211e578ea5fc",
+    "output_sha256": "0304fb9b1aaeed857ccd30fb219fd928a224661626df0e6d47221e2928de857c",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-170189-2-v5-reload-1-da46d7",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "da46d7deaa39ff9f02b68c2c6db667c313f549226891923eac401ec0f7733821",
+    "output_sha256": "eea021000664fd5f78a79eec9138bc3f508cb37ae5e3a9983b316dcaab526d9a",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170189-2-v5",
+    "cue": "raise",
+    "stem": "community-sep-170189-2-v5-raise-1-8d7202",
+    "source_file": "Sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "8d720294df4a6e93bf5f82cf3967ac069c76f17bf40c3006eae72c562392fa1a",
+    "output_sha256": "3b507fc50149d4b9603c2b2dacb97f042fe73df9a5980764e58e26534d422f7d",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170097-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170097-1-v5-fire-1-323aa1",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "323aa150d619e3eead526c09f749fc15070d0f8370dee00cd39313922908038f",
+    "output_sha256": "7b2a10f2382d8e8fa52eb9b9d42f1589f7ff7b6d4ed8371e281db70d04207953",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170097-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170097-1-v5-fire-2-163bba",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "163bbafb45e004dee3b06b80f44f7b131e89c08b3c46e6a04591fc65fc1ca3c5",
+    "output_sha256": "73cc95293f31cdc6de2540eafe637bf28f7c66ddc994f352371bdea5dc503107",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170097-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170097-1-v5-fire-3-48d6a5",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "48d6a536fb33edc64951c8472ab6305ce0c384b29bba53db30ce8ac1150f0af4",
+    "output_sha256": "75b51ccdbdd84187853e3d05e814cd1a042bf86c72a24315c0f6b384cc386424",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170097-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170097-1-v5-fire-4-034ff5",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "034ff5ea07dcf29d79fb7182ec7a9079ae83c4d5dae47d9073b9059d0ea41f69",
+    "output_sha256": "fee4ab80ea05fcf7c53da0d83c618e495dc850082ac02f939fad30965f731d5b",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170097-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170097-1-v5-reload-1-6dad9a",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "6dad9a7f4d7fdaf825991fd60a19555001e421d0e2f602b76a77cb2ae0d5583a",
+    "output_sha256": "d86a1620131651bca1cd7bbbafea904485860c423a9e8ebb37543656bd475c1c",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170512-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170512-1-v5-fire-1-37da78",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "37da780338fa7a392f6fc6d7571b41f89bd4518a1630c9a2156282efc2fab76a",
+    "output_sha256": "8793defaf4cf835420a172827298bf56aa3db2552d066e792e0c6790f6f98c0a",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170512-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170512-1-v5-reload-1-88b6fa",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "88b6fabb6e6b3ec4c576f9d8bcac0bdab16266a5aa2b36fdab590a068828b36b",
+    "output_sha256": "169ad67749100f1f5036627b9116b02f7c8cc04897ea74810692b1fbd18a80f9",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170500-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170500-1-v5-fire-1-57d4f8",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "57d4f8358c6e0631c5a6885448fd23cd08c86349e2759d5a95d8f1020701af8f",
+    "output_sha256": "06d7443788c46d90d14547e7f6a1445e90ec01019f54990c12082bc7b9608210",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170500-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170500-1-v5-reload-1-56f6f3",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "56f6f3fad4f30e8b2758481873682281133fd23a022aa6923a87af91ba09c3cb",
+    "output_sha256": "420330d1dc63d55b0740702340e158cf69f811ce5bd9ac12e999f11ec6128fdf",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170592-1-v5-fire-1-ff50c8",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "ff50c84f662086f3f43b34bdaeb29bfb23f3e23df587feb0985e7a3453d1a75d",
+    "output_sha256": "b21f2abc3c21fba09a24721667579483ca59e64b33eff48b05b60c9c37a043d9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170592-1-v5-fire-2-291f10",
+    "source_file": "Sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "291f1072cff73eabee8491e061b8acd17794ade2f966470f376dd4e321566dec",
+    "output_sha256": "f079954db9a8710fe8b633d4b33aabec9bdbe910c0219e9d3cd1aedad5058dde",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170592-1-v5-fire-3-cdcd70",
+    "source_file": "Sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "cdcd706f4fb80836b3e03001f2fa955ef243f348aeac62a74e9714c071ed3168",
+    "output_sha256": "91c98cca5386122444722183eb1ba572a3a0ff245345121f122a3171b262bfd5",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170592-1-v5-fire-4-e84ed5",
+    "source_file": "Sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "e84ed5b7049ce6bf509f85adf939b408f8c7562679775cb040d66749a8e73ae8",
+    "output_sha256": "e8241e92cbab433ccaf60f095d0e9cfae99b4811e953c11608a9ee8d63dd6543",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170592-1-v5-reload-1-b13b6e",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "b13b6eafb10791a772dcb1ab4305b9642c5436dac0b550c53e07b719ad3a26ab",
+    "output_sha256": "f80b2d620edba389cc3df16ff7bdfb45f190d964ccbb793f7fe642aac41f04eb",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170592-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170592-1-v5-raise-1-81f461",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "81f461c69dcad5ab2c8b36033ccbc4372768476893fd0b3fea7334efb0c128c6",
+    "output_sha256": "9f0d15e9f2962d865e6e49ad621fb9393a604065a4b94e30660caf75c34fcd58",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170187-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170187-1-v5-fire-1-d0129a",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "d0129ad34c43ff9eba8acc90d8af29cc9264d53e4815dbedcaaafec08241f82f",
+    "output_sha256": "871983feb114848a110f6c2fad2e39eeb519468cafe9b48c7450cc6d88fb1c77",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170187-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170187-1-v5-fire-2-39e19d",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "39e19d0866690b91bf25480f498e42d5e4c944783f0d306d9056d09e2ac2bd7c",
+    "output_sha256": "4524b7f5f46065302cf7c1c0fc401cce9a775778d55dbf00dc9af19d5acaa712",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170187-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170187-1-v5-fire-3-ce14eb",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "ce14ebd69d3028b55c97676003c3c778686e3da8114788a826abadc7d7a3d2d0",
+    "output_sha256": "d831bf8220e7ca01d37832dc6cac93ec7fdccedb266cc0208f9c2640688692f7",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170187-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170187-1-v5-fire-4-e3b5d1",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "e3b5d120fc904ed768a33667f25b7d3cb5f0d35f04f4672a0d9bd77d0b9d5b89",
+    "output_sha256": "2989aff2e116b7d00013e6a437ca75d77ac2142a3e7a3f8f882feabf809fad85",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170187-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170187-1-v5-reload-1-dcd61c",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "dcd61cd26f10d4b6cb237a2ee2b4ae007964acd8b127860d6fdd150923563924",
+    "output_sha256": "6ec4c29f7a257eb9386ac4e20aa4b65ec3cb66ae54b8a93ebf48f2c062ff82bc",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170554-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170554-1-v5-fire-1-07f0ad",
+    "source_file": "Sounds/Weapons/Rifle/Fire.wav",
+    "source_sha256": "07f0ade9daa1ca8fbdc10d527f9bf7ca17fe04dda20bf3765475bdb1800e529e",
+    "output_sha256": "d99220c58fee9e5fc4256f1f9f3e1bbf011dfe0f5f524005b10f74b0e2bbffdf",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170554-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170554-1-v5-reload-1-fc8f98",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "fc8f98a18b6699608028a6e3070bf7f384033c9dda9543213621efeb77b140e7",
+    "output_sha256": "a25a15c8e6668a24f521d51e8b1081b6cc85b176985fb379245146f38b495e14",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170554-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170554-1-v5-raise-1-1878ed",
+    "source_file": "Sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "1878ed9aa4e1c6e433c5bfd69ab2b2150f23e44f3bcd7f47da9595a3ba92fb95",
+    "output_sha256": "3483399a29a1e4436a62f8b627fa5d89ef0f9a55f8f1077ddf5fc741f6986e2f",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-169726-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-2-v5-fire-1-4bafb7",
+    "source_file": "Sounds/Weapons/SMG/V2Local1.opus",
+    "source_sha256": "4bafb7f11764539ee680eeb57f8bdfe6a2a33376435575946d37fe854df88858",
+    "output_sha256": "51599aaba4e512ff505669676d5e6de9db499319b7c3ede03a734c3e403d2fad",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-2-v5-fire-2-45b425",
+    "source_file": "Sounds/Weapons/SMG/V2Local2.opus",
+    "source_sha256": "45b425c5144bdcfa09195b52aa82e0821e238f808eeb345d5647db37fe879451",
+    "output_sha256": "6eec4c0d147f2f21c75d5a5347410c4ce9053184c830593fa7b0e8b70d4a275c",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-2-v5-fire-3-020e27",
+    "source_file": "Sounds/Weapons/SMG/V2Local3.opus",
+    "source_sha256": "020e272202a68def4b5e86908ce17c2ab0f8b7ec1f2691d9fb5a3ba15e94577e",
+    "output_sha256": "732dcf011150ff4c97861beeb2bd849481d213afcd7657f2e76023810370695a",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-2-v5-fire-4-dabdbd",
+    "source_file": "Sounds/Weapons/SMG/V2Local4.opus",
+    "source_sha256": "dabdbdc1ca062138a177de8fd54e9e9d6b95205972fbbaa2fa7406a007df697b",
+    "output_sha256": "42543edc89f51c02979b5029b65918d03545a9f41711c740f23822597015ab50",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-169726-2-v5-reload-1-fa04aa",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "fa04aa3f24e3581d00a92df7bf242f8945a1d12caa95f1bedcc37f92c030dd70",
+    "output_sha256": "8a9c06bfacf69e3b7bff477c5c50c5fda917da607dfabbc69985d106f7d34e6c",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-3-v5",
+    "cue": "fire",
+    "stem": "community-sep-169726-3-v5-fire-1-55c1d0",
+    "source_file": "Sounds/Weapons/Shotgun/FireLocal.opus",
+    "source_sha256": "55c1d015df0267be3b0bfac741f6c2eb4e1bffd7666c66d64bed7d20bff351a3",
+    "output_sha256": "35c4ec9cdb954d2dc54c84429123c9fe07849ea7245f10d300d3d4469beb88a1",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-169726-3-v5",
+    "cue": "reload",
+    "stem": "community-sep-169726-3-v5-reload-1-a065f0",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "a065f058e1518f6b3e3f03b1f5ccbeecbed434344d8c7054aad64ad65e6c9841",
+    "output_sha256": "7101aa19dc047a070e22758a942e08476c2b5f5e4ef399775a63fbc434863cd3",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170082-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170082-1-v5-fire-1-020226",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "020226b0fb551487c17df5455209c915b5fbd2bf9403c1bf7d6181d46188b10e",
+    "output_sha256": "db522476bf8ffd47d4e42e5756c00ee5dcc73b7fc5bb6046b4097c33a5c6c850",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170082-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170082-1-v5-fire-2-e464be",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "e464bef7fb5abb86127c88136cc4b82866eac7f7a2ca02589245ec54b6cbac7f",
+    "output_sha256": "a4a586364e9230103b4b3650a6cae250112b64b5d0f56817502de199dd9ba1b4",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170082-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170082-1-v5-fire-3-2f0a34",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "2f0a34f753cc51723dbbee18fa8ce0f9f11e7f99a86fc9f0420b54d66277100d",
+    "output_sha256": "c89d67b4630e7d0e20955f86c12a31d7bfe7a6f0e91add32dd4729644dfa6e24",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170082-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170082-1-v5-fire-4-b948de",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "b948de88bd210dcd61a6e36d1e3db69f14147fa7ff315ddac61379d795976b0f",
+    "output_sha256": "0d4281c2f0e0c508b77eddd40b394ff472ba9c0481f4002714b97f2f378cac46",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170082-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170082-1-v5-reload-1-55001f",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "55001fc31f2323be6c2f7a3b3e455cb81233f537cdb491da7566f9b1e58dd6ff",
+    "output_sha256": "4b043fefe09dfbbea099d27c5ad6d94f1a29d16848697c1d23ba0325c5b1abb2",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170208-1-v5-fire-1-05f5e7",
+    "source_file": "Sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "05f5e7fe1ca1197d3c8fe62f86ad8e18b905535602f6fa8f5e20cb2efa1b11aa",
+    "output_sha256": "85dfdd6c25df243a3544e841777f30403e7f39bcdd849e250be377a0146f52b3",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170208-1-v5-fire-2-4c18cb",
+    "source_file": "Sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "4c18cbae698bbf779e66ed6e9418be71f5dac3dff7f390b74e6b068d97a5fb66",
+    "output_sha256": "4a21286d473f5ae55683fca4723778607453209249e7c46e436b40f0bf84242f",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170208-1-v5-fire-3-aaa096",
+    "source_file": "Sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "aaa09640d97de8af3192ded51f7eaabcbf357066237d3456b07f34fdbc14e524",
+    "output_sha256": "ddadb08ee41ea2ba463e150da3cfa888b754ef61971c0a2bec66b72a02c30642",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170208-1-v5-fire-4-8ee178",
+    "source_file": "Sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "8ee1780219444538278daaa7105973aff1f116286713870d06f98ee83782e73e",
+    "output_sha256": "d0fc6de93942e551cf14f0ab1b6a4b3c7b1f650bc9887b0bd0aec21d7d832777",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170208-1-v5-reload-1-f50fe5",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "f50fe5d43c404945110ce8827ee98c2be9fdace7d5203e7e974dd9e2142a29a8",
+    "output_sha256": "3da8eeb8179cd0a356e62ccfdde7c0b89a9805e2b057d8d2683ac15a975ef008",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170208-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170208-1-v5-raise-1-af6663",
+    "source_file": "Sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "af666371f95aa9b18fa29474d7ee5a916d1fe4e1376fb5a8a841f67a2f379105",
+    "output_sha256": "ac936ac02f49d756ba9a8cfc2104a922464a0435891f139c3bc23dcf96e6aad5",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-1-v5-fire-1-654bd9",
+    "source_file": "sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "654bd9a2ecac048b8ab71b8da439a008e9aba74dc4af73751812d8c937c7e224",
+    "output_sha256": "7cb8fbbce4e252bfe01392988a03f36ecbf1c04ff33f66cb01948a07ad76d835",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-1-v5-fire-2-0d0aea",
+    "source_file": "sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "0d0aea1877f4a459451b24da0700eca0ded8ccf21bc2d75c6afc9556d4becc54",
+    "output_sha256": "1d3f731c01405e59f42cc2207d3a96254f840e9e95f88472a1c51250231bef97",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-1-v5-fire-3-c9ddf0",
+    "source_file": "sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "c9ddf058d7b866f774263ae8503e637991067434d83781904e227654196e0aa6",
+    "output_sha256": "50db172e5180912c22ab998eaf7f100ca315354e05a0ffad038b717c96a7c172",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-1-v5-fire-4-261b86",
+    "source_file": "sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "261b8629db497314adfa16ebb58646e7623667cc8ab15be4a9d8fafdf0a95fe2",
+    "output_sha256": "ed59c4cd0384cb1f44051f8f65a3a07427438b5e8ee3f47a154bdaf74c212051",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-1-v5-reload-1-0b6487",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "0b64879e503d904210e1e80863e8e12838326e993ff93675180371f77b860c95",
+    "output_sha256": "d38ba1d3982accb0d7b00bf3454fd7948f5fa76130956c6cd18b16cc7e26f2c1",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-1-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-1-v5-raise-1-8991f9",
+    "source_file": "sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "8991f9765c986766be25265267420ff0fb55d98df287b23a3531bb628ff2473b",
+    "output_sha256": "5e4241bc01211ea4c0170d97afa513918df0c65d86bef275ba9f4d2fdcaf73be",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-2-v5-fire-1-5b3159",
+    "source_file": "sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "5b3159df64f104d7f0cdbb760080cccc22bffcb506fabb0d63ef27021805de98",
+    "output_sha256": "d59c460c610d507b9e853a84bac98cf3e45403c02f39f0f3998d88b01ae74c58",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-2-v5-fire-2-ce263b",
+    "source_file": "sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "ce263b8a50f0dd833f514d694b91e46eb673b69cf67213ec61e4499d3b6a601f",
+    "output_sha256": "7bd95e3fac962cec62bdedce327a9c0a49628426a69e6fe7a19f53678978ca55",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-2-v5-fire-3-0174fe",
+    "source_file": "sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "0174fec70511bbd657feb1dff9fbd4f4159689cc70cd1aa00b4f6234a32e0b8e",
+    "output_sha256": "5c43a3d69c0d752d41e92b13712a105fd0f546fd94773a4c81edafd54fd48d72",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-2-v5-fire-4-02efdb",
+    "source_file": "sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "02efdb1178800e8335ac8b00f7d9e1a7e177f82d766635945f0372803109d3bd",
+    "output_sha256": "3a8d089b1e77a5d0ebdef7cd8ae22d78241d6dabcd2f33afebcb78b235808589",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-2-v5-reload-1-c9c15a",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "c9c15a3c656d8d550de2f555fe6e60b00829d8ba0c6b09e0b2c510d451922acf",
+    "output_sha256": "de847c73130c180886a982de6b40ce9957bc4f8abf7aa7726e7945c2ae844978",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-2-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-2-v5-raise-1-61bab2",
+    "source_file": "sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "61bab22e8f4b4aad0b384c160bb9ccfd586f28107043c28e185f161dc08280f4",
+    "output_sha256": "9343f4da16dd50e684af0e71c6918277c4a3552f4ab98a25ca3df5073c8040e6",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-3-v5-fire-1-b2801c",
+    "source_file": "sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "b2801c0a45ad2f518120773e31dab2d0ede0f016c3be6f11b1d84fcca79738a0",
+    "output_sha256": "11fc6eb207a337ad4af1dd50086c5e4293d49a0fea6ac35d4197cfc2d6e3e989",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-3-v5-fire-2-16ab84",
+    "source_file": "sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "16ab842574e1c8c6b7033b7a8bcc45026a9f0c26fc28800b03163a48a6302411",
+    "output_sha256": "1841ef025ce9d4789fe6cc4660ef9573ff7103f852646e4f2430447569647107",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-3-v5-fire-3-7bc8fc",
+    "source_file": "sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "7bc8fc1a253bff7aa11896d660ef3ab2fb1d84ec62c97576b337fd24dc6e911b",
+    "output_sha256": "6eba1344f18a9f76b3495bf5d01ac193888b3b5aec78837a37e083991e24bb86",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-3-v5-fire-4-97568b",
+    "source_file": "sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "97568b318e1f974319780f6730863136ad307c7e51322615a3f345f9e05bee3e",
+    "output_sha256": "b8c5b86f9d459846c09637337305aa75ab4c215fa9cdc362d117aca002e89b0e",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-3-v5-reload-1-9314dc",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "9314dcf16f00e69750dfd1d51ae7547c798f5057e7a0edd4c15804e28fdbe0eb",
+    "output_sha256": "82ca8342b2b292082a031d294203e3665b54d1dacd036d06d388eebff115c19a",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-3-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-3-v5-raise-1-c2e85b",
+    "source_file": "sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "c2e85b89b36c92a20a89607c863d81cd814ec04ede4b37ff4a1111c098cc47cb",
+    "output_sha256": "d164b2b895f88ebc117acb5d542ecbb725628ef5b46430199a0b0f98a8d041c8",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-4-v5-fire-1-d92a9b",
+    "source_file": "sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "d92a9bf9fdf578b1e06c6fdee608ff7e2a7320be707f0d093d9f83b42534c02e",
+    "output_sha256": "ff694c0d528e9464185d6b8b05cfd3c243746f8d7eba45413b560075133fad43",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-4-v5-fire-2-5ad4ac",
+    "source_file": "sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "5ad4acb43f75ab293da3248b32d60c05839bbd626c9999c01c7f736cb1a3a646",
+    "output_sha256": "440db1d02d9c946eb50d5e009abf9cc4e8384c6da104bad45f09d09de4218a80",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-4-v5-fire-3-b55330",
+    "source_file": "sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "b55330d664ecb01e44cc25220a560d2daa3b58635a767026392635f86deba97c",
+    "output_sha256": "dff39781fc83cd27adbd0e9feb82181daf42d53b1aa575390e8e5bf5b89abe41",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-4-v5-fire-4-66cf76",
+    "source_file": "sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "66cf769ad71124a5cdf2c17314be8494588dc3ba594d805304d99cb790e6117f",
+    "output_sha256": "a8365cc9149fc2d71267549a08203d78bc8010e0d291e62518323cbaf6dba362",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-4-v5-reload-1-0501b8",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "0501b86efd5810a981f4c89db59df432570a701daec24623a1695086f24c92e9",
+    "output_sha256": "2e952ff699ccef546114d2b82d8d28f2d082a2a2fdcc2efa1dccb36f04f8b338",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-4-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-4-v5-raise-1-c2f668",
+    "source_file": "sounds/Weapons/SMG/RaiseLocal.wav",
+    "source_sha256": "c2f66854f35e23e6738c74f2c7303f49df64abb66c0c7d44649b851ba4ec7975",
+    "output_sha256": "1d972a15e375f201c687fd4f198aa57e938ac23f75f0c2176fb363040b6173ed",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-5-v5-fire-1-4c323a",
+    "source_file": "sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "4c323acc86446b9fba6663b217f262f84e03f070df072aa58f92e8e49c04fedb",
+    "output_sha256": "8c47eb6b91332562ed7c53819bd2a4a00cd4e13c3fdac748d475d92593fc65b3",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-5-v5-fire-2-dbcc3f",
+    "source_file": "sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "dbcc3fda84a51beed74b78049ba9f419c830981194b56815d8bf714f7322851b",
+    "output_sha256": "f3a5c8e38f99e4689b88b1eb56874061af0085d3d788257708529d974b090b3b",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-5-v5-fire-3-afd1a1",
+    "source_file": "sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "afd1a10fce1812ed741be4c904148641a643e2b5a9e57ac6a6e13bac4a82ab19",
+    "output_sha256": "98506510f211a64a25fa5c72cd8b7918b8e40d22663b35f8738b2b88ac487fc4",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-5-v5-fire-4-790461",
+    "source_file": "sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "7904619d450964e4bb99d17c9d6996a7c91d0275a369eeccd7bbfc976aea3350",
+    "output_sha256": "76d83a92a7f24b77008a99898fcfde9945810a4fd37371960395ceb77b8bf972",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-5-v5-reload-1-31b826",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "31b826efbdbcd56b827b4fb43977288d5f3ffaec6d4d454e9db190037411dbfa",
+    "output_sha256": "f1a2515fe16ea3969980ff7ca53f1378aa83bd54e4e054923d0ba4c59173e54a",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-5-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-5-v5-raise-1-a8327b",
+    "source_file": "sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "a8327b11631f517c94de6e190e62fc31da6dcb9d9f82574087797c8d86b574fb",
+    "output_sha256": "efb2d9ce3f4caba01a66cfae70a4ecda1628b0704d29e49594db1a0fa7791fa0",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-6-v5-fire-1-5efc32",
+    "source_file": "sounds/Weapons/Rifle/Fire1.wav",
+    "source_sha256": "5efc32fec7deee5ab9342eb1b34b01da1c0f7ca96c2fde6a6b3dd0e1f8434571",
+    "output_sha256": "17bb34b156818bbcde9910aa97e94bbea80f72c2a6ab20c6bfda7004f9034cfd",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-6-v5-fire-2-32bcc7",
+    "source_file": "sounds/Weapons/Rifle/Fire2.wav",
+    "source_sha256": "32bcc7c9819c02c1081773bc08cf45b9926fb3be6cf0f4f0bf54cf11aace2770",
+    "output_sha256": "0f8fb95f52495f7efbcca69dea39bb065a1dddd023e1207a532b398e900a8127",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-6-v5-fire-3-2ae603",
+    "source_file": "sounds/Weapons/Rifle/Fire3.wav",
+    "source_sha256": "2ae60378eee4d8b794dfa17f2cacc9df6b2f160a9e1ec8801e68d668d6bacac3",
+    "output_sha256": "a16a555d95c75290b0318b431c6e21b286b776c61ea0d5e7ba8835100aab8f82",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "fire",
+    "stem": "community-sep-170204-6-v5-fire-4-2c313d",
+    "source_file": "sounds/Weapons/Rifle/Fire4.wav",
+    "source_sha256": "2c313d17fb12d0f9ca768fd5ca283261457178227b3144612158b642b1d05ecb",
+    "output_sha256": "b5eb6918e6eb0901f489f4156babcb6648e95cfb87f5ed019a4436e48c4949b8",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "reload",
+    "stem": "community-sep-170204-6-v5-reload-1-91cf12",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.wav",
+    "source_sha256": "91cf1211e15d3ca2269e35cfd63f309c5cd4c543bfb64c646e769361b8a9cd8b",
+    "output_sha256": "b601b7b145a7194cc0320de6212e83798da29a3cd59b6a0ab713bc9eaf582637",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170204-6-v5",
+    "cue": "raise",
+    "stem": "community-sep-170204-6-v5-raise-1-d6781a",
+    "source_file": "sounds/Weapons/Rifle/RaiseLocal.wav",
+    "source_sha256": "d6781a6cc88ba496e6f7c1640b21efcdeba3aa9397297342f75c460583d7e92a",
+    "output_sha256": "3c044fa7ee0340d697fa53a0ca2f0bb4395d1ad0415769a92ceb94650487fb36",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170458-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170458-1-v5-fire-1-2be6fd",
+    "source_file": "Sounds/Weapons/Rifle/FireLocal.opus",
+    "source_sha256": "2be6fd8ba423f7cfae8b5ffe50861decf5790a6eb1f1f82a0cf50ed9195aad13",
+    "output_sha256": "422161d2a65a47cd0908755f11cf8ef2a7448ffdb228190df07d3c3513332899",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170458-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170458-1-v5-reload-1-c2fb71",
+    "source_file": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+    "source_sha256": "c2fb713cd13b2bd8438cd86adb9caadfd645729c7d2ef8900cfa058451f6458c",
+    "output_sha256": "eea798861d9108f4974bf428811b6717158df239d95679e7bcd7df92d7a6c519",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170145-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170145-1-v5-fire-1-fa7e09",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "fa7e09d77b08e1a4cdf0ca5096c205562416f3a9276f949aaaa85d9d30811307",
+    "output_sha256": "03bbae435eb5dd80e3469dbc565bf2a3af257db3f3f35b216fc80e13f54631da",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170145-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170145-1-v5-fire-2-7c51df",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "7c51df80863988df8c1b0c3d06715f228d407339644647174dfefe62fbc881f8",
+    "output_sha256": "98aba58deabc8876ab41e0991d06e125470421da34538d789d53caa87357d7d5",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170145-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170145-1-v5-fire-3-c57323",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "c57323fa51fe4f8dda0f6e3b97d2de3aff8f6c7d298a1e0ecdfbe50780e46f38",
+    "output_sha256": "b1b4c4814f16f1e5ff7fdecd0d7960b8118d2c434e7218d5c16773d85bb407e7",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170145-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170145-1-v5-fire-4-e6f67e",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "e6f67ea84ac14e183c4bbd33a23f57f7004f57b74e93477fca7e9e8c9db2f09e",
+    "output_sha256": "667fefde1796432dc11ddafbe4de801249a6251db2aaf17a0e1bb06c44b2873f",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170145-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170145-1-v5-reload-1-5f3271",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "5f3271a47ca131f46c364d6eb180405f392313634b2288073dc01f885805a4c5",
+    "output_sha256": "6a69c4fb518c55e0792abc9fc638be73baa720a73a0075055dabb073b1056d2c",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170779-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170779-1-v5-fire-1-3927b9",
+    "source_file": "Sounds/Weapons/Shotgun/Fire.wav",
+    "source_sha256": "3927b9d7d90e047f2d96284ce2bebed5ff1284ff19ec5b6884123c9840dd5194",
+    "output_sha256": "adfe58947b4c2c352bc211dc84e541cf118478701815e6aa485bb5f989ed4e99",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170779-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170779-1-v5-reload-1-3b97b9",
+    "source_file": "Sounds/Weapons/Shotgun/ReloadLocal.opus",
+    "source_sha256": "3b97b9ad48f0f12cf3f66e84abf352c67bedf6b3d57117e692d1c0c98bfa44bd",
+    "output_sha256": "f3e0e7d689f5d92ebba95fd916a7730213758f2ff0cb5d67385ad35fb8c78889",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170147-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170147-1-v5-fire-1-f3d5b6",
+    "source_file": "Sounds/Weapons/SMG/Fire1.wav",
+    "source_sha256": "f3d5b671370cc5c635032808476e6640c970d1f0c33f93192dba09fe071d9222",
+    "output_sha256": "64d30e66e091b88a4fbd7b97a9a82e9c5f19256ef7790e3b766e2cadc7df55e2",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170147-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170147-1-v5-fire-2-f6f19c",
+    "source_file": "Sounds/Weapons/SMG/Fire2.wav",
+    "source_sha256": "f6f19cc291d3654bdb8c4668f1968ffeb56e6024615ea61aa5d82914fdb199a1",
+    "output_sha256": "6c43f22f44fe4e78d5e68515860411fbc9920609d2fd18f98d0776628451f172",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170147-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170147-1-v5-fire-3-6eec97",
+    "source_file": "Sounds/Weapons/SMG/Fire3.wav",
+    "source_sha256": "6eec97b2329498789b843e5b1cc5987d804064e2b081a5561f9f918d9c615222",
+    "output_sha256": "19c366a534d09e08447125b8ab8872fb009808e71bbb912c83eb445e29bce976",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170147-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170147-1-v5-fire-4-c4f42c",
+    "source_file": "Sounds/Weapons/SMG/Fire4.wav",
+    "source_sha256": "c4f42ccad82d80381d4afa88fea196179f6d1bf07f543b4d52d5d8f22d6d7314",
+    "output_sha256": "8b7b090e2b740b6c2dfa9530a573b584453979309588383a6eaddef2213283d9",
+    "fallback": false
+  },
+  {
+    "item": "community-sep-170147-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170147-1-v5-reload-1-2db6f9",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.opus",
+    "source_sha256": "2db6f9d2ae46859042660a4cdb555063134b2d46541c5755a533aff6ba1d6001",
+    "output_sha256": "e6f97c8a598cefd89dcecf4c7c906b88fc9ebc65ff5e2660b44c9b5275b7b2f9",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170216-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170216-1-v5-fire-1-a5b813",
+    "source_file": "Sounds/Weapons/SMG/FireLocal1.wav",
+    "source_sha256": "a5b813a917ee7204e51c773845c0b486f095955d2aa5d187e7add6b71f9a63f0",
+    "output_sha256": "92032c6f345421fb62b4c038d439286bba60c82d610fef66260c40e917466223",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170216-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170216-1-v5-fire-2-fb55c9",
+    "source_file": "Sounds/Weapons/SMG/FireLocal2.wav",
+    "source_sha256": "fb55c9c9024688709b3e9f9938aaf0920e761978b0ff4d6f517bdc35bb8d0528",
+    "output_sha256": "cd253218b0d363f11df441d92419e22809f85ae8a539096acbf1fc1dcc930798",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170216-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170216-1-v5-fire-3-025e9a",
+    "source_file": "Sounds/Weapons/SMG/FireLocal3.wav",
+    "source_sha256": "025e9a133f9427b2ec10c88e871c8fbdcac8ce4db63af24c990124ecf4382b53",
+    "output_sha256": "d78be9a4837b06f8cec7764a92ec59629db9bbba4e4098cc453ef28aa9b9147b",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170216-1-v5",
+    "cue": "fire",
+    "stem": "community-sep-170216-1-v5-fire-4-f11a64",
+    "source_file": "Sounds/Weapons/SMG/FireLocal4.wav",
+    "source_sha256": "f11a64c2fc1f114b62a81b337da9287caf0dfaca194779044ec7d340c66701a4",
+    "output_sha256": "7900e847258cfa2d3364d91b65837b766f04a2cde52deacd71d12d263b71b6b4",
+    "fallback": true
+  },
+  {
+    "item": "community-sep-170216-1-v5",
+    "cue": "reload",
+    "stem": "community-sep-170216-1-v5-reload-1-d2991e",
+    "source_file": "Sounds/Weapons/SMG/ReloadLocal.wav",
+    "source_sha256": "d2991e78baf7d76432c0bc750750f8ffcbe4e4faaabfd2371942b6bef5b460e3",
+    "output_sha256": "79616dfabddd9cc9eef8fbe7f4228ebe878e9fe05540bee0337f706653698d5d",
+    "fallback": true
+  }
+]

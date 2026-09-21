@@ -1,0 +1,72 @@
+Lee-Enfield
+Original authors: Ucho
+https://gamebanana.com/mods/170562
+
+{
+  "id": "lee-enfield",
+  "name": "Lee-Enfield",
+  "archive": "leenfields_ucho.rar",
+  "archive_sha256": "cab0690ad504e8b0583734afae56558a9868ed61a7a64e1568f9dfc80c60f5ba",
+  "source": "https://gamebanana.com/mods/170562",
+  "credits": [
+    {
+      "group": "Creator",
+      "authors": [
+        {
+          "name": "Ucho",
+          "role": "Modeler, Skins, Gay.",
+          "url": "https://gamebanana.com/members/1481386"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Original KV6 bytes; native parent alignment and animations.",
+  "model_sha256": "0328cbb9dc82a3e90087524c18dadd8a7fffc1e6f100714b993334cc82c872f6"
+}
+
+--- document.txt ---
+Thank You for Downloading my content i appreciate that
+
+______0000000__00________________
+_____00000000_0000_______________
+_____00000000_0000_00____________
+______000000___00_0000___________
+__________________0000_00________
+_____000000000000__00_0000_______
+____0000000000000000__0000_______
+____00000000000000000__00_00_____
+____000000000000000000___0000____
+____0000000000000000000__0000____
+_____0000000000000000000__00_____
+_____00000000000000000000________
+_______000000000000000000________
+_______000000000000000000________
+_______00000000000000000_________
+_______0000000000000000__________
+______0000000000000000___________
+_____0000000000000000____________
+____0000000000000000_____________
+____000000000000000______________
+____00000000000000_______________
+_____00000000000_________________
+______00000000___________________
+_______00000________________
+
+Mas en http://gamebanana.com/members/submissions/skins/1481386

@@ -1,4 +1,5 @@
 #include "battlespades/network/revival_identity.hpp"
+#include "battlespades/network/cosmetic_slots.hpp"
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -343,6 +344,99 @@ bool valid_revival_registration_password(std::string_view password,
             normalized.find(username_key) == std::string::npos);
 }
 
+RevivalWorkshopProject read_revival_workshop_project(
+    const std::filesystem::path& maps_root, std::string_view uid) {
+    const std::filesystem::path filename{uid};
+    if (uid.empty() || uid.size() > 180U || uid.find('\0') != std::string_view::npos ||
+        filename.has_parent_path() || filename.filename() != filename || filename.extension() != ".ugc") {
+        throw std::runtime_error{"Invalid Map Creator project identifier."};
+    }
+    const auto root = std::filesystem::canonical(maps_root);
+    RevivalWorkshopProject result;
+    constexpr std::array extensions{std::string_view{".ugc"}, std::string_view{".vxl"},
+        std::string_view{".txt"}, std::string_view{".png"}};
+    for (const auto extension : extensions) {
+        auto path = root / filename;
+        path.replace_extension(extension);
+        const auto status = std::filesystem::symlink_status(path);
+        if (!std::filesystem::exists(status) && extension == ".png") continue;
+        if (std::filesystem::is_symlink(status) || !std::filesystem::is_regular_file(status) ||
+            std::filesystem::canonical(path).parent_path() != root) {
+            throw std::runtime_error{"The project needs regular UGC, VXL and TXT files; links are not publishable."};
+        }
+        const auto size = std::filesystem::file_size(path);
+        const auto modified = std::filesystem::last_write_time(path);
+        const auto limit = extension == ".ugc" ? 1U << 20U : 64U << 20U;
+        if (size == 0U || size > limit) throw std::runtime_error{"A project file is empty or exceeds the archive size limit."};
+        RevivalWorkshopFile file;
+        file.filename = path.filename().string();
+        file.modified_ticks = std::to_string(modified.time_since_epoch().count());
+        file.kind = extension == ".vxl" ? "map" : extension == ".png" ? "preview" : "metadata";
+        file.content_type = extension == ".txt" ? "text/plain" : extension == ".png" ? "image/png" : "application/octet-stream";
+        file.bytes.resize(static_cast<std::size_t>(size));
+        std::ifstream input{path, std::ios::binary};
+        if (!input.read(reinterpret_cast<char*>(file.bytes.data()), static_cast<std::streamsize>(size)) ||
+            input.peek() != std::char_traits<char>::eof() ||
+            modified != std::filesystem::last_write_time(path)) {
+            throw std::runtime_error{"The project changed while preparing publication. Save it and retry."};
+        }
+        std::array<unsigned char, crypto_hash_sha256_BYTES> digest{};
+        crypto_hash_sha256(digest.data(), file.bytes.data(), static_cast<unsigned long long>(file.bytes.size()));
+        std::array<char, crypto_hash_sha256_BYTES * 2U + 1U> hex{};
+        sodium_bin2hex(hex.data(), hex.size(), digest.data(), digest.size());
+        file.sha256 = hex.data();
+        if (extension == ".ugc") {
+            const auto document = Json::parse(file.bytes);
+            result.description = document.value("description", std::string{});
+            result.author = document.value("author", std::string{});
+            if (const auto tags = document.find("tags"); tags != document.end() && tags->is_array()) {
+                for (const auto& tag : *tags) {
+                    if (tag.is_string() && tag.get_ref<const std::string&>().size() <= 32U && result.tags.size() < 12U)
+                        result.tags.push_back(tag.get<std::string>());
+                }
+            }
+        }
+        result.files.push_back(std::move(file));
+    }
+    if (result.description.size() > 16000U || result.author.size() > 128U) {
+        throw std::runtime_error{"Project description or author exceeds the archive limit."};
+    }
+    return result;
+}
+
+namespace {
+[[nodiscard]] bool save_workshop_receipt(const std::filesystem::path& maps_root, std::string_view uid,
+    const RevivalWorkshopProject& project, std::string_view url) noexcept {
+    try {
+        const auto root = std::filesystem::canonical(maps_root);
+        const auto destination = root / (std::string{uid} + ".publication.json");
+        if (std::filesystem::is_symlink(std::filesystem::symlink_status(destination))) return false;
+        auto temporary = destination;
+        temporary += "." + std::to_string(randombytes_random()) + ".tmp";
+        if (std::filesystem::exists(std::filesystem::symlink_status(temporary))) return false;
+        Json files = Json::array();
+        for (const auto& file : project.files) files.push_back({{"filename", file.filename},
+            {"size", file.bytes.size()}, {"modified_ticks", file.modified_ticks}, {"sha256", file.sha256}});
+        const auto payload = Json{{"version", 1}, {"url", url}, {"files", files}}.dump(2);
+        {
+            std::ofstream output{temporary, std::ios::binary | std::ios::trunc};
+            if (!output.write(payload.data(), static_cast<std::streamsize>(payload.size()))) return false;
+            output.flush();
+            if (!output) return false;
+        }
+#if defined(_WIN32)
+        if (!MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            std::filesystem::remove(temporary);
+            return false;
+        }
+#else
+        std::filesystem::rename(temporary, destination);
+#endif
+        return true;
+    } catch (...) { return false; }
+}
+} // namespace
+
 class RevivalIdentityService::Impl final {
 public:
     explicit Impl(RevivalIdentityConfig source)
@@ -559,7 +653,8 @@ public:
         auto response = request("/api/auth/game-ticket",
                                 "POST",
                                 std::optional<Json>{
-                                    Json{{"server_id", server_id}}},
+                                    Json{{"server_id", server_id},
+                                         {"client_capabilities", Json::array({"battlespades-cosmetics-v1"})}}},
                                 access_token);
         if (!response) {
             const auto result = from_http_error(response);
@@ -586,12 +681,105 @@ public:
         return result;
     }
 
+    [[nodiscard]] RevivalRelayLobbyResult create_relay_lobby(
+        const RevivalRelayLobbyRequest& values,
+        std::stop_token stop) {
+        std::string token;
+        {
+            std::scoped_lock lock{mutex};
+            token = access_token;
+        }
+        RevivalRelayLobbyResult result;
+        if (token.empty()) {
+            result.error_code = "authentication_required";
+            result.error = "Sign in to publish a community match.";
+            return result;
+        }
+        const auto payload = Json{{"name", values.name},
+                                  {"map", values.map},
+                                  {"game_mode", values.game_mode},
+                                  {"mode_tla", values.mode_tla},
+                                  {"max_players", values.max_players},
+                                  {"playlist_id", values.playlist_id},
+                                  {"texture_skin", values.texture_skin},
+                                  {"classic", values.classic}};
+        const auto response = request("/api/lobbies", "POST",
+                                      std::optional<Json>{payload}, token,
+                                      std::chrono::milliseconds{8'000}, stop);
+        wipe(token);
+        result.http_status = response.status;
+        if (!response) {
+            result.error_code = response.error_code.empty() ? "relay_lobby_error"
+                                                             : response.error_code;
+            result.error = response.error.empty() ? "Could not allocate a public match relay."
+                                                   : response.error;
+            return result;
+        }
+        const auto body = parse_json(response);
+        if (!body.has_value()) {
+            result.error_code = "invalid_response";
+            result.error = "AoSPlay returned invalid relay data.";
+            return result;
+        }
+        RevivalRelayLobby lobby;
+        lobby.lobby_id = json_string(*body, "lobby_id");
+        lobby.server_id = json_string(*body, "server_id");
+        lobby.server_token = json_string(*body, "server_token");
+        lobby.master_url = json_string(*body, "master_url");
+        const auto tunnel = body->find("tunnel");
+        if (tunnel != body->end() && tunnel->is_object()) {
+            lobby.allocation_id = json_string(*tunnel, "allocation_id");
+            lobby.relay_host = json_string(*tunnel, "host");
+            lobby.host_key = json_string(*tunnel, "host_key");
+            const auto port = tunnel->find("port");
+            if (port != tunnel->end() && port->is_number_integer()) {
+                const auto value = port->get<std::int64_t>();
+                if (value > 0 && value <= 65'535) {
+                    lobby.relay_port = static_cast<std::uint16_t>(value);
+                }
+            }
+            const auto keepalive = tunnel->find("keepalive_seconds");
+            if (keepalive != tunnel->end() && keepalive->is_number_integer()) {
+                const auto value = keepalive->get<std::int64_t>();
+                if (value > 0 && value <= 300) {
+                    lobby.keepalive_seconds = static_cast<std::uint16_t>(value);
+                }
+            }
+        }
+        if (lobby.lobby_id.empty() || lobby.server_id.empty() ||
+            !lobby.server_token.starts_with("aos_lobby_") ||
+            lobby.master_url.empty() || lobby.allocation_id.size() != 36U ||
+            lobby.relay_host.empty() || lobby.relay_port == 0U ||
+            lobby.host_key.size() != 43U) {
+            wipe(lobby.server_token);
+            wipe(lobby.host_key);
+            result.error_code = "invalid_response";
+            result.error = "AoSPlay returned incomplete relay credentials.";
+            return result;
+        }
+        result.lobby = std::move(lobby);
+        return result;
+    }
+
+    [[nodiscard]] bool close_relay_lobby(const RevivalRelayLobby& lobby,
+                                         std::stop_token stop) {
+        if (lobby.lobby_id.empty() || lobby.server_token.empty()) return false;
+        auto credential = lobby.server_token;
+        const auto response = request("/api/lobbies/" + url_encode(lobby.lobby_id),
+                                      "DELETE", std::nullopt, credential,
+                                      std::chrono::milliseconds{5'000}, stop);
+        wipe(credential);
+        return static_cast<bool>(response) || response.status == 404L;
+    }
+
     [[nodiscard]] AosPlayProfileResult own_profile() {
-        std::scoped_lock lock{mutex};
-        if (access_token.empty()) {
+        std::string token;
+        { const std::scoped_lock lock{mutex}; token=access_token; }
+        if (token.empty()) {
             return {{}, "Sign in to view your persistent profile."};
         }
-        const auto response = request("/api/profile/me", "GET", std::nullopt, access_token);
+        const auto response = request("/api/profile/me", "GET", std::nullopt, token);
+        wipe(token);
         if (!response) {
             return {{}, response.error.empty() ? "Could not load your AoSPlay profile."
                                                : response.error};
@@ -604,6 +792,143 @@ public:
             parsed.error = "AoSPlay returned no profile for this account.";
         }
         return parsed;
+    }
+
+    /** The caller holds mutex so account and its bearer token share a snapshot. */
+    [[nodiscard]] std::filesystem::path hosted_results_directory_locked() const {
+        if (!account || account->public_id.empty() || !std::ranges::all_of(account->public_id, [](unsigned char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+        })) return {};
+        return config.state_path.parent_path() / "hosted-results" / account->public_id;
+    }
+
+    [[nodiscard]] std::filesystem::path hosted_results_directory() const {
+        const std::scoped_lock lock{mutex};
+        return hosted_results_directory_locked();
+    }
+
+    [[nodiscard]] HostedResultsUpload flush_hosted_results(std::stop_token stop) {
+        HostedResultsUpload result;
+        // Only one pass may own the scan position. Other identity operations
+        // remain independent while an upload waits for HTTP.
+        if (stop.stop_requested()) return result;
+        const std::unique_lock upload_lock{hosted_results_mutex, std::try_to_lock};
+        if (!upload_lock.owns_lock()) return result;
+        std::filesystem::path directory;
+        std::string token;
+        {
+            const std::scoped_lock lock{mutex};
+            directory = hosted_results_directory_locked();
+            token = access_token;
+        }
+        struct TokenGuard { std::string& value; ~TokenGuard() { wipe(value); } } guard{token};
+        if (directory.empty() || token.empty() || stop.stop_requested()) return result;
+        try {
+            const auto root_status = std::filesystem::symlink_status(directory);
+            if (!std::filesystem::exists(root_status)) return result;
+            if (std::filesystem::is_symlink(root_status) || !std::filesystem::is_directory(root_status))
+                throw std::runtime_error{"Hosted results directory is not a regular directory."};
+            // Resume after the previous batch, even if every HTTP request in
+            // that batch failed. Retaining the iterator also lets bounded
+            // scans progress through more than 4,096 directory entries.
+            // At the end, the next pass rescans to see newly mirrored files.
+            if (hosted_results_scan_directory != directory ||
+                hosted_results_next == std::filesystem::directory_iterator{}) {
+                hosted_results_next = std::filesystem::directory_iterator{directory};
+                hosted_results_scan_directory = directory;
+            }
+            std::size_t examined{}, attempted{};
+            while (hosted_results_next != std::filesystem::directory_iterator{} &&
+                   !stop.stop_requested() && examined < 4096U && attempted < 16U) {
+                const auto entry = *hosted_results_next;
+                ++hosted_results_next;
+                ++examined;
+                std::error_code file_error;
+                if (entry.path().extension() != ".json" ||
+                    !std::filesystem::is_regular_file(entry.symlink_status(file_error)) || file_error) continue;
+                const auto bytes = entry.file_size(file_error);
+                if (file_error || bytes == 0U || bytes > 256U * 1024U) continue;
+                const auto read_report = [](const std::filesystem::path& path) {
+                    std::ifstream stream{path, std::ios::binary};
+                    std::string content(256U * 1024U + 1U, '\0');
+                    stream.read(content.data(), static_cast<std::streamsize>(content.size()));
+                    content.resize(static_cast<std::size_t>(stream.gcount()));
+                    return content;
+                };
+                const auto encoded = read_report(entry.path());
+                if (encoded.empty() || encoded.size() > 256U * 1024U) continue;
+                auto payload = Json::parse(encoded, nullptr, false);
+                if (!payload.is_object() || !payload.contains("relay_lobby_id") ||
+                    !payload.contains("event_id") || !payload["event_id"].is_string() ||
+                    payload["event_id"].get_ref<const std::string&>() != entry.path().stem().string()) continue;
+                {
+                    const std::scoped_lock lock{mutex};
+                    if (hosted_results_directory_locked() != directory || access_token != token) break;
+                }
+                ++attempted;
+                // A cold result transaction can outlive the short social-action
+                // deadline. This runs off the UI thread and remains cancellable;
+                // only an acknowledgement removes its durable retry file.
+                const auto response = request("/api/master/stats", "POST", std::move(payload), token, std::chrono::seconds{15}, stop);
+                const auto acknowledgement = response ? parse_json(response) : std::nullopt;
+                if (!acknowledgement || !acknowledgement->value("accepted", false)) {
+                    result.error = response.error.empty() ? "Hosted results are queued for retry." : response.error;
+                    continue;
+                }
+                // A second uploader or server may have acknowledged the same file.
+                // Do not remove a different report replaced during this request.
+                const auto current_bytes = read_report(entry.path());
+                if (current_bytes != encoded) continue;
+                if (std::filesystem::remove(entry.path())) ++result.uploaded;
+            }
+        } catch (const std::filesystem::filesystem_error& error) {
+            hosted_results_next = {};
+            hosted_results_scan_directory.clear();
+            result.error = error.what();
+        } catch (const std::exception& error) { result.error = error.what(); }
+        return result;
+    }
+
+    [[nodiscard]] InventoryResult inventory_request(const InventoryRequest& action, std::stop_token stop) {
+        std::string token;
+        {
+            const std::scoped_lock lock{mutex};
+            if (!action.expected_account.empty() &&
+                (!account || account->public_id != action.expected_account))
+                return {{}, "Your account changed. Reload your collection.", "account_changed", 401};
+            token = access_token;
+        }
+        if (token.empty()) return {{}, "Sign in to load your collection.", "authentication_required", 401};
+        struct TokenGuard { std::string& value; ~TokenGuard() { wipe(value); } } guard{token};
+        std::string path{"/api/inventory/snapshot?compact=1"}, method{"GET"};
+        std::optional<Json> payload;
+        switch (action.kind) {
+        case InventoryRequestKind::snapshot: break;
+        case InventoryRequestKind::crates:
+            path = "/api/crates/me?limit=50&cursor=" + url_encode(action.target); break;
+        case InventoryRequestKind::history:
+            path = "/api/crates/openings?limit=50&cursor=" + url_encode(action.target); break;
+        case InventoryRequestKind::open:
+            path = "/api/crates/" + url_encode(action.target) + "/open";
+            method = "POST";
+            payload = Json{{"schema_version", 1}, {"idempotency_key", action.idempotency_key}, {"client_nonce", action.nonce}, {"include_collection", true}};
+            break;
+        case InventoryRequestKind::equip:
+        case InventoryRequestKind::unequip:
+            path = "/api/inventory/equipped/" + url_encode(
+                std::string{cosmetic_storage_slot(action.cosmetic_id,action.target)});
+            method = action.kind == InventoryRequestKind::equip ? "PUT" : "DELETE";
+            payload = Json{{"schema_version", 1}, {"cosmetic_id", action.cosmetic_id},
+                {"expected_inventory_revision", action.revision}, {"content_version", 5}, {"include_collection", true}};
+            break;
+        }
+        const auto response = request(path, method, std::move(payload), token, std::chrono::seconds{8}, stop, 512U*1024U);
+        if (!response) return {{}, response.error.empty() ? "Collection service is unavailable." : response.error,
+            response.error_code, response.status};
+        const auto parsed = parse_json(response);
+        if (!parsed || !parsed->is_object() || parsed->value("schema_version", 0) != 1)
+            return {{}, "Collection response is unsupported.", "invalid_collection", response.status};
+        return {*parsed, {}, {}, response.status};
     }
 
     [[nodiscard]] RevivalSocialResult social_request(
@@ -699,15 +1024,135 @@ public:
         return parsed;
     }
 
+    [[nodiscard]] RevivalWorkshopResult publish_ugc_project(
+        const std::filesystem::path& maps_root, std::string_view uid,
+        std::string_view title, std::stop_token stop) {
+        std::string token;
+        {
+            const std::scoped_lock lock{mutex};
+            if (access_token.empty() || !account || account->account_type != "registered")
+                return {{}, "Sign in to a registered AoSPlay account to publish a map."};
+            token = access_token;
+        }
+        // The scoped account token is used only with the configured AoSPlay
+        // origin; Blob receives a separate, single-file upload credential.
+        struct TokenGuard { std::string& value; ~TokenGuard() { wipe(value); } } guard{token};
+        try {
+            if (stop.stop_requested()) throw std::runtime_error{"Publication cancelled."};
+            if (title.empty() || title.size() > 96U) throw std::runtime_error{"The map needs a title of 1–96 characters."};
+            const auto project = read_revival_workshop_project(maps_root, uid);
+            const auto success = [&](std::string url) {
+                const auto saved = save_workshop_receipt(maps_root, uid, project, url);
+                return RevivalWorkshopResult{std::move(url), {}, saved ? "" :
+                    "The map was published, but its local publication receipt could not be saved."};
+            };
+            Json manifest = Json::array();
+            for (const auto& file : project.files) manifest.push_back({{"filename", file.filename},
+                {"size", file.bytes.size()}, {"sha256", file.sha256}});
+            const auto call = [&](Json payload) {
+                if (stop.stop_requested()) throw std::runtime_error{"Publication cancelled."};
+                const auto response = request("/api/workshop/native", "POST", std::move(payload),
+                    token, std::chrono::seconds{60}, stop);
+                if (!response) throw std::runtime_error{response.error};
+                const auto parsed = parse_json(response);
+                if (!parsed) throw std::runtime_error{"The archive returned an invalid response."};
+                return *parsed;
+            };
+            const auto item_url = [&](const Json& response) {
+                const auto path = json_string(response, "path");
+                if (!path.starts_with("/workshop/") || path.size() > 106U ||
+                    path.size() <= 10U || !std::ranges::all_of(path.substr(10), [](unsigned char value) {
+                        return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value == '-';
+                    })) throw std::runtime_error{"The archive returned an invalid item page."};
+                return config.api_base + path;
+            };
+            const auto prepared = call({{"action", "prepare"}, {"submission", {
+                {"title", title}, {"description", project.description}, {"original_author", project.author},
+                {"item_type", "map"}, {"source_type", "community"}, {"tags", project.tags}, {"files", manifest}}}});
+            if (prepared.value("published", false)) return success(item_url(prepared));
+            const auto& submission = prepared.at("submission");
+            const auto item = json_string(submission, "id");
+            const auto& assets = submission.at("assets");
+            if (item.size() != 36U || !assets.is_array() || assets.size() != project.files.size())
+                throw std::runtime_error{"The archive returned an invalid file manifest."};
+            for (const auto& file : project.files) {
+                const auto asset = std::ranges::find_if(assets, [&](const auto& value) {
+                    return json_string(value, "filename") == file.filename;
+                });
+                if (asset == assets.end()) throw std::runtime_error{"The archive file manifest is incomplete."};
+                const auto asset_id = json_string(*asset, "id");
+                const auto credentials = call({{"action", "token"}, {"item_id", item}, {"asset_id", asset_id}});
+                if (credentials.value("uploaded", false)) continue;
+                const auto upload_path = json_string(credentials, "pathname");
+                auto upload_token = json_string(credentials, "token");
+                TokenGuard upload_guard{upload_token};
+                if (upload_path != json_string(*asset, "uploadPath") ||
+                    !upload_path.starts_with("workshop/" + item + "/" + asset_id + "/") ||
+                    upload_path.size() > 512U || !upload_token.starts_with("vercel_blob_client_") ||
+                    upload_token.find_first_of("\r\n") != std::string::npos || upload_token.size() > 8192U ||
+                    json_string(credentials, "api_version") != "12")
+                    throw std::runtime_error{"The archive returned an invalid upload target."};
+                // A lost PUT response is reconciled by the verified object at
+                // its database-owned path, including on a later Publish retry.
+                const auto uploaded = put_workshop_blob(upload_path, upload_token, file, stop);
+                const auto verified = call({{"action", "verify"}, {"item_id", item}, {"asset_id", asset_id}});
+                if (!verified.value("uploaded", false)) throw std::runtime_error{
+                    uploaded ? "The archive has not verified this file yet. Retry Publish." : "The map upload was interrupted. Retry Publish to resume."};
+            }
+            const auto complete = call({{"action", "complete"}, {"item_id", item}});
+            return success(item_url(complete));
+        } catch (const std::exception& exception) { return {{}, exception.what()}; }
+    }
+
 private:
+    [[nodiscard]] static bool put_workshop_blob(std::string_view path, std::string_view token,
+        const RevivalWorkshopFile& file, std::stop_token stop) {
+        auto* handle = curl_easy_init();
+        if (handle == nullptr) return false;
+        const auto url = "https://vercel.com/api/blob/?pathname=" + url_encode(path);
+        curl_slist* headers = nullptr;
+        for (const auto& header : std::array<std::string, 6>{"Authorization: Bearer " + std::string{token},
+            "x-api-version: 12", "x-content-type: " + file.content_type,
+            "Content-Type: " + file.content_type, "x-add-random-suffix: 0", "x-vercel-blob-access: public"})
+            headers = curl_slist_append(headers, header.c_str());
+        WriteBuffer write{{}, 65536U, false};
+        curl_easy_setopt(handle, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_easy_setopt(handle, CURLOPT_POSTFIELDS, file.bytes.data());
+        curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(file.bytes.size()));
+        curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
+        curl_easy_setopt(handle, CURLOPT_TIMEOUT, 300L);
+        curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &curl_write);
+        curl_easy_setopt(handle, CURLOPT_WRITEDATA, &write);
+        curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, &curl_cancel);
+        curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &stop);
+        const auto result = curl_easy_perform(handle);
+        long status{};
+        curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(handle);
+        return result == CURLE_OK && status >= 200L && status < 300L && !write.overflow;
+    }
+
     [[nodiscard]] HttpResult request(std::string_view path,
                                      std::string_view method,
                                      std::optional<Json> payload,
                                      std::string_view token,
                                      std::chrono::milliseconds timeout = {},
-                                     std::stop_token stop = {}) const {
+                                     std::stop_token stop = {},
+                                     std::size_t maximum_payload = 0U) const {
         HttpResult result;
-        auto* handle = curl_easy_init();
+        CurlHandle owned{nullptr,curl_easy_cleanup};
+        {
+            std::lock_guard lock{transport_mutex};
+            if (!idle_handles.empty()) { owned=std::move(idle_handles.back()); idle_handles.pop_back(); }
+        }
+        if (!owned) owned.reset(curl_easy_init());
+        auto* handle = owned.get();
         if (handle == nullptr) {
             result.error_code = "network_error";
             result.error = "Could not initialize the AoSPlay request.";
@@ -715,7 +1160,7 @@ private:
         }
         const auto url = config.api_base + std::string{path};
         const auto body = payload.has_value() ? payload->dump() : std::string{};
-        WriteBuffer write{{}, config.maximum_payload_bytes, false};
+        WriteBuffer write{{}, maximum_payload ? maximum_payload : config.maximum_payload_bytes, false};
         char error_buffer[CURL_ERROR_SIZE]{};
         curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Accept: application/json");
@@ -739,14 +1184,17 @@ private:
                                                .count()));
         curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
+        curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING, "");
+        curl_easy_setopt(handle, CURLOPT_TCP_KEEPALIVE, 1L);
         curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &curl_write);
         curl_easy_setopt(handle, CURLOPT_WRITEDATA, &write);
         curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, error_buffer);
         curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, &curl_cancel);
         curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &stop);
-        if (method == "POST") {
-            curl_easy_setopt(handle, CURLOPT_POST, 1L);
+        if (method == "POST" || method == "PUT") {
+            if (method == "POST") curl_easy_setopt(handle, CURLOPT_POST, 1L);
+            else curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, "PUT");
             curl_easy_setopt(handle, CURLOPT_POSTFIELDS, body.data());
             curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE,
                              static_cast<long>(body.size()));
@@ -762,7 +1210,12 @@ private:
         const auto code = curl_easy_perform(handle);
         curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &result.status);
         curl_slist_free_all(headers);
-        curl_easy_cleanup(handle);
+        // Reset request credentials/options, retaining DNS, TLS and keep-alive connections.
+        curl_easy_reset(handle);
+        {
+            std::lock_guard lock{transport_mutex};
+            if (idle_handles.size()<4U) idle_handles.push_back(std::move(owned));
+        }
         result.body = std::move(write.body);
         if (code != CURLE_OK || write.overflow) {
             result.error_code =
@@ -1025,6 +1478,12 @@ private:
     }
 
     mutable std::mutex mutex;
+    using CurlHandle = std::unique_ptr<CURL,decltype(&curl_easy_cleanup)>;
+    mutable std::mutex transport_mutex;
+    mutable std::vector<CurlHandle> idle_handles;
+    std::mutex hosted_results_mutex;
+    std::filesystem::path hosted_results_scan_directory;
+    std::filesystem::directory_iterator hosted_results_next;
     RevivalIdentityConfig config;
     Json state{{"version", 1}};
     std::optional<RevivalAccount> account;
@@ -1076,8 +1535,38 @@ RevivalTicketResult RevivalIdentityService::game_ticket(
     return impl_->game_ticket(std::move(server_id));
 }
 
+RevivalRelayLobbyResult RevivalIdentityService::create_relay_lobby(
+    const RevivalRelayLobbyRequest& request,
+    std::stop_token stop) {
+    return impl_->create_relay_lobby(request, stop);
+}
+
+bool RevivalIdentityService::close_relay_lobby(
+    const RevivalRelayLobby& lobby,
+    std::stop_token stop) {
+    return impl_->close_relay_lobby(lobby, stop);
+}
+
 AosPlayProfileResult RevivalIdentityService::own_profile() {
     return impl_->own_profile();
+}
+
+InventoryResult RevivalIdentityService::inventory_request(const InventoryRequest& request, std::stop_token stop) {
+    return impl_->inventory_request(request, stop);
+}
+
+std::filesystem::path RevivalIdentityService::hosted_results_directory() const {
+    return impl_->hosted_results_directory();
+}
+
+HostedResultsUpload RevivalIdentityService::flush_hosted_results(std::stop_token stop) {
+    return impl_->flush_hosted_results(stop);
+}
+
+RevivalWorkshopResult RevivalIdentityService::publish_ugc_project(
+    const std::filesystem::path& maps_root, std::string_view uid,
+    std::string_view title, std::stop_token stop) {
+    return impl_->publish_ugc_project(maps_root, uid, title, stop);
 }
 
 RevivalSocialResult RevivalIdentityService::social_request(

@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "id": "pack-legacy-stg44-smg",
+  "name": "StG 44",
+  "source": "https://gamebanana.com/mods/169827",
+  "class": "ViewSMGSkin",
+  "category": "SMG",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/SMG/View.as"
+  ],
+  "resources": {
+    "Gfx/ReflexRound.png": "Gfx/ReflexRound.png",
+    "Models/Weapons/SMG/Casing.kv6": "Models/Weapons/SMG/Casing.kv6",
+    "Models/Weapons/SMG/ChargingHandle.kv6": "Models/Weapons/SMG/ChargingHandle.kv6",
+    "Models/Weapons/SMG/MagazineEmpty.kv6": "Models/Weapons/SMG/MagazineEmpty.kv6",
+    "Models/Weapons/SMG/MagazineLoaded.kv6": "Models/Weapons/SMG/MagazineLoaded.kv6",
+    "Models/Weapons/SMG/SightsFront.kv6": "Models/Weapons/SMG/SightsFront.kv6",
+    "Models/Weapons/SMG/SightsPin.kv6": "Models/Weapons/SMG/SightsPin.kv6",
+    "Models/Weapons/SMG/SightsReflex.kv6": "Models/Weapons/SMG/SightsReflex.kv6",
+    "Models/Weapons/SMG/Tracer.kv6": "Models/Weapons/SMG/Tracer.kv6",
+    "Models/Weapons/SMG/Weapon.kv6": "Models/Weapons/SMG/Weapon.kv6",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "Models/Weapons/SMG/WeaponNoMagazine.kv6",
+    "Scripts/Skin/SMG/laser.wav": "Scripts/Skin/SMG/laser.wav.ogg",
+    "Scripts/Skin/SMG/laserLocal.wav": "Scripts/Skin/SMG/laserLocal.wav.ogg",
+    "Scripts/Skin/SMG/Raygun.as": "Scripts/Skin/SMG/Raygun.as",
+    "Scripts/Skin/SMG/ThirdPerson.as": "Scripts/Skin/SMG/ThirdPerson.as",
+    "Scripts/Skin/SMG/View.as": "Scripts/Skin/SMG/View.as",
+    "Sounds/Fire1.wav": "Sounds/Fire1.wav.ogg",
+    "Sounds/Fire2.wav": "Sounds/Fire2.wav.ogg",
+    "Sounds/Fire3.wav": "Sounds/Fire3.wav.ogg",
+    "Sounds/Fire4.wav": "Sounds/Fire4.wav.ogg",
+    "Sounds/FireFar.wav": "Sounds/FireFar.wav.ogg",
+    "Sounds/FireLocal1.wav": "Sounds/FireLocal1.wav.ogg",
+    "Sounds/FireLocal2.wav": "Sounds/FireLocal2.wav.ogg",
+    "Sounds/FireLocal3.wav": "Sounds/FireLocal3.wav.ogg",
+    "Sounds/FireLocal4.wav": "Sounds/FireLocal4.wav.ogg",
+    "Sounds/FireMedium1.wav": "Sounds/FireMedium1.wav.ogg",
+    "Sounds/FireMedium2.wav": "Sounds/FireMedium2.wav.ogg",
+    "Sounds/FireMedium3.wav": "Sounds/FireMedium3.wav.ogg",
+    "Sounds/FireMedium4.wav": "Sounds/FireMedium4.wav.ogg",
+    "Sounds/FireStereo.wav": "Sounds/FireStereo.wav.ogg",
+    "Sounds/RaiseLocal.wav": "Sounds/RaiseLocal.wav.ogg",
+    "Sounds/Reload.wav": "Sounds/Reload.wav.ogg",
+    "Sounds/ReloadLocal.wav": "Sounds/ReloadLocal.wav.ogg",
+    "Sounds/ShellDrop1.wav": "Sounds/ShellDrop1.wav.ogg",
+    "Sounds/ShellDrop2.wav": "Sounds/ShellDrop2.wav.ogg",
+    "Sounds/ShellWater.wav": "Sounds/ShellWater.wav.ogg",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Sounds/Weapons/SMG/FireLocal1.wav": "Sounds/FireLocal1.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal2.wav": "Sounds/FireLocal2.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal3.wav": "Sounds/FireLocal3.wav.ogg",
+    "Sounds/Weapons/SMG/FireLocal4.wav": "Sounds/FireLocal4.wav.ogg",
+    "Sounds/Weapons/SMG/FireFar.wav": "Sounds/FireFar.wav.ogg",
+    "Sounds/Weapons/SMG/FireStereo.wav": "Sounds/FireStereo.wav.ogg",
+    "Sounds/Weapons/SMG/ReloadLocal.wav": "Sounds/ReloadLocal.wav.ogg"
+  },
+  "hashes": {
+    "Gfx/ReflexRound.png": "097d0989ca9a002ed457d2c304492ff9ad13b4cb23fa4d4820c293e959b03489",
+    "Models/Weapons/SMG/Casing.kv6": "eb7a49a63bedc590db0f36f16d9b705ffac4a53b886f49e60d5b68ec56590bfd",
+    "Models/Weapons/SMG/ChargingHandle.kv6": "00826c1bc2ee6f040e800b8a33d3da37e5e5e32457ded70635ec100ba2069f2b",
+    "Models/Weapons/SMG/MagazineEmpty.kv6": "9111c6a38c87e82d2b7cfe5ad8f6a82b410b1abba88ba2ffab224cb277e9f4f7",
+    "Models/Weapons/SMG/MagazineLoaded.kv6": "5ed57eaa91ea756493602ee424b02a3346aee1b0f288964890131128e8ebada2",
+    "Models/Weapons/SMG/SightsFront.kv6": "41cf2452f4d641a4123690cab38ab6335294723fc2daf8357b2d715015f32de8",
+    "Models/Weapons/SMG/SightsPin.kv6": "e86386e129b89d0eae4bc390a8aad0cf2ce974a789d080f6e30bf4e023b1b094",
+    "Models/Weapons/SMG/SightsReflex.kv6": "c5f48a4b289150147c05120af27ca02e4af7f9d7cca0963fe1013ff20c8ba65f",
+    "Models/Weapons/SMG/Tracer.kv6": "29ce24627fe12cb92f59c47577cb8bf68b44825254ff855bfb86febe42ad85aa",
+    "Models/Weapons/SMG/Weapon.kv6": "cb627e9cecb147b88e9c18125e683f5798e20e87304e4235042b45a80c1f2cb3",
+    "Models/Weapons/SMG/WeaponNoMagazine.kv6": "2b019ef4fbe8129687b833a606d3772c432f955943bbad89328d56b58eb4402a",
+    "Scripts/Skin/SMG/laser.wav": "562d0d00ef4a0941c786331729bd52edf6b0c23160671aa46a26d6e6a044e81a",
+    "Scripts/Skin/SMG/laserLocal.wav": "a2a37e3e1f14db3af8bcfdeb1ddef1a7f65e47901a1d853c13c3074aff00f792",
+    "Scripts/Skin/SMG/Raygun.as": "656b24d6d9b0e6d6eb770eda270c2ecbdb51d096f6bdf5e524dfc84f1ad08dc4",
+    "Scripts/Skin/SMG/ThirdPerson.as": "dafa12ebf087eaf0754b79d158715be46e1fa28c7703a1d2138585759f6bb73a",
+    "Scripts/Skin/SMG/View.as": "1150c7d9aa0b95f1318879213e2b207635bb362bd6f6157fdd72763dbc989622",
+    "Sounds/Fire1.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/Fire2.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/Fire3.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/Fire4.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/FireFar.wav": "f1db6ae996fdfc69d0c8abb70302403c6c9ac7c6b205379cd118c45792ff5523",
+    "Sounds/FireLocal1.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/FireLocal2.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/FireLocal3.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/FireLocal4.wav": "75649c60ec71baf68cf1aad8c36113d71ffd9a1eaab043678a26a26426ae2ef8",
+    "Sounds/FireMedium1.wav": "38d158d86362dd76b1ddadfe7c8c85a0a419d64f91995a31c2245012d8c545db",
+    "Sounds/FireMedium2.wav": "38d158d86362dd76b1ddadfe7c8c85a0a419d64f91995a31c2245012d8c545db",
+    "Sounds/FireMedium3.wav": "38d158d86362dd76b1ddadfe7c8c85a0a419d64f91995a31c2245012d8c545db",
+    "Sounds/FireMedium4.wav": "e356e64c93cb6c8ff29c5200a1f4151223c9310b44a83030711172d2914807d2",
+    "Sounds/FireStereo.wav": "36cb757e81646e938adb7a9ef43649e7e96319e17b88d02a93cdd3234bb85599",
+    "Sounds/RaiseLocal.wav": "a3055dc5800b80ef25141f926ef789f614174982dd3dfbf3247d13af8a7c0ed0",
+    "Sounds/Reload.wav": "6d8b6b9a49a19ee28d62fa39baf5996a385788202355da0951b0443be9af07f7",
+    "Sounds/ReloadLocal.wav": "6d8b6b9a49a19ee28d62fa39baf5996a385788202355da0951b0443be9af07f7",
+    "Sounds/ShellDrop1.wav": "ed2f8e1c15c40971840305f0cef19422f2f2cd14bd777eae1abffdf4b6e293e7",
+    "Sounds/ShellDrop2.wav": "8b650719f62caeabeba6722022d403ed4b87b484b8793c181075890672120478",
+    "Sounds/ShellWater.wav": "15bfc59a2226f71db9ca62b0f33a2280b941f6736403f95528d3b3c798dfbbbe",
+    "Scripts/Skin/SMG/laser.wav.ogg": "a8352fad2066b0ae6d43bbc9554f7a7630ab15df20dfe6b446d310a0577d8a47",
+    "Scripts/Skin/SMG/laserLocal.wav.ogg": "42bb3276e634d23b6bc55cd99d00a7f4ed727977b0cbf853aa521ad1798f77f5",
+    "Sounds/Fire1.wav.ogg": "91edff161436600ea9481a2584cecc58c1e819916875c51a3bb925267c87c6b7",
+    "Sounds/Fire2.wav.ogg": "f03550e41af70622da2c5af86649796e955ce1373d384f571e768923e79a4e7f",
+    "Sounds/Fire3.wav.ogg": "994e2db40df70bd2953e26acdf7eaed24abacb4f0befdc423937c964c6405aa3",
+    "Sounds/Fire4.wav.ogg": "eddf37267212bac29c59ea355d27983241da4184e10ac9b7cb983614b7042f0b",
+    "Sounds/FireFar.wav.ogg": "2d7882ac88f47ecd16f670cb728253ba05be967fb0ead2fb18434114721d7751",
+    "Sounds/FireLocal1.wav.ogg": "35c244ee66c9a2127f2514fbd250692fa5df0cacfac940e949daeaa111a76cf2",
+    "Sounds/FireLocal2.wav.ogg": "706c77767c9131ebc1fe3f379e5f68a19e84f790ab426c72cd615c215538c63f",
+    "Sounds/FireLocal3.wav.ogg": "17ad9642bf2227d5b2991eed56908046475792a034a49323fac2357c565e2418",
+    "Sounds/FireLocal4.wav.ogg": "2a3987e96d542423981cb6570ebda0236c284206720a164b9efa61b885fdf433",
+    "Sounds/FireMedium1.wav.ogg": "c4419db6dfc57128f9f9e5adecff67cbf87912a5f1bce9b7e87f9ce362f2cd9b",
+    "Sounds/FireMedium2.wav.ogg": "21265e21ed9b7131e45c7e697c3574bef61226f71fb00367e24d797edf0744cd",
+    "Sounds/FireMedium3.wav.ogg": "d4e7f0763a48a35c6d2c406c66aea8560ecfbc08b9e042bc022fc67289661f92",
+    "Sounds/FireMedium4.wav.ogg": "16a1f5874bcdd6cf6c8f60fc22bcda9633c243e2482b3c238ced4c9ebc7e8042",
+    "Sounds/FireStereo.wav.ogg": "95070f9a62212e84fbd0bcb72c61b3fc7bdfaee0597397b2a715c80ec3fcca94",
+    "Sounds/RaiseLocal.wav.ogg": "5ad91b3e08ffd5c60f6e8aed60e7248de3b6602c09ceb621d487cfd45da3d43c",
+    "Sounds/Reload.wav.ogg": "5e95df9cb4c02111a50a3dd13c7c16c65d664e1eac3f18ed17ddf869d71d312f",
+    "Sounds/ReloadLocal.wav.ogg": "c5e382175c23e91720c99f2c814815ce7ef1faecb457a64cb12d17568c2c0276",
+    "Sounds/ShellDrop1.wav.ogg": "86fabe8c65a29281097a05c50702919d47c9e30c0a2eaa65547fd10d754a0d5c",
+    "Sounds/ShellDrop2.wav.ogg": "48768b95145baffd4635ea8b7f42b02f08f15654cdd6c561425e6b85d11a442a",
+    "Sounds/ShellWater.wav.ogg": "c36274ba9ee83f3a3b250ff0b53d14504978c8fe864c4da9847830dab5442f4c",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "group": "Key Authors",
+      "authors": [
+        {
+          "name": "Lauchin",
+          "role": "Modeler",
+          "url": null
+        }
+      ]
+    },
+    {
+      "group": "Special Thanks",
+      "authors": [
+        {
+          "name": "DaLemon",
+          "role": "Model and Sound",
+          "url": null
+        },
+        {
+          "name": "PTrooper",
+          "role": "Scripts",
+          "url": null
+        }
+      ]
+    },
+    {
+      "group": "Scripts",
+      "authors": [
+        {
+          "name": "PTrooper",
+          "role": "Script Creator",
+          "url": "https://gamebanana.com/members/1415230"
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  },
+  "fallbacks": []
+}

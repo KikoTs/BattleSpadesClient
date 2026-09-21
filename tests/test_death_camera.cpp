@@ -1,4 +1,6 @@
 #include "battlespades/frontend/death_camera.hpp"
+#include "battlespades/frontend/live_client_policy.hpp"
+#include "battlespades/network/protocol168_players.hpp"
 #include "battlespades/render/camera_basis.hpp"
 
 #include <cmath>
@@ -106,12 +108,66 @@ int main() {
                "a world/self death must frame the broad face of grave.kv6");
         camera.end_life();
 
-        camera.enter_spectator({1.0, 2.0, 3.0}, 0.0, std::nullopt);
+        // The initial local CreatePlayer precedes both world construction and
+        // live roster reveal. Its team, rather than the new session's default
+        // health, must select the spectator camera without a fake death.
+        namespace net = battlespades::network;
+        using battlespades::frontend::local_player_is_spectator;
+        using battlespades::frontend::spectator_client_data;
+        net::Protocol168Roster roster;
+        net::CreatePlayerPacket spectator;
+        spectator.player_id = 1U;
+        spectator.team = 0U;
+        spectator.position = {1.0F, 2.0F, 3.0F};
+        spectator.name = "Spectator";
+        expect(roster.apply(net::encode_packet(spectator)),
+               "the initial spectator CreatePlayer must populate the roster");
+        const auto* local = roster.player(1U);
+        expect(local != nullptr && !local->dead &&
+                   local_player_is_spectator(local->team, true),
+               "spectator CreatePlayer dead=false must not imply a playable life");
+        expect(!local_player_is_spectator(2U, true) &&
+                   !local_player_is_spectator(3U, true) &&
+                   !local_player_is_spectator(0U, false),
+               "ordinary team lives and disabled spectator must retain their lifecycle");
+        camera.enter_spectator(local->position, 0.0, std::nullopt);
         expect(camera.mode() == DeathCameraMode::spectator_free,
                "spectators without a target need a safe free-camera fallback");
-        camera.set_chase_target(killer);
-        expect(camera.mode() == DeathCameraMode::chase,
-               "a newly available living player must become the spectator target");
+        for (std::int32_t loop = 0; loop < 3; ++loop) {
+            // Reveal can take multiple bounded batches. Camera activation
+            // must not suppress the neutral packets needed to finish it.
+            const auto decoded = net::decode_weapon_packet(net::encode_packet(
+                spectator_client_data(loop, spectator.player_id, {1.0F, 0.0F, 0.0F})));
+            expect(decoded.packet.has_value(), "spectator readiness must be wire-valid");
+            const auto* ready = std::get_if<net::ClientDataPacket>(&*decoded.packet);
+            expect(ready != nullptr && ready->loop_count == loop &&
+                       ready->player_id == spectator.player_id &&
+                       ready->movement_flags == 0U && ready->action_flags == 0U &&
+                       !ready->palette_enabled && ready->weapon_deployment_yaw == 0.0F,
+                   "spectator readiness must never leak movement, firing, or equipment input");
+        }
+        net::CreatePlayerPacket revealed;
+        revealed.player_id = killer.player_id;
+        revealed.team = 2U;
+        revealed.position = {20.0F, 30.0F, 40.0F};
+        revealed.orientation = {-1.0F, 0.0F, 0.0F};
+        revealed.name = "Revealed player";
+        expect(roster.apply(net::encode_packet(revealed)),
+               "post-readiness roster reveal must be accepted");
+        const auto* target = roster.player(revealed.player_id);
+        expect(target != nullptr && !target->dead,
+               "post-readiness roster must expose the living target");
+        camera.set_chase_target(DeathCameraTarget{
+            target->player_id, target->position, target->orientation});
+        expect(camera.mode() == DeathCameraMode::chase &&
+                   camera.chase_player_id() == revealed.player_id &&
+                   !camera.grave_entity_id().has_value(),
+               "initial spectator must chase the revealed player without a grave phase");
+        camera.end_life();
+        expect(!camera.active(), "an ordinary alive CreatePlayer must restore first-person view");
+        camera.begin_death({1.0, 2.0, 3.0}, 0.0, std::nullopt, true);
+        expect(camera.mode() == DeathCameraMode::grave && !camera.chase_available(),
+               "an initially dead playable replica must retain the ordinary grave phase");
 
         std::cout << "death camera lifecycle tests passed\n";
         return 0;

@@ -77,6 +77,35 @@ void expect(bool condition, std::string_view message) {
         std::move(id), std::move(name), members, maximum, 42U, true};
 }
 
+void pointer_actions_require_matching_press_and_release() {
+    UgcEditorLobbyModel model;
+    const auto center = [](Rect rect) { return Point{rect.x + rect.width / 2, rect.y + rect.height / 2}; };
+    const auto row = model.controls()[4U].widget.bounds;
+    const auto left = center(ugc_editor_setting_arrow(row, -1));
+    const auto right = center(ugc_editor_setting_arrow(row, 1));
+    model.pointer_press(left);
+    static_cast<void>(model.pointer_release(left));
+    expect(model.configuration().maximum_players == 10U, "left arrow must decrease the setting");
+    model.pointer_press(right);
+    static_cast<void>(model.pointer_release(right));
+    expect(model.configuration().maximum_players == 12U, "right arrow must increase the setting");
+    model.pointer_press(left);
+    static_cast<void>(model.pointer_release(right));
+    expect(model.configuration().maximum_players == 12U, "dragging between arrows must not change settings");
+    model.pointer_press(left);
+    expect(!model.pointer_release(center(model.controls()[2U].widget.bounds)).has_value(),
+           "dragging from a setting onto Start must not launch the editor");
+    model.pointer_press(right);
+    model.set_host_authority(false);
+    static_cast<void>(model.pointer_release(right));
+    expect(model.configuration().maximum_players == 12U, "authority lost during a click must cancel editing");
+
+    UgcEditorBrowserModel browser;
+    browser.pointer_press(Point{10 * scale, 10 * scale});
+    expect(!browser.pointer_release(Point{650 * scale, 480 * scale}).has_value(),
+           "releasing an outside press over New Lobby must not create a lobby");
+}
+
 void browser_recovers_retail_route_and_geometry() {
     const UgcEditorBrowserModel model;
     const auto controls = model.controls();
@@ -381,6 +410,30 @@ void ingame_settings_presentation_uses_retail_frames_rows_and_scroll() {
            "closed UGCSettings must emit no stale in-game overlay commands");
 }
 
+void collaborative_editor_restricts_settings_to_the_owner() {
+    UgcEditorLobbyModel model;
+    auto config = model.configuration();
+    config.map_name = "LunarBaseplate";
+    config.map_title = "SharedMap";
+    config.maximum_players = 24U;
+    expect(model.apply_configuration(config), "Valid remote settings apply");
+    model.set_members({{"Owner", true}, {"Guest", false}});
+    expect(model.members().size() == 2U, "Remote roster is retained");
+    model.set_host_authority(false);
+    expect(!model.cycle(UgcEditorSettingId::map, 1), "Guest cannot change baseplate");
+    expect(!model.begin_title_edit(), "Guest cannot rename the project");
+    for (const auto& control : model.controls()) {
+        if (control.kind == UgcEditorLobbyControlKind::start) {
+            expect(!control.widget.state.enabled, "Guest cannot launch a second host");
+        }
+    }
+    config.map_name = "../../outside";
+    expect(!model.apply_configuration(config), "Remote baseplate path is rejected");
+    expect(model.configuration().map_name == "LunarBaseplate", "Rejected snapshot is atomic");
+    model.set_host_authority(true);
+    expect(model.cycle(UgcEditorSettingId::map, 1), "Transferred owner can edit");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -390,6 +443,8 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"pointer_actions_require_matching_press_and_release", pointer_actions_require_matching_press_and_release},
+        {"collaborative_editor_restricts_settings_to_the_owner", collaborative_editor_restricts_settings_to_the_owner},
         {"browser_recovers_retail_route_and_geometry", browser_recovers_retail_route_and_geometry},
         {"browser_discovery_is_bounded_and_new_lobby_works_offline",
          browser_discovery_is_bounded_and_new_lobby_works_offline},

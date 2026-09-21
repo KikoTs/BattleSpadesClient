@@ -93,8 +93,8 @@ void semantic_navigation_emits_typed_routes_and_audio() {
     const auto subscribe = menu.handle(pressed(InputAction::activate));
     expect(subscribe.has_value() && subscribe->action == UgcSelectAction::subscribe_workshop &&
                subscribe->external_url ==
-                   "http://steamcommunity.com/workshop/browse/?appid=224540",
-           "Subscribe must emit the original Ace of Spades Workshop URL");
+                   "https://www.aosplay.net/workshop",
+           "Workshop browsing must open the supported Revival archive");
 }
 
 void workshop_app_id_is_configurable_but_never_zero() {
@@ -104,8 +104,8 @@ void workshop_app_id_is_configurable_but_never_zero() {
            "app id zero must fail closed without changing the retail default");
     expect(menu.set_steam_app_id(480U) &&
                menu.workshop_url() ==
-                   "http://steamcommunity.com/workshop/browse/?appid=480",
-           "a compatibility runtime may explicitly substitute its Steam app id");
+                   "https://www.aosplay.net/workshop",
+           "a Steam app override must not redirect the Revival publication destination");
 }
 
 void pointer_activation_preserves_retail_text_button_quirk() {

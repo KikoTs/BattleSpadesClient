@@ -77,7 +77,13 @@ public:
 
     [[nodiscard]] bool start(FrontendScreen root) noexcept;
     [[nodiscard]] bool push(FrontendScreen child) noexcept;
+    [[nodiscard]] bool push_instant(FrontendScreen child) noexcept;
     [[nodiscard]] bool pop() noexcept;
+    [[nodiscard]] bool pop_instant() noexcept;
+    /** Remove a departed match and all its overlays, even during a slide. */
+    [[nodiscard]] bool leave_match_instant() noexcept;
+    /** Return to an existing ancestor with one slide, without duplicating it. */
+    [[nodiscard]] bool return_to(FrontendScreen target) noexcept;
     [[nodiscard]] bool replace(FrontendScreen target,
                                NavigationDirection direction) noexcept;
     [[nodiscard]] bool reset(FrontendScreen root,

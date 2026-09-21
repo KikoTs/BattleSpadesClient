@@ -438,7 +438,10 @@ ui::DrawList QuickPlayPresentation::build_layer(const QuickPlayMenuModel& menu) 
     append_playlist_rows(list, menu);
     append_preview(list, menu.selected());
 
-    const auto status = search_status(menu.search_state());
+    const auto status = menu.search_state() == QuickPlaySearchState::complete &&
+                                menu.selected().chosen_server() == nullptr
+                            ? std::string{"No servers available for this playlist."}
+                            : search_status(menu.search_state());
     if (!status.empty()) {
         list.push(text(status,
                        "fonts/A750-Sans-Medium.ttf",

@@ -99,7 +99,14 @@ void UgcPrefabControl::reset() noexcept {
 }
 
 void UgcPrefabControl::set_input(UgcPrefabControlInput value, bool held) noexcept {
+    if (index(value) >= inputs_.size() || inputs_[index(value)] == held) return;
     inputs_[index(value)] = held;
+    if (held && value != UgcPrefabControlInput::sprint && value != UgcPrefabControlInput::carve) {
+        // A fresh direction/rotation key is a new nudge. Do not make reversals
+        // wait for the old direction's initial half-second repeat delay.
+        repeat_index_ = 0U;
+        repeat_remaining_ = 0.0;
+    }
 }
 
 bool UgcPrefabControl::input(UgcPrefabControlInput value) const noexcept {
@@ -108,12 +115,13 @@ bool UgcPrefabControl::input(UgcPrefabControlInput value) const noexcept {
 
 void UgcPrefabControl::clear_inputs() noexcept {
     inputs_.fill(false);
+    carve_pending_ = false;
     repeat_index_ = 0U;
     repeat_remaining_ = 0.0;
 }
 
 void UgcPrefabControl::tick(double dt, const Vec3& camera_forward) noexcept {
-    dt = std::max(0.0, dt);
+    if (!std::isfinite(dt) || dt < 0.0) return;
     deactivate_remaining_ = std::max(0.0, deactivate_remaining_ - dt);
     erase_remaining_ = std::max(0.0, erase_remaining_ - dt);
     if (has_placement_ && input(UgcPrefabControlInput::carve) && erase_remaining_ == 0.0) {
@@ -145,13 +153,17 @@ void UgcPrefabControl::tick(double dt, const Vec3& camera_forward) noexcept {
         return;
     }
 
-    repeat_remaining_ -= dt;
-    if (repeat_remaining_ > 0.0) {
+    const bool first_nudge = repeat_index_ == 0U;
+    if (!first_nudge) repeat_remaining_ -= dt;
+    if (repeat_remaining_ > 1e-9) {
         return;
     }
     repeat_index_ = static_cast<std::uint8_t>(
         std::min<std::size_t>(repeat_index_ + 1U, input_repeat.size() - 1U));
-    repeat_remaining_ = input_repeat[repeat_index_];
+    // Retain fractional tick time so a 50 ms repeat does not drift to four
+    // 60 Hz ticks. Bound catch-up after a stall to one nudge per fixed update.
+    repeat_remaining_ = first_nudge ? input_repeat[repeat_index_]
+                                    : std::max(0.0, repeat_remaining_ + input_repeat[repeat_index_]);
 
     const double flat_length =
         std::hypot(camera_forward.x, camera_forward.y);

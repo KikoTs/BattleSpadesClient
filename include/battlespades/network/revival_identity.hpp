@@ -2,6 +2,7 @@
 
 #include "battlespades/network/aosplay_scores.hpp"
 #include "battlespades/network/revival_social.hpp"
+#include "battlespades/network/revival_inventory.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <string_view>
 #include <stop_token>
 #include <utility>
+#include <vector>
 
 namespace battlespades::network {
 
@@ -52,11 +54,78 @@ struct RevivalTicketResult final {
     }
 };
 
+struct HostedResultsUpload final {
+    std::size_t uploaded{};
+    std::string error;
+};
+
+/** Authenticated AoSPlay allocation used by one client-owned public match. */
+struct RevivalRelayLobby final {
+    std::string lobby_id;
+    std::string server_id;
+    std::string server_token;
+    std::string master_url;
+    std::string allocation_id;
+    std::string relay_host;
+    std::uint16_t relay_port{};
+    std::string host_key;
+    std::uint16_t keepalive_seconds{10U};
+};
+
+struct RevivalRelayLobbyResult final {
+    std::optional<RevivalRelayLobby> lobby;
+    std::string error_code;
+    std::string error;
+    long http_status{};
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return lobby.has_value() && error.empty();
+    }
+};
+
+struct RevivalRelayLobbyRequest final {
+    std::string name;
+    std::string map;
+    std::string game_mode;
+    std::string mode_tla;
+    std::uint16_t max_players{12U};
+    std::uint16_t playlist_id{};
+    std::string texture_skin;
+    bool classic{};
+};
+
 struct RevivalIdentityConfig final {
     std::string api_base{"https://www.aosplay.net"};
     std::filesystem::path state_path;
     std::chrono::milliseconds timeout{5'000};
     std::size_t maximum_payload_bytes{64U * 1'024U};
+};
+
+struct RevivalWorkshopFile final {
+    std::string filename;
+    std::string content_type;
+    std::string kind;
+    std::string sha256;
+    std::string modified_ticks;
+    std::vector<unsigned char> bytes;
+};
+
+struct RevivalWorkshopProject final {
+    std::vector<RevivalWorkshopFile> files;
+    std::string description;
+    std::string author;
+    std::vector<std::string> tags;
+};
+
+/** Freeze bounded project siblings; reject traversal, links and partial reads. */
+[[nodiscard]] RevivalWorkshopProject read_revival_workshop_project(
+    const std::filesystem::path& maps_root, std::string_view uid);
+
+struct RevivalWorkshopResult final {
+    std::string item_url;
+    std::string error;
+    std::string warning;
+    [[nodiscard]] explicit operator bool() const noexcept { return !item_url.empty() && error.empty(); }
 };
 
 /** Returns `%LOCALAPPDATA%/AoS Revival/launcher_state.json` where possible. */
@@ -97,12 +166,30 @@ public:
     [[nodiscard]] RevivalAuthResult guest_login();
     [[nodiscard]] RevivalAuthResult logout();
     [[nodiscard]] RevivalTicketResult game_ticket(std::string server_id);
+    /** Account-scoped, credential-free reports survive disposable host folders. */
+    [[nodiscard]] std::filesystem::path hosted_results_directory() const;
+    /** Bounded worker operation; remove a report only after a committed acknowledgement. */
+    [[nodiscard]] HostedResultsUpload flush_hosted_results(std::stop_token stop = {});
+    /** Allocate a NAT-free public UDP endpoint for one owned local server. */
+    [[nodiscard]] RevivalRelayLobbyResult create_relay_lobby(
+        const RevivalRelayLobbyRequest& request,
+        std::stop_token stop = {});
+    /** Best-effort release using the allocation-scoped server credential. */
+    [[nodiscard]] bool close_relay_lobby(const RevivalRelayLobby& lobby,
+                                         std::stop_token stop = {});
     /** Fetch the signed-in account's profile without exposing its bearer token. */
     [[nodiscard]] AosPlayProfileResult own_profile();
+    /** Bounded collection operations; the account bearer never leaves this service. */
+    [[nodiscard]] InventoryResult inventory_request(const InventoryRequest& request,
+                                                   std::stop_token stop = {});
     /** Execute one typed social request without exposing the bearer token. */
     [[nodiscard]] RevivalSocialResult social_request(
         const RevivalSocialRequest& request,
         std::stop_token stop = {});
+    /** Publishes only after all immutable file checksums are verified by AoSPlay. */
+    [[nodiscard]] RevivalWorkshopResult publish_ugc_project(
+        const std::filesystem::path& maps_root, std::string_view uid,
+        std::string_view title, std::stop_token stop = {});
 
 private:
     class Impl;

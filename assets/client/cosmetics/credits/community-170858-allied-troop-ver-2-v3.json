@@ -1,0 +1,127 @@
+{
+  "name": "Allied troop / [Ver. 2]",
+  "source": "https://gamebanana.com/mods/170858",
+  "archive": [
+    {
+      "archive": "170858\\228599-players_pack_1.zip",
+      "extracted": "170858\\files-228599",
+      "sha256": "38107b075edd54bf72f9a7e393decac80cc175843ee57219691b84a0157f5d7d",
+      "listing": [
+        "Allied troop/",
+        "Allied troop/Non-bloody playerdead.kv6/",
+        "Allied troop/Non-bloody playerdead.kv6/playerdead.kv6",
+        "Allied troop/playerarms.kv6",
+        "Allied troop/playerdead.kv6",
+        "Allied troop/playerhead.kv6",
+        "Allied troop/playerleg.kv6",
+        "Allied troop/playerlegc.kv6",
+        "Allied troop/playertorso.kv6",
+        "Allied troop/playertorsoc.kv6",
+        "Allied troop/Poster.png",
+        "Allied troop/READ ME.txt",
+        "Allied troop/[Ver. 2]/",
+        "Allied troop/[Ver. 2]/Non-bloody playerdead.kv6/",
+        "Allied troop/[Ver. 2]/Non-bloody playerdead.kv6/playerdead.kv6",
+        "Allied troop/[Ver. 2]/playerarms.kv6",
+        "Allied troop/[Ver. 2]/playerdead.kv6",
+        "Allied troop/[Ver. 2]/playerhead.kv6",
+        "Allied troop/[Ver. 2]/playerleg.kv6",
+        "Allied troop/[Ver. 2]/playerlegc.kv6",
+        "Allied troop/[Ver. 2]/playertorso.kv6",
+        "Allied troop/[Ver. 2]/playertorsoc.kv6",
+        "Armageddon Astronaut/",
+        "Armageddon Astronaut/playerarms.kv6",
+        "Armageddon Astronaut/playerdead.kv6",
+        "Armageddon Astronaut/playerhead.kv6",
+        "Armageddon Astronaut/playerleg.kv6",
+        "Armageddon Astronaut/playerlegc.kv6",
+        "Armageddon Astronaut/playertorso.kv6",
+        "Armageddon Astronaut/playertorsoc.kv6",
+        "Armageddon Astronaut/Poster.png",
+        "Armageddon Astronaut/READ ME.txt",
+        "Armageddon Astronaut/[Without Helmet]/",
+        "Armageddon Astronaut/[Without Helmet]/playerarms.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playerdead.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playerhead.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playerleg.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playerlegc.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playertorso.kv6",
+        "Armageddon Astronaut/[Without Helmet]/playertorsoc.kv6",
+        "Astronaut/",
+        "Astronaut/playerarms.kv6",
+        "Astronaut/playerdead.kv6",
+        "Astronaut/playerhead.kv6",
+        "Astronaut/playerleg.kv6",
+        "Astronaut/playerlegc.kv6",
+        "Astronaut/playertorso.kv6",
+        "Astronaut/playertorsoc.kv6",
+        "Astronaut/Poster.png",
+        "Astronaut/READ ME.txt",
+        "Nazi/",
+        "Nazi/Alternative playerdead.kv6 [Bloody]/",
+        "Nazi/Alternative playerdead.kv6 [Bloody]/playerdead.kv6",
+        "Nazi/grenade.kv6",
+        "Nazi/Non-bloody playerdead.kv6/",
+        "Nazi/Non-bloody playerdead.kv6/playerdead.kv6",
+        "Nazi/playerarms.kv6",
+        "Nazi/playerdead.kv6",
+        "Nazi/playerhead.kv6",
+        "Nazi/playerleg.kv6",
+        "Nazi/playerlegc.kv6",
+        "Nazi/playertorso.kv6",
+        "Nazi/playertorsoc.kv6",
+        "Nazi/Poster.png",
+        "Nazi/READ ME.txt",
+        "Officer/",
+        "Officer/Alternative/",
+        "Officer/Alternative/Non-bloody playerdead.kv6/",
+        "Officer/Alternative/Non-bloody playerdead.kv6/playerdead.kv6",
+        "Officer/Alternative/playerarms.kv6",
+        "Officer/Alternative/playerdead.kv6",
+        "Officer/Alternative/playerhead.kv6",
+        "Officer/Alternative/playerleg.kv6",
+        "Officer/Alternative/playerlegc.kv6",
+        "Officer/Alternative/playertorso.kv6",
+        "Officer/Alternative/playertorsoc.kv6",
+        "Officer/Non-bloody playerdead.kv6/",
+        "Officer/Non-bloody playerdead.kv6/playerdead.kv6",
+        "Officer/Officer.png",
+        "Officer/playerarms.kv6",
+        "Officer/playerdead.kv6",
+        "Officer/playerhead.kv6",
+        "Officer/playerleg.kv6",
+        "Officer/playerlegc.kv6",
+        "Officer/playertorso.kv6",
+        "Officer/playertorsoc.kv6",
+        "Officer/READ ME.txt"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sName": "SIMOX"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

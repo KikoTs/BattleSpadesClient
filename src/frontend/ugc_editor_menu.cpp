@@ -285,23 +285,36 @@ void UgcEditorBrowserModel::pointer_move(std::optional<ui::Point> point) noexcep
 void UgcEditorBrowserModel::pointer_press(std::optional<ui::Point> point) noexcept {
     pointer_down_ = point.has_value();
     pointer_move(point);
+    pressed_control_ = hovered_;
+    pressed_lobby_id_.reset();
+    if (point.has_value()) {
+        if (const auto row = hit_lobby_row(*point); row.has_value()) {
+            pressed_lobby_id_ = lobbies_[first_visible_row_ + *row].lobby_id;
+        }
+    }
 }
 
 std::optional<UgcEditorBrowserIntent>
 UgcEditorBrowserModel::pointer_release(std::optional<ui::Point> point) noexcept {
     const auto was_down = pointer_down_;
+    const auto pressed_control = pressed_control_;
+    const auto pressed_lobby = std::move(pressed_lobby_id_);
+    pressed_control_.reset();
+    pressed_lobby_id_.reset();
     pointer_down_ = false;
     pointer_move(point);
     if (!was_down || !point.has_value()) {
         return std::nullopt;
     }
     if (const auto row = hit_lobby_row(*point); row.has_value()) {
-        static_cast<void>(select_visible_row(*row));
+        if (pressed_lobby == lobbies_[first_visible_row_ + *row].lobby_id) {
+            static_cast<void>(select_visible_row(*row));
+        }
         return std::nullopt;
     }
     if (const auto id = hit_control(*point); id.has_value()) {
         const auto index = control_index(*id);
-        if (index.has_value() && controls_[*index].widget.state.enabled) {
+        if (id == pressed_control && index.has_value() && controls_[*index].widget.state.enabled) {
             static_cast<void>(focus_.set_focused(*id));
             return activate(controls_[*index].kind);
         }
@@ -354,7 +367,7 @@ WidgetVisualState UgcEditorBrowserModel::visual_state(ui::WidgetId id) const noe
     if (!index.has_value() || !controls_[*index].widget.state.enabled) {
         return WidgetVisualState::disabled;
     }
-    if (pointer_down_ && hovered_ == id) {
+    if (pointer_down_ && pressed_control_ == id && hovered_ == id) {
         return WidgetVisualState::pressed;
     }
     if (hovered_ == id) {
@@ -466,7 +479,7 @@ UgcEditorLobbyModel::UgcEditorLobbyModel()
                                 UgcEditorLobbyControlKind::back,
                                 std::nullopt,
                                 "LEAVE_LOBBY"},
-          UgcEditorLobbyControl{widget(102U, pixels(296, 461, 80, 30)),
+          UgcEditorLobbyControl{widget(102U, pixels(60, 456, 332, 50)),
                                 UgcEditorLobbyControlKind::invite,
                                 std::nullopt,
                                 "INVITE"},
@@ -504,6 +517,36 @@ UgcEditorLobbyModel::UgcEditorLobbyModel()
 
 const UgcEditorConfiguration& UgcEditorLobbyModel::configuration() const noexcept {
     return configuration_;
+}
+
+void UgcEditorLobbyModel::set_host_authority(bool host) noexcept {
+    host_authority_ = host;
+    if (!host) cancel_title_edit();
+    for (auto& control : controls_) {
+        if (control.kind == UgcEditorLobbyControlKind::setting ||
+            control.kind == UgcEditorLobbyControlKind::start) control.widget.state.enabled = host;
+    }
+    rebuild_focus();
+}
+
+bool UgcEditorLobbyModel::apply_configuration(const UgcEditorConfiguration& configuration) {
+    if (std::ranges::find(maps, configuration.map_name) == maps.end() ||
+        std::ranges::find(modes, configuration.ugc_mode) == modes.end() ||
+        std::ranges::find(maximum_players, configuration.maximum_players) == maximum_players.end() ||
+        configuration.prefab_set >= prefab_labels.size() || configuration.map_title.empty() ||
+        configuration.map_title.size() > maximum_title_code_units ||
+        std::ranges::any_of(configuration.map_title, [](unsigned char value) { return value < 32U || value > 126U; })) return false;
+    configuration_ = configuration;
+    return true;
+}
+
+void UgcEditorLobbyModel::set_members(std::vector<std::pair<std::string, bool>> members) {
+    if (members.size() > 24U) members.resize(24U);
+    members_ = std::move(members);
+}
+
+const std::vector<std::pair<std::string, bool>>& UgcEditorLobbyModel::members() const noexcept {
+    return members_;
 }
 
 std::span<const UgcEditorLobbyControl> UgcEditorLobbyModel::controls() const noexcept {
@@ -545,7 +588,7 @@ bool UgcEditorLobbyModel::title_editing() const noexcept {
 }
 
 bool UgcEditorLobbyModel::cycle(UgcEditorSettingId setting, int direction) noexcept {
-    if (direction == 0 || title_editing_) {
+    if (!host_authority_ || direction == 0 || title_editing_) {
         return false;
     }
     switch (setting) {
@@ -583,7 +626,7 @@ bool UgcEditorLobbyModel::cycle(UgcEditorSettingId setting, int direction) noexc
 }
 
 bool UgcEditorLobbyModel::begin_title_edit() noexcept {
-    if (title_editing_) {
+    if (!host_authority_ || title_editing_) {
         return false;
     }
     title_before_edit_ = configuration_.map_title;
@@ -645,11 +688,23 @@ void UgcEditorLobbyModel::pointer_move(std::optional<ui::Point> point) noexcept 
 void UgcEditorLobbyModel::pointer_press(std::optional<ui::Point> point) noexcept {
     pointer_down_ = point.has_value();
     pointer_move(point);
+    pressed_control_ = hovered_;
+    pressed_direction_ = 0;
+    if (hovered_.has_value() && point.has_value()) {
+        const auto& control = controls_[*control_index(*hovered_)];
+        for (const auto direction : {-1, 1}) {
+            if (ugc_editor_setting_arrow(control.widget.bounds, direction).contains(*point)) {
+                pressed_direction_ = direction;
+            }
+        }
+    }
 }
 
 std::optional<UgcEditorLobbyIntent>
 UgcEditorLobbyModel::pointer_release(std::optional<ui::Point> point) noexcept {
     const auto was_down = pointer_down_;
+    const auto pressed_control = pressed_control_;
+    pressed_control_.reset();
     pointer_down_ = false;
     pointer_move(point);
     if (!was_down || !point.has_value()) {
@@ -657,10 +712,18 @@ UgcEditorLobbyModel::pointer_release(std::optional<ui::Point> point) noexcept {
     }
     const auto id = hit_control(*point);
     const auto index = id.has_value() ? control_index(*id) : std::nullopt;
-    if (!index.has_value()) {
+    if (!index.has_value() || id != pressed_control) {
         return std::nullopt;
     }
     static_cast<void>(focus_.set_focused(*id));
+    const auto& control = controls_[*index];
+    if (control.setting.has_value() && *control.setting != UgcEditorSettingId::map_title) {
+        if (pressed_direction_ != 0 &&
+            ugc_editor_setting_arrow(control.widget.bounds, pressed_direction_).contains(*point)) {
+            static_cast<void>(cycle(*control.setting, pressed_direction_));
+        }
+        return std::nullopt;
+    }
     return activate(controls_[*index]);
 }
 
@@ -723,7 +786,7 @@ WidgetVisualState UgcEditorLobbyModel::visual_state(ui::WidgetId id) const noexc
     if (!index.has_value() || !controls_[*index].widget.state.enabled) {
         return WidgetVisualState::disabled;
     }
-    if (pointer_down_ && hovered_ == id) {
+    if (pointer_down_ && pressed_control_ == id && hovered_ == id) {
         return WidgetVisualState::pressed;
     }
     if (hovered_ == id) {
@@ -747,9 +810,15 @@ UgcEditorLobbyModel::control_index(ui::WidgetId id) const noexcept {
 std::optional<ui::WidgetId>
 UgcEditorLobbyModel::hit_control(ui::Point point) const noexcept {
     const auto found = std::ranges::find_if(controls_, [&](const auto& control) {
-        return control.widget.state.visible && control.widget.bounds.contains(point);
+        return control.widget.state.visible && control.widget.state.enabled &&
+               control.widget.bounds.contains(point);
     });
     return found == controls_.end() ? std::nullopt : std::optional{found->widget.id};
+}
+
+ui::Rect ugc_editor_setting_arrow(ui::Rect row, int direction) noexcept {
+    return {row.x + (direction < 0 ? 136 : 290) * scale,
+            row.y + 9 * scale, 22 * scale, 24 * scale};
 }
 
 std::optional<UgcEditorLobbyIntent>
@@ -760,7 +829,7 @@ UgcEditorLobbyModel::activate(const UgcEditorLobbyControl& control) noexcept {
     case UgcEditorLobbyControlKind::invite:
         return UgcEditorLobbyIntent{UgcEditorLobbyIntentKind::invite_friends, configuration_};
     case UgcEditorLobbyControlKind::start:
-        if (!configuration_.map_title.empty()) {
+        if (host_authority_ && !configuration_.map_title.empty()) {
             return UgcEditorLobbyIntent{UgcEditorLobbyIntentKind::start_editor, configuration_};
         }
         return std::nullopt;

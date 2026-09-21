@@ -1,4 +1,5 @@
 #include "battlespades/frontend/create_match_presentation.hpp"
+#include "battlespades/frontend/menu_status.hpp"
 
 #include <algorithm>
 #include <array>
@@ -155,7 +156,8 @@ void append_button(ui::DrawList& list, const CreateMatchButtonPresentation& butt
     const auto cap = std::floor(bounds.height * loaded_width / loaded_height);
     const auto middle = std::max(0.0, bounds.width - cap * 2.0);
     const auto state = visual_index(button.visual_state);
-    const auto& slices = button.stable_key == "START_GAME" ? start_button_assets : button_assets;
+    const auto& slices = button.stable_key == "START_GAME" || button.stable_key == "JOIN_GAME"
+                             ? start_button_assets : button_assets;
     const auto intensity = button.enabled ? std::uint16_t{1'000U} : std::uint16_t{650U};
     const std::array destinations{
         DrawRect{bounds.x, bounds.y, cap + 1.0, bounds.height},
@@ -462,8 +464,8 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
                    cream,
                    HorizontalTextAlignment::left));
     auto y = 155.0;
-    const auto visible = std::min<std::size_t>(8U, snapshot.players.size());
-    for (std::size_t index{}; index < visible; ++index) {
+    const auto visible = std::min(snapshot.first_visible_player + 8U, snapshot.players.size());
+    for (auto index = snapshot.first_visible_player; index < visible; ++index) {
         const auto& player = snapshot.players[index];
         const DrawRect row{66.0, y, 320.0, 25.0};
         solid(list, row, index % 2U == 0U ? row_grey : row_dark);
@@ -506,6 +508,11 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
         y += 25.0;
     }
     solid(list, rect(snapshot.player_count_bar), player_bar);
+    if (snapshot.players.size() > 8U) {
+        list.push(text(std::to_string(snapshot.first_visible_player / 8U + 1U) + "/" +
+                       std::to_string((snapshot.players.size() + 7U) / 8U),
+                       {217, 367, 28, 20}, 10.0, cream, HorizontalTextAlignment::center));
+    }
     const std::array teams{
         std::pair{std::string_view{"TEAM1_COLOR"}, team_one},
         std::pair{std::string_view{"TEAM_NEUTRAL"}, cream},
@@ -566,10 +573,33 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
            static_cast<double>(snapshot.chat_panel.width) - 10.0,
            22.0},
           ColorRgba8{34U, 32U, 33U, 255U});
-    list.push(text("CHAT_MESSAGE",
+    constexpr std::size_t visible_chat_lines{5U};
+    const auto first_chat = snapshot.chat_lines.size() > visible_chat_lines
+                                ? snapshot.chat_lines.size() - visible_chat_lines
+                                : 0U;
+    auto chat_y = static_cast<double>(snapshot.chat_panel.y) + 8.0;
+    for (auto index = first_chat; index < snapshot.chat_lines.size(); ++index) {
+        const auto& line = snapshot.chat_lines[index];
+        const auto rendered = line.author.empty()
+                                  ? line.message
+                                  : line.author + ": " + line.message;
+        list.push(text(rendered,
+                       {static_cast<double>(snapshot.chat_panel.x) + 10.0,
+                        chat_y,
+                        static_cast<double>(snapshot.chat_panel.width) - 20.0,
+                        15.0},
+                       9.0,
+                       cream,
+                       HorizontalTextAlignment::left));
+        chat_y += 15.0;
+    }
+    auto draft = snapshot.chat_draft;
+    if (snapshot.chat_focused) draft += "_";
+    list.push(text(draft.empty() ? std::string_view{"CHAT_MESSAGE"}
+                                : std::string_view{draft},
                    rect(snapshot.chat_input),
                    11.0,
-                   disabled_grey,
+                   draft.empty() ? disabled_grey : cream,
                    HorizontalTextAlignment::left));
 }
 
@@ -656,12 +686,24 @@ ui::DrawList CreateMatchPresentation::build(
     }
     if (snapshot.show_scrollbar) append_scrollbar(list, snapshot);
     if (snapshot.show_defaults_help) {
-        solid(list, rect(snapshot.defaults_help), black);
-        list.push(text("RESET_OPTIONS",
-                       rect(snapshot.defaults_help),
-                       10.0,
-                       cream,
-                       HorizontalTextAlignment::center));
+        auto help_bounds = rect(snapshot.defaults_help);
+        // A750 Medium has a 16px line height at size 12. Use the spare space
+        // above this static help strip for two real lines, leaving the Defaults
+        // hit target and the action panel below unchanged.
+        help_bounds.y -= 4.0;
+        help_bounds.height += 6.0;
+        solid(list, help_bounds, black);
+        auto help = text("RESET_OPTIONS",
+                         {help_bounds.x + 4.0, help_bounds.y + 1.0,
+                          help_bounds.width - 8.0, help_bounds.height - 2.0},
+                         12.0, cream, HorizontalTextAlignment::center,
+                         TextTransform::preserve, "fonts/A750-Sans-Medium.ttf");
+        help.layout = ui::TextLayout::bounded_wrapped_lines;
+        help.maximum_lines = 2U;
+        help.line_spacing_pixels = 0.0;
+        help.vertical_alignment = VerticalTextAlignment::top;
+        help.fit = TextFit::none;
+        list.push(std::move(help));
     }
     list.push(sprite(create_match_presentation_assets::panel_frame,
                      rect(snapshot.action_panel),
@@ -671,6 +713,11 @@ ui::DrawList CreateMatchPresentation::build(
     for (const auto& button : snapshot.buttons) {
         if (button.stable_key == "BACK") append_navigation_button(list, button);
         else append_button(list, button);
+    }
+    if (!context.status_message.empty()) {
+        // The gap above the navigation bar is the only shared free surface.
+        // A tall card on its right covered the bar and ran into the frame edge.
+        append_menu_status(list, {56, 511, 684, 26}, {}, context.status_message);
     }
     return list;
 }

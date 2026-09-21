@@ -1,0 +1,76 @@
+{
+  "name": "S&W Model 29 for Rifle",
+  "source": "https://gamebanana.com/mods/170269",
+  "archives": [
+    {
+      "archive": "170269\\401670-swm29_64ed5.rar",
+      "extracted": "170269\\files-401670",
+      "sha256": "987034e743021484219d1bba88af1348453f99653adddd3d048d202effdf6e6d",
+      "listing": [
+        "Sounds/Weapons/Rifle/.DS_Store",
+        "Sounds/Weapons/Rifle/Fire.wav",
+        "Sounds/Weapons/Rifle/Fire2.wav",
+        "Sounds/Weapons/Rifle/Fire3.wav",
+        "Sounds/Weapons/Rifle/FireFar.wav",
+        "Sounds/Weapons/Rifle/FireLocal.wav",
+        "Sounds/Weapons/Rifle/FireStereo.wav",
+        "Sounds/Weapons/Rifle/RaiseLocal.wav",
+        "Sounds/Weapons/Rifle/Reload.wav",
+        "Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Sounds/Weapons/Rifle/ShellDrop1.wav",
+        "Sounds/Weapons/Rifle/ShellDrop2.wav",
+        "Sounds/Weapons/Rifle/ShellWater.wav",
+        "Models/Weapons/Rifle/Casing.kv6",
+        "Models/Weapons/Rifle/Magazine.kv6",
+        "Models/Weapons/Rifle/Sight1.kv6",
+        "Models/Weapons/Rifle/Sight2.kv6",
+        "Models/Weapons/Rifle/Tracer.kv6",
+        "Models/Weapons/Rifle/Weapon.kv6",
+        "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Sounds/Weapons/Rifle/_Assets_/New",
+        "Sounds/Weapons/Rifle/_Assets_/Old",
+        "Sounds/Weapons/Rifle/_Assets_/Old2",
+        "Sounds/Weapons/Rifle/_Assets_/Old3",
+        "Sounds/Weapons/Rifle/_Assets_",
+        "Sounds/Weapons/Rifle",
+        "Models/Weapons/Rifle",
+        "Sounds/Weapons",
+        "Models/Weapons",
+        "Sounds",
+        "Models",
+        "S&W Model 29.gif"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_idRow": "1533601",
+          "_sName": "Handerson",
+          "_sProfileUrl": "https://gamebanana.com/members/1533601",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/64bd3665438bb.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

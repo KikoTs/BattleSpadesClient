@@ -1,0 +1,57 @@
+{
+  "name": "GEWEHR 43 WW2",
+  "source": "https://gamebanana.com/mods/170500",
+  "archives": [
+    {
+      "archive": "170500\\416678-gewehr_43_21ec5.rar",
+      "extracted": "170500\\files-416678",
+      "sha256": "176129c2bdee2c31eaae78de28af063f9196f80b447bd98add2ef2c363ef7b15",
+      "listing": [
+        "Tracer.kv6",
+        "Weapon.kv6",
+        "WeaponNoMagazine.kv6",
+        "Casing.kv6",
+        "Magazine.kv6",
+        "Sight1.kv6",
+        "Sight2.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Modeler",
+          "_sName": "Lauchin"
+        }
+      ]
+    },
+    {
+      "_sGroupName": "Original Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "Lauchin"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

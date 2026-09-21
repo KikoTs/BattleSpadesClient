@@ -1,0 +1,95 @@
+{
+  "name": "BF4 Assault Class / RU Assault",
+  "source": "https://gamebanana.com/mods/170869",
+  "archive": [
+    {
+      "archive": "170869\\213746-bf4_assault_class.rar",
+      "extracted": "170869\\files-213746",
+      "sha256": "10050a2ba5a7e3956c2e240a76faced0beeff481b28584b1d04fad713b7dc1a5",
+      "listing": [
+        "BF4 Assault Class/CH Assault/Player/Arm.kv6",
+        "BF4 Assault Class/CH Assault/Player/Arms.kv6",
+        "BF4 Assault Class/CH Assault/Player/Dead.kv6",
+        "BF4 Assault Class/CH Assault/Player/Head.kv6",
+        "BF4 Assault Class/CH Assault/Player/Leg.kv6",
+        "BF4 Assault Class/CH Assault/Player/LegCrouch.kv6",
+        "BF4 Assault Class/CH Assault/Player/Torso.kv6",
+        "BF4 Assault Class/CH Assault/Player/TorsoCrouch.kv6",
+        "BF4 Assault Class/CH Assault/Player/UpperArm.kv6",
+        "BF4 Assault Class/CREDITS.txt",
+        "BF4 Assault Class/RU Assault/Player/Arm.kv6",
+        "BF4 Assault Class/RU Assault/Player/Arms.kv6",
+        "BF4 Assault Class/RU Assault/Player/Dead.kv6",
+        "BF4 Assault Class/RU Assault/Player/Head.kv6",
+        "BF4 Assault Class/RU Assault/Player/Leg.kv6",
+        "BF4 Assault Class/RU Assault/Player/LegCrouch.kv6",
+        "BF4 Assault Class/RU Assault/Player/Torso.kv6",
+        "BF4 Assault Class/RU Assault/Player/TorsoCrouch.kv6",
+        "BF4 Assault Class/RU Assault/Player/UpperArm.kv6",
+        "BF4 Assault Class/Screenshots/BF4 RENDER.jpg",
+        "BF4 Assault Class/Screenshots/CHINA RENDER.jpg",
+        "BF4 Assault Class/Screenshots/CN Screenshot 2.jpg",
+        "BF4 Assault Class/Screenshots/CN Screenshot.jpg",
+        "BF4 Assault Class/Screenshots/RU Screenshot 2.jpg",
+        "BF4 Assault Class/Screenshots/RU Screenshot.jpg",
+        "BF4 Assault Class/Screenshots/RUSSIA RENDER.jpg",
+        "BF4 Assault Class/Screenshots/US RENDER.jpg",
+        "BF4 Assault Class/Screenshots/US Screenshot 2.jpg",
+        "BF4 Assault Class/Screenshots/US Screenshot.jpg",
+        "BF4 Assault Class/US Assault/Player/Arm.kv6",
+        "BF4 Assault Class/US Assault/Player/Arms.kv6",
+        "BF4 Assault Class/US Assault/Player/Dead.kv6",
+        "BF4 Assault Class/US Assault/Player/Head.kv6",
+        "BF4 Assault Class/US Assault/Player/Leg.kv6",
+        "BF4 Assault Class/US Assault/Player/LegCrouch.kv6",
+        "BF4 Assault Class/US Assault/Player/Torso.kv6",
+        "BF4 Assault Class/US Assault/Player/TorsoCrouch.kv6",
+        "BF4 Assault Class/US Assault/Player/UpperArm.kv6",
+        "BF4 Assault Class/CH Assault/Player",
+        "BF4 Assault Class/RU Assault/Player",
+        "BF4 Assault Class/US Assault/Player",
+        "BF4 Assault Class/CH Assault",
+        "BF4 Assault Class/RU Assault",
+        "BF4 Assault Class/Screenshots",
+        "BF4 Assault Class/US Assault",
+        "BF4 Assault Class"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Player Model",
+          "_idRow": "1285881",
+          "_sName": "Foxxy.",
+          "_sUpicUrl": "https://images.gamebanana.com/img/upic/5a6d601d12779.png",
+          "_sProfileUrl": "https://gamebanana.com/members/1285881",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/6141701f58ade.png",
+          "_bIsOnline": false
+        },
+        {
+          "_sName": "Dice"
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "no": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod commercially"
+    ],
+    "ask": [
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ]
+  }
+}

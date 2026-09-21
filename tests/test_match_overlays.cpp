@@ -403,6 +403,162 @@ void vote_decoding_and_cast_are_crash_safe() {
            "server-authored result must hide after its six-second retail lifetime");
 }
 
+void vote_updates_keep_confirmation_and_closed_results() {
+    GenericVotingModel vote;
+    network::GenericVoteMessagePacket packet;
+    packet.message_type = network::GenericVoteMessagePacket::start;
+    packet.can_vote = true;
+    packet.hide_after_vote = true;
+    packet.allow_revote = false;
+    packet.title = "('VOTE_MAP_TITLE', ())";
+    packet.candidates = {{"('Castle Wars', ())", 0},
+                         {"('Maya Jungle', ())", 0}};
+    vote.apply(packet);
+    expect(!vote.cast(2U).has_value() && !vote.voted_index().has_value(),
+           "F3 on a two-choice ballot must not select an absent candidate");
+    vote.tick(10.0);
+    expect(vote.visible() && vote.can_vote(),
+           "an invalid key must not start the hide-after-vote timer");
+    expect(vote.cast(1U).has_value(), "valid map vote must be accepted");
+    packet.message_type = network::GenericVoteMessagePacket::update;
+    packet.candidates = {{"('Maya Jungle', ())", 1},
+                         {"('Castle Wars', ())", 4}};
+    vote.apply(packet);
+    expect(vote.voted_index() == 0U && !vote.can_vote() &&
+               vote.choices()[0U].votes == 1,
+           "server count updates must preserve the selected wire token across reordering");
+    const auto selected = GenericVotingPresentation{}.build(
+        vote, {1280, 720}, {"F1", "F2", "F3"});
+    expect(std::ranges::any_of(selected.commands(), [](const auto& command) {
+        const auto* text = std::get_if<ui::TextDrawCommand>(&command);
+        return text != nullptr && text->localization_key == "[1]" &&
+               text->modulation.color == ui::ColorRgba8{0U, 255U, 0U, 255U};
+    }), "successful vote must retain its visible green count confirmation");
+    network::GenericVoteMessagePacket closed;
+    closed.message_type = network::GenericVoteMessagePacket::closed;
+    closed.title = "('MAP_VOTED_MESSAGE', ('Maya Jungle',))";
+    vote.apply(closed);
+    const std::string result{vote.result_text()};
+    vote.apply(packet);
+    expect(vote.showing_result() && vote.result_text() == result &&
+               !vote.can_vote(),
+           "an UPDATE arriving after CLOSED must not erase the map result");
+    vote.tick(GenericVotingModel::closed_result_seconds + 0.01);
+    vote.apply(packet);
+    expect(!vote.visible() && !vote.can_vote(),
+           "an expired ballot must not be resurrected by count updates");
+    vote.clear();
+    vote.apply(packet);
+    expect(vote.choices().empty() && !vote.visible(),
+           "UPDATE before START must not seed a stale vote in the next scene");
+}
+
+void map_vote_closed_result_names_the_authoritative_next_map() {
+    GenericVotingModel vote;
+    network::GenericVoteMessagePacket packet;
+    packet.message_type = network::GenericVoteMessagePacket::start;
+    packet.title = "('VOTE_MAP_TITLE', ())";
+    packet.can_vote = true;
+    packet.candidates = {{"('London', ())", 0}, {"('CastleWars', ())", 0}};
+    vote.apply(packet);
+    packet.message_type = network::GenericVoteMessagePacket::closed;
+    packet.title = "('MAP_VOTED_MESSAGE', (\"Map {1}'s Hill\",))";
+    vote.apply(packet);
+    expect(vote.showing_result() && !vote.can_vote() &&
+               vote.result_text() == "Next map will be Map {1}'s Hill",
+           "CLOSED map result must localize the winner once, preserving literal braces and quotes");
+}
+
+void end_results_reject_malformed_awards_and_preserve_draws() {
+    MatchResultsModel model;
+    network::GameStatsPacket packet;
+    packet.team_id = 2;
+    packet.entries = {{257, 5}, {-1, 5}, {1, -1}, {1, 30}, {1, 5}};
+    model.apply(packet);
+    expect(model.awards().size() == 1U &&
+               model.awards().front().player_id == 1U &&
+               model.awards().front().stat_type == 5,
+           "malformed signed IDs and stat ordinals must never alias a real player's award");
+    packet.team_id = 258;
+    packet.entries = {{2, 8}};
+    model.apply(packet);
+    expect(model.awards().size() == 1U,
+           "out-of-range packet team IDs must not wrap into the blue list");
+    model.show(0);
+    expect(model.winner_team() == 0,
+           "an authoritative draw must not become a blue victory when only blue awards arrived");
+
+    MatchResultsModel empty_green;
+    packet.team_id = 2;
+    packet.entries = {{1, 5}, {2, 8}};
+    empty_green.apply(packet);
+    packet.team_id = 3;
+    packet.entries.clear();
+    empty_green.apply(packet);
+    empty_green.show(0);
+    expect(empty_green.has_both_team_lists(),
+           "an empty team packet still establishes official two-team authority");
+    network::Protocol168Roster roster;
+    network::CreatePlayerPacket player;
+    player.player_id = 1U;
+    player.team = 2U;
+    player.name = "Blue award";
+    player.orientation = {1.0F, 0.0F, 0.0F};
+    expect(roster.apply(player), "blue award fixture must enter roster");
+    player.player_id = 2U;
+    player.team = 3U;
+    player.name = "Changed team";
+    expect(roster.apply(player), "changed team fixture must enter roster");
+    const auto draw = MatchResultsPresentation{}.build(
+        empty_green, {}, "Team Deathmatch!", roster, {1280, 720});
+    expect(std::ranges::any_of(draw.commands(), [](const auto& command) {
+        const auto* text = std::get_if<ui::TextDrawCommand>(&command);
+        return text != nullptr && text->localization_key == "Changed team" &&
+               text->destination.x == 91.14;
+    }), "empty official green list must not reclassify blue awards through a later roster");
+}
+
+void end_results_retain_award_winners_after_disconnect() {
+    network::Protocol168Roster roster;
+    network::CreatePlayerPacket player;
+    player.player_id = 1U;
+    player.team = 2U;
+    player.name = "Original winner";
+    player.orientation = {1.0F, 0.0F, 0.0F};
+    expect(roster.apply(player), "award winner fixture must enter roster");
+    MatchResultsModel model;
+    network::GameStatsPacket packet;
+    packet.team_id = 2;
+    packet.entries = {{1, 5}, {2, 8}};
+    model.apply(packet, roster);
+    expect(model.awards().size() == 1U,
+           "an unresolved award ID must not wait for an unrelated future player");
+    packet.team_id = 3;
+    packet.entries.clear();
+    model.apply(packet, roster);
+    model.show(2);
+    roster.remove(1U);
+    for (const bool reuse_slot : {false, true}) {
+        if (reuse_slot) {
+            player.name = "New arrival";
+            player.team = 3U;
+            expect(roster.apply(player), "new player must be able to reuse the departed slot");
+        }
+        const auto draw = MatchResultsPresentation{}.build(
+            model, {}, "Team Deathmatch!", roster, {1280, 720});
+        expect(std::ranges::any_of(draw.commands(), [](const auto& command) {
+            const auto* text = std::get_if<ui::TextDrawCommand>(&command);
+            return text != nullptr && text->localization_key == "Original winner" &&
+                   text->destination.x == 91.14 &&
+                   text->modulation.color == ui::ColorRgba8{44U, 117U, 179U, 255U};
+        }), "GameStats must retain the actual winner's name and team after disconnect or slot reuse");
+        expect(std::ranges::none_of(draw.commands(), [](const auto& command) {
+            const auto* text = std::get_if<ui::TextDrawCommand>(&command);
+            return text != nullptr && text->localization_key == "New arrival";
+        }), "a new player must never inherit an earlier occupant's award");
+    }
+}
+
 void end_results_group_the_server_snapshot_by_roster_team() {
     static constexpr std::array<std::string_view, 30U> retail_awards{
         "Just out for a stroll",
@@ -641,17 +797,17 @@ void end_results_group_the_server_snapshot_by_roster_team() {
                blue_score_text != nullptr && green_score_text != nullptr &&
                footer_text != nullptr &&
                mode_text->destination ==
-                   ui::DrawRect{400.0, 420.0, 0.0, 0.0} &&
+                   ui::DrawRect{74.0, 420.0, 652.0, 0.0} &&
                mode_text->requested_font_size_pixels == 46.0 &&
                mode_text->vertical_alignment ==
                    ui::VerticalTextAlignment::baseline &&
-               mode_text->fit == ui::TextFit::none &&
+               mode_text->fit == ui::TextFit::retail_width_scale &&
                result_text->destination ==
-                   ui::DrawRect{400.0, 435.0, 0.0, 0.0} &&
+                   ui::DrawRect{64.0, 435.0, 672.0, 0.0} &&
                result_text->requested_font_size_pixels == 14.0 &&
                result_text->vertical_alignment ==
                    ui::VerticalTextAlignment::baseline &&
-               result_text->fit == ui::TextFit::none &&
+               result_text->fit == ui::TextFit::retail_width_scale &&
                blue_score_text->destination ==
                    ui::DrawRect{285.0, 455.0, 100.0, 30.0} &&
                 blue_score_text->horizontal_alignment ==
@@ -1302,6 +1458,10 @@ int main() {
         chat_presentation_matches_retail_geometry_stroke_and_fade();
         player_chat_preserves_retail_sender_and_body_labels();
         vote_decoding_and_cast_are_crash_safe();
+        vote_updates_keep_confirmation_and_closed_results();
+        map_vote_closed_result_names_the_authoritative_next_map();
+        end_results_reject_malformed_awards_and_preserve_draws();
+        end_results_retain_award_winners_after_disconnect();
         end_results_group_the_server_snapshot_by_roster_team();
         end_results_select_the_local_win_or_lose_sting();
         end_results_derive_winner_from_authoritative_scores();

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "id": "pack-sep-170458-1",
+  "name": "OpenSpades Beretta BM59 Rifle folding buttstock",
+  "source": "https://gamebanana.com/mods/170458",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Runtime/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Rifle/Casing.kv6": "Models/Weapons/Rifle/Casing.kv6",
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Sight1.kv6": "Models/Weapons/Rifle/Sight1.kv6",
+    "Models/Weapons/Rifle/Sight2.kv6": "Models/Weapons/Rifle/Sight2.kv6",
+    "Models/Weapons/Rifle/Tracer.kv6": "Models/Weapons/Rifle/Tracer.kv6",
+    "Models/Weapons/Rifle/Weapon.kv6": "Models/Weapons/Rifle/Weapon.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal.opus": "Fallback/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.opus": "Fallback/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Rifle/Casing.kv6": "0850126f4d6e63900d28a5dea0d3b572a0d2f612ab9799dafaae5314787f2c15",
+    "Models/Weapons/Rifle/Magazine.kv6": "73122ed4e176259c224e446717baf84e9d39b5dea1ced0acac86f3adc7c0f6e2",
+    "Models/Weapons/Rifle/Sight1.kv6": "39a42f4ecfc8c91ab4dba5ec592eb35db256f46003ec8417ff03d80e658fe7a6",
+    "Models/Weapons/Rifle/Sight2.kv6": "5743aa27b70cc45446c7f27d327603b064de9836cb822b8417e70b39ea5c8e36",
+    "Models/Weapons/Rifle/Tracer.kv6": "2d05baec4dad9214bf807356d7812afef57071961fa9cf1056eed5c223bbba45",
+    "Models/Weapons/Rifle/Weapon.kv6": "329b937b243e068a8fc8ff3530d4a74f5e2459802b333450dde6dbb0f0f45c97",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "8a1421bd617e0823833e2f133aee7d8633e3732bad60bfaf32e24d8cd4f67b55",
+    "Fallback/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "2be6fd8ba423f7cfae8b5ffe50861decf5790a6eb1f1f82a0cf50ed9195aad13",
+    "Fallback/Sounds/Weapons/Rifle/FireFar.opus.ogg": "9743948ccf55e34663e418881b3d69b081ba6c02b21cfedc77a9104b60021c80",
+    "Fallback/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "cf6a7ac2757def376dca9eda9a1964ea2322e07f5b8176d7c49be69a8bf52b3b",
+    "Fallback/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "c2fb713cd13b2bd8438cd86adb9caadfd645729c7d2ef8900cfa058451f6458c",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "28839f343d1b51d137e0273e8e4de1c400bc9da173a5dc6b8ee873f0aae32dd1",
+    "Fallback/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "c8623eebac4af053e2057d42ac59f2a87e9469693efbf4cf8dc3244e86fbf160",
+    "Runtime/openspades.as": "79a941cda817ded39e6cf9c126d73c38c0c527d978a1e139fe2e4552ec2716d2",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Runtime/View.as": "a65b931fd8b9c2c6b7f62dac57efe1098323ecd83f14bd7a574db288d1ede91d",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b"
+  },
+  "credits": [
+    {
+      "_sGroupName": "W",
+      "_aAuthors": [
+        {
+          "_idRow": "1427178",
+          "_sName": "JTRA Stormy",
+          "_sProfileUrl": "https://gamebanana.com/members/1427178",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "missing": [],
+  "fallbacks": [
+    {
+      "resource": "Gfx/Sight.tga",
+      "source": "openspades/Resources/Gfx/Sight.tga"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireFar.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireFar.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/FireStereo.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/FireStereo.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/ReloadLocal.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/ReloadLocal.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceSmall.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceSmall.opus"
+    },
+    {
+      "resource": "Sounds/Weapons/Rifle/V2AmbienceLarge.opus",
+      "source": "aos_revival/tmp/openspades-reference/base/Sounds/Weapons/Rifle/V2AmbienceLarge.opus"
+    }
+  ],
+  "adaptations": [],
+  "animation_source": "OpenSpades base Rifle animation fitted to supplied model parts",
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33; equipped character arms take precedence"
+  },
+  "optic": {
+    "magnification": 1.35,
+    "scope": false
+  }
+}

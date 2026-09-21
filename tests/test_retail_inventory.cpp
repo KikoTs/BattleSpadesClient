@@ -73,6 +73,35 @@ int main() {
         inventory.tick(0.81);
         expect(!inventory.toolbar_visible(), "the wheel toolbar must close after one second");
 
+        RetailInventory ammunition;
+        ammunition.set_slots({InventorySlot{17U}, InventorySlot{2U}}, 0U);
+        const auto* original_slots = ammunition.slots().data();
+        ammunition.set_slot_ammunition(0U, false);
+        expect(ammunition.selected_tool_id() == 17U &&
+                   !ammunition.slots()[0U].has_ammo &&
+                   ammunition.slots().data() == original_slots &&
+                   !ammunition.take_selection_event().has_value(),
+               "consuming the final round must update availability without switching or reallocating");
+        expect(ammunition.cycle(1) && ammunition.selected_tool_id() == 2U &&
+                   !ammunition.select_slot(0U, InventorySelectionOrigin::direct_slot),
+               "wheel/hotkey selection must observe in-place depletion immediately");
+        const auto remaining_animation = ammunition.toolbar_remaining();
+        static_cast<void>(ammunition.take_selection_event());
+        ammunition.set_slot_ammunition(0U, true);
+        expect(ammunition.selected_tool_id() == 2U &&
+                   ammunition.toolbar_remaining() == remaining_animation &&
+                   !ammunition.take_selection_event().has_value() &&
+                   ammunition.select_slot(0U, InventorySelectionOrigin::direct_slot),
+               "restocking must re-enable the slot without switching or restarting wheel animation");
+        RetailInventory empty_loadout;
+        empty_loadout.set_slots({InventorySlot{17U, InventorySlotKind::loadout, 0U,
+                                               true, false, false}});
+        expect(!empty_loadout.selected_index().has_value(),
+               "a new entirely empty loadout must have no available selection");
+        empty_loadout.set_slot_ammunition(0U, true);
+        expect(empty_loadout.selected_tool_id() == 17U,
+               "a restock must restore the first selectable slot when none was available");
+
         std::cout << "retail inventory: slot, wheel, hotkey and animation checks passed\n";
         return 0;
     } catch (const std::exception& error) {

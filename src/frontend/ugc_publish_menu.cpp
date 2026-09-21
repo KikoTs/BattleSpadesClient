@@ -306,17 +306,19 @@ std::optional<UgcPublishEffect> UgcPublishMenuModel::handle(ui::InputEvent event
     return std::nullopt;
 }
 
-std::optional<UgcPublishEffect> UgcPublishMenuModel::finish_publish(bool success) {
+std::optional<UgcPublishEffect> UgcPublishMenuModel::finish_publish(bool success, std::string item_url) {
     if (dialog_ != UgcPublishDialog::uploading || !pending_publish_.has_value()) {
         return std::nullopt;
     }
-    pending_publish_.reset();
     if (success) {
+        if (const auto index = index_for_uid(pending_publish_->local_uid)) local_maps_[*index].state = UgcLocalMapState::published;
+        pending_publish_.reset();
         dialog_ = UgcPublishDialog::none;
         auto result = effect(UgcPublishEffectKind::publish_succeeded);
-        result.external_url = workshop_url();
+        result.external_url = item_url.empty() ? workshop_url() : std::move(item_url);
         return result;
     }
+    pending_publish_.reset();
     dialog_ = UgcPublishDialog::upload_error;
     return effect(UgcPublishEffectKind::publish_failed);
 }
@@ -360,8 +362,7 @@ std::optional<UgcPublishEffect> UgcPublishMenuModel::acknowledge_dialog() {
 }
 
 std::string UgcPublishMenuModel::workshop_url() {
-    return "http://steamcommunity.com/workshop/browse/?appid=" +
-           std::to_string(retail_steam_app_id);
+    return "https://www.aosplay.net/workshop";
 }
 
 std::optional<std::size_t>

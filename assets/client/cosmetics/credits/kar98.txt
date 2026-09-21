@@ -1,0 +1,118 @@
+Kar98
+Original authors: Nuceto
+https://gamebanana.com/mods/170226
+
+{
+  "id": "kar98",
+  "name": "Kar98",
+  "archive": "kar89mod_b7541.rar",
+  "archive_sha256": "70b711289453444a629dfb69cc7031407e70187f2432f2aa6dd80714386ff055",
+  "source": "https://gamebanana.com/mods/170226",
+  "credits": [
+    {
+      "group": "Author",
+      "authors": [
+        {
+          "name": "Nuceto",
+          "role": "Modeler/Scripter",
+          "url": "https://gamebanana.com/members/1773911"
+        }
+      ]
+    }
+  ],
+  "license_html": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  },
+  "adaptation": "Static voxel assembly from the original third-person part transforms; native parent animations.",
+  "model_sha256": "4d628b62981ebff6cf3f8d5e6be9f4a03a1bfb00dad6c686d435b9eef0b31a90"
+}
+
+--- Scripts/Skin/Rifle/ThirdPerson.as ---
+/*
+ Copyright (c) 2013 yvt
+
+ This file is part of OpenSpades.
+
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
+ namespace spades {
+	class ThirdPersonRifleSkin:
+	IToolSkin, IThirdPersonToolSkin, IWeaponSkin, IWeaponSkin2 {
+		private float sprintState;
+--- Scripts/Skin/BasicViewWeapon.as ---
+/*
+ Copyright (c) 2013 yvt
+
+ This file is part of OpenSpades.
+
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
+namespace spades {
+	class BasicViewWeapon:
+	IToolSkin, IViewToolSkin, IWeaponSkin, IWeaponSkin2 {
+		// IToolSkin
+--- Scripts/Skin/Rifle/View.as ---
+/*
+ Copyright (c) 2013 yvt
+
+ This file is part of OpenSpades.
+
+ OpenSpades is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ OpenSpades is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with OpenSpades.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
+ namespace spades {
+	class ViewRifleSkin:
+	IToolSkin, IViewToolSkin, IWeaponSkin,
+	BasicViewWeapon {

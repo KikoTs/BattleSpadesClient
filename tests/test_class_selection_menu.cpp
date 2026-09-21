@@ -1,8 +1,10 @@
 #include "battlespades/frontend/class_selection_menu.hpp"
 #include "battlespades/frontend/class_selection_presentation.hpp"
+#include "battlespades/world/class_catalog.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -98,7 +100,10 @@ int main() {
                 ++empty_cells;
             }
             if (sprite->asset_id == "png/ui/in_game_menus/select_class/class_selected_frame.png" &&
-                sprite->destination == battlespades::ui::DrawRect{67.0, 119.0, 137.0, 128.0}) {
+                std::abs(sprite->destination.x - 61.0) < 0.001 &&
+                std::abs(sprite->destination.y - 120.8) < 0.001 &&
+                std::abs(sprite->destination.width - 176.0) < 0.001 &&
+                std::abs(sprite->destination.height - 158.4) < 0.001) {
                 recovered_selected_frame = true;
             }
         }
@@ -127,6 +132,73 @@ int main() {
         }
 
         constexpr std::array<std::uint8_t, 7U> full_roster{0U, 1U, 2U, 3U, 12U, 16U, 17U};
+        // Exercise both retail card layouts and smaller server rosters. The
+        // former bug drew a four-card background with five-card hit targets.
+        for (std::size_t count = 1U; count <= full_roster.size(); ++count) {
+            menu.configure(std::span{full_roster}.first(count), 2U, 255U);
+            expect(menu.classes().size() == count,
+                   "an unavailable current class must never be appended to the server roster");
+            const bool four = count <= 4U;
+            const auto layout_draw = presentation.build(menu, {800, 600});
+            expect(has_sprite(layout_draw, four
+                       ? "png/ui/in_game_menus/select_class/class_background_frame.png"
+                       : "png/ui/in_game_menus/select_class/class_background_frame_5.png"),
+                   "class background must agree with the server roster size");
+            for (std::size_t index{}; index < std::min(count, menu.classes_per_page()); ++index) {
+                const int x = (four ? 81 : 85) + static_cast<int>(index) * (four ? 167 : 134);
+                const int y = four ? 132 : 131;
+                const int size = four ? 136 : 107;
+                expect(menu.class_card_bounds(index) == battlespades::ui::Rect{x, y, size, size},
+                       "render/input geometry must retain the original four/five-card constants");
+                static_cast<void>(menu.click({x + size / 2, y + size / 2}));
+                expect(menu.selected_class() == full_roster[index],
+                       "clicking a displayed class must select its own server class id");
+            }
+        }
+
+        constexpr std::array<std::uint8_t, 4U> restricted{12U, 12U, 255U, 0U};
+        menu.configure(restricted, 2U, 17U);
+        expect(menu.classes().size() == 2U && menu.selected_class() == 12U,
+               "invalid and duplicate entries must not invent unavailable classes");
+        menu.configure({}, 2U, 255U);
+        expect(menu.classes().size() == 1U && menu.selected_class() == 0U,
+               "an empty malformed roster must retain a usable fallback");
+
+        menu.configure(advertised, 2U, 12U);
+        const auto options = battlespades::world::class_prefab_options(12U);
+        static_cast<void>(menu.click({480, 365})); // Fourth construct, platform.
+        expect(menu.selected_prefabs().size() == 3U &&
+                   menu.selected_prefabs()[0] == options[1] &&
+                   menu.selected_prefabs()[1] == options[2] &&
+                   menu.selected_prefabs()[2] == options[3],
+               "a fourth construct click must replace the oldest selected construct");
+        static_cast<void>(menu.click({515, 325})); // Remove tower.
+        static_cast<void>(menu.click({560, 325})); // Remove barrier.
+        expect(menu.selected_prefabs().size() == 1U &&
+                   menu.selection().prefabs == std::vector<std::string>{std::string{options[3]}},
+               "the submitted loadout must preserve an intentional single construct");
+        static_cast<void>(menu.click({480, 365}));
+        expect(menu.selected_prefabs().size() == 1U,
+               "retail construct selection must keep its final selected item");
+        menu.cycle_group(3U, 1);
+        const auto engineer_selection = menu.selection();
+        menu.select_visible_class(1U); // Re-select Engineer.
+        expect(menu.selection().prefabs == engineer_selection.prefabs &&
+                   menu.selection().loadout == engineer_selection.loadout,
+               "clicking the current class must not reset its loadout");
+        menu.cycle_class(1);
+        menu.cycle_class(-1);
+        expect(menu.selection().prefabs == engineer_selection.prefabs &&
+                   menu.selection().loadout == engineer_selection.loadout,
+               "browsing another class must preserve the previous class choices");
+        menu.configure(advertised, 2U, 12U);
+        menu.restore_loadout(engineer_selection.loadout, engineer_selection.prefabs);
+        expect(menu.selection().prefabs == engineer_selection.prefabs &&
+                   menu.selection().loadout == engineer_selection.loadout,
+               "reopening SelectClass must restore the authoritative loadout and constructs");
+        expect(battlespades::world::default_class_selection(12U).prefabs.size() == 3U,
+               "fresh default loadouts must continue to supply three constructs");
+
         menu.configure(full_roster, 2U, 0U);
         expect(menu.visible_class_offset() == 0U,
                "seven-class strip must begin at its first retail viewport");
@@ -148,7 +220,21 @@ int main() {
         expect(menu.selected_class_index() == 0U && menu.visible_class_offset() == 0U,
                "cycling back to the first class must reveal it one slot at a time");
 
-        std::cout << "class selection menu: roster, loadout and prefab ids passed\n";
+        battlespades::frontend::ClassSelectionAppearance appearance;
+        appearance.class_icons[0]="runtime/cosmetic/test-head";
+        appearance.class_portraits[0]="runtime/cosmetic/test-body";
+        appearance.weapon_icons[battlespades::world::find_class_definition(0)->item_groups[1].front()]="runtime/cosmetic/test-smg";
+        const auto skinned=battlespades::frontend::ClassSelectionPresentation{}.build(menu,{800,600},true,appearance);
+        for(const auto* expected:{"runtime/cosmetic/test-head","runtime/cosmetic/test-body","runtime/cosmetic/test-smg"}){
+            bool found=false;for(const auto& command:skinned.commands())if(const auto* sprite=std::get_if<battlespades::ui::SpriteDrawCommand>(&command))found=found||sprite->asset_id==expected;
+            expect(found,"Class selection must use the current cosmetic head, body and weapon icons");
+        }
+        for(const auto& command:skinned.commands())if(const auto* portrait=std::get_if<battlespades::ui::SpriteDrawCommand>(&command);portrait&&portrait->asset_id=="runtime/cosmetic/test-body"){
+            expect(portrait->source_pixels.has_value(),"Generated class portraits need an aspect-correct source rectangle");
+            expect(std::abs(portrait->source_pixels->width/portrait->source_pixels->height-portrait->destination.width/portrait->destination.height)<.00001,
+                "Generated class portraits must not stretch the player model");
+        }
+        std::cout << "class selection menu: roster, loadout, cosmetic icons and prefab ids passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {
         std::cerr << "class selection menu failure: " << error.what() << '\n';

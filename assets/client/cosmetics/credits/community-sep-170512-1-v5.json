@@ -1,0 +1,60 @@
+{
+  "name": "M1 Garand WW2",
+  "source": "https://gamebanana.com/mods/170512",
+  "archives": [
+    {
+      "archive": "170512\\417070-m1garand_2af3c.rar",
+      "extracted": "170512\\files-417070",
+      "sha256": "ee9768b889096059d52a2e739d5eb7b8757c5b3433fe54126238f29c361221f0",
+      "listing": [
+        "Sight2.kv6",
+        "Tracer.kv6",
+        "Weapon.kv6",
+        "WeaponNoMagazine.kv6",
+        "Casing.kv6",
+        "Magazine.kv6",
+        "Sight1.kv6"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "BlackTos",
+      "_aAuthors": [
+        {
+          "_sRole": "Mayor",
+          "_idRow": "1526077",
+          "_sName": "YoSUu",
+          "_sProfileUrl": "https://gamebanana.com/members/1526077",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        },
+        {
+          "_sRole": "Creator ",
+          "_idRow": "1546514",
+          "_sName": "Lauchin",
+          "_sProfileUrl": "https://gamebanana.com/members/1546514",
+          "_sAvatarUrl": "https://images.gamebanana.com/img/av/5899e44d92791.png",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

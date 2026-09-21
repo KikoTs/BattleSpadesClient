@@ -5,17 +5,47 @@ transaction. Opening the screen creates a draft, `Defaults` resets only the
 active tab, `Cancel` restores the last confirmed runtime state, and `Done`
 validates and atomically saves the complete draft.
 
+The maintained schema is in `include/battlespades/settings/client_settings.hpp`
+and `src/settings/settings_store.cpp`; tier capabilities are defined by
+`src/render/quality_profile.cpp` and consumed by the renderer. For executable
+staging and shader updates use [RUNBOOK.md](RUNBOOK.md).
+
+## Audio output
+
+The executable-adjacent `settings.toml` accepts `audio_device` in `[main]`.
+An empty string (the default) tries the Windows default output and then other
+available outputs if initialization fails. A nonempty value is an exact OpenAL
+device name, for example `"OpenAL Soft on Speakers (Echo Show 8-5WJ)"`.
+An explicitly selected device never falls back to another speaker. Changes
+take effect on the next launch; this option is currently file-only.
+
+If an output rejects playback, the client remains usable and reports the
+device failure in the settings warning and console. Windows error `0x88890008`
+means unsupported audio format. When an endpoint rejects its own Windows mix
+format, reconnect that output before restarting the client; changing game
+volume or rendering settings cannot repair the endpoint.
+
 ## Option coverage
 
-The Main tab contains every recovered retail row:
+The Main tab contains every recovered retail row plus the external language selector:
 
 | UI option | `settings.toml` key | Values and retail default | Runtime behavior |
 |---|---|---|---|
+| Language | `main.language` | locale found under `localization/`; `"en"` | live preview and persisted by `Done` |
 | Master Volume | `main.master_volume` | `0.0`-`1.0`; `1.0` | live preview |
 | Music Volume | `main.music_volume` | `0.0`-`1.0`; `1.0` | live preview |
 | Fullscreen | `main.fullscreen` | boolean; `true` | live preview |
 | Invert Mouse | `main.invert_mouse` | boolean; `false` | applied by `Done` |
 | Favourite | not persisted here | boolean | disabled in the frontend; a live server session owns it |
+| Show skins | `main.show_skins` | boolean; `true` | live local filter for character, weapon, world-object and death skins, including pack sounds |
+| Show other players' skins | `main.show_other_skins` | boolean; `true` | live remote-only filter; own equipped appearance stays visible when Show skins is on |
+| Weapon movement | `main.weapon_motion` | boolean; `true` | live toggle for running sway, falling lift and scripted sprint poses; firing, reloads and ADS remain animated |
+
+The three presentation preferences are available during matches. Turning skins
+off does not modify equipment, crate awards, inventory previews or what other
+players see. Turning them back on reuses the saved equipment without fetching
+inventory again. `Cancel` restores the previous visual preferences. Remote rigs
+and props replace their meshes incrementally using the existing upload budget.
 
 The Graphics tab contains every row supported by the active backend. Resolution
 choices come from SDL's filtered, de-duplicated display-mode list. Antialiasing
@@ -90,24 +120,28 @@ The staging script verifies every shader hash after copying it.
 
 `graphics.shader_quality` resolves to a `render::QualityProfile`
 (`src/render/quality_profile.cpp`), the single source of truth for what each
-tier enables. **Legacy is the retail-parity path** and is reached through the
+tier enables. **Legacy uses the recovered retail lighting path** and is reached through the
 Compatibility Shader toggle, not the slider.
 
 | | Legacy | Low | Medium | High | Ultra |
 |---|---|---|---|---|---|
-| Offscreen HDR target + tonemap | — | profile only | profile only | profile only | profile only |
-| Per-pixel lighting (terrain and models) | — | yes | yes | yes | yes |
+| Lighting | recovered VXL/KV6 | enhanced | enhanced | enhanced | enhanced |
+| Inline tone mapping | — | yes | yes | yes | yes |
+| Offscreen HDR target | — | — | — | — | — |
 | Sun shadow map | — | — | 1 @ 1536 | 1 @ 1536 | 1 @ 2048 |
 | Shadow filtering | — | — | 9-tap PCF | 9-tap PCF | 9-tap PCF |
-| Ambient occlusion samples | — | — | — | profile only: 8 | profile only: 16 |
+| Screen-space ambient occlusion | — | — | — | — | — |
 | Dynamic lights | 0 | 2 | 4 | 8 | 8 |
 | Lit particles | — | — | — | yes | yes |
-| Bloom pyramid levels | — | — | profile only: 4 | profile only: 5 | profile only: 6 |
+| Bloom | — | — | — | — | — |
 
-Legacy renders straight to the backbuffer with the recovered baked
-face/occlusion tables, so nothing downstream can alter a retail comparison
-capture. Every other tier reads the same meshes and the same per-map
-atmosphere; changing tier costs no re-mesh.
+Legacy renders straight to the backbuffer with the recovered two-light terrain
+shader, per-vertex VXL baked illumination, the original AO/edge/grain atlas,
+authored KV6 normals and model lighting. It preserves server-supplied fog.
+Enhanced tiers use the measured map atmosphere, face normals and their existing
+shadow/occlusion path. All tiers read the same meshes; changing tier costs no
+re-mesh. See [the graphics audit](GRAPHICS_AUDIT_2026-09-20.md) for evidence and
+remaining parity limits.
 
 `Effect Quality` is a deliberately independent axis, sizing the reusable
 particle pool (0.10 / 0.50 / 1.00) at any tier without thinning individual
@@ -119,11 +153,19 @@ fog distance, one filtered sun-shadow map on Medium and above, the skylight
 cover term, the bounded dynamic-light array used by explosions and selected
 muzzle flashes, and High/Ultra per-particle light evaluation. Additive glow
 sprites remain self-lit; ordinary smoke and debris receive a bounded tint from
-the same selected world lights. **Plumbed but inert:** the offscreen
-HDR/tonemap path, SSAO, and bloom are carried on the profile and reported in
-the F3 overlay, but do not yet have render passes. The table labels those
-fields `profile only` instead of claiming that a higher tier already enables
-them.
+the same selected world lights. **Not implemented:** an offscreen HDR target,
+SSAO and bloom. Their reserved profile fields remain zero, including in the F3
+diagnostics. Enhanced tone mapping happens inside the world fragment shader;
+it does not use an HDR framebuffer. Terrain atlas AO and model corner AO are
+separate from the unimplemented SSAO pass.
+
+Sun shadows use a light-space texel grid and a map-bounded depth range so
+walking and jumping do not move the sampling pattern over stationary surfaces.
+The nine-tap filter follows the receiver plane with a small depth bias, keeping
+contact close to the caster without darkening the ambient sky light. The outer
+shadow-map border fades to light. Terrain submissions are culled against the
+light volume, including its filter margin; camera visibility does not remove
+off-screen shadow casters. This is filtered shadow mapping, not PCSS or ray tracing.
 
 ## Controls and rebinding
 

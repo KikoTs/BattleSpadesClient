@@ -1,0 +1,50 @@
+{
+  "name": "Browning M1911",
+  "source": "https://gamebanana.com/mods/170516",
+  "archives": [
+    {
+      "archive": "170516\\214819-browning_m1911_aos.zip",
+      "extracted": "170516\\files-214819",
+      "sha256": "eab529aeb0915326b22dc5b2f2f82688a83a84683a7d0ef8ae2e19970f1f67f9",
+      "listing": [
+        "Browning M1911/Browning M1911.jpg",
+        "Browning M1911/Browning M1911.png",
+        "Browning M1911/kv6/",
+        "Browning M1911/kv6/pistol.kv6",
+        "Browning M1911/kv6/pistol_sight.kv6",
+        "Browning M1911/png/",
+        "Browning M1911/png/ui/",
+        "Browning M1911/png/ui/weapons/",
+        "Browning M1911/png/ui/weapons/pistol.png"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_sRole": "Creator",
+          "_sName": "1Shot_1Kill"
+        }
+      ]
+    }
+  ],
+  "license": "1. Any modifications of my mods that will be distributed will need my permission and credit.\r\n2. Any of my mods that will be re-distributed will need my permission and credit.\r\n3. Do not use adf.ly or any other advert links to link to my mods.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

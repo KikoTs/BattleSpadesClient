@@ -38,8 +38,9 @@ inline constexpr std::uint16_t post_view_count{16U};
  */
 inline constexpr std::uint16_t composite_view_id{23U};
 
-inline constexpr std::uint16_t ui_window_view_id{24U};
-inline constexpr std::uint16_t ui_canvas_view_id{25U};
+inline constexpr std::uint16_t inventory_preview_view_id{24U};
+inline constexpr std::uint16_t ui_window_view_id{25U};
+inline constexpr std::uint16_t ui_canvas_view_id{26U};
 
 static_assert(shadow_view_id_base + shadow_view_count <= world_view_id);
 static_assert(post_view_id_base + post_view_count <= composite_view_id);

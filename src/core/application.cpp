@@ -1,4 +1,5 @@
 #include "battlespades/core/application.hpp"
+#include "battlespades/core/frame_pacing.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -40,17 +41,21 @@ RunResult Application::run() {
             ++started_modules;
         }
 
-        const auto wall_clock_start = std::chrono::steady_clock::now();
+        FixedStepPacer pacer{FixedStepPacer::Clock::now(), config_.fixed_delta};
         std::chrono::nanoseconds elapsed{};
         std::uint64_t tick_index{};
         bool stop_requested{false};
 
         while (result == RunResult::success && !stop_requested &&
                (!config_.tick_limit.has_value() || tick_index < *config_.tick_limit)) {
+            const auto pacing = config_.pace_to_wall_clock
+                                    ? pacer.step(FixedStepPacer::Clock::now())
+                                    : FixedStepPacer::Step{};
             const TickContext context{
                 .index = tick_index,
                 .fixed_delta = config_.fixed_delta,
                 .elapsed = elapsed,
+                .present = pacing.present,
             };
 
             for (auto& module : modules_) {
@@ -64,7 +69,7 @@ RunResult Application::run() {
             elapsed += config_.fixed_delta;
 
             if (config_.pace_to_wall_clock && !stop_requested) {
-                std::this_thread::sleep_until(wall_clock_start + elapsed);
+                std::this_thread::sleep_until(pacing.next_tick);
             }
         }
     } catch (...) {

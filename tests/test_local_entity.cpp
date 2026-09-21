@@ -5,10 +5,12 @@
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_state.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -113,6 +115,92 @@ void turret_yaw_wraps_the_short_way() {
 }
 
 /** The aim rate is exactly the recovered 180 deg/s, and it gates firing. */
+void turret_barrel_follows_retail_world_update_angles() {
+    struct Case {
+        double yaw;
+        double pitch;
+        Vec3 expected;
+    };
+    const std::array cases{
+        Case{0.0, 0.0, {0.0, 1.0, 0.0}},
+        Case{90.0, 0.0, {1.0, 0.0, 0.0}},
+        Case{180.0, 0.0, {0.0, -1.0, 0.0}},
+        Case{-90.0, 0.0, {-1.0, 0.0, 0.0}},
+        Case{0.0, 30.0, {0.0, std::sqrt(0.75), -0.5}},
+        Case{90.0, -30.0, {std::sqrt(0.75), 0.0, 0.5}},
+        Case{-90.0, 90.0, {0.0, 0.0, -1.0}},
+    };
+    for (const auto& row : cases) {
+        const auto rotation = entity_aim_rotation(8U, row.yaw, row.pitch);
+        constexpr double radians{3.14159265358979323846 / 180.0};
+        const auto pitch = rotation.pitch_degrees * radians;
+        const auto yaw = rotation.yaw_degrees * radians;
+        // Turret_gun.kv6's barrel runs toward authored +Y (pivot Y=4,
+        // muzzle Y=20); Rx(-90) first restores that axis from mesh +Z.
+        // Apply the exact axis order consumed by native entity draws.
+        Vec3 barrel{0.0, 1.0, 0.0};
+        if (rotation.pitch_axis == 0U) {
+            barrel = {0.0, std::cos(pitch), std::sin(pitch)};
+        }
+        const Vec3 pointed{
+            barrel.x * std::cos(yaw) - barrel.y * std::sin(yaw),
+            barrel.x * std::sin(yaw) + barrel.y * std::cos(yaw), barrel.z};
+        expect(std::abs(pointed.x - row.expected.x) < 1e-9 &&
+                   std::abs(pointed.y - row.expected.y) < 1e-9 &&
+                   std::abs(pointed.z - row.expected.z) < 1e-9,
+               "turret barrel must point along its replicated target, including elevation");
+    }
+    const auto ordinary = entity_aim_rotation(7U, 25.0, 15.0);
+    expect(ordinary.pitch_axis == 1U && ordinary.pitch_degrees == -15.0 &&
+               ordinary.yaw_degrees == 25.0,
+           "turret wire conversion must leave other entity rigs unchanged");
+}
+
+void autonomous_rockets_do_not_use_handheld_muzzle_offsets() {
+    LauncherMuzzleTracker tracker;
+    const auto sent = LauncherMuzzleTracker::Clock::time_point{} + std::chrono::seconds{10};
+    LocalEntity rocket;
+    rocket.type = 21U;
+    rocket.position = {100.0, 100.0, 20.0};
+    rocket.velocity = {75.0, 0.0, 0.0};
+    expect(!tracker.consume(rocket, sent),
+           "owned turret rockets need no first-person offset without a local shot");
+    tracker.remember(12U, {40.0, 40.0, 20.0}, rocket.velocity, sent);
+    expect(!tracker.consume(rocket, sent + std::chrono::milliseconds{50}),
+           "a turret shot must not consume a simultaneous distant handheld shot");
+    rocket.position = {40.0, 40.0, 20.0};
+    rocket.velocity.y = 1.0;
+    expect(!tracker.consume(rocket, sent), "spawn position alone cannot identify the launcher");
+    rocket.velocity.y = 0.0;
+    rocket.type = 22U;
+    expect(!tracker.consume(rocket, sent), "launcher family must match the sent action");
+    rocket.type = 21U;
+    rocket.position.x += 0.01; // A valid 1/64 wire round-trip error.
+    expect(tracker.consume(rocket, sent + std::chrono::milliseconds{100}),
+           "explicit local shot must survive wire quantization and weapon switching");
+    expect(!tracker.consume(rocket, sent + std::chrono::milliseconds{101}),
+           "a local launcher action may match only one created rocket");
+
+    tracker.remember(12U, rocket.position, rocket.velocity, sent);
+    expect(!tracker.consume(rocket, sent + std::chrono::seconds{2}),
+           "lost replies cannot authorize unrelated later rockets");
+    for (unsigned int index{}; index < 9U; ++index) {
+        tracker.remember(12U, {static_cast<double>(index), 0.0, 20.0}, rocket.velocity, sent);
+    }
+    rocket.position = {0.0, 0.0, 20.0};
+    expect(!tracker.consume(rocket, sent), "launcher reply history must evict beyond eight requests");
+    rocket.position.x = 8.0;
+    expect(tracker.consume(rocket, sent), "bounded history must retain the newest launcher request");
+    tracker.remember(12U, rocket.position, rocket.velocity, sent);
+    tracker.clear();
+    expect(!tracker.consume(rocket, sent), "leaving a match must discard pending muzzle ownership");
+    for (const auto tool : {13U, 46U}) {
+        rocket.type = 22U;
+        tracker.remember(static_cast<std::uint8_t>(tool), rocket.position, rocket.velocity, sent);
+        expect(tracker.consume(rocket, sent), "RPG2 and UGC RPG2 retain their muzzle presentation");
+    }
+}
+
 void turret_aim_advances_at_the_recovered_rate() {
     constexpr double dt{1.0 / 60.0};
     const auto aim = step_turret_aim(0.0, 0.0, 90.0, 0.0, 180.0, dt, 0.1);
@@ -568,6 +656,22 @@ void swept_entity_falls_cannot_tunnel() {
            "swept gravity must catch a one-voxel floor at high speed");
 }
 
+/** Finite wire/debug inputs must not overflow the sweep's integer step count. */
+void extreme_entity_sweeps_remain_bounded_and_finite() {
+    auto map = empty_world();
+    const auto* grave = find_entity_definition(11U);
+    expect(grave != nullptr, "GRAVE must exist");
+    for (const double dt : {1.0, std::numeric_limits<double>::max()}) {
+        LocalEntity entity = at(82.25, 82.25, 90.0);
+        entity.type = 11U;
+        entity.velocity = {std::numeric_limits<double>::max(), 0.0, 0.0};
+        static_cast<void>(step_entity_terrain_physics(entity, *grave, map, dt));
+        expect(std::isfinite(entity.position.x) && std::isfinite(entity.position.y) &&
+                   std::isfinite(entity.position.z) && std::isfinite(entity.velocity.z),
+               "overflowing requested displacement must leave a finite, bounded physics state");
+    }
+}
+
 /** Graves use retail's 50% vertical rebound and eventually settle. */
 void grave_bounce_scales_with_fall_distance_and_diminishes() {
     const auto* grave = find_entity_definition(11U);
@@ -643,6 +747,50 @@ void only_health_crates_project_a_ground_shadow() {
            "ammo and block crates do not opt into retail's spot shadow");
 }
 
+void placement_transforms_follow_faces_and_keep_rigs_on_the_support() {
+    auto charge = at(10.0, 20.0, 30.0);
+    charge.type = 38U;
+    const auto* definition = find_entity_definition(charge.type);
+    expect(definition != nullptr && !definition->parts.empty(), "C4 has a model part");
+    const std::array<Vec3, 6U> normals{{{-1.0, 0.0, 0.0}, {1.0, 0.0, 0.0},
+                                       {0.0, -1.0, 0.0}, {0.0, 1.0, 0.0},
+                                       {0.0, 0.0, -1.0}, {0.0, 0.0, 1.0}}};
+    for (std::uint8_t face{}; face < normals.size(); ++face) {
+        charge.face = face;
+        const auto& part = definition->parts.front();
+        const auto matrix = entity_presentation_transform(charge, *definition, part);
+        const auto scale = definition->model_size * part.scale;
+        expect(std::abs(matrix[4U] / scale - normals[face].x) < 1e-5 &&
+                   std::abs(matrix[5U] / scale - normals[face].y) < 1e-5 &&
+                   std::abs(matrix[6U] / scale - normals[face].z) < 1e-5,
+               "the KV6 upper axis must face out from each possible attachment surface");
+        const auto origin = entity_presentation_position(charge, part);
+        expect(std::abs(matrix[12U] - origin.x) < 1e-5 &&
+                   std::abs(matrix[13U] - origin.y) < 1e-5 &&
+                   std::abs(matrix[14U] - origin.z) < 1e-5,
+               "rotating a wall charge must preserve its authored attachment origin");
+    }
+
+    for (const auto tool : {16U, 20U, 21U, 51U, 56U, 59U}) {
+        auto ghost = at(10.0, 20.0, 30.0);
+        ghost.type = entity_placed_by_tool(static_cast<std::uint8_t>(tool));
+        ghost.grounded = true;
+        ghost.attached = true;
+        const auto* rig = find_entity_definition(ghost.type);
+        expect(rig != nullptr, "every deployable ghost needs its actual entity catalog row");
+        const std::vector<float> bounds(rig->parts.size(), -3.0F);
+        const auto contact = entity_rig_vertical_contact_adjustment(ghost, *rig, rig->parts, bounds);
+        double lowest = -std::numeric_limits<double>::infinity();
+        for (std::size_t part{}; part < rig->parts.size(); ++part) {
+            if (rig->parts[part].rotation_mode >= 2U) continue;
+            const auto transform = entity_presentation_transform(ghost, *rig, rig->parts[part], contact);
+            lowest = std::max(lowest, static_cast<double>(bounds[part] * transform[6U] + transform[14U]));
+        }
+        expect(std::abs(lowest - ghost.position.z) < 1e-5,
+               "each deployed rig and its ghost must rest on the support voxel without hovering");
+    }
+}
+
 struct TestCase final {
     const char* name;
     void (*run)();
@@ -657,6 +805,10 @@ int main() {
         {"the_blast_falloff_stops_at_its_radius", the_blast_falloff_stops_at_its_radius},
         {"turret_yaw_wraps_the_short_way", turret_yaw_wraps_the_short_way},
         {"turret_aim_advances_at_the_recovered_rate", turret_aim_advances_at_the_recovered_rate},
+        {"turret_barrel_follows_retail_world_update_angles",
+         turret_barrel_follows_retail_world_update_angles},
+        {"autonomous_rockets_do_not_use_handheld_muzzle_offsets",
+         autonomous_rockets_do_not_use_handheld_muzzle_offsets},
         {"the_ammo_crate_tops_the_right_pool", the_ammo_crate_tops_the_right_pool},
         {"the_crate_and_the_spawn_reset_are_different",
          the_crate_and_the_spawn_reset_are_different},
@@ -665,6 +817,8 @@ int main() {
         {"the_ground_face_needs_no_rotation", the_ground_face_needs_no_rotation},
         {"entity_display_origins_match_retail_attachment_rules",
          entity_display_origins_match_retail_attachment_rules},
+        {"placement_transforms_follow_faces_and_keep_rigs_on_the_support",
+         placement_transforms_follow_faces_and_keep_rigs_on_the_support},
         {"only_timed_dynamite_gets_a_countdown_canvas",
          only_timed_dynamite_gets_a_countdown_canvas},
         {"the_landmine_matches_the_alias_block", the_landmine_matches_the_alias_block},
@@ -677,6 +831,8 @@ int main() {
         {"attached_charges_fall_when_the_wall_disappears",
          attached_charges_fall_when_the_wall_disappears},
         {"swept_entity_falls_cannot_tunnel", swept_entity_falls_cannot_tunnel},
+        {"extreme_entity_sweeps_remain_bounded_and_finite",
+         extreme_entity_sweeps_remain_bounded_and_finite},
         {"grave_bounce_scales_with_fall_distance_and_diminishes",
          grave_bounce_scales_with_fall_distance_and_diminishes},
         {"anchored_rows_do_not_receive_generic_gravity",

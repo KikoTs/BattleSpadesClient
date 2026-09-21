@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "pack-170609-default",
+  "name": "Openspades M14 EBR \"Scoped\"",
+  "source": "https://gamebanana.com/mods/170609",
+  "class": "ViewRifleSkin",
+  "category": "Rifle",
+  "scripts": [
+    "Runtime/openspades.as",
+    "Runtime/BasicViewWeapon.as",
+    "Scripts/Skin/Rifle/View.as"
+  ],
+  "resources": {
+    "Models/Weapons/Rifle/Magazine.kv6": "Models/Weapons/Rifle/Magazine.kv6",
+    "Models/Weapons/Rifle/Sight1.kv6": "Models/Weapons/Rifle/Sight1.kv6",
+    "Models/Weapons/Rifle/Sight2.kv6": "Models/Weapons/Rifle/Sight2.kv6",
+    "Models/Weapons/Rifle/weapon.kv6": "Models/Weapons/Rifle/weapon.kv6",
+    "Models/Weapons/Rifle/Weaponnomagazine-old.kv6": "Models/Weapons/Rifle/Weaponnomagazine-old.kv6",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+    "Gfx/Sight.tga": "Fallback/OpenSpades/Gfx/Sight.tga.png",
+    "Sounds/Weapons/Rifle/FireLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/FireFar.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg",
+    "Sounds/Weapons/Rifle/FireStereo.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg",
+    "Sounds/Weapons/Rifle/ReloadLocal.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceSmall.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg",
+    "Sounds/Weapons/Rifle/V2AmbienceLarge.opus": "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg"
+  },
+  "hashes": {
+    "Models/Weapons/Rifle/Magazine.kv6": "7b2f9760ba4382d6d3fd5a978a276effe15dfa214f7b57b5b7b8a02daafb1aa5",
+    "Models/Weapons/Rifle/Sight1.kv6": "1b6c29e1d11cb8fecfc827b106e82f76b21bd00ca904a5fc44e05bf5978fe017",
+    "Models/Weapons/Rifle/Sight2.kv6": "a48cd164e65c097e9407098bf21a9dd25eebd2b208a778a908e3f218467a8b89",
+    "Models/Weapons/Rifle/weapon.kv6": "9b25a789d4d08fcd41b78d80bc1e5d5fe9c3765e2601d27a8a88fb32b15a6230",
+    "Models/Weapons/Rifle/Weaponnomagazine-old.kv6": "ba8eed4f26938f42839cf8ff95a54193a9ed2a78bff245ee552addfc3fcd66ae",
+    "Models/Weapons/Rifle/WeaponNoMagazine.kv6": "87b07ee022c89c0d0a67b50cbb96308a25a637d46f1fb7ccc3730643b07e9e4c",
+    "Fallback/OpenSpades/Gfx/Sight.tga.png": "21f66cf72208d4fcad0efeda0edf72b2538509b092a2c8eb398f973bef3d52eb",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireLocal.opus.ogg": "331e2ded72152304328a2bc060704fbaea08483838a38fcc8b85ebf1d1aba784",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireFar.opus.ogg": "c3db6976ef0155dd5939f014e2f0174ef0201b924af9b4bcf2cb6ce920de4df5",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/FireStereo.opus.ogg": "835afaf0b7a0d60cb5a6d736a56d6cc861be4d700a95b696c7f9284be1dbe834",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/ReloadLocal.opus.ogg": "f796d398839673b548e0f99e433779c8cc47ccd93da937c042d76584f1c06796",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceSmall.opus.ogg": "ba1a89519249527a248af4a9cc40309fdc7a0f176363bc801d2b8587f5ccc0e8",
+    "Fallback/OpenSpades/Sounds/Weapons/Rifle/V2AmbienceLarge.opus.ogg": "bc35500b0df7ce1b84f0a9afd4ad2cfdfaf02ec7c921779b7c505b3ce3c859e3",
+    "Hands/Arm.kv6": "ae218c729db588d9cec0ffedeea742ebaf4e6956596b2882aa2fd678d9c1ecf7",
+    "Hands/UpperArm.kv6": "29eb98d347ad08d9730fb3ef9503934b5779703955144980778f2cb4cd75571b",
+    "Runtime/openspades.as": "05c484a87da60861c39c18863b8b7ea4968acab3e6c1b6e6adde558cfaca9a4c",
+    "Runtime/BasicViewWeapon.as": "9ca4722dc1af6dd55e6e9a39862024607773331fb691c11066ee2bc4cd96eaa9",
+    "Scripts/Skin/Rifle/View.as": "80c1517cdfc47495e8432e17b0ba749dceebbfc84b82f89c83e8f95c3355e2ad"
+  },
+  "license": "<a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\"><img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc-nd/4.0/88x31.png\" /></a><br />This work is licensed under a <a rel=\"license\" href=\"http://creativecommons.org/licenses/by-nc-nd/4.0/\">Creative Commons Attribution-NonCommercial-NoDerivs 4.0 Unported License</a>.",
+  "credits": [
+    {
+      "_sGroupName": "Creator",
+      "_aAuthors": [
+        {
+          "_sRole": "Concpet/ Model",
+          "_sName": "E5scott"
+        }
+      ]
+    }
+  ],
+  "animation_source": "OpenSpades default Rifle script; model-only archive",
+  "fallbacks": [],
+  "missing": [],
+  "hands": {
+    "lower": "Hands/Arm.kv6",
+    "upper": "Hands/UpperArm.kv6",
+    "source": "OpenSpades r33 default articulated arms"
+  }
+}

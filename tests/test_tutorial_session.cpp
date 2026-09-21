@@ -4,13 +4,17 @@
 #include "battlespades/world/terrain_effects.hpp"
 #include "battlespades/world/vxl_map.hpp"
 #include "battlespades/world/weapon_zoom.hpp"
+#include "battlespades/core/deferred_cleanup.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <future>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <thread>
@@ -75,6 +79,189 @@ int main() {
     try {
         const auto map = spawn_platform_world();
 
+        // The negotiated local profile is checked against the actual Python
+        // ClientData -> authority -> WorldUpdate flight trace (60 Hz).
+        struct FlightSample { unsigned pack; double fuel60, x60, z60, fuel360, x360, z360; };
+        constexpr std::array<FlightSample, 3U> balanced_samples{{
+            {66U, 68.5, 104.657447815, 95.357139587, 0.0, 147.831756592, 7.952461720},
+            {67U, 83.55, 104.657447815, 105.753852844, 38.55, 161.107452393, 110.102577209},
+            {68U, 84.625, 103.110809326, 104.530723572, 47.125, 117.272407532, 80.106422424},
+        }};
+        for (const auto& sample : balanced_samples) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.flight_profile = battlespades::world::balanced_flight_profile();
+            live.initial_position = {100.5, 100.5, 100.0};
+            live.initial_orientation = {1.0, 0.0, 0.0};
+            live.initial_airborne = false;
+            live.initial_class_id = sample.pack == 68U ? 12U : 2U;
+            // Exact default InitialInfo class speed scale used by FlightFlow.
+            live.movement_speed_scale = sample.pack == 68U ? 1.25 : 1.09375;
+            live.initial_loadout = {17U, 2U, 5U, static_cast<std::uint8_t>(sample.pack)};
+            TutorialWorldSession session{map, live};
+            session.set_action_held(TutorialAction::jump, true);
+            session.set_action_held(TutorialAction::forward, true);
+            for (int frame{1}; frame <= 760; ++frame) {
+                session.tick();
+                if (frame == 60 || frame == 360) {
+                    const bool early = frame == 60;
+                    expect(std::abs(session.jetpack_fuel() - (early ? sample.fuel60 : sample.fuel360)) < 1e-8,
+                           "local predicted fuel must match the server's consumed-input timeline");
+                    if (std::abs(session.player().position.x - (early ? sample.x60 : sample.x360)) >= 0.0001 ||
+                        std::abs(session.player().position.z - (early ? sample.z60 : sample.z360)) >= 0.0001) {
+                        std::cerr << "flight pack=" << sample.pack << " frame=" << frame
+                                  << " x=" << session.player().position.x << " z=" << session.player().position.z
+                                  << " expected_x=" << (early ? sample.x60 : sample.x360)
+                                  << " expected_z=" << (early ? sample.z60 : sample.z360) << '\n';
+                        expect(false, "negotiated flight trajectory must match real ClientData authority");
+                    }
+                }
+            }
+            expect(!session.player().jetpack_active && session.jetpack_fuel() == 0.0,
+                   "longer profile must still exhaust and require release without free air refill");
+        }
+
+        // Airborne release/tapping never refills; a quiet landing recharges in
+        // five seconds after the one-second idle gate. Low gravity keeps this
+        // fixture aloft without relying on a wall or an unusually high spawn.
+        for (const bool airborne : {false, true}) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.flight_profile = battlespades::world::balanced_flight_profile();
+            live.initial_position = {130.0, 70.0, airborne ? 190.0 : 230.75};
+            live.initial_airborne = airborne;
+            live.gravity = airborne ? 1.0 / 64.0 : 1.0;
+            live.initial_class_id = 12U;
+            live.initial_loadout = {17U, 2U, 5U, 68U};
+            TutorialWorldSession session{map, live};
+            session.apply_server_jetpack_fuel(0.0);
+            for (int frame{1}; frame <= 360; ++frame) {
+                session.tick();
+                if ((frame < 60 || airborne) && session.jetpack_fuel() != 0.0) {
+                    std::cerr << "refill fixture airborne=" << airborne << " frame=" << frame
+                              << " actual_airborne=" << session.player().airborne
+                              << " z=" << session.player().position.z
+                              << " fuel=" << session.jetpack_fuel() << '\n';
+                    expect(session.jetpack_fuel() == 0.0, "refill requires grounded idle; no airborne recharge");
+                }
+            }
+            expect(session.jetpack_fuel() == (airborne ? 0.0 : 100.0),
+                   "grounded recharge must cap at capacity after the advertised wait");
+        }
+
+        // Early airborne Z is queued until descent. Its ascending trajectory
+        // must remain exactly equal to an ordinary jump (no low-gravity boost).
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.flight_profile = battlespades::world::balanced_flight_profile();
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_velocity = {0.0, 0.0, -0.2};
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 72U};
+            TutorialWorldSession deploy{map, live}, ordinary{map, live};
+            deploy.set_action_held(TutorialAction::hover, true);
+            bool deployed{};
+            for (int frame{}; frame < 120; ++frame) {
+                deploy.tick(); ordinary.tick();
+                if (deploy.player().parachute_active) {
+                    expect(deploy.player().velocity.z >= 0.0, "queued chute must only open during descent");
+                    deployed = true;
+                    break;
+                }
+                expect(deploy.player().parachute_pending &&
+                           deploy.player().position.z == ordinary.player().position.z,
+                       "early deploy must preserve ordinary upward jump motion");
+                deploy.set_action_held(TutorialAction::hover, false);
+            }
+            expect(deployed, "queued deploy must open without needing a second key press");
+        }
+
+        // The Soldier's explicit deploy key predicts immediately, while old
+        // closed ACKs replay newer input instead of folding the canopy again.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.75};
+            live.initial_airborne = true;
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 72U};
+            TutorialWorldSession session{map, live};
+            session.tick();
+            session.record_network_prediction(100);
+            session.set_action_held(TutorialAction::hover, true);
+            session.tick();
+            session.record_network_prediction(101);
+            expect(session.player().parachute_active,
+                   "airborne deploy must predict without waiting for the server");
+            session.apply_server_movement_state(0U, 0U, 0xFFU, 100);
+            expect(session.player().parachute_active,
+                   "closed ACK before deploy cannot undo the newer key edge");
+            session.apply_server_movement_state(0U, 0U, 0xFFU, 101);
+            expect(!session.player().parachute_active,
+                   "authority can deny the acknowledged deployment");
+            session.apply_server_movement_state(0U, 1U, 0xFFU, 100);
+            expect(!session.player().parachute_active,
+                   "reordered canopy snapshots must be inert");
+            session.set_action_held(TutorialAction::hover, false);
+            session.tick();
+            session.set_action_held(TutorialAction::hover, true);
+            session.tick();
+            expect(session.player().parachute_active,
+                   "a fresh airborne edge must permit deployment again");
+            session.set_server_health(0.0);
+            expect(!session.player().parachute_active,
+                   "authoritative death must retire the canopy immediately");
+            session.set_action_held(TutorialAction::hover, true);
+            session.tick();
+            expect(!session.player().parachute_active,
+                   "dead players cannot redeploy from stale input");
+        }
+
+        // A sustained canopy cancels accumulated fall damage using the retail
+        // 0.05 gravity recurrence; touchdown closes it in the landing frame.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.75};
+            live.initial_airborne = true;
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 72U};
+            TutorialWorldSession session{map, live};
+            session.set_action_held(TutorialAction::hover, true);
+            int ticks{};
+            for (; ticks < 2400; ++ticks) {
+                session.tick();
+                expect(session.take_movement_events().landing_damage <= 0,
+                       "deployed parachute must never accumulate landing damage");
+                if (!session.player().airborne) break;
+            }
+            expect(ticks > 1200 && ticks < 1800,
+                   "forty-block retail canopy descent must take roughly 25 seconds");
+            expect(!session.player().parachute_active,
+                   "landing must close the canopy immediately");
+            session.set_action_held(TutorialAction::jump, true);
+            session.tick();
+            session.tick();
+            expect(!session.player().parachute_active,
+                   "holding deploy through landing cannot reopen on the next jump");
+        }
+
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.75};
+            live.initial_airborne = true;
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 3U};
+            TutorialWorldSession session{map, live};
+            session.set_action_held(TutorialAction::hover, true);
+            session.tick();
+            expect(!session.player().parachute_active,
+                   "deploy key without equipped parachute must remain ordinary gravity");
+        }
+
         // Spawn parity: recovered tutorial spawn and -x facing.
         {
             TutorialWorldSession session{map};
@@ -91,6 +278,49 @@ int main() {
             expect(session.diagnostics().grounded, "spawn must settle grounded");
             expect(std::fabs(session.player().position.z - 230.75) < 0.01,
                    "settled spawn must rest at the authored anchor height");
+        }
+
+        // A large edit batch must enqueue each chunk once, including flare
+        // lighting neighbours, and draining it must allow the next edit batch.
+        {
+            TutorialWorldSession session{spawn_platform_world()};
+            for (std::uint32_t y{}; y < VxlMap::depth; y += 16U) {
+                for (std::uint32_t x{}; x < VxlMap::width; x += 16U) {
+                    expect(session.spawn_entity(13U, {static_cast<double>(x + 8U),
+                                                      static_cast<double>(y + 8U), 10.0}) != 0U,
+                           "valid flare terrain edits must be accepted throughout the map");
+                }
+            }
+            const auto dirty = session.take_dirty_chunks();
+            std::array<bool, 1024U> seen{};
+            expect(dirty.size() == seen.size(),
+                   "a whole-map edit batch must contain exactly 1024 unique chunks");
+            for (const auto& chunk : dirty) {
+                expect(chunk.x < 32U && chunk.y < 32U,
+                       "edge lighting must not enqueue chunks outside the world");
+                const auto index = chunk.y * 32U + chunk.x;
+                expect(!seen[index], "repeated terrain/light touches must deduplicate chunks");
+                seen[index] = true;
+            }
+            expect(session.take_dirty_chunks().empty(), "dirty chunks must drain only once");
+            expect(session.spawn_entity(13U, {16.0, 16.0, 12.0}) != 0U,
+                   "a new seam edit must be accepted after draining");
+            const auto next_dirty = session.take_dirty_chunks();
+            for (const auto required : {battlespades::world::ChunkKey{1U, 1U},
+                                        battlespades::world::ChunkKey{0U, 1U},
+                                        battlespades::world::ChunkKey{1U, 0U}}) {
+                expect(std::ranges::any_of(next_dirty, [&](const auto& chunk) {
+                           return chunk.x == required.x && chunk.y == required.y;
+                       }), "draining membership must let later seam edits requeue their neighbours");
+            }
+            static_cast<void>(session.take_entity_events());
+            const auto invalid = std::numeric_limits<double>::quiet_NaN();
+            expect(session.spawn_entity(13U, {invalid, 16.0, 12.0}) == 0U &&
+                       session.spawn_entity(4U, {16.0, invalid, 12.0}) == 0U &&
+                       session.spawn_entity(4U, {16.0, 16.0, 12.0}, 0U, 6U) == 0U &&
+                       session.take_dirty_chunks().empty() &&
+                       session.take_entity_events().empty(),
+                   "invalid local entity transforms must fail before terrain, events or model slots change");
         }
 
         // Retail BlockToolCommon constrains normal placement/color-pick rays
@@ -353,6 +583,29 @@ int main() {
                    "held locomotion must enter the new life on its next latched frame");
         }
 
+        // Current aim is sent/displayed immediately, but movement uses the
+        // preceding packet's orientation with its latched locomotion buttons.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 230.75};
+            live.initial_orientation = {-1.0, 0.0, 0.0};
+            live.initial_class_id = 1U;
+            live.initial_loadout = {17U, 2U, 5U};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.set_action_held(TutorialAction::forward, true);
+            session.tick();
+            session.tick();
+            session.apply_look_delta(900.0, 0.0);
+            session.tick();
+            expect(session.player().orientation.y < -0.99 &&
+                       std::fabs(session.player().velocity.y) < 1e-9,
+                   "a turn must update aim before it enters the next movement frame");
+            session.tick();
+            expect(session.player().velocity.y < 0.0,
+                   "the following movement frame must consume the new direction");
+        }
+
         // Owner correction restores the ACK state and replays later movement.
         // A coordinate-only rebase cannot reproduce a collision branch.
         {
@@ -417,9 +670,311 @@ int main() {
                    "sub-threshold owner rows must not apply velocity-only jitter");
         }
 
-        // The authoritative server retains the pre-launch vertical position
-        // on the frame that accepts a jump while publishing the new upward
-        // velocity. Matching that phase prevents a correction on every jump.
+        // Flight equipment must stop locally at fuel exhaustion: the server
+        // deliberately defers its inactive owner row until the flight settles.
+        for (const auto pack : {66U, 67U, 68U}) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_class_id = pack == 68U ? 12U : 2U;
+            live.initial_loadout = {17U, 2U, 5U, static_cast<std::uint8_t>(pack)};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            const double drain = pack == 66U ? 75.0 : (pack == 67U ? 17.0 : 18.0);
+            session.set_action_held(TutorialAction::jump, true);
+            session.tick(); // Prime the same L-1 held-input phase as the server.
+            session.apply_server_jetpack_fuel(drain * live.fixed_dt * 2.5, 99);
+            session.apply_server_movement_state(0x04U, 0U, 0xFFU, 99);
+            for (int frame = 100; frame < 105; ++frame) {
+                session.tick();
+                session.record_network_prediction(frame);
+            }
+            const auto exhausted_fuel = session.jetpack_fuel();
+            expect(!session.player().jetpack_active && exhausted_fuel < 1.0,
+                   "each flight pack must exhaust without waiting for an inactive owner row");
+            session.apply_server_jetpack_fuel(100.0, 98);
+            session.apply_server_movement_state(0x04U, 0U, 0xFFU, 98);
+            expect(session.jetpack_fuel() == exhausted_fuel && !session.player().jetpack_active,
+                   "an out-of-order active row must not refill or reignite an exhausted pack");
+            session.restock_jetpack_fuel();
+            session.apply_server_jetpack_fuel(0.0, 101);
+            session.tick();
+            expect(session.jetpack_fuel() == 100.0 && !session.player().jetpack_active,
+                   "restock must fence stale fuel without bypassing the release latch");
+            session.set_action_held(TutorialAction::jump, false);
+            session.tick();
+            session.tick();
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 0; frame < 20; ++frame) session.tick();
+            expect(session.player().jetpack_active,
+                   "release and a fresh full start delay must predict the next flight activation");
+            session.apply_authoritative_transform({130.0, 70.0, 190.0}, {-1.0, 0.0, 0.0});
+            session.apply_server_jetpack_fuel(50.0, 0);
+            expect(session.jetpack_fuel() == 50.0,
+                   "respawn must reset the fuel acknowledgement generation");
+        }
+
+        // Offline class previews use the same default movement equipment and
+        // held thrust as a match, with the original finite fuel budget.
+        for (const auto class_id : {2U, 12U}) {
+            TutorialSessionConfig offline;
+            offline.initial_position = {130.0, 70.0, 230.75};
+            TutorialWorldSession session{map, offline};
+            session.debug_grant_full_loadout();
+            for (int attempts = 0; session.debug_class_id() != class_id && attempts < 18;
+                 ++attempts) {
+                session.debug_cycle_class(1);
+            }
+            expect(session.debug_class_id() == class_id &&
+                       session.player().jetpack == (class_id == 2U ? 2U : 3U),
+                   "offline class cycle must install its original movement equipment");
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 0; frame < 45; ++frame) session.tick();
+            expect(session.player().jetpack_active && session.jetpack_fuel() < 90.0,
+                   "offline held SPACE must ignite and sustain the equipped combat pack");
+            for (int frame = 0; frame < 900; ++frame) session.tick();
+            expect(!session.player().jetpack_active && session.jetpack_fuel() > 1.0,
+                   "refilling an exhausted offline pack cannot bypass its release latch");
+            session.set_action_held(TutorialAction::jump, false);
+            session.tick();
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 0; frame < 25; ++frame) session.tick();
+            expect(session.player().jetpack_active,
+                   "offline release and a fresh hold must permit another bounded flight");
+        }
+
+        // Death retires live ability clocks even while prediction records and
+        // delayed pre-death active rows are still in flight.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 150.0};
+            live.initial_airborne = true;
+            live.initial_class_id = 12U;
+            live.initial_loadout = {17U, 2U, 5U, 68U};
+            TutorialWorldSession session{map, live};
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 1; frame <= 60; ++frame) {
+                session.tick();
+                session.record_network_prediction(frame);
+            }
+            expect(session.player().jetpack_active, "death test starts during powered flight");
+            session.set_server_health(0.0);
+            const double fuel_at_death = session.jetpack_fuel();
+            session.apply_server_jetpack_fuel(100.0, 30);
+            session.apply_server_movement_state(0x0CU, 0U, 0xFFU, 30);
+            expect(!session.player().jetpack_active && !session.player().jetpack_passive,
+                   "an acknowledged pre-death active row must not revive live flight");
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 0; frame < 180; ++frame) session.tick();
+            expect(!session.player().jetpack_active &&
+                       session.jetpack_fuel() == fuel_at_death,
+                   "dead input must neither re-ignite nor regenerate the live fuel pool");
+        }
+
+        // Live UGC backpack/prefab changes preserve the same equipped pack's
+        // flight generation. Only CreatePlayer or an equipment swap resets it.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_class_id = 13U;
+            live.initial_loadout = {17U, 2U, 5U, 69U};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.set_action_held(TutorialAction::hover, true);
+            for (int frame = 1; frame <= 20; ++frame) {
+                session.tick();
+                session.record_network_prediction(frame);
+            }
+            session.apply_server_movement_state(0x04U, 0U, 0xFFU, 20);
+            session.apply_server_jetpack_fuel(70.0, 20);
+            const std::array<std::uint8_t, 1U> tools{5U};
+            expect(session.player().jetpack_active &&
+                       session.apply_server_selection(13U, live.initial_loadout, {}, tools),
+                   "active UGC flight must permit an authoritative live backpack selection");
+            session.apply_server_movement_state(0U, 0U, 0xFFU, 19);
+            session.apply_server_jetpack_fuel(1.0, 19);
+            expect(session.player().jetpack_active && session.jetpack_fuel() == 70.0,
+                   "same-pack live selection must preserve active phase and stale-ACK fences");
+        }
+
+        // A delayed fuel row is an ACK resource, not a refill to today's time.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_class_id = 2U;
+            live.initial_loadout = {17U, 2U, 5U, 66U};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.set_action_held(TutorialAction::jump, true);
+            session.tick();
+            session.apply_server_movement_state(0x04U, 0U, 0xFFU);
+            for (int frame = 100; frame <= 105; ++frame) {
+                session.tick();
+                session.record_network_prediction(frame);
+            }
+            session.apply_server_jetpack_fuel(90.0, 100);
+            expect(std::abs(session.jetpack_fuel() - (90.0 - 5.0 * 75.0 * live.fixed_dt)) < 1e-9,
+                   "delayed fuel must include only active drain after its acknowledged frame");
+            session.set_action_held(TutorialAction::jump, false);
+            session.tick();
+            session.record_network_prediction(106);
+            session.tick();
+            session.record_network_prediction(107);
+            session.restock_jetpack_fuel();
+            session.apply_server_movement_state(0U, 0U, 0xFFU, 101);
+            expect(session.jetpack_fuel() == 100.0 && !session.player().jetpack_active,
+                   "an older mismatching ability ACK must replay the later restock event");
+        }
+
+        // The stock activation bit leads thrust by three consumed recurrences.
+        // None of these frames may depend on a WorldUpdate round trip.
+        for (const auto pack : {66U, 67U, 68U}) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_class_id = pack == 68U ? 12U : 2U;
+            live.initial_loadout = {17U, 2U, 5U, static_cast<std::uint8_t>(pack)};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 1; frame <= 19; ++frame) {
+                session.tick();
+                expect(!session.player().jetpack_active,
+                       "hold delay and two deferred recurrences must precede pack thrust");
+            }
+            session.tick();
+            expect(session.player().jetpack_active && session.jetpack_fuel() < 90.0,
+                   "flight must begin on the server's first thrust frame without an owner row");
+        }
+
+        // The glider takes off with the ordinary jump, then balances gravity
+        // with passive flight. Release must resume descent without another jump.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 230.75};
+            live.initial_airborne = false;
+            live.initial_class_id = 2U;
+            live.initial_loadout = {17U, 2U, 5U, 67U};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame = 0; frame < 110; ++frame) session.tick();
+            expect(session.player().jetpack_active && session.player().jetpack_passive &&
+                       session.player().airborne && session.player().position.z < live.initial_position.z - 1.0,
+                   "glider must stay airborne above its launch platform");
+            const auto glide_z = session.player().position.z;
+            for (int frame = 0; frame < 60; ++frame) session.tick();
+            expect(std::abs(session.player().position.z - glide_z) < 0.1,
+                   "active glider must hold almost level for a full second");
+            session.set_action_held(TutorialAction::jump, false);
+            session.tick();
+            session.tick();
+            expect(!session.player().jetpack_active && !session.player().jetpack_passive &&
+                       session.player().velocity.z > 0.0,
+                   "flight key-up must stop reduced gravity and resume descent");
+        }
+
+        // Replay must retain activation AND release edges, not apply today's
+        // ability bit across every older input in the correction journal.
+        for (const bool end_active : {false, true}) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.0};
+            live.initial_airborne = true;
+            live.initial_class_id = 2U;
+            live.initial_loadout = {17U, 2U, 5U, 66U};
+            TutorialWorldSession predicted{spawn_platform_world(), live};
+            live.initial_position.x += 1.0;
+            TutorialWorldSession reference{spawn_platform_world(), live};
+            predicted.tick();
+            reference.tick();
+            const auto acknowledged = reference.player();
+            predicted.record_network_prediction(100);
+            for (int frame = 101; frame <= 110; ++frame) {
+                const bool active = end_active ? frame >= 106 : frame < 106;
+                for (auto* session : {&predicted, &reference}) {
+                    session->set_action_held(TutorialAction::jump, active);
+                    session->apply_server_movement_state(active ? 0x04U : 0U, 0U, 0xFFU);
+                    session->tick();
+                }
+                predicted.record_network_prediction(frame);
+            }
+            expect(predicted.reconcile_authoritative(100, acknowledged.position, acknowledged.velocity),
+                   "a pre-flight owner ACK must remain replayable across ability edges");
+            expect(std::abs(predicted.player().position.z - reference.player().position.z) < 1e-9 &&
+                       std::abs(predicted.player().velocity.z - reference.player().velocity.z) < 1e-9 &&
+                       std::abs(predicted.player().position.x - reference.player().position.x) < 1e-9 &&
+                       predicted.player().jetpack_active == end_active,
+                   "flight replay must match uninterrupted activation/release and retain current state");
+        }
+
+        // A positional teleport acknowledges an old movement frame. It must
+        // not rewind the owner's current aim to that frame's look direction.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 230.75};
+            live.initial_orientation = {-1.0, 0.0, 0.0};
+            live.initial_class_id = 1U;
+            live.initial_loadout = {17U, 2U, 5U};
+            TutorialWorldSession session{spawn_platform_world(), live};
+            session.tick();
+            const auto acknowledged = session.player();
+            session.record_network_prediction(100);
+            session.apply_look_delta(80.0, 15.0);
+            session.tick();
+            const auto current_aim = session.player().orientation;
+            session.record_network_prediction(101);
+            expect(session.reconcile_authoritative(100,
+                       {acknowledged.position.x + 8.0, acknowledged.position.y,
+                        acknowledged.position.z}, acknowledged.velocity),
+                   "old retained ACK must permit an authoritative teleport");
+            expect(session.player().orientation.x == current_aim.x &&
+                       session.player().orientation.y == current_aim.y &&
+                       session.player().orientation.z == current_aim.z,
+                   "a hard positional correction must preserve the owner's latest aim");
+        }
+
+        // A delayed correction must replay a jump exactly as a live frame,
+        // including its retained launch position instead of an extra move.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 230.75};
+            live.initial_airborne = false;
+            live.initial_class_id = 13U;
+            TutorialWorldSession predicted{spawn_platform_world(), live};
+            live.initial_position.x += 1.0;
+            TutorialWorldSession reference{spawn_platform_world(), live};
+            // Both players have moved beyond the last owner's launch anchor.
+            predicted.note_authoritative_snapshot(0, {120.0, 70.0, 230.75});
+            reference.note_authoritative_snapshot(0, {121.0, 70.0, 230.75});
+            predicted.tick();
+            reference.tick();
+            const auto acknowledged = reference.player();
+            predicted.record_network_prediction(1);
+            predicted.set_action_held(TutorialAction::jump, true);
+            reference.set_action_held(TutorialAction::jump, true);
+            for (int frame{2}; frame <= 12; ++frame) {
+                predicted.tick();
+                reference.tick();
+                predicted.record_network_prediction(frame);
+            }
+            expect(predicted.reconcile_authoritative(1, acknowledged.position, acknowledged.velocity),
+                   "delayed pre-jump correction must find its retained prediction");
+            std::cout << "UGC jump replay: predicted=" << predicted.player().position.x << ','
+                      << predicted.player().position.z << " reference=" << reference.player().position.x
+                      << ',' << reference.player().position.z << '\n';
+            expect(std::abs(predicted.player().position.z - reference.player().position.z) < 1e-6 &&
+                       std::abs(predicted.player().position.x - reference.player().position.x) < 1e-6,
+                   "jump replay must match uninterrupted UGC movement after a delayed correction");
+        }
+
+        // A jump retains native displacement on its consumed frame. Cached
+        // authority rows must never rewind a newly launched player to ground.
         {
             TutorialSessionConfig live;
             live.network_authoritative = true;
@@ -445,15 +1000,11 @@ int main() {
                    "live jump must enter physics on the packet-L-1 recurrence");
             expect(std::fabs(session.player().position.x - before_launch.x) < 1e-9 &&
                        std::fabs(session.player().position.y - before_launch.y) < 1e-9 &&
-                       std::fabs(session.player().position.z - before_launch.z) < 1e-9,
-                   "live jump launch must retain the authoritative owner-row anchor");
+                       session.player().position.z < before_launch.z - 0.1,
+                   "live jump launch must retain native upward displacement");
         }
 
-        // A network jump that enters a one-block step is not the flat-ground
-        // anchor case above. Retail boxclipmove reports jump and climb in the
-        // same recurrence and its upward/forward displacement must survive the
-        // session wrapper; discarding it causes a latency-amplified rollback at
-        // voxel edges.
+        // Simultaneous climb and jump retain the complete native result.
         {
             auto edge_map = spawn_platform_world();
             for (std::uint32_t y{68U}; y <= 73U; ++y) {
@@ -498,17 +1049,95 @@ int main() {
                 session.set_action_held(TutorialAction::jump, true);
                 session.tick(); // Latch jump while consuming the predicted forward step.
                 static_cast<void>(session.take_movement_events());
+                const auto launch_position = session.player().position;
+                session.note_authoritative_snapshot(frame, launch_position);
                 session.tick(); // Consume the forward+jump recurrence at the edge.
                 const auto events = session.take_movement_events();
                 expect(events.jumped && events.climbed,
                        "network edge launch must preserve both native transitions");
                 expect(std::fabs(session.player().position.x - edge_launch.position.x) < 1e-5 &&
                            std::fabs(session.player().position.y - edge_launch.position.y) < 1e-5 &&
-                           std::fabs(session.player().position.z - edge_launch.position.z) < 1e-5,
-                       "network edge launch must retain the native climb displacement");
+                           std::fabs(session.player().position.z - edge_launch.position.z) < 1e-5 &&
+                           session.player().velocity.z == edge_launch.velocity.z &&
+                           session.player().airborne == edge_launch.airborne,
+                       "network edge launch must retain the complete native movement result");
                 exercised = true;
             }
             expect(exercised, "network fixture must reach a jump-and-climb recurrence");
+        }
+
+        // A held key automatically jumps again after landing. Delayed replay
+        // and release/repress must preserve displacement on every launch.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 230.75};
+            live.initial_airborne = false;
+            live.initial_class_id = 1U;
+            TutorialWorldSession predicted{spawn_platform_world(), live};
+            live.initial_position.x += 1.0;
+            TutorialWorldSession reference{spawn_platform_world(), live};
+            predicted.set_action_held(TutorialAction::jump, true);
+            reference.set_action_held(TutorialAction::jump, true);
+            int launches{};
+            int second_launch_frame{};
+            battlespades::world::PlayerMovementState acknowledged{};
+            int last_frame{};
+            for (int frame{1}; frame <= 200; ++frame) {
+                const auto before = predicted.player();
+                const auto reference_before = reference.player();
+                predicted.tick();
+                reference.tick();
+                predicted.record_network_prediction(frame);
+                const auto events = predicted.take_movement_events();
+                if (events.jumped && ++launches == 2) {
+                    auto native_launch = before;
+                    battlespades::world::PlayerInputState input;
+                    input.jump = true;
+                    static_cast<void>(battlespades::world::step_player(
+                        native_launch, input, &predicted.map(), live.fixed_dt,
+                        battlespades::world::movement_config_for_class(1U)));
+                    expect(native_launch.position.z < before.position.z - 0.1 &&
+                               std::abs(predicted.player().position.z - native_launch.position.z) < 1e-6,
+                           "second jump in one hold must retain its native upward displacement");
+                    second_launch_frame = frame;
+                    acknowledged = reference_before;
+                }
+                last_frame = frame;
+                if (second_launch_frame != 0 && frame == second_launch_frame + 5)
+                    break;
+            }
+            expect(second_launch_frame > 1, "held jump fixture must land and launch twice");
+            expect(predicted.reconcile_authoritative(second_launch_frame - 1,
+                                                     acknowledged.position, acknowledged.velocity),
+                   "grounded ACK before held auto-jump must remain in the prediction journal");
+            expect(std::abs(predicted.player().position.x - reference.player().position.x) < 1e-6 &&
+                       std::abs(predicted.player().position.z - reference.player().position.z) < 1e-6 &&
+                       std::abs(predicted.player().velocity.z - reference.player().velocity.z) < 1e-6,
+                   "delayed replay must preserve uninterrupted held-jump movement");
+
+            predicted.set_action_held(TutorialAction::jump, false);
+            for (int frame{}; frame < 200 && (frame < 2 || predicted.player().airborne); ++frame)
+                predicted.tick();
+            expect(!predicted.player().airborne, "released jump fixture must land");
+            static_cast<void>(predicted.take_movement_events());
+            predicted.set_action_held(TutorialAction::jump, true);
+            predicted.tick(); // Fill the next hold's input latch.
+            // A downward collision keeps frame-start Z, rather than snapping
+            // feet onto the contact plane. The no-jump latch frame can briefly
+            // become airborne again before the next grounded recurrence.
+            bool rearmed{};
+            for (int frame{1}; frame <= 20 && !rearmed; ++frame) {
+                const auto fresh_anchor = predicted.player().position;
+                predicted.note_authoritative_snapshot(last_frame + frame, fresh_anchor);
+                predicted.tick();
+                if (predicted.take_movement_events().jumped) {
+                    expect(predicted.player().position.z < fresh_anchor.z - 0.1,
+                           "releasing and pressing jump must preserve the next launch displacement");
+                    rearmed = true;
+                }
+            }
+            expect(rearmed, "the released and pressed jump must reach another grounded launch");
         }
 
         // SetClassLoadout is authoritative for all three inventory address
@@ -770,6 +1399,24 @@ int main() {
                    "wheel-down must advance and animate the combined HUD index");
         }
 
+        // A skin can choose a gentler optic without leaking that preference
+        // into the next weapon or changing the underlying secondary action.
+        {
+            TutorialWorldSession session{map};session.debug_grant_full_loadout();
+            expect(session.equip_inventory_slot(18U),"skin zoom test needs a sniper");
+            session.set_skin_zoom(18U,.8);session.set_secondary_held(true);
+            expect(std::abs(session.zoom_target()-.8)<1e-12,"selected optic must control the aimed projection");
+            for(int tick=0;tick<120;++tick)session.tick();
+            expect(std::abs(session.zoom_level()-.8)<1e-8,"optic zoom must follow the fixed-tick transition");
+            expect(session.equip_inventory_slot(7U),"skin zoom test needs an SMG");
+            session.set_secondary_held(false);session.set_secondary_held(true);
+            expect(std::abs(session.zoom_target()-1.)<1e-12,"previous optic must not affect another weapon");
+            session.set_skin_zoom(7U,.55);
+            expect(std::abs(session.zoom_target()-.55)<1e-12,"SMG optics must also support local zoom");
+            session.set_skin_zoom(0U,std::nullopt);
+            expect(std::abs(session.zoom_target()-1.)<1e-12,"disabling skins must restore the parent zoom");
+        }
+
         // RMB semantics are tool-owned. Twenty-two tools aim -- two through a
         // magnified scope and twenty through their own iron sights -- the
         // minigun spins, and secondary tools route through WeaponRuntime
@@ -865,6 +1512,102 @@ int main() {
                        actions.front().secondary,
                    "C4 RMB must route the recovered detonation action");
             session.set_secondary_held(false);
+        }
+
+        // Sprint takes precedence over ADS regardless of input order. Keep the
+        // actual RMB state, but never send the zoom bit or show a scope while
+        // sprint is held, in both standalone and server-authoritative sessions.
+        for (const bool network_authoritative : {false, true}) {
+            for (const auto tool : {7U, 18U, 19U}) {
+                TutorialSessionConfig config;
+                config.network_authoritative = network_authoritative;
+                config.initial_loadout = {static_cast<std::uint8_t>(tool)};
+                config.initial_tool = static_cast<std::uint8_t>(tool);
+                TutorialWorldSession session{map, config};
+                if (!network_authoritative) {
+                    session.debug_grant_full_loadout();
+                    expect(session.equip_inventory_slot(tool),
+                           "Standalone sprint fixture must select its weapon");
+                }
+                expect(session.selected_tool_id() == tool,
+                       "Sprint aim fixture needs an SMG or sniper");
+                const auto expect_not_aimed = [&session] {
+                    expect(!session.zoomed() && !session.magnified_scope() &&
+                               session.zoom_target() == 0.0 &&
+                               (session.action_flags() & 0x04U) == 0U,
+                           "Sprint must suppress sights, projection target and outbound zoom");
+                };
+
+                session.set_action_held(TutorialAction::forward, true);
+                session.set_action_held(TutorialAction::sprint, true);
+                for (int press{}; press < 3; ++press) {
+                    session.set_secondary_held(true);
+                    expect_not_aimed();
+                    expect((session.action_flags() & 0x02U) != 0U,
+                           "Blocking ADS must preserve the physical secondary button");
+                    session.tick();
+                    expect_not_aimed();
+                    session.set_secondary_held(false);
+                }
+                session.set_secondary_held(true);
+                session.set_action_held(TutorialAction::sprint, false);
+                session.tick();
+                session.set_secondary_held(true);
+                expect_not_aimed();
+                session.set_secondary_held(false);
+                session.set_secondary_held(true);
+                expect(session.zoomed() && (session.action_flags() & 0x04U) != 0U,
+                       "A fresh aim press after sprint must restore ordinary toggle ADS");
+                for (int tick{}; tick < 120; ++tick)
+                    session.tick();
+                expect(session.zoom_level() > 0.0, "Aim fixture must settle its projection");
+
+                session.set_action_held(TutorialAction::sprint, true);
+                expect_not_aimed();
+                for (int tick{}; tick < 120; ++tick) {
+                    session.tick();
+                    expect_not_aimed();
+                }
+                expect(session.zoom_level() == 0.0,
+                       "Starting sprint while aimed must return the projection to hip fire");
+                session.set_action_held(TutorialAction::sprint, false);
+                session.tick();
+                expect_not_aimed();
+            }
+        }
+
+        // Reload exits both iron and scoped ADS, then samples the held button
+        // when it finishes. Releasing or changing weapons cannot leave stale aim.
+        for(const auto tool:{7U,18U})for(int scenario=0;scenario<4;++scenario){
+            TutorialWorldSession session{map};session.debug_grant_full_loadout();
+            expect(session.equip_inventory_slot(static_cast<std::uint8_t>(tool)),"Reload aim fixture needs a gun");
+            for(int tick=0;tick<60;++tick)session.tick();
+            session.set_secondary_held(true);expect(session.zoomed(),"Reload fixture must start aimed");
+            session.set_primary_held(true);session.tick();session.set_primary_held(false);
+            // The single-shot sniper starts its reload automatically.
+            if(session.weapon_reload_remaining()<=0.)expect(session.request_reload()==battlespades::world::WeaponStateResult::accepted,"Spent magazine must reload");
+            expect(!session.zoomed()&&session.zoom_target()==0.,"Reload must cancel ADS immediately");
+            if(scenario!=0)session.set_secondary_held(false);
+            if(scenario==2)session.set_secondary_held(true);
+            if(scenario==3){
+                session.set_action_held(TutorialAction::sprint,true);
+                session.set_secondary_held(true);
+            }
+            expect(!session.zoomed(),"Pressing aim during reload must wait for completion");
+            int ticks=0;
+            while(session.weapon_reload_remaining()>0. && ticks++<600){
+                expect(!session.zoomed(),"Reload animation must remain outside ADS");session.tick();
+            }
+            expect(ticks<600,"Reload did not finish");
+            expect(session.zoomed()==(scenario==0||scenario==2),"Reload must resume aim only while the button is held and sprint is released");
+            if(scenario==3){
+                expect((session.action_flags()&0x04U)==0U,"Reload during sprint must not publish zoom");
+                session.set_action_held(TutorialAction::sprint,false);
+                session.tick();
+                expect(!session.zoomed(),"Ending sprint after reload must not restore stale aim");
+            }
+            expect(session.equip_inventory_slot(tool==7U?18U:7U),"Switch after reload must succeed");
+            session.tick();expect(!session.zoomed(),"Previous gun's reload aim must not follow weapon changes");
         }
 
         // The minigun owns two concurrent audio/mechanism states: its barrel
@@ -1549,6 +2292,38 @@ int main() {
                    "Block Cannon deletion must emit smoke, never an explosion");
         }
 
+        // Sandbox turrets use the same retail angles and gun pivot as live
+        // WorldUpdate, and never borrow the observer's handheld RPG muzzle.
+        {
+            TutorialWorldSession session{spawn_platform_world()};
+            const auto origin = session.player().position;
+            const auto id = session.spawn_entity(8U, {origin.x + 8.0, origin.y, 233.0});
+            expect(id != 0U, "sandbox turret must spawn on the platform");
+            for (int tick{}; tick < 180 && session.projectiles().empty(); ++tick) {
+                session.tick();
+            }
+            expect(!session.projectiles().empty(), "sandbox turret must fire at its reachable target");
+            const auto found = std::ranges::find(session.entities(), id, &LocalEntity::id);
+            expect(found != session.entities().end(), "firing turret must remain registered");
+            const auto* definition = battlespades::world::find_entity_definition(8U);
+            const auto muzzle = battlespades::world::entity_presentation_position(
+                *found, definition->parts[2U]);
+            const auto& rocket = session.projectiles().front();
+            const auto dx = rocket.spawn_position.x - muzzle.x;
+            const auto dy = rocket.spawn_position.y - muzzle.y;
+            const auto dz = rocket.spawn_position.z - muzzle.z;
+            expect(rocket.autonomous_source &&
+                       std::abs(dx * dx + dy * dy + dz * dz - 1.0) < 1e-8,
+                   "turret rocket must start one block along its own gun, not the observer's RPG");
+            constexpr double radians{3.14159265358979323846 / 180.0};
+            expect(std::abs(dx - std::sin(found->aim_yaw * radians) *
+                                     std::cos(found->aim_pitch * radians)) < 1e-6 &&
+                       std::abs(dy - std::cos(found->aim_yaw * radians) *
+                                     std::cos(found->aim_pitch * radians)) < 1e-6 &&
+                       std::abs(dz + std::sin(found->aim_pitch * radians)) < 1e-6,
+                   "sandbox turret barrel and rocket must use the live retail angle convention");
+        }
+
         // A live client presents deployables; it never runs a second copy of
         // the server's targeting or proximity rules. Previously this turret
         // aimed at the observing player and this mine detonated after arming,
@@ -1643,6 +2418,42 @@ int main() {
             bootstrap.start();
             std::this_thread::sleep_for(std::chrono::milliseconds{20});
             bootstrap.cancel();
+        }
+
+        // A menu cancellation transfers the real bootstrap and its map to a
+        // bounded cleanup worker. Admission stays closed until that owner is
+        // destroyed; the UI never waits for map derivation or thread joins.
+        {
+            battlespades::core::DeferredCleanupQueue cleanup{1U};
+            auto reservation = cleanup.try_reserve();
+            auto cleanup_map = spawn_platform_world();
+            const std::weak_ptr<VxlMap> lifetime = cleanup_map;
+            auto bootstrap = std::make_unique<TutorialWorldBootstrap>(std::move(cleanup_map), "Training", 1U);
+            bootstrap->start();
+            bootstrap->cancel();
+            const auto ui_thread = std::this_thread::get_id();
+            std::atomic_bool off_ui{};
+            std::promise<void> entered;
+            std::promise<void> release;
+            const auto released = release.get_future().share();
+            reservation->defer(std::packaged_task<void()>{
+                [bootstrap = std::move(bootstrap), &off_ui, &entered, released, ui_thread]() mutable {
+                    off_ui = std::this_thread::get_id() != ui_thread;
+                    entered.set_value();
+                    static_cast<void>(released.wait_for(std::chrono::seconds{2}));
+                    bootstrap.reset();
+                }});
+            const auto observed = entered.get_future().wait_for(std::chrono::seconds{2});
+            const bool retained_map = !lifetime.expired();
+            const bool admission_closed = !cleanup.try_reserve();
+            release.set_value();
+            cleanup.drain();
+            expect(observed == std::future_status::ready && off_ui && !bootstrap,
+                   "cancelled bootstrap joins must run outside the presentation thread");
+            expect(retained_map && admission_closed,
+                   "pending bootstrap destruction must retain its map and admission reservation");
+            expect(lifetime.expired() && cleanup.try_reserve().has_value(),
+                   "completed bootstrap destruction must release its map and permit another load");
         }
 
         std::cout << "tutorial session: spawn/input/look/bootstrap checks passed\n";

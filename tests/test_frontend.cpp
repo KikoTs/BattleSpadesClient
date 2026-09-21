@@ -211,6 +211,66 @@ void frontend_navigation_pushes_and_pops_nested_routes_atomically() {
            "popped parent must enter from the left");
 }
 
+void gameplay_overlay_navigation_is_immediate() {
+    FrontendNavigationModel navigation{4U};
+    expect(navigation.start(FrontendScreen::tutorial_world), "world route should start");
+    expect(navigation.push_instant(FrontendScreen::pause_menu),
+           "Pause should push without a frontend slide");
+    expect(navigation.active() == FrontendScreen::pause_menu &&
+               !navigation.previous().has_value() &&
+               navigation.shell().active_offset() == 0.0 &&
+               navigation.shell().accepts_input(),
+           "Pause must be usable immediately while gameplay remains stationary");
+    expect(navigation.pop_instant(), "Resume should remove Pause immediately");
+    expect(navigation.active() == FrontendScreen::tutorial_world &&
+               !navigation.previous().has_value() &&
+               navigation.shell().active_offset() == 0.0,
+           "Resume must restore the world without translating the HUD");
+}
+
+void friends_returns_to_the_existing_lobby_without_duplicate_routes() {
+    FrontendNavigationModel navigation;
+    expect(navigation.start(FrontendScreen::select_menu), "start menu");
+    expect(navigation.push_instant(FrontendScreen::create_match), "open lobby");
+    expect(navigation.push(FrontendScreen::friends_lobby), "invite friends");
+    expect(!navigation.return_to(FrontendScreen::create_match) && navigation.depth() == 3U,
+           "an early asynchronous response must wait without mutating the route stack");
+    for (int tick{}; tick < 8; ++tick) navigation.tick();
+    expect(navigation.return_to(FrontendScreen::create_match), "reveal existing lobby");
+    expect(navigation.depth() == 2U && navigation.active() == FrontendScreen::create_match &&
+           navigation.previous() == FrontendScreen::friends_lobby,
+           "return should slide from Friends to exactly one lobby");
+    for (int tick{}; tick < 8; ++tick) navigation.tick();
+    expect(navigation.pop() && navigation.active() == FrontendScreen::select_menu,
+           "leaving the lobby must reveal the menu, not a duplicate lobby");
+}
+
+void match_departure_unwinds_overlays_without_transport_state() {
+    FrontendNavigationModel navigation;
+    expect(navigation.start(FrontendScreen::select_menu), "start menu");
+    expect(navigation.push_instant(FrontendScreen::create_match), "open lobby");
+    expect(navigation.push_instant(FrontendScreen::friends_lobby), "open friends");
+    expect(!navigation.leave_match_instant() && navigation.depth() == 3U,
+           "unrelated menu routes must survive a stale match departure");
+    expect(navigation.pop_instant(), "close friends");
+    expect(navigation.push_instant(FrontendScreen::game_loading), "loading route");
+    expect(navigation.push_instant(FrontendScreen::tutorial_world), "world route");
+    expect(navigation.push_instant(FrontendScreen::pause_menu), "pause overlay");
+    expect(navigation.push(FrontendScreen::settings), "settings starts sliding");
+    expect(navigation.leave_match_instant(), "forced departure during transition");
+    expect(navigation.depth() == 2U && navigation.active() == FrontendScreen::create_match &&
+               !navigation.previous() && navigation.shell().accepts_input(),
+           "all departed match screens must unwind to a usable lobby immediately");
+    expect(!navigation.leave_match_instant(), "duplicate departure is harmless");
+
+    FrontendNavigationModel standalone;
+    expect(standalone.start(FrontendScreen::tutorial_world), "standalone world");
+    expect(standalone.push_instant(FrontendScreen::class_selection), "class overlay");
+    expect(standalone.leave_match_instant() && standalone.depth() == 1U &&
+               standalone.active() == FrontendScreen::select_menu,
+           "a standalone match must return to a valid root menu");
+}
+
 void translated_draw_lists_preserve_spaces_and_deferred_geometry() {
     battlespades::ui::DrawList source;
     battlespades::ui::SpriteDrawCommand sprite{
@@ -388,6 +448,12 @@ int main() {
          frontend_shell_reproduces_slide_direction_and_input_gate},
         {"frontend_navigation_pushes_and_pops_nested_routes_atomically",
          frontend_navigation_pushes_and_pops_nested_routes_atomically},
+        {"gameplay_overlay_navigation_is_immediate",
+         gameplay_overlay_navigation_is_immediate},
+        {"friends_returns_to_the_existing_lobby_without_duplicate_routes",
+         friends_returns_to_the_existing_lobby_without_duplicate_routes},
+        {"match_departure_unwinds_overlays_without_transport_state",
+         match_departure_unwinds_overlays_without_transport_state},
         {"translated_draw_lists_preserve_spaces_and_deferred_geometry",
          translated_draw_lists_preserve_spaces_and_deferred_geometry},
         {"retail_main_menu_bounds_are_preserved_exactly",

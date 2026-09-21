@@ -1,0 +1,139 @@
+{
+  "name": "M14 Remastered",
+  "source": "https://gamebanana.com/mods/170563",
+  "archives": [
+    {
+      "archive": "170563\\364433-m14-paratrooper-101.zip",
+      "extracted": "170563\\files-364433",
+      "sha256": "393a2af6cd5ca7c7bcd2321129065992e970a8eb0079912d99c51db87717575a",
+      "listing": [
+        "Gfx/Flash/",
+        "Gfx/Flash/Weapons/",
+        "Gfx/Flash/Weapons/Rifle/",
+        "Gfx/Flash/Weapons/Rifle/000.png",
+        "Gfx/Flash/Weapons/Rifle/001.png",
+        "Gfx/Flash/Weapons/Rifle/002.png",
+        "Gfx/Flash/Weapons/Rifle/003.png",
+        "Gfx/Flash/Weapons/Rifle/004.png",
+        "Gfx/Flash/Weapons/Rifle/005.png",
+        "Gfx/Flash/Weapons/Rifle/006.png",
+        "Gfx/Flash/Weapons/Rifle/007.png",
+        "Gfx/Flash/Weapons/Rifle/008.png",
+        "Gfx/Flash/Weapons/Rifle/009.png",
+        "Gfx/Flash/Weapons/Rifle/010.png",
+        "Gfx/Flash/Weapons/Rifle/011.png",
+        "Gfx/Flash/Weapons/Rifle/012.png",
+        "Gfx/Flash/Weapons/Rifle/013.png",
+        "Gfx/Flash/Weapons/Rifle/014.png",
+        "Gfx/Flash/Weapons/Rifle/015.png",
+        "Gfx/Flash/Weapons/Rifle/016.png",
+        "Gfx/Flash/Weapons/Rifle/017.png",
+        "Gfx/Flash/Weapons/Rifle/018.png",
+        "Gfx/Flash/Weapons/Rifle/019.png",
+        "Models/Weapons/",
+        "Models/Weapons/Rifle/",
+        "Models/Weapons/Rifle/Casing.kv6",
+        "Models/Weapons/Rifle/ChargingHandle.kv6",
+        "Models/Weapons/Rifle/FrontSight.kv6",
+        "Models/Weapons/Rifle/Magazine.kv6",
+        "Models/Weapons/Rifle/RearSight.kv6",
+        "Models/Weapons/Rifle/Weapon.kv6",
+        "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Scripts/Skin/",
+        "Scripts/Skin/Rifle/",
+        "Scripts/Skin/Rifle/ThirdPerson.as",
+        "Scripts/Skin/Rifle/View.as",
+        "Sounds/Weapons/",
+        "Sounds/Weapons/Rifle/",
+        "Sounds/Weapons/Rifle/FireFar.wav",
+        "Sounds/Weapons/Rifle/FireStereo.wav",
+        "Sounds/Weapons/Rifle/Reload.wav",
+        "Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Sounds/Weapons/Rifle/V2AmbienceLarge.wav",
+        "Sounds/Weapons/Rifle/V2AmbienceSmall.wav"
+      ]
+    },
+    {
+      "archive": "170563\\364621-m14-paratrooper-12b-compatible.zip",
+      "extracted": "170563\\files-364621",
+      "sha256": "c5800f0c3ac52e329df12c29a7c69b07055ae29a49f56b8378e395975435dccb",
+      "listing": [
+        "Gfx/Flash/",
+        "Gfx/Flash/Weapons/",
+        "Gfx/Flash/Weapons/Rifle/",
+        "Gfx/Flash/Weapons/Rifle/000.png",
+        "Gfx/Flash/Weapons/Rifle/001.png",
+        "Gfx/Flash/Weapons/Rifle/002.png",
+        "Gfx/Flash/Weapons/Rifle/003.png",
+        "Gfx/Flash/Weapons/Rifle/004.png",
+        "Gfx/Flash/Weapons/Rifle/005.png",
+        "Gfx/Flash/Weapons/Rifle/006.png",
+        "Gfx/Flash/Weapons/Rifle/007.png",
+        "Gfx/Flash/Weapons/Rifle/008.png",
+        "Gfx/Flash/Weapons/Rifle/009.png",
+        "Gfx/Flash/Weapons/Rifle/010.png",
+        "Gfx/Flash/Weapons/Rifle/011.png",
+        "Gfx/Flash/Weapons/Rifle/012.png",
+        "Gfx/Flash/Weapons/Rifle/013.png",
+        "Gfx/Flash/Weapons/Rifle/014.png",
+        "Gfx/Flash/Weapons/Rifle/015.png",
+        "Gfx/Flash/Weapons/Rifle/016.png",
+        "Gfx/Flash/Weapons/Rifle/017.png",
+        "Gfx/Flash/Weapons/Rifle/018.png",
+        "Gfx/Flash/Weapons/Rifle/019.png",
+        "Models/Weapons/",
+        "Models/Weapons/Rifle/",
+        "Models/Weapons/Rifle/Casing.kv6",
+        "Models/Weapons/Rifle/ChargingHandle.kv6",
+        "Models/Weapons/Rifle/FrontSight.kv6",
+        "Models/Weapons/Rifle/Magazine.kv6",
+        "Models/Weapons/Rifle/RearSight.kv6",
+        "Models/Weapons/Rifle/Weapon.kv6",
+        "Models/Weapons/Rifle/WeaponNoMagazine.kv6",
+        "Scripts/Skin/",
+        "Scripts/Skin/Rifle/",
+        "Scripts/Skin/Rifle/ThirdPerson.as",
+        "Scripts/Skin/Rifle/View.as",
+        "Sounds/Weapons/",
+        "Sounds/Weapons/Rifle/",
+        "Sounds/Weapons/Rifle/FireFar.wav",
+        "Sounds/Weapons/Rifle/FireStereo.wav",
+        "Sounds/Weapons/Rifle/Reload.wav",
+        "Sounds/Weapons/Rifle/ReloadLocal.wav",
+        "Sounds/Weapons/Rifle/V2AmbienceLarge.wav",
+        "Sounds/Weapons/Rifle/V2AmbienceSmall.wav"
+      ]
+    }
+  ],
+  "credits": [
+    {
+      "_sGroupName": "Key Authors",
+      "_aAuthors": [
+        {
+          "_idRow": "1415230",
+          "_sName": "PTrooper",
+          "_sProfileUrl": "https://gamebanana.com/members/1415230",
+          "_sAvatarUrl": "https://images.gamebanana.com/static/img/defaults/avatar.gif",
+          "_bIsOnline": false
+        }
+      ]
+    }
+  ],
+  "license": "Copyright (c) 2013 yvt<br><br>Modified by Paratrooper<br><br>This file is part of OpenSpades.&nbsp;OpenSpades is free software: you can redistribute it and/or modify&nbsp;it under the terms of the GNU General Public License as published by&nbsp;the Free Software Foundation, either version 3 of the License, or&nbsp;(at your option) any later version.&nbsp;OpenSpades is distributed in the hope that it will be useful,&nbsp;but WITHOUT ANY WARRANTY; without even the implied warranty of&nbsp;MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.&nbsp; See the&nbsp;&nbsp;GNU General Public License for more details.&nbsp;You should have received a copy of the GNU General Public License&nbsp;along with OpenSpades.&nbsp; If not, see &lt;<a href=\"http://www.gnu.org/licenses/\" class=\"linkified\" target=\"_blank\">http://www.gnu.org/licenses/</a>&gt;.",
+  "license_checklist": {
+    "yes": [
+      "Download and install this Mod"
+    ],
+    "ask": [
+      "Redistribute this Mod on other sites",
+      "Modify this Mod and distribute the modified Mod on GameBanana",
+      "Modify this Mod and distribute the modified Mod on another site",
+      "Use parts of this Mod in another Mod and distribute the Mod on GameBanana",
+      "Use parts of this Mod in another Mod and distribute the Mod on another site",
+      "Use this Mod or components of this Mod in adult/NSFW content"
+    ],
+    "no": [
+      "Use this Mod or components of this Mod commercially"
+    ]
+  }
+}

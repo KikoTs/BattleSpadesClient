@@ -136,13 +136,13 @@ void preview_name_confirmation_and_upload_are_transactional() {
     expect(!model.back().has_value() && !model.activate_primary().has_value(),
            "uploading dialog must block navigation and duplicate requests");
 
-    const auto completed = model.finish_publish(true);
+    const auto completed = model.finish_publish(true, "https://www.aosplay.net/workshop/my-map-1234");
     expect(completed.has_value() &&
                completed->kind == UgcPublishEffectKind::publish_succeeded &&
                completed->external_url ==
-                   "http://steamcommunity.com/workshop/browse/?appid=224540" &&
+                   "https://www.aosplay.net/workshop/my-map-1234" &&
                model.dialog() == UgcPublishDialog::none,
-           "successful callback must emit the recovered Workshop handoff once");
+           "successful callback must open the actual published item once");
     expect(!model.finish_publish(true).has_value(),
            "stale duplicate callbacks must be rejected");
 }
