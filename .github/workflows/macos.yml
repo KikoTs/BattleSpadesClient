@@ -82,10 +82,12 @@ jobs:
           -R 'aos_(friends_lobby|create_match_menu|server_discovery|revival_social|local_server_process|relay_host_tunnel)_tests'
           --output-on-failure
 
-      - name: Test UTF-8 localization and bundled glyph coverage
+      # aos_text_tests rasterizes the retail Spades font from assets/original,
+      # which is imported from an owned game and never present on a runner.
+      - name: Test UTF-8 localization
         run: >-
           ctest --test-dir out/build/native-macos-release -C Release
-          -R 'aos_(localization_catalog|localization_runtime|text)_tests'
+          -R 'aos_(localization_catalog|localization_runtime)_tests'
           --output-on-failure
 
       - name: Test gameplay inventory, input, and connection recovery
