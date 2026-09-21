@@ -5,6 +5,16 @@ authoritative [BattleSpades server](../BattleSpades/README.md) over Protocol 168
 SDL3, bgfx, OpenAL Soft, FreeType, HarfBuzz and ENet provide native services;
 this repository owns gameplay, voxel rendering, prediction and presentation.
 
+## Download
+
+Portable Windows x64 builds are on the
+[Releases page](https://github.com/KikoTs/BattleSpadesClient/releases/latest).
+Extract the whole zip, run `bin\BattleSpadesClient.exe`, and point the asset
+installer at your own Ace of Spades: Battle Builder installation; retail
+content is never bundled. Each release carries the matching
+[BattleSpades server](https://github.com/KikoTs/BattleSpades/releases/latest)
+for Create Match.
+
 ## Current implementation
 
 The source contains a playable offline Tutorial and a live multiplayer path:
