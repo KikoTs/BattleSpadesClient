@@ -19,6 +19,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The tutorial tests replay movement on the server's Training map and look
+      # for the server repository beside this one, as in a developer checkout.
+      - name: Fetch the server's maps beside the client
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/KikoTs/BattleSpades.git ../BattleSpades
+          git -C ../BattleSpades sparse-checkout set maps
+          test -f ../BattleSpades/maps/Training.vxl
+
       - name: Select the C++20-capable Apple toolchain
         # libc++ bundled with Xcode 16 still hides jthread/stop_token behind
         # its experimental library. Xcode 26 ships libc++ 20, where these
