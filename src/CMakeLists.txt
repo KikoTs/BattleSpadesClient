@@ -290,7 +290,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     FetchContent_Declare(rmlui
         URL https://codeload.github.com/mikke89/RmlUi/tar.gz/refs/tags/6.3
         URL_HASH SHA256=d977298bb6147610e5984d5db85ddf284020d655a8713913f6982074f1dbdede
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        # Its headers are not ours to hold to -Werror.
+        SYSTEM)
     FetchContent_MakeAvailable(rmlui)
 
     add_library(

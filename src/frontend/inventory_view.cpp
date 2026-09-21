@@ -105,7 +105,7 @@ std::vector<std::uint8_t> cached_thumbnail(const InventoryCosmetic& item,const s
         std::error_code ec;
         const auto manifest=root.parent_path()/item.scripted_skin;
         const auto stamp=std::filesystem::last_write_time(manifest,ec);
-        key+=':'+item.scripted_skin+':'+(ec?"missing":std::to_string(stamp.time_since_epoch().count()));
+        key+=':'+item.scripted_skin+':'+(ec?"missing":std::to_string(static_cast<long long>(stamp.time_since_epoch().count())));
     }
     const auto path=network::default_revival_state_path().parent_path()/"model-icons"/(item.id+".rgba");
     const auto size=world::cosmetic_preview_width*world::cosmetic_preview_height*4U;
