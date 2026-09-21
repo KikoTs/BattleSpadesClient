@@ -293,7 +293,18 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         # Its headers are not ours to hold to -Werror.
         SYSTEM)
+    if(NOT WIN32)
+        # Windows finds rmlui.dll beside the executable. Elsewhere a shared
+        # RmlUi needs install names and rpaths rewritten for a portable tree;
+        # the installed macOS client aborted with "Library not loaded:
+        # @rpath/librmlui_debugger.dylib". Link it in instead.
+        set(_aos_saved_build_shared_libs "${BUILD_SHARED_LIBS}")
+        set(BUILD_SHARED_LIBS OFF)
+    endif()
     FetchContent_MakeAvailable(rmlui)
+    if(NOT WIN32)
+        set(BUILD_SHARED_LIBS "${_aos_saved_build_shared_libs}")
+    endif()
 
     add_library(
         aos_asset_install
