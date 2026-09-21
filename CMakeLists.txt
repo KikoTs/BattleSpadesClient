@@ -176,6 +176,15 @@ add_library(aos_build_options INTERFACE)
 add_library(BattleSpades::BuildOptions ALIAS aos_build_options)
 
 target_compile_features(aos_build_options INTERFACE cxx_std_20)
+# Movement prediction replays the server's arithmetic and must round the same
+# way. Clang and GCC may fuse a*b+c into one instruction (the default on arm64),
+# which rounds differently: on Apple Silicon a predicted flight ended 1.3 blocks
+# from the authoritative one after 360 frames.
+target_compile_options(
+    aos_build_options
+    INTERFACE
+        $<$<CXX_COMPILER_ID:Clang,AppleClang,GNU>:-ffp-contract=off>
+)
 target_compile_definitions(
     aos_build_options
     INTERFACE
