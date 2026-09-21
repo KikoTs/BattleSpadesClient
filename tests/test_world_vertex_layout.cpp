@@ -353,6 +353,15 @@ int main(int argc, char** argv) {
                          "(layout encoding still checked)\n";
             return 0;
         }
+        // bgfx falls back to whatever backend the platform has instead of
+        // failing. The probe loads dx11 shader binaries, so on Metal or OpenGL
+        // it would read back black and report a layout fault that is not one.
+        if (bgfx::getRendererType() != bgfx::RendererType::Direct3D11) {
+            std::cout << "SKIP: bgfx selected " << bgfx::getRendererName(bgfx::getRendererType())
+                      << ", not Direct3D11 (layout encoding still checked)\n";
+            bgfx::shutdown();
+            return 0;
+        }
 
         const auto* caps = bgfx::getCaps();
         if ((caps->supported & BGFX_CAPS_TEXTURE_READ_BACK) == 0U ||
