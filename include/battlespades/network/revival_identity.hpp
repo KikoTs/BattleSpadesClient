@@ -124,7 +124,7 @@ struct RevivalWorkshopProject final {
 struct RevivalWorkshopResult final {
     std::string item_url;
     std::string error;
-    std::string warning;
+    std::string warning{};
     [[nodiscard]] explicit operator bool() const noexcept { return !item_url.empty() && error.empty(); }
 };
 

@@ -93,7 +93,7 @@ damage_cell(const DamagePacket& packet) noexcept {
         world::VxlMap::width, world::VxlMap::depth, world::VxlMap::height};
     for (std::size_t axis{}; axis < 3U; ++axis) {
         const float value = packet.position[axis];
-        if (!std::isfinite(value) || value < 0.0F || value >= limits[axis]) {
+        if (!std::isfinite(value) || value < 0.0F || value >= static_cast<float>(limits[axis])) {
             return std::nullopt;
         }
         // Placed explosives detonate at their rendered face/centre. Their
@@ -131,7 +131,7 @@ expanded_damage_cells(const DamagePacket& packet) {
                                     world::VxlMap::height};
         for (std::size_t axis{}; axis < center.size(); ++axis) {
             const auto value = packet.position[axis];
-            if (!std::isfinite(value) || value < -3.0F || value > limits[axis] + 3.0F)
+            if (!std::isfinite(value) || value < -3.0F || value > static_cast<float>(limits[axis]) + 3.0F)
                 return {};
             center[axis] = static_cast<std::int64_t>(std::round(value));
         }

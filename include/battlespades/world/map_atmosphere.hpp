@@ -93,10 +93,10 @@ void clamp_atmosphere_for_play(MapAtmosphere& atmosphere) noexcept;
  * a dome that only wants thicker fog would also flatten its own specular.
  */
 struct AtmosphereOverride final {
-    std::optional<float> key_intensity;
-    std::optional<float> fog_density;
-    std::optional<float> specular_strength;
-    std::optional<float> ambient_intensity;
+    std::optional<float> key_intensity{};
+    std::optional<float> fog_density{};
+    std::optional<float> specular_strength{};
+    std::optional<float> ambient_intensity{};
     /**
      * Extended-Reinhard white point.
      *
@@ -104,7 +104,7 @@ struct AtmosphereOverride final {
      * white point compresses MORE. Raising this darkens midtones; it does not
      * brighten them.
      */
-    std::optional<float> exposure;
+    std::optional<float> exposure{};
     /**
      * Unit vector toward the key light, in canonical map space.
      *
@@ -115,8 +115,8 @@ struct AtmosphereOverride final {
      * from a direction its own sky denies. Supplied vectors are normalised on
      * apply, so an approximate one is fine.
      */
-    std::optional<std::array<float, 3U>> sun_direction;
-    std::string_view source;
+    std::optional<std::array<float, 3U>> sun_direction{};
+    std::string_view source{};
 };
 
 /**

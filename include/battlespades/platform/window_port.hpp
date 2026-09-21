@@ -149,7 +149,7 @@ struct WindowEvent final {
     std::uint32_t keycode{};
     std::uint16_t modifiers{};
     bool repeated{};
-    std::string text;
+    std::string text{};
     float mouse_x{};
     float mouse_y{};
     float mouse_delta_x{};

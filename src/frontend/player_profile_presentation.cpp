@@ -561,8 +561,8 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
         for (std::size_t visible = 0U; visible < count; ++visible) {
             const auto source_index = start + visible;
             const auto& row_value = rows[source_index];
-            const auto y = summary ? layout.summary_list_area.y + 23.0 + row_height * visible
-                                   : layout.list_area.y + row_height * visible;
+            const auto y = summary ? layout.summary_list_area.y + 23.0 + row_height * static_cast<double>(visible)
+                                   : layout.list_area.y + row_height * static_cast<double>(visible);
             const DrawRect row{layout.list_area.x, y, row_width, row_height};
             const auto retail_index = source_index + (summary ? 1U : 0U);
             if (row_value.kind == PlayerProfileRowKind::category) {

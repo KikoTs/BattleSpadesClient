@@ -52,6 +52,8 @@ constexpr std::uint8_t frame_close{6U};
 
 #if defined(_WIN32)
 using Socket = SOCKET;
+using SocketLength = int;  // Winsock counts bytes and address lengths in int
+using SendLength = int;
 constexpr Socket invalid_socket{INVALID_SOCKET};
 void close_socket(Socket value) noexcept {
     if (value != invalid_socket) static_cast<void>(closesocket(value));
@@ -62,6 +64,8 @@ void close_socket(Socket value) noexcept {
 }
 #else
 using Socket = int;
+using SocketLength = socklen_t;
+using SendLength = std::size_t;
 constexpr Socket invalid_socket{-1};
 void close_socket(Socket value) noexcept {
     if (value != invalid_socket) static_cast<void>(close(value));
@@ -278,8 +282,8 @@ struct RelayHostTunnel::Impl final {
         if (frame.empty()) return false;
         const auto sent = send(relay_socket,
                                reinterpret_cast<const char*>(frame.data()),
-                               static_cast<int>(frame.size()), 0);
-        return sent == static_cast<int>(frame.size());
+                               static_cast<SendLength>(frame.size()), 0);
+        return sent >= 0 && static_cast<std::size_t>(sent) == frame.size();
     }
 
     [[nodiscard]] Socket client_socket(std::uint32_t id) {
@@ -331,7 +335,7 @@ struct RelayHostTunnel::Impl final {
             if (local == invalid_socket) continue;
             static_cast<void>(send(local,
                                    reinterpret_cast<const char*>(decoded->payload.data()),
-                                   static_cast<int>(decoded->payload.size()), 0));
+                                   static_cast<SendLength>(decoded->payload.size()), 0));
         }
         return true;
     }
@@ -482,7 +486,7 @@ bool RelayHostTunnel::start(RelayHostTunnelConfig config, std::string& error) {
     const auto socket = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket == invalid_socket || !set_nonblocking(socket) ||
         connect(socket, addresses->ai_addr,
-                static_cast<int>(addresses->ai_addrlen)) != 0) {
+                static_cast<SocketLength>(addresses->ai_addrlen)) != 0) {
         close_socket(socket);
         freeaddrinfo(addresses);
         error = "The public relay UDP socket could not be opened.";

@@ -417,7 +417,7 @@ DrawList InventoryMenuModel::build() const {
         const auto index = page * page_size + row;
         if (index >= count)
             break;
-        const auto y = 251 + 31.0 * row;
+        const auto y = 251 + 31.0 * static_cast<double>(row);
         fill(list,
              {60, y, 336, 29},
              index == selected ? ColorRgba8{78U, 76U, 39U, 255U}

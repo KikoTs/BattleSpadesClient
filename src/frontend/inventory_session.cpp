@@ -24,7 +24,16 @@
 namespace battlespades::frontend {
 namespace {
 using Json = nlohmann::json;
+// The embedded catalogues are far longer than the 65,536 characters the standard
+// obliges a compiler to accept in one literal; every supported compiler takes them.
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+#endif
 #include "inventory_catalog.inc"
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 std::string bounded(const Json& value, const char* key, std::size_t max = 128U) {
     const auto& field = value.at(key);
     if (!field.is_string())

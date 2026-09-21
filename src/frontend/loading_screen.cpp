@@ -418,7 +418,7 @@ bool MatchLoadingModel::set_score_scroll(double fraction) {
     if (tabs_[selected_tab_] != LoadingTab::scores || !std::isfinite(fraction)) return false;
     const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_).size();
     const auto maximum = count > visible_score_rows ? count - visible_score_rows : 0U;
-    const auto next = static_cast<std::size_t>(std::round(clamp_progress(fraction) * maximum));
+    const auto next = static_cast<std::size_t>(std::round(clamp_progress(fraction) * static_cast<double>(maximum)));
     tab_cycle_interrupted_ = true;
     const auto changed = score_scroll_ != next;
     score_scroll_ = next;

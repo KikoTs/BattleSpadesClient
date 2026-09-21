@@ -371,7 +371,7 @@ RevivalWorkshopProject read_revival_workshop_project(
         if (size == 0U || size > limit) throw std::runtime_error{"A project file is empty or exceeds the archive size limit."};
         RevivalWorkshopFile file;
         file.filename = path.filename().string();
-        file.modified_ticks = std::to_string(modified.time_since_epoch().count());
+        file.modified_ticks = std::to_string(static_cast<long long>(modified.time_since_epoch().count()));
         file.kind = extension == ".vxl" ? "map" : extension == ".png" ? "preview" : "metadata";
         file.content_type = extension == ".txt" ? "text/plain" : extension == ".png" ? "image/png" : "application/octet-stream";
         file.bytes.resize(static_cast<std::size_t>(size));

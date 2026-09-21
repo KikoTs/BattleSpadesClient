@@ -116,7 +116,8 @@ namespace {
             const auto sibling = sidecar.parent_path() / name;
             if (!std::filesystem::is_regular_file(sibling) || std::filesystem::is_symlink(sibling) ||
                 std::filesystem::file_size(sibling) != file.at("size").get<std::uintmax_t>() ||
-                std::to_string(std::filesystem::last_write_time(sibling).time_since_epoch().count()) !=
+                std::to_string(static_cast<long long>(
+                    std::filesystem::last_write_time(sibling).time_since_epoch().count())) !=
                     file.at("modified_ticks").get<std::string>()) current = false;
         }
         return expected.empty() && current;
