@@ -139,6 +139,7 @@ endif()
 
 option(AOS_BUILD_TESTS "Build the native core test suite" ON)
 option(AOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(AOS_ENABLE_STEAM_NETWORKING "Build peer-to-peer transport over Valve's relay network" ON)
 option(
     AOS_ENABLE_NATIVE_BACKENDS
     "Build the SDL3/bgfx/OpenAL graphical client backends"

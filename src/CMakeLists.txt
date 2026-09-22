@@ -398,6 +398,46 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     endif()
     aos_enable_strict_warnings(aos_local_host)
 
+    # Peer-to-peer transport over Valve's relay network. The SDK supplies
+    # headers only: libsteam_api is loaded at run time, so a player without
+    # Steam still starts the game and falls back to the AoSPlay relay.
+    if(AOS_ENABLE_STEAM_NETWORKING)
+        FetchContent_Declare(steamworks
+            URL https://github.com/rlabrecque/SteamworksSDK/archive/df2baabf574a738ef1ea90a7e89339107fc0a279.tar.gz
+            URL_HASH SHA256=4df87731a1179f20a9253a4348f6bd8381a8e46e5e3dc58f9db705ef200eea61
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        FetchContent_MakeAvailable(steamworks)
+
+        add_library(
+            aos_steam_net
+            STATIC
+                platform/steam_networking.cpp
+        )
+        add_library(BattleSpades::SteamNet ALIAS aos_steam_net)
+        target_include_directories(aos_steam_net PUBLIC "${PROJECT_SOURCE_DIR}/include")
+        target_include_directories(aos_steam_net SYSTEM PRIVATE "${steamworks_SOURCE_DIR}/public")
+        target_link_libraries(aos_steam_net PUBLIC BattleSpades::BuildOptions PRIVATE BattleSpades::Core)
+        if(WIN32)
+            target_link_libraries(aos_steam_net PRIVATE ws2_32)
+        endif()
+        aos_enable_strict_warnings(aos_steam_net)
+
+        # Players need the library beside the executable; it is loaded at run
+        # time, so a copy that is missing only disables the Steam transport.
+        if(WIN32)
+            set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/win64/steam_api64.dll")
+        elseif(APPLE)
+            set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/osx/libsteam_api.dylib")
+        else()
+            set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/linux64/libsteam_api.so")
+        endif()
+        install(FILES "${_aos_steam_library}" DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT Runtime)
+
+        add_executable(aos_steam_p2p_smoke "${PROJECT_SOURCE_DIR}/tools/steam_p2p_smoke.cpp")
+        target_link_libraries(aos_steam_p2p_smoke PRIVATE BattleSpades::SteamNet)
+        aos_enable_strict_warnings(aos_steam_p2p_smoke)
+    endif()
+
     add_library(
         aos_native_steam
         STATIC
