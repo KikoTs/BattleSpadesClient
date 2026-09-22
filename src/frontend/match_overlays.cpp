@@ -52,6 +52,22 @@ constexpr double rank_level_scale_down_seconds{0.4};
            local_language == 8U;
 }
 
+/** Cut to at most `limit` bytes without splitting a UTF-8 sequence. */
+void truncate_utf8_bytes(std::string& text, std::size_t limit) {
+    if (text.size() <= limit) return;
+    auto end = limit;
+    while (end > 0U && (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U) {
+        --end;
+    }
+    text.resize(end);
+}
+
+[[nodiscard]] std::size_t utf8_code_points(std::string_view text) noexcept {
+    return static_cast<std::size_t>(std::ranges::count_if(text, [](char character) {
+        return (static_cast<unsigned char>(character) & 0xC0U) != 0x80U;
+    }));
+}
+
 /** Exact ViewGameStats.draw_rank_ups Font.scale curve (A1075..A1078). */
 [[nodiscard]] constexpr double rank_level_geometric_scale(
     double level_up_timer) noexcept {
@@ -573,7 +589,7 @@ std::string_view retail_scoreboard_mode_title(std::uint8_t mode_type,
 
 void GameChatModel::add(std::string message, ui::ColorRgba8 color) {
     if (message.empty()) return;
-    if (message.size() > 200U) message.resize(200U);
+    truncate_utf8_bytes(message, 200U);
     if (entries_.size() == maximum_entries) entries_.pop_back();
     // Retail inserts at zero: index zero is always the newest chat line.
     entries_.insert(entries_.begin(),
@@ -587,8 +603,8 @@ void GameChatModel::add_player_message(std::string sender,
                                        bool team_message,
                                        std::uint8_t local_language) {
     if (sender.empty() || message.empty()) return;
-    if (sender.size() > 64U) sender.resize(64U);
-    if (message.size() > 200U) message.resize(200U);
+    truncate_utf8_bytes(sender, 64U);
+    truncate_utf8_bytes(message, 200U);
     const auto prefix = sender + ": ";
     const auto body_color = team_message
                                 ? retail_blend_color(
@@ -626,6 +642,7 @@ void GameChatModel::cancel() noexcept {
 bool GameChatModel::append_text(std::string_view utf8) {
     if (!active_ || utf8.empty() ||
         input_.size() + utf8.size() > maximum_input_bytes ||
+        utf8_code_points(input_) + utf8_code_points(utf8) > maximum_input_code_points ||
         utf8.find('\0') != std::string_view::npos ||
         utf8.find('\r') != std::string_view::npos ||
         utf8.find('\n') != std::string_view::npos) {

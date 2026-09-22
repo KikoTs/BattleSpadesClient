@@ -114,6 +114,36 @@ void chat_presentation_matches_retail_geometry_stroke_and_fade() {
            "retail chat input has no black background quad");
 }
 
+void chat_limits_count_cyrillic_characters() {
+    const std::string cyrillic_letter{"\xD0\x96"};  // U+0416, two UTF-8 bytes
+    GameChatModel chat;
+    chat.begin(ChatChannel::global);
+    for (std::size_t index{}; index < GameChatModel::maximum_input_code_points; ++index) {
+        expect(chat.append_text(cyrillic_letter), "Cyrillic input must reach the character limit");
+    }
+    expect(!chat.append_text(cyrillic_letter), "chat input must stop at its character limit");
+    const auto submitted = chat.submit();
+    expect(submitted.has_value() && submitted->second.size() == 180U,
+           "90 Cyrillic characters must survive as 180 UTF-8 bytes");
+
+    const std::string wide_letter{"\xE6\x97\xA5"};  // U+65E5, three UTF-8 bytes
+    chat.begin(ChatChannel::global);
+    std::size_t accepted{};
+    while (chat.append_text(wide_letter)) ++accepted;
+    expect(accepted == GameChatModel::maximum_input_bytes / wide_letter.size(),
+           "three-byte characters must stop at the ChatMessage byte ceiling");
+    chat.cancel();
+
+    std::string incoming(199U, 'a');
+    incoming += cyrillic_letter;
+    chat.add(incoming);
+    expect(chat.entries().front().text == std::string(199U, 'a'),
+           "incoming chat must be cut before a split UTF-8 sequence");
+    chat.add_player_message(std::string(63U, 'b') + cyrillic_letter, {}, "hi", false);
+    expect(chat.entries().front().text.starts_with(std::string(63U, 'b') + ": "),
+           "sender names must be cut before a split UTF-8 sequence");
+}
+
 void player_chat_preserves_retail_sender_and_body_labels() {
     GameChatModel chat;
     chat.add_player_message("Builder", {44U, 117U, 179U, 255U},
@@ -1455,6 +1485,7 @@ void scoreboard_mode_titles_follow_retail_mode_tables() {
 int main() {
     try {
         chat_is_bounded_and_utf8_safe();
+        chat_limits_count_cyrillic_characters();
         chat_presentation_matches_retail_geometry_stroke_and_fade();
         player_chat_preserves_retail_sender_and_body_labels();
         vote_decoding_and_cast_are_crash_safe();

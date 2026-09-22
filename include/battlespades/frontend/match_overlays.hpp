@@ -51,7 +51,10 @@ class GameChatModel final {
 public:
     static constexpr std::size_t maximum_entries{50U};
     static constexpr std::size_t shown_lines{10U};
-    static constexpr std::size_t maximum_input_bytes{90U};
+    /** Counted in characters so Cyrillic input is not cut to half the length. */
+    static constexpr std::size_t maximum_input_code_points{90U};
+    /** ChatMessage(49) wire ceiling in UTF-8 bytes. */
+    static constexpr std::size_t maximum_input_bytes{200U};
     static constexpr double entry_lifetime_seconds{5.0};
 
     void add(std::string text, ui::ColorRgba8 color = {});
