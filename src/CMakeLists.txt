@@ -880,6 +880,20 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             "$<TARGET_FILE_DIR:BattleSpadesClient>/ui-layout.json"
         VERBATIM
     )
+    # The Steamworks library is loaded by name from the executable's directory.
+    # The install rules place it there for players; developer runs and the
+    # staging script take it from the target directory, so copy it as well.
+    if(AOS_ENABLE_STEAM_NETWORKING AND _aos_steam_library)
+        add_custom_command(
+            TARGET BattleSpadesClient
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${_aos_steam_library}"
+                "$<TARGET_FILE_DIR:BattleSpadesClient>"
+            VERBATIM
+        )
+    endif()
     if(WIN32)
         set(
             AOS_STEAM_BRIDGE_EXECUTABLE
