@@ -95,7 +95,8 @@ Get-ChildItem -LiteralPath $localizationSource -Filter '*.json' -File | ForEach-
 
 $mismatches = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem -LiteralPath $shaderSource -Recurse -Filter '*.bin' -File | ForEach-Object {
-    $relative = [System.IO.Path]::GetRelativePath($shaderSource, $_.FullName)
+    # Windows PowerShell 5.1 has no [IO.Path]::GetRelativePath; both paths are full.
+    $relative = $_.FullName.Substring($shaderSource.TrimEnd('').Length + 1)
     $staged = Join-Path $shaderDestination $relative
     if (-not (Test-Path -LiteralPath $staged -PathType Leaf) -or
         (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -ne
