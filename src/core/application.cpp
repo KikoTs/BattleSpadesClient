@@ -3,6 +3,8 @@
 
 #include <chrono>
 #include <cstddef>
+#include <exception>
+#include <iostream>
 #include <thread>
 #include <utility>
 
@@ -72,7 +74,14 @@ RunResult Application::run() {
                 std::this_thread::sleep_until(pacing.next_tick);
             }
         }
+    } catch (const std::exception& exception) {
+        // Keep the cause in the player's diagnostics log; the result code alone
+        // cannot distinguish a renderer, network or asset failure.
+        std::cerr << "BattleSpadesClient: module exception: " << exception.what() << '\n';
+        result = started_modules == modules_.size() ? RunResult::module_runtime_failed
+                                                    : RunResult::module_start_failed;
     } catch (...) {
+        std::cerr << "BattleSpadesClient: module exception of unknown type\n";
         result = started_modules == modules_.size() ? RunResult::module_runtime_failed
                                                     : RunResult::module_start_failed;
     }
