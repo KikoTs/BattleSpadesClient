@@ -163,6 +163,15 @@
 namespace battlespades::frontend {
 namespace {
 
+/**
+ * UTF-8 for logs and child configuration. On Windows path::string() uses the
+ * ANSI code page: Cyrillic becomes CP1251 bytes, or throws when unmappable.
+ */
+[[nodiscard]] std::string path_utf8(const std::filesystem::path& path) {
+    const auto encoded = path.u8string();
+    return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+}
+
 constexpr std::uint32_t retail_width{800U};
 constexpr std::uint32_t retail_height{600U};
 constexpr std::uint32_t scancode_return{40U};
@@ -6543,7 +6552,7 @@ struct NativeFrontendModule::Impl final {
                                : "Starting a private local BattleSpades server";
         match_loading.set_status(settings_warning);
         std::fprintf(stderr, "[hosting] bundle=%s mode=%s map=%s\n",
-                     launch.bundle_root.string().c_str(), launch.mode.c_str(), launch.map_name.c_str());
+                     path_utf8(launch.bundle_root).c_str(), launch.mode.c_str(), launch.map_name.c_str());
         const auto generation = next_local_host_generation++;
         active_local_host_generation = generation;
         local_host_cancel = std::make_shared<std::stop_source>();
@@ -6585,7 +6594,7 @@ struct NativeFrontendModule::Impl final {
                     };
                     const auto results_directory = identity->hosted_results_directory();
                     if (!results_directory.empty()) {
-                        launch.environment_overrides.emplace("AOS_MATCH_RESULTS_DIRECTORY", results_directory.string());
+                        launch.environment_overrides.emplace("AOS_MATCH_RESULTS_DIRECTORY", path_utf8(results_directory));
                     }
                     if (launch.program == platform::LocalServerProgram::map_creator) {
                         const auto account = identity->cached_account();
