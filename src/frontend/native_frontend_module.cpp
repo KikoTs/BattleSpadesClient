@@ -14951,9 +14951,13 @@ struct NativeFrontendModule::Impl final {
     void begin_tutorial() {
         auto tutorial_path = config.tutorial_map_path;
         if (!std::filesystem::is_regular_file(tutorial_path)) {
-            const auto packaged = config.asset_root.parent_path() / "maps/Training.vxl";
+            // Packaged builds read the installer-verified retail Training map.
+            const auto packaged = config.asset_root / "maps/Training.vxl";
+            const auto legacy = config.asset_root.parent_path() / "maps/Training.vxl";
             if (std::filesystem::is_regular_file(packaged)) {
                 tutorial_path = packaged;
+            } else if (std::filesystem::is_regular_file(legacy)) {
+                tutorial_path = legacy;
             }
 #if defined(AOS_DEV_TRAINING_VXL)
             else if (std::filesystem::is_regular_file(AOS_DEV_TRAINING_VXL)) {
