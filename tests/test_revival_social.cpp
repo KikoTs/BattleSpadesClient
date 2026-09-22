@@ -241,7 +241,9 @@ void polling_coalesces_and_failures_back_off() {
     client.tick(now);
     client.tick(now);
     wait_until([&] { return sync_calls.load() == 1; }, "coalesced poll did not execute");
-    static_cast<void>(client.drain(now));
+    // The fake counts a poll before its failure is queued. Drain until the
+    // worker delivers it; an early empty drain would leave the old deadline.
+    wait_until([&] { return !client.drain(now).empty(); }, "failed poll was not delivered");
     const auto first = client.status(now);
     expect(first.retry_after >= 9ms && first.retry_after <= 10ms,
            "first failure must retain the base retry delay");
@@ -249,7 +251,7 @@ void polling_coalesces_and_failures_back_off() {
     expect(sync_calls.load() == 1, "poll must not run before its retry deadline");
     client.tick(now + 11ms);
     wait_until([&] { return sync_calls.load() == 2; }, "second poll did not execute");
-    static_cast<void>(client.drain(now + 11ms));
+    wait_until([&] { return !client.drain(now + 11ms).empty(); }, "second failure was not delivered");
     expect(client.status(now + 11ms).retry_after >= 19ms,
            "retry delay must grow exponentially");
 }
@@ -349,7 +351,12 @@ void client_instances_are_unique_and_events_are_exactly_once() {
                    is_canonical_v4_uuid(instance_ids[1U]),
                "AoSPlay presence leases must be canonical version-4 UUIDs");
     }
-    auto first_delivery = first.drain(now);
+    // Executors record a poll before its result is queued; wait for delivery.
+    std::vector<RevivalSocialResult> first_delivery;
+    wait_until([&] {
+        first_delivery = first.drain(now);
+        return !first_delivery.empty();
+    }, "first poll was not delivered");
     expect(first_delivery.size() == 1U &&
                first_delivery.front().snapshot.events.size() == 1U,
            "the first authoritative event must be delivered");
@@ -358,7 +365,11 @@ void client_instances_are_unique_and_events_are_exactly_once() {
         std::scoped_lock lock{mutex};
         return instance_ids.size() >= 3U;
     }, "second social poll did not run");
-    auto duplicate = first.drain(now + 4s);
+    std::vector<RevivalSocialResult> duplicate;
+    wait_until([&] {
+        duplicate = first.drain(now + 4s);
+        return !duplicate.empty();
+    }, "second poll was not delivered");
     expect(duplicate.size() == 1U && duplicate.front().snapshot.events.empty(),
            "a repeated authoritative event must be suppressed across polls");
 }
@@ -377,7 +388,7 @@ void transport_failures_enter_reconnecting_without_stopping_retries() {
     client.set_available(true);
     client.tick(now);
     wait_until([&] { return attempts.load() == 1; }, "network failure did not execute");
-    static_cast<void>(client.drain(now));
+    wait_until([&] { return !client.drain(now).empty(); }, "network failure was not delivered");
     expect(!client.status(now).available,
            "a failed sync must expose reconnecting state to the menu");
     client.tick(now + 11ms);
