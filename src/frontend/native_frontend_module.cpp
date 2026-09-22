@@ -1,6 +1,7 @@
 #include "battlespades/frontend/native_frontend_module.hpp"
 #include "battlespades/network/cosmetic_appearance.hpp"
 
+#include "battlespades/core/diagnostics.hpp"
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/explosion_sound.hpp"
 #include "battlespades/audio/entity_sound.hpp"
@@ -170,6 +171,36 @@ namespace {
 [[nodiscard]] std::string path_utf8(const std::filesystem::path& path) {
     const auto encoded = path.u8string();
     return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+}
+
+/**
+ * Retail localization key for a server DISCONNECT reason, empty if unknown.
+ * Every BattleSpades server up to 0.1.0-beta.1 sent 3 when full, although
+ * retail 3 is SERVER_OUT_OF_DATE; no BattleSpades server sends 3 otherwise.
+ */
+[[nodiscard]] std::string_view disconnect_status_key(std::uint32_t reason) noexcept {
+    switch (reason) {
+    case 1U: return "ERROR_BANNED_CUSTOM";
+    case 2U: case 23U: case 24U: case 25U: return "KICKED_ERROR";
+    case 3U: case 4U: return "SERVERFULL_ERROR";
+    case 5U: return "NO_STEAM_CONNECTION";
+    case 6U: return "NO_VAC_CONNECTION";
+    case 7U: return "NO_VALID_LICENSE";
+    case 8U: return "INVALID_SESSION_TICKET";
+    case 10U: return "VERSION_ERROR";
+    case 11U: return "ERROR_TIMEOUT";
+    case 12U: return "RANKED_CONNECTION";
+    case 13U: return "LOBBY_ERROR_SERVER_ERROR";
+    case 14U: return "DLC_NOT_PURCHASHED";
+    case 19U: return "ERROR_TEMP_BANNED_OLD";
+    case 21U: return "INVALID_DEMO_CONTENT";
+    case 26U: return "LOBBY_ERROR_CLOSED";
+    case 27U: return "LOBBY_ERROR_LOBBY_FULL";
+    case 28U: return "LOBBY_ERROR_UNKNOWN";
+    case 29U: return "LOBBY_ERROR_SERVER_CONNECTION_FAILED";
+    case 30U: return "UGC_LOBBY_PUBLISHING_ERROR";
+    default: return {};
+    }
 }
 
 constexpr std::uint32_t retail_width{800U};
@@ -2084,6 +2115,10 @@ struct NativeFrontendModule::Impl final {
     /** ForceShowScores(72) owns this independently of the local TAB hold. */
     bool scoreboard_forced{};
     std::optional<std::uint8_t> forced_team;
+    bool initial_join_submitted{};
+    std::optional<FrontendScreen> traced_screen;
+    std::string traced_warning;
+    std::string traced_lobby;
     bool spectator_team_locked{};
     std::size_t tutorial_chunks_uploaded{};
     std::size_t tutorial_chunks_expected{};
@@ -2428,10 +2463,53 @@ struct NativeFrontendModule::Impl final {
         return "invite";
     }
 
+    /** Support log line whenever the lobby's authority, phase or roster changes. */
+    void trace_social_lobby(const network::RevivalSocialLobby& lobby) {
+        std::string my_team{"-"};
+        for (const auto& member : lobby.members) {
+            if (member.legacy_id != friends_lobby_menu.local_account_id()) continue;
+            const auto assigned = member.member_data.find("assigned_team");
+            if (assigned != member.member_data.end() && assigned->is_number_integer()) {
+                my_team = std::to_string(assigned->get<int>());
+            }
+        }
+        const auto line = "id=" + lobby.id + " state=" + lobby.state + " rev=" + lobby.revision +
+                          " owner=" + (lobby.owner_id == friends_lobby_menu.local_account_id()
+                                           ? std::string{"me"} : lobby.owner_id) +
+                          " members=" + std::to_string(lobby.members.size()) +
+                          " my_team=" + my_team +
+                          " server=" + (lobby.server_id.empty() ? std::string{"-"} : lobby.server_id);
+        if (line == traced_lobby) return;
+        traced_lobby = line;
+        core::diagnostic("lobby", line);
+    }
+
+    /** Support log lines for screen changes and on-screen status text. */
+    void trace_frontend_state() {
+        const auto current = screen();
+        if (!traced_screen.has_value() || *traced_screen != current) {
+            traced_screen = current;
+            std::string line{layout_screen_name(current)};
+            if (current == FrontendScreen::class_selection) {
+                line += " team=" + std::to_string(class_selection_menu.team()) +
+                        " classes=" + std::to_string(class_selection_menu.classes().size()) +
+                        " initial_join=" + (class_selection_initial_join ? "1" : "0") +
+                        " forced_team=" + (forced_team.has_value()
+                                               ? std::to_string(*forced_team) : std::string{"-"});
+            }
+            core::diagnostic("nav", line);
+        }
+        if (settings_warning != traced_warning) {
+            traced_warning = settings_warning;
+            if (!traced_warning.empty()) core::diagnostic("ui", traced_warning);
+        }
+    }
+
     void sync_social_match_lobby(const network::RevivalSocialSnapshot& source,
                                  bool apply_settings) {
         if (!source.lobby.has_value()) return;
         const auto& lobby = *source.lobby;
+        trace_social_lobby(lobby);
         const bool authority_changed = social_match_lobby_id != lobby.id ||
                                        social_match_owner_id != lobby.owner_id;
         if (authority_changed) {
@@ -7984,14 +8062,32 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    void fail_map_transition_reconnect(std::string error) {
+    void fail_map_transition_reconnect(std::string error,
+                                       std::string_view status_key = "SERVER_CONNECTION_FAILED") {
         retire_match_connection();
         map_transition_armed = false;
         map_transition_reconnecting = false;
         map_transition_attempts = 0U;
-        match_loading.fail("SERVER_CONNECTION_FAILED");
+        match_loading.fail(std::string{status_key});
         settings_warning =
             error.empty() ? "The next map did not become available" : std::move(error);
+    }
+
+    /**
+     * Show the server's reason on the loader. A drop during team or class
+     * selection or gameplay otherwise leaves a frozen screen whose buttons
+     * silently do nothing.
+     */
+    void fail_match_connection(const network::LiveProtocol168Status& status) {
+        const auto key = status.disconnect_reason.has_value()
+                             ? disconnect_status_key(*status.disconnect_reason)
+                             : std::string_view{};
+        fail_map_transition_reconnect(status.error,
+                                      key.empty() ? std::string_view{"SERVER_CONNECTION_FAILED"} : key);
+        initial_join_submitted = false;
+        if (screen() != FrontendScreen::game_loading && navigation.leave_match_instant()) {
+            static_cast<void>(navigation.push(FrontendScreen::game_loading));
+        }
     }
 
     void schedule_map_transition_retry(std::string error) {
@@ -8573,7 +8669,7 @@ struct NativeFrontendModule::Impl final {
                 }
                 return;
             }
-            fail_map_transition_reconnect(status.error);
+            fail_match_connection(status);
             return;
         }
         auto bootstrap = match_connection->take_bootstrap();
@@ -10556,6 +10652,9 @@ struct NativeFrontendModule::Impl final {
                 }
             } else if (id == 115U && packet.size() >= 3U) {
                 forced_team = std::to_integer<std::uint8_t>(packet[1U]);
+                core::diagnostic("join", "ForceTeamJoin team=" + std::to_string(*forced_team) +
+                    " team1_classes=" + std::to_string(match_state_info.team1_classes.size()) +
+                    " team2_classes=" + std::to_string(match_state_info.team2_classes.size()));
                 refresh_pause_menu();
                 if (tutorial_session != nullptr && screen() == FrontendScreen::tutorial_world) {
                     send_client_in_menu(true);
@@ -14791,6 +14890,7 @@ struct NativeFrontendModule::Impl final {
     }
 
     void teardown_tutorial() {
+        initial_join_submitted = false;
         // Keep an outstanding future drainable without blocking the UI. Its
         // response must never authorize a later host attempt at the same port.
         if (pending_match_identity) pending_match_identity->generation = 0U;
@@ -15131,6 +15231,7 @@ struct NativeFrontendModule::Impl final {
 
     /** The retail START press: instant music stop, confirm cue, reveal. */
     void start_tutorial_pressed() {
+        initial_join_submitted = false;
         if (tutorial_ready_map == nullptr) {
             return;
         }
@@ -15404,6 +15505,9 @@ struct NativeFrontendModule::Impl final {
     void submit_loadout_selection(world::ClassSelection selection,
                                   std::uint8_t fallback_team) {
         if (match_connection == nullptr || !local_player_id.has_value()) return;
+        // The first press already sent NewPlayerConnection. A repeat press
+        // before CreatePlayer arrives would resend the loadout without a team.
+        if (initial_join_submitted) return;
         if (selection.loadout.empty()) {
             settings_warning = "selected class has no valid Protocol 168 loadout";
             return;
@@ -15461,6 +15565,7 @@ struct NativeFrontendModule::Impl final {
         }
         class_selection_initial_join = false;
         initial_join_team.reset();
+        initial_join_submitted = true;
         // The authoritative CreatePlayer calls start_tutorial_pressed(). No
         // provisional dead/player replica is manufactured locally.
     }
@@ -20802,6 +20907,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         }
     }
 
+    impl_->trace_frontend_state();
     if (impl_->audio_started && impl_->audio->tick(context) == core::TickDecision::stop) {
         impl_->settings_warning = std::string{impl_->audio->last_error()};
         std::fprintf(stderr, "[audio] %s\n", impl_->settings_warning.c_str());
