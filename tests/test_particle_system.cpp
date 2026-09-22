@@ -73,7 +73,7 @@ void colours_are_carried_verbatim() {
     particles.emit(spawn);
     particles.build_draw_list({0.0F, 0.0F, 0.0F}, 0.0F);
     expect(particles.instances().size() == 1U, "one emit must yield one instance");
-    const auto& rgba = particles.instances().front().rgba;
+    const auto rgba = particles.instances().front().rgba;
     const auto matches = [](float value, std::uint8_t channel) {
         return std::abs(value - static_cast<float>(channel) / 255.0F) < 0.002F;
     };

@@ -175,7 +175,9 @@ int main(int argc,char** argv){
         }
         std::ifstream index_file{packs/"index.json"};const auto index=nlohmann::json::parse(index_file);std::size_t guns{};
         for(const auto& item:index){
-            const auto indexed=std::filesystem::path{item.at("manifest").get<std::string>()};
+            // The importer records host paths; keep only the pack folder and file name.
+            auto recorded=item.at("manifest").get<std::string>();std::ranges::replace(recorded,'\\','/');
+            const auto indexed=std::filesystem::path{recorded};
             const auto manifest=packs/indexed.parent_path().filename()/indexed.filename();
             std::ifstream file{manifest};const auto data=nlohmann::json::parse(file);
             if(data.at("category")=="Spade")continue;

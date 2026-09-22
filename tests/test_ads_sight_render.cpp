@@ -826,6 +826,14 @@ int main(int argc, char** argv) {
             std::cout << "SKIP: no Direct3D11 device for the ADS sight render probe\n";
             return 0;
         }
+        // bgfx falls back to the platform backend instead of failing; dx11
+        // shader binaries on Metal or OpenGL would read back black.
+        if (bgfx::getRendererType() != bgfx::RendererType::Direct3D11) {
+            std::cout << "SKIP: bgfx selected " << bgfx::getRendererName(bgfx::getRendererType())
+                      << ", not Direct3D11, for the ADS sight render probe\n";
+            bgfx::shutdown();
+            return 0;
+        }
         const auto* caps = bgfx::getCaps();
         if ((caps->supported & BGFX_CAPS_TEXTURE_READ_BACK) == 0U ||
             (caps->supported & BGFX_CAPS_TEXTURE_BLIT) == 0U) {

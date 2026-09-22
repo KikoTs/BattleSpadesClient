@@ -47,7 +47,7 @@ void falling_mesh_culls_internal_faces() {
            "two adjacent falling voxels must cull their shared faces");
     expect(effects.instances().front().position[2U] > 100.5F,
            "recovered gravity must advance the falling object downward");
-    const auto& rotation = effects.instances().front().rotation_degrees;
+    const auto rotation = effects.instances().front().rotation_degrees;
     expect(std::abs(rotation[1U]) > std::abs(rotation[2U]) * 4.0F,
            "a wide falling component must hinge sideways, not pirouette around z");
 }
