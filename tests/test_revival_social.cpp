@@ -59,6 +59,18 @@ RevivalSocialResult success(const RevivalSocialRequest& request,
             "\",\"friends\":[],\"invitations\":[],\"events\":[]}");
 }
 
+void default_json_members_are_objects() {
+    // Brace-initializing json from json::object() yields [{}] on clang, and
+    // payload["key"] on that array threw when a macOS host published a match.
+    expect(RevivalSocialRequest{}.payload.is_object(), "request payload must default to an object");
+    expect(RevivalSocialLobbyMember{}.member_data.is_object(), "member data must default to an object");
+    expect(RevivalSocialLobby{}.settings.is_object(), "lobby settings must default to an object");
+    expect(RevivalSocialEvent{}.payload.is_object(), "event payload must default to an object");
+    RevivalSocialRequest in_game;
+    in_game.payload["start_id"] = "start";
+    expect(in_game.payload.dump() == R"({"start_id":"start"})", "request payload must accept object keys");
+}
+
 void parser_is_bounded_and_deduplicated() {
     RevivalSocialRequest request;
     request.generation = 1U;
@@ -487,8 +499,8 @@ private:
     std::vector<std::string> members_;
     std::string state_{"closed"};
     std::string server_id_;
-    nlohmann::json settings_{nlohmann::json::object()};
-    nlohmann::json events_{nlohmann::json::array()};
+    nlohmann::json settings_ = nlohmann::json::object();
+    nlohmann::json events_ = nlohmann::json::array();
     std::uint64_t revision_{};
     std::uint64_t event_id_{};
 };
@@ -777,6 +789,7 @@ void partial_responses_preserve_membership_and_consumed_invites_disappear_immedi
 
 int main() {
     try {
+        default_json_members_are_objects();
         parser_is_bounded_and_deduplicated();
         priority_actions_overtake_a_blocked_poll();
         stale_poll_cannot_undo_a_priority_mutation();

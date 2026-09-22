@@ -662,7 +662,7 @@ public:
     std::deque<std::string> seen_event_order;
     std::string client_instance_id;
     std::string presence{"online"};
-    Json metadata{Json::object()};
+    Json metadata = Json::object();
     std::string last_error;
     std::uint64_t next_generation{1U};
     std::uint64_t next_submission_sequence{1U};

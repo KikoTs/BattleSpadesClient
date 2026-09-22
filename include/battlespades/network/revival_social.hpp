@@ -54,7 +54,7 @@ struct RevivalSocialRequest final {
     std::string lobby_id{};
     std::string action{};
     std::string target{};
-    nlohmann::json payload{nlohmann::json::object()};
+    nlohmann::json payload = nlohmann::json::object();
 };
 
 struct RevivalSocialFriend final {
@@ -88,7 +88,7 @@ struct RevivalSocialLobbyMember final {
     std::string nickname{};
     std::string presence{"online"};
     bool in_game{};
-    nlohmann::json member_data{nlohmann::json::object()};
+    nlohmann::json member_data = nlohmann::json::object();
 
     [[nodiscard]] friend bool operator==(const RevivalSocialLobbyMember&,
                                          const RevivalSocialLobbyMember&) = default;
@@ -106,7 +106,7 @@ struct RevivalSocialLobby final {
     std::string server_id{};
     std::string start_id{};
     std::size_t maximum_members{24U};
-    nlohmann::json settings{nlohmann::json::object()};
+    nlohmann::json settings = nlohmann::json::object();
     std::vector<RevivalSocialLobbyMember> members{};
 
     [[nodiscard]] friend bool operator==(const RevivalSocialLobby&,
@@ -118,7 +118,7 @@ struct RevivalSocialEvent final {
     std::string type{};
     std::string lobby_id{};
     std::string actor_id{};
-    nlohmann::json payload{nlohmann::json::object()};
+    nlohmann::json payload = nlohmann::json::object();
 
     [[nodiscard]] friend bool operator==(const RevivalSocialEvent&,
                                          const RevivalSocialEvent&) = default;
