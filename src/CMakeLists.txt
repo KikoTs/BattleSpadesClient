@@ -727,6 +727,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         frontend/ugc_preview_writer.cpp
         PROPERTIES COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS"
     )
+    if(AOS_ENABLE_STEAM_NETWORKING)
+        target_link_libraries(aos_frontend_native PRIVATE BattleSpades::SteamNet)
+        target_compile_definitions(aos_frontend_native PRIVATE AOS_HAS_STEAM_NETWORKING=1)
+    endif()
     target_compile_definitions(aos_frontend_native PRIVATE
         AOS_DEV_TRAINING_VXL="${PROJECT_SOURCE_DIR}/../BattleSpades/maps/Training.vxl"
         AOS_DEV_BATTLESPADES_ROOT="${PROJECT_SOURCE_DIR}/../BattleSpades")

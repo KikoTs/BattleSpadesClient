@@ -184,10 +184,12 @@ void close_library(void* handle) noexcept {
 #endif
 }
 
-[[nodiscard]] bool load_steam_api(const std::filesystem::path& configured, SteamApi& api,
+[[nodiscard]] bool load_steam_api(const std::filesystem::path& configured,
+                                  const std::filesystem::path& search_directory, SteamApi& api,
                                   std::string& error) {
     std::vector<std::filesystem::path> candidates;
     if (!configured.empty()) candidates.push_back(configured);
+    if (!search_directory.empty()) candidates.push_back(search_directory / default_library_name());
     std::error_code ignored;
     const auto working = std::filesystem::current_path(ignored);
     if (!ignored) candidates.push_back(working / default_library_name());
@@ -411,7 +413,9 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
     }
     auto impl = std::make_unique<Impl>();
     impl->config = std::move(config);
-    if (!load_steam_api(impl->config.library, impl->api, error)) return false;
+    if (!load_steam_api(impl->config.library, impl->config.search_directory, impl->api, error)) {
+        return false;
+    }
 
     const auto app_id = std::to_string(impl->config.app_id);
 #if defined(_WIN32)

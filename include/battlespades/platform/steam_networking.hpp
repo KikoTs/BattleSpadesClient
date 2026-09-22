@@ -18,8 +18,10 @@ namespace battlespades::platform {
  */
 struct SteamNetworkingRuntimeConfig final {
     std::uint32_t app_id{480U};
-    /** Empty searches beside the executable, then the default library name. */
+    /** Explicit library path; empty searches `search_directory` and the default name. */
     std::filesystem::path library;
+    /** Usually the executable's directory, where packaged builds install it. */
+    std::filesystem::path search_directory;
     std::chrono::seconds relay_timeout{20};
 };
 

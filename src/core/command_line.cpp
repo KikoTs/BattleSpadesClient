@@ -222,7 +222,7 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
         }
         if (argument == "--connect") {
             if (++index >= arguments.size() || arguments[index].empty()) {
-                return failure("--connect requires HOST:PORT");
+                return failure("--connect requires HOST:PORT or steam:STEAMID");
             }
             options.startup_endpoint = std::string{arguments[index]};
             continue;
@@ -366,7 +366,8 @@ std::string_view command_line_usage() noexcept {
            "  --ui-editor        Enable offline drag/resize layout editing (F11)\n"
 #endif
            "  --shader-quality T  Force a tier: compatibility|low|medium|high|ultra\n"
-           "  --connect HOST:PORT Open the normal live loader for this server\n"
+           "  --connect ADDRESS   Open the live loader for HOST:PORT, or for\n"
+           "                      steam:STEAMID to join a player-hosted match\n"
            "  --version           Print build version and profile\n"
            "  --help, -h          Show this help\n";
 }

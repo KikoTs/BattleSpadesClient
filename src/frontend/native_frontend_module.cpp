@@ -2,6 +2,9 @@
 #include "battlespades/network/cosmetic_appearance.hpp"
 
 #include "battlespades/core/diagnostics.hpp"
+#if defined(AOS_HAS_STEAM_NETWORKING)
+#include "battlespades/platform/steam_networking.hpp"
+#endif
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/explosion_sound.hpp"
 #include "battlespades/audio/entity_sound.hpp"
@@ -201,6 +204,21 @@ namespace {
     case 30U: return "UGC_LOBBY_PUBLISHING_ERROR";
     default: return {};
     }
+}
+
+/** "steam:76561198…" addresses a player-hosted match over Valve's relays. */
+[[nodiscard]] std::uint64_t parse_steam_endpoint(std::string_view value) noexcept {
+    constexpr std::string_view prefix{"steam:"};
+    if (value.size() <= prefix.size() || !value.starts_with(prefix)) return 0U;
+    const auto digits = value.substr(prefix.size());
+    if (digits.size() > 20U ||
+        !std::ranges::all_of(digits, [](char c) { return c >= '0' && c <= '9'; })) {
+        return 0U;
+    }
+    std::uint64_t id{};
+    const auto* const end = digits.data() + digits.size();
+    const auto parsed = std::from_chars(digits.data(), end, id);
+    return parsed.ec == std::errc{} && parsed.ptr == end ? id : 0U;
 }
 
 constexpr std::uint32_t retail_width{800U};
@@ -2116,6 +2134,13 @@ struct NativeFrontendModule::Impl final {
     bool scoreboard_forced{};
     std::optional<std::uint8_t> forced_team;
     bool initial_join_submitted{};
+#if defined(AOS_HAS_STEAM_NETWORKING)
+    platform::SteamNetworkingRuntime steam_runtime;
+    platform::SteamP2PHost steam_host;
+    platform::SteamP2PClient steam_client;
+    bool steam_runtime_attempted{};
+#endif
+    std::uint64_t steam_host_id{};
     std::optional<FrontendScreen> traced_screen;
     std::string traced_warning;
     std::string traced_lobby;
@@ -3114,8 +3139,88 @@ struct NativeFrontendModule::Impl final {
             }});
     }
 
+    /**
+     * Start Steam once per session, only when a match needs it.
+     *
+     * Failure is ordinary: a player without Steam keeps the AoSPlay relay.
+     */
+    [[nodiscard]] bool ensure_steam_runtime() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_runtime.ready()) return true;
+        if (steam_runtime_attempted) return false;
+        steam_runtime_attempted = true;
+        platform::SteamNetworkingRuntimeConfig steam_config;
+        steam_config.search_directory = config.executable_directory;
+        std::string error;
+        if (!steam_runtime.start(std::move(steam_config), error)) {
+            core::diagnostic("steam", "unavailable, using the AoSPlay relay: " + error);
+            return false;
+        }
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    /** Accept friends over Valve's relays; returns the id they connect to. */
+    [[nodiscard]] std::uint64_t start_steam_host(std::uint16_t local_server_port) {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_host.stop();
+        if (local_server_port == 0U || !ensure_steam_runtime()) return 0U;
+        platform::SteamP2PHostConfig host_config;
+        host_config.local_server_port = local_server_port;
+        std::string error;
+        if (!steam_host.start(steam_runtime, std::move(host_config), error)) {
+            core::diagnostic("steam", "hosting over the relay network failed: " + error);
+            return 0U;
+        }
+        return steam_runtime.steam_id();
+#else
+        static_cast<void>(local_server_port);
+        return 0U;
+#endif
+    }
+
+    /** Join a Steam host; returns the loopback port Protocol 168 connects to. */
+    [[nodiscard]] std::uint16_t start_steam_client(std::uint64_t host_steam_id,
+                                                   std::string& error) {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_client.stop();
+        if (!ensure_steam_runtime()) {
+            error = "Steam is not running, so this match cannot be joined";
+            return 0U;
+        }
+        platform::SteamP2PClientConfig client_config;
+        client_config.host_steam_id = host_steam_id;
+        if (!steam_client.start(steam_runtime, std::move(client_config), error)) {
+            core::diagnostic("steam", "joining " + std::to_string(host_steam_id) +
+                                          " failed: " + error);
+            return 0U;
+        }
+        return steam_client.local_port();
+#else
+        static_cast<void>(host_steam_id);
+        error = "this build has no Steam transport";
+        return 0U;
+#endif
+    }
+
+    void stop_steam_client() noexcept {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_client.stop();
+#endif
+    }
+
+    void stop_steam_host() noexcept {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_host.stop();
+#endif
+        steam_host_id = 0U;
+    }
+
     /** Stop and unpublish every resource owned by a client-hosted match. */
     void release_owned_local_match_host() {
+        stop_steam_host();
         if (local_host_cancel != nullptr) local_host_cancel->request_stop();
         active_local_host_generation = 0U;
         owned_social_lobby_id.clear();
@@ -6923,8 +7028,11 @@ struct NativeFrontendModule::Impl final {
             }
             return;
         }
+        steam_host_id = start_steam_host(owned_local_server->port());
         settings_warning =
-            "Local server ready on UDP " + std::to_string(owned_local_server->port());
+            steam_host_id != 0U
+                ? "Friends can join with steam:" + std::to_string(steam_host_id)
+                : "Local server ready on UDP " + std::to_string(owned_local_server->port());
         begin_match_loading(outcome.request);
     }
 
@@ -7927,6 +8035,7 @@ struct NativeFrontendModule::Impl final {
     }
 
     void retire_match_connection() {
+        stop_steam_client();
         if (!match_connection) return;
         match_connection->request_stop();
         match_connection_cleanup.defer(std::packaged_task<void()>{
@@ -11851,6 +11960,24 @@ struct NativeFrontendModule::Impl final {
         if (action->kind == DirectConnectActionKind::back) {
             static_cast<void>(navigation.pop());
             play_back();
+            return;
+        }
+        if (const auto steam_id = parse_steam_endpoint(action->endpoint); steam_id != 0U) {
+            if (action->kind == DirectConnectActionKind::add_favourite) {
+                direct_connect_menu.set_error("Steam matches cannot be saved as favorites");
+                return;
+            }
+            std::string steam_error;
+            const auto port = start_steam_client(steam_id, steam_error);
+            if (port == 0U) {
+                direct_connect_menu.set_error(steam_error.empty()
+                                                  ? "Could not reach that Steam host"
+                                                  : std::move(steam_error));
+                return;
+            }
+            begin_match_loading(ServerConnectRequest{"steam:" + std::to_string(steam_id),
+                                                     "127.0.0.1", port, {}, {}, {}, false, {},
+                                                     false});
             return;
         }
         network::ServerEndpoint endpoint;
@@ -20847,6 +20974,23 @@ bool NativeFrontendModule::start() {
         impl_->suppress_next_settings_close = false;
         impl_->last_error.clear();
         if (impl_->config.startup_endpoint.has_value()) {
+            // steam:<id> joins a player-hosted match over Valve's relays, so a
+            // two-machine check needs no menu navigation.
+            if (const auto steam_id = parse_steam_endpoint(*impl_->config.startup_endpoint);
+                steam_id != 0U) {
+                std::string steam_error;
+                const auto port = impl_->start_steam_client(steam_id, steam_error);
+                if (port == 0U) {
+                    impl_->last_error = "could not join steam:" + std::to_string(steam_id) + ": " +
+                                        steam_error;
+                    stop();
+                    return false;
+                }
+                impl_->pending_startup_connection =
+                    ServerConnectRequest{"steam:" + std::to_string(steam_id), "127.0.0.1", port,
+                                         {}, {}, {}, false, {}, false};
+                return true;
+            }
             network::ServerEndpoint endpoint;
             std::string endpoint_error;
             if (!network::parse_server_endpoint(
