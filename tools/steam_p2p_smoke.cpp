@@ -4,22 +4,72 @@
 #include "battlespades/platform/steam_networking.hpp"
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
-#include <fcntl.h>
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace {
 using namespace std::chrono_literals;
 namespace platform = battlespades::platform;
+
+#if defined(_WIN32)
+using Socket = SOCKET;
+using BufferLength = int;
+constexpr Socket invalid_socket{INVALID_SOCKET};
+void close_socket(Socket value) noexcept {
+    if (value != invalid_socket) static_cast<void>(closesocket(value));
+}
+/** Winsock counts a receive timeout in whole milliseconds. */
+void set_receive_timeout(Socket socket, std::chrono::milliseconds timeout) noexcept {
+    const DWORD milliseconds{static_cast<DWORD>(timeout.count())};
+    static_cast<void>(setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO,
+                                 reinterpret_cast<const char*>(&milliseconds),
+                                 sizeof(milliseconds)));
+}
+#else
+using Socket = int;
+using BufferLength = std::size_t;
+constexpr Socket invalid_socket{-1};
+void close_socket(Socket value) noexcept {
+    if (value != invalid_socket) static_cast<void>(close(value));
+}
+void set_receive_timeout(Socket socket, std::chrono::milliseconds timeout) noexcept {
+    timeval value{};
+    value.tv_sec = static_cast<decltype(value.tv_sec)>(timeout.count() / 1000);
+    value.tv_usec = static_cast<decltype(value.tv_usec)>((timeout.count() % 1000) * 1000);
+    static_cast<void>(setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(value)));
+}
+#endif
+
+/** Winsock needs starting before the first socket; POSIX needs nothing. */
+[[nodiscard]] bool sockets_ready() noexcept {
+    static const bool ready = [] {
+#if defined(_WIN32)
+        WSADATA data{};
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+#else
+        return true;
+#endif
+    }();
+    return ready;
+}
 
 std::atomic_bool running{true};
 
@@ -27,8 +77,9 @@ std::atomic_bool running{true};
 class EchoService final {
 public:
     [[nodiscard]] bool start(std::uint16_t& port) {
+        if (!sockets_ready()) return false;
         socket_ = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (socket_ < 0) return false;
+        if (socket_ == invalid_socket) return false;
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -39,29 +90,34 @@ public:
         socklen_t size = sizeof(assigned);
         if (::getsockname(socket_, reinterpret_cast<sockaddr*>(&assigned), &size) != 0) return false;
         port = ntohs(assigned.sin_port);
+        // A short timeout lets the worker notice that the run finished instead
+        // of parking in recvfrom until the process exits.
+        set_receive_timeout(socket_, 250ms);
         worker_ = std::thread{[this] {
             std::vector<char> buffer(2048U);
             while (running.load()) {
                 sockaddr_in from{};
                 socklen_t from_size = sizeof(from);
-                const auto bytes = ::recvfrom(socket_, buffer.data(), buffer.size(), 0,
-                                              reinterpret_cast<sockaddr*>(&from), &from_size);
+                const auto bytes =
+                    ::recvfrom(socket_, buffer.data(), static_cast<BufferLength>(buffer.size()), 0,
+                               reinterpret_cast<sockaddr*>(&from), &from_size);
                 if (bytes <= 0) continue;
-                static_cast<void>(::sendto(socket_, buffer.data(), static_cast<std::size_t>(bytes),
-                                           0, reinterpret_cast<const sockaddr*>(&from),
-                                           from_size));
+                static_cast<void>(::sendto(socket_, buffer.data(),
+                                           static_cast<BufferLength>(bytes), 0,
+                                           reinterpret_cast<const sockaddr*>(&from), from_size));
             }
         }};
         return true;
     }
 
     ~EchoService() {
-        if (socket_ >= 0) ::close(socket_);
+        running.store(false);
         if (worker_.joinable()) worker_.join();
+        close_socket(socket_);
     }
 
 private:
-    int socket_{-1};
+    Socket socket_{invalid_socket};
     std::thread worker_;
 };
 
@@ -133,23 +189,31 @@ int main(int argc, char** argv) {
             std::printf("join failed: %s\n", error.c_str());
             return 1;
         }
-        const int probe = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (!sockets_ready()) {
+            std::printf("sockets unavailable\n");
+            return 1;
+        }
+        const Socket probe = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (probe == invalid_socket) {
+            std::printf("probe socket failed\n");
+            return 1;
+        }
         sockaddr_in tunnel{};
         tunnel.sin_family = AF_INET;
         tunnel.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         tunnel.sin_port = htons(client.local_port());
-        timeval timeout{};
-        timeout.tv_sec = 2;
-        static_cast<void>(setsockopt(probe, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)));
+        set_receive_timeout(probe, 2s);
 
         std::vector<double> samples;
         for (int attempt{}; attempt < 20 && client.running(); ++attempt) {
             const auto payload = "battlespades-steam-probe-" + std::to_string(attempt);
             const auto sent = std::chrono::steady_clock::now();
-            static_cast<void>(::sendto(probe, payload.data(), payload.size(), 0,
+            static_cast<void>(::sendto(probe, payload.data(),
+                                       static_cast<BufferLength>(payload.size()), 0,
                                        reinterpret_cast<const sockaddr*>(&tunnel), sizeof(tunnel)));
             std::vector<char> buffer(2048U);
-            const auto bytes = ::recv(probe, buffer.data(), buffer.size(), 0);
+            const auto bytes =
+                ::recv(probe, buffer.data(), static_cast<BufferLength>(buffer.size()), 0);
             if (bytes > 0) {
                 const auto elapsed = std::chrono::duration<double, std::milli>(
                                          std::chrono::steady_clock::now() - sent)
@@ -172,11 +236,11 @@ int main(int argc, char** argv) {
             std::printf("no datagram completed the round trip: %s\n", client.last_error().c_str());
         }
         running.store(false);
-        if (probe >= 0) ::close(probe);
+        close_socket(probe);
         client.stop();
         return samples.empty() ? 1 : 0;
     }
 
-    std::printf("usage: aos_steam_p2p_smoke host [_ app-id] | join <host-steam-id> [app-id]\n");
+    std::printf("usage: aos_steam_p2p_smoke host [local] [app-id] | join <host-steam-id|local> [app-id]\n");
     return 2;
 }

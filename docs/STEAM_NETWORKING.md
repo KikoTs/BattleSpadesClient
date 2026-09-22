@@ -38,9 +38,10 @@ The host needs no flags:
 2. The joining player enters `steam:<id>` in **Direct Connect**, or starts the
    client with `--connect steam:<id>`.
 
-`aos_steam_p2p_smoke` checks the transport without the game. One side runs
-`aos_steam_p2p_smoke host` and prints its Steam id; the other runs
-`aos_steam_p2p_smoke join <id>` and reports the round trip through the relays.
+`aos_steam_p2p_smoke` checks the transport without the game, on Windows as well
+as macOS. One side runs `aos_steam_p2p_smoke host` and prints its Steam id; the
+other runs `aos_steam_p2p_smoke join <id>` and reports the round trip through
+the relays.
 Its `host local` and `join local` modes exercise accepting, forwarding and
 teardown on a single machine, because Steam refuses a connection to your own
 account.

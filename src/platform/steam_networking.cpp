@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -18,7 +19,9 @@
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -51,8 +54,26 @@ void close_socket(Socket value) noexcept {
 constexpr std::size_t maximum_datagram_bytes{2048U};
 constexpr int receive_batch{32};
 
+/**
+ * Winsock is reference counted and the discovery and local-server code release
+ * theirs, so the transport starts its own for the life of the process rather
+ * than borrowing a count that may already have dropped to zero.
+ */
+[[nodiscard]] bool sockets_ready() noexcept {
+    static const bool ready = [] {
+#if defined(_WIN32)
+        WSADATA data{};
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+#else
+        return true;
+#endif
+    }();
+    return ready;
+}
+
 /** One loopback datagram socket, always bound to 127.0.0.1 with no route out. */
 [[nodiscard]] Socket open_loopback_socket(std::uint16_t connect_port, std::uint16_t& bound_port) {
+    if (!sockets_ready()) return invalid_socket;
     const auto handle = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (handle == invalid_socket) return invalid_socket;
     sockaddr_in address{};
