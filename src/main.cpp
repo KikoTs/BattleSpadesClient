@@ -333,6 +333,38 @@ void attach_parent_console_for_cli() noexcept {
 }
 #endif
 
+#if defined(AOS_HAS_NATIVE_BACKENDS) && (defined(__APPLE__) || \
+    (defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)))
+/**
+ * Redirect stderr of a graphical launch to BattleSpadesClient.log beside the
+ * executable, keeping one 5 MiB predecessor as BattleSpadesClient.log.1.
+ * Returns the log path, or the bare file name if the executable is unknown.
+ */
+std::filesystem::path open_diagnostic_log() noexcept {
+    std::filesystem::path path{"BattleSpadesClient.log"};
+    try {
+        std::string executable_error;
+        const auto executable_path = battlespades::core::current_executable_path(executable_error);
+        if (executable_path.has_value()) path = executable_path->parent_path() / path;
+        std::error_code error;
+        if (std::filesystem::file_size(path, error) > 5U * 1024U * 1024U && !error) {
+            auto previous = path;
+            previous += ".1";
+            std::filesystem::rename(path, previous, error);
+        }
+#if defined(_WIN32)
+        FILE* stream{};
+        const bool opened = _wfreopen_s(&stream, path.c_str(), L"a", stderr) == 0;
+#else
+        const bool opened = std::freopen(path.c_str(), "a", stderr) != nullptr;
+#endif
+        if (opened) std::cerr << "\nBattleSpadesClient startup\n";
+    } catch (...) {
+    }
+    return path;
+}
+#endif
+
 } // namespace
 
 #if defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)
@@ -343,33 +375,25 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     if (__argc > 1) {
         attach_parent_console_for_cli();
     }
+#if defined(AOS_HAS_NATIVE_BACKENDS)
+    const auto diagnostic_path = __argc == 1 ? open_diagnostic_log() : std::filesystem::path{};
+#endif
 
     const int result = run_client(__argc, __argv);
     if (result != 0 && __argc == 1) {
-        MessageBoxW(nullptr,
-                    L"BattleSpadesClient could not start. Run it from a terminal with "
-                    L"--ticks 1 to view startup diagnostics.",
-                    L"BattleSpadesClient",
-                    MB_OK | MB_ICONERROR);
+        std::wstring message{L"BattleSpadesClient could not start."};
+#if defined(AOS_HAS_NATIVE_BACKENDS)
+        message += L" Diagnostics were written to:\n" + diagnostic_path.wstring();
+#endif
+        MessageBoxW(nullptr, message.c_str(), L"BattleSpadesClient", MB_OK | MB_ICONERROR);
     }
     return result;
 }
 #else
 int main(int argc, char* argv[]) {
 #if defined(__APPLE__) && defined(AOS_HAS_NATIVE_BACKENDS)
-    std::filesystem::path diagnostic_path{"BattleSpadesClient.log"};
-    if (argc == 1) {
-        std::string executable_error;
-        const auto executable_path =
-            battlespades::core::current_executable_path(executable_error);
-        if (executable_path.has_value()) {
-            diagnostic_path = executable_path->parent_path() / diagnostic_path;
-        }
-        if (FILE* const log = std::freopen(diagnostic_path.c_str(), "a", stderr);
-            log != nullptr) {
-            std::cerr << "\nBattleSpadesClient startup\n";
-        }
-    }
+    const auto diagnostic_path =
+        argc == 1 ? open_diagnostic_log() : std::filesystem::path{"BattleSpadesClient.log"};
 
     int result{1};
     try {
@@ -384,7 +408,7 @@ int main(int argc, char* argv[]) {
     if (result != 0 && argc == 1) {
         const std::string message =
             "BattleSpadesClient could not start. Diagnostics were written to:\n" +
-            diagnostic_path.string();
+            std::string{reinterpret_cast<const char*>(diagnostic_path.u8string().c_str())};
         static_cast<void>(SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
                                                    "BattleSpadesClient",
                                                    message.c_str(),

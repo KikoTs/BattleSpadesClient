@@ -1,5 +1,6 @@
 #include "battlespades/network/revival_social.hpp"
 
+#include "battlespades/core/diagnostics.hpp"
 #include "battlespades/core/utf8.hpp"
 
 #include <algorithm>
@@ -578,6 +579,7 @@ public:
                 lane.active = true;
             }
             RevivalSocialResult result;
+            const auto started = std::chrono::steady_clock::now();
             try {
                 result = executor(request, stop);
             } catch (const std::exception& error) {
@@ -589,6 +591,7 @@ public:
                 result.error_code = "worker_exception";
                 result.error = "Social worker failed with an unknown exception.";
             }
+            trace_result(result, std::chrono::steady_clock::now() - started);
             {
                 std::scoped_lock lock{mutex};
                 lane.active = false;
@@ -596,6 +599,53 @@ public:
                 drained.notify_all();
             }
         }
+    }
+
+    /**
+     * Diagnostics for lobby support. Player actions are always recorded; the
+     * frequent background sync only when it fails or recovers. Never logs
+     * tokens or request payloads.
+     */
+    void trace_result(const RevivalSocialResult& result,
+                      std::chrono::steady_clock::duration elapsed) {
+        const bool sync = result.request.kind == RevivalSocialRequestKind::sync;
+        const bool failed = !static_cast<bool>(result);
+        if (sync) {
+            const bool was_failing = sync_failing.exchange(failed);
+            if (!failed && !was_failing) return;
+            if (failed && was_failing) return;
+        }
+        std::string line{request_kind_name(result.request.kind)};
+        if (!result.request.action.empty()) line += "/" + result.request.action;
+        if (!result.request.lobby_id.empty()) line += " lobby=" + result.request.lobby_id;
+        line += " http=" + std::to_string(result.http_status);
+        line += " " + std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) + "ms";
+        if (failed) {
+            line += " FAILED code=" + (result.error_code.empty() ? std::string{"-"} : result.error_code);
+            if (!result.error.empty()) line += " error=" + core::utf8_code_point_prefix(result.error, 160U);
+        } else if (sync) {
+            line += " recovered";
+        }
+        if (result.snapshot.lobby.has_value()) {
+            const auto& lobby = *result.snapshot.lobby;
+            line += " state=" + lobby.state + " rev=" + lobby.revision +
+                    " members=" + std::to_string(lobby.members.size());
+        }
+        core::diagnostic("social", line);
+    }
+
+    [[nodiscard]] static std::string_view request_kind_name(RevivalSocialRequestKind kind) noexcept {
+        switch (kind) {
+        case RevivalSocialRequestKind::sync: return "sync";
+        case RevivalSocialRequestKind::presence_offline: return "presence_offline";
+        case RevivalSocialRequestKind::find_friends: return "find_friends";
+        case RevivalSocialRequestKind::friend_action: return "friend_action";
+        case RevivalSocialRequestKind::list_lobbies: return "list_lobbies";
+        case RevivalSocialRequestKind::create_lobby: return "create_lobby";
+        case RevivalSocialRequestKind::lobby_action: return "lobby_action";
+        }
+        return "unknown";
     }
 
     [[nodiscard]] bool poll_pending_locked() const noexcept {
@@ -623,8 +673,13 @@ public:
             const auto stale_sync = std::ranges::find_if(results, [](const RevivalSocialResult& queued) {
                 return queued.request.kind == RevivalSocialRequestKind::sync;
             });
-            if (stale_sync != results.end()) results.erase(stale_sync);
-            else results.pop_front();
+            if (stale_sync != results.end()) {
+                results.erase(stale_sync);
+            } else {
+                core::diagnostic("social", "result queue full: dropped an undelivered " +
+                    std::string{request_kind_name(results.front().request.kind)} + " reply");
+                results.pop_front();
+            }
         }
         results.push_back(std::move(result));
     }
@@ -660,6 +715,7 @@ public:
     static constexpr std::size_t maximum_seen_events{1'024U};
     std::set<std::string, std::less<>> seen_event_ids;
     std::deque<std::string> seen_event_order;
+    std::atomic_bool sync_failing{};
     std::string client_instance_id;
     std::string presence{"online"};
     Json metadata = Json::object();

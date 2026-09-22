@@ -1,5 +1,7 @@
 #include "battlespades/platform/relay_host_tunnel.hpp"
 
+#include "battlespades/core/diagnostics.hpp"
+
 #include <sodium.h>
 
 #include <algorithm>
@@ -272,7 +274,10 @@ struct RelayHostTunnel::Impl final {
 
     void set_error(std::string value) {
         std::scoped_lock lock{mutex};
-        if (error.empty()) error = std::move(value);
+        if (error.empty()) {
+            core::diagnostic("relay", value);
+            error = std::move(value);
+        }
         ready_condition.notify_all();
     }
 

@@ -3,6 +3,7 @@ add_library(
     STATIC
         core/application.cpp
         core/command_line.cpp
+        core/diagnostics.cpp
         core/resource_paths.cpp
         core/utf8.cpp
 )
@@ -390,7 +391,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(
         aos_local_host
         PUBLIC BattleSpades::BuildOptions
-        PRIVATE unofficial-sodium::sodium nlohmann_json::nlohmann_json
+        PRIVATE BattleSpades::Core unofficial-sodium::sodium nlohmann_json::nlohmann_json
     )
     if(WIN32)
         target_link_libraries(aos_local_host PRIVATE ws2_32)
