@@ -524,6 +524,21 @@ SteamRelayStatus SteamNetworkingRuntime::relay_status() const {
     return SteamRelayStatus{impl_->relay_available.load(), impl_->relay_detail};
 }
 
+bool SteamNetworkingRuntime::wait_for_relays(std::chrono::seconds timeout) {
+    if (impl_ == nullptr) return false;
+    if (impl_->relay_available.load()) return true;
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!impl_->relay_available.load() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    if (!impl_->relay_available.load()) {
+        core::diagnostic("steam", "the relay network is still unavailable after waiting");
+        return false;
+    }
+    core::diagnostic("steam", "relay network ready: " + relay_status().detail);
+    return true;
+}
+
 std::string SteamNetworkingRuntime::last_error() const {
     if (impl_ == nullptr) return {};
     const std::scoped_lock lock{impl_->mutex};
@@ -736,6 +751,17 @@ struct SteamP2PClient::Impl final {
 
     void on_status(const SteamNetConnectionStatusChangedCallback_t& event) {
         if (event.m_hConn != connection) return;
+        // A connect that no host answers stays in these states until Steam's
+        // own timeout, well past the Protocol 168 handshake. Without them the
+        // log cannot tell a host that is not listening from a broken tunnel.
+        if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_FindingRoute) {
+            core::diagnostic("steam", "finding a route to the host through the relays");
+            return;
+        }
+        if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_Connected) {
+            core::diagnostic("steam", "relay connection established to the host");
+            return;
+        }
         if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer ||
             event.m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
             const std::scoped_lock lock{mutex};

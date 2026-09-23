@@ -60,6 +60,14 @@ public:
     [[nodiscard]] std::uint64_t steam_id() const noexcept;
     [[nodiscard]] std::string persona_name() const;
     [[nodiscard]] SteamRelayStatus relay_status() const;
+    /**
+     * Block until the relay network is usable.
+     *
+     * A start() that passed a zero relay timeout returns before the relays are
+     * up, so a host or a join made straight afterwards waits here instead of
+     * opening a connection Steam cannot route yet.
+     */
+    [[nodiscard]] bool wait_for_relays(std::chrono::seconds timeout);
     [[nodiscard]] std::string last_error() const;
 
     struct Impl;

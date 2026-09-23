@@ -3190,6 +3190,10 @@ struct NativeFrontendModule::Impl final {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_host.stop();
         if (local_server_port == 0U || !ensure_steam_runtime()) return 0U;
+        // The launch attach returns before the relays are up, so a match made
+        // seconds later waits here rather than listening where Steam cannot
+        // route friends to it yet.
+        static_cast<void>(steam_runtime.wait_for_relays(std::chrono::seconds{15}));
         platform::SteamP2PHostConfig host_config;
         host_config.local_server_port = local_server_port;
         std::string error;
@@ -3213,6 +3217,10 @@ struct NativeFrontendModule::Impl final {
             error = "Steam is not running, so this match cannot be joined";
             return 0U;
         }
+        // A connection opened before the relays are up is never routed, and
+        // --connect runs immediately after the launch attach, which does not
+        // wait for them.
+        static_cast<void>(steam_runtime.wait_for_relays(std::chrono::seconds{15}));
         platform::SteamP2PClientConfig client_config;
         client_config.host_steam_id = host_steam_id;
         if (!steam_client.start(steam_runtime, std::move(client_config), error)) {
