@@ -645,8 +645,18 @@ public:
     }
 
     [[nodiscard]] RevivalTicketResult game_ticket(std::string server_id) {
-        std::scoped_lock lock{mutex};
-        if (access_token.empty()) {
+        // Copy the token and release the lock before the request, as
+        // create_relay_lobby does. Holding it across the call puts a join
+        // behind every other AoSPlay request in progress: a Steam joiner sat
+        // on "Authorizing with AoSPlay..." for minutes while presence and
+        // social syncs took their turns, though each request times out in
+        // five seconds.
+        std::string token;
+        {
+            std::scoped_lock lock{mutex};
+            token = access_token;
+        }
+        if (token.empty()) {
             return RevivalTicketResult{
                 {}, "authentication_required",
                 "Choose Sign in or Play as guest first."};
@@ -656,7 +666,7 @@ public:
                                 std::optional<Json>{
                                     Json{{"server_id", server_id},
                                          {"client_capabilities", Json::array({"battlespades-cosmetics-v1"})}}},
-                                access_token);
+                                token);
         if (!response) {
             const auto result = from_http_error(response);
             return RevivalTicketResult{{}, result.error_code, result.error};
