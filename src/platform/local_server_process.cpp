@@ -585,7 +585,12 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "require_registration = false\n\n"
            << "[revival]\n"
            << "enabled = " << (public_match ? "true" : "false") << '\n'
-           << "require_identity = " << (public_match ? "true" : "false") << "\n\n"
+           // Verify the identities that are offered, but never demand one: a
+           // player-hosted match is not ranked, and a friend arriving over
+           // Steam has no AoSPlay ticket by design. Requiring one rejected
+           // them after the map and class selection with ERROR_RANKED_SERVER,
+           // which the retail client renders as "use the ranked match option".
+           << "require_identity = false\n\n"
            << "[plugins]\n"
            << "enabled = false\n\n"
            << "[logging]\n"

@@ -278,9 +278,10 @@ void enables_public_identity_only_for_a_complete_relay_contract() {
     };
     const auto toml =
         battlespades::platform::build_local_server_toml(config, 27015U);
-    expect(toml.find("[revival]\nenabled = true\nrequire_identity = true") !=
+    expect(toml.find("[revival]\nenabled = true\nrequire_identity = false") !=
                std::string::npos,
-           "a complete relay contract must enable AoSPlay ticket validation");
+           "a complete relay contract must validate AoSPlay tickets without "
+           "demanding one, because a friend joining over Steam has none");
     expect(toml.find("aos_lobby_secret-not-for-toml") == std::string::npos,
            "ephemeral relay credentials must never be serialized to disk");
 
