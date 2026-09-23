@@ -341,11 +341,6 @@ void attach_parent_console_for_cli() noexcept {
  * executable, keeping one 5 MiB predecessor as BattleSpadesClient.log.1.
  * Returns the log path, or the bare file name if the executable is unknown.
  */
-#if defined(_WIN32)
-#include <io.h>
-#include <share.h>
-#endif
-
 std::filesystem::path open_diagnostic_log() noexcept {
     std::filesystem::path path{"BattleSpadesClient.log"};
     try {
@@ -359,12 +354,14 @@ std::filesystem::path open_diagnostic_log() noexcept {
             std::filesystem::rename(path, previous, error);
         }
 #if defined(_WIN32)
-        // _wfreopen_s opens without sharing, which locked the log against every
-        // reader for as long as the game ran. Open it shared and point stderr
-        // at it, so a session can be followed from outside.
-        FILE* const shared = _wfsopen(path.c_str(), L"a", _SH_DENYNO);
-        const bool opened =
-            shared != nullptr && _dup2(_fileno(shared), _fileno(stderr)) == 0;
+        // The _s variant denies all sharing on a write mode, which locked the
+        // log against every reader while the game ran. Plain _wfreopen shares
+        // (_SH_DENYNO) and, unlike _dup2, still re-associates stderr in a GUI
+        // process where the stream has no descriptor to begin with.
+#pragma warning(push)
+#pragma warning(disable : 4996)
+        const bool opened = _wfreopen(path.c_str(), L"a", stderr) != nullptr;
+#pragma warning(pop)
 #else
         const bool opened = std::freopen(path.c_str(), "a", stderr) != nullptr;
 #endif
