@@ -177,7 +177,10 @@ int main(int argc, char** argv) {
                     config.direct_listen_port != 0U
                         ? "local"
                         : std::to_string(runtime.steam_id()).c_str());
-        const auto deadline = std::chrono::steady_clock::now() + 5min;
+        // Two people coordinating across machines spend longer than one person
+        // typing both commands: a host that expires early reads on the other
+        // side as Steam timing out the connect, which costs an hour to unpick.
+        const auto deadline = std::chrono::steady_clock::now() + 30min;
         while (std::chrono::steady_clock::now() < deadline) {
             std::this_thread::sleep_for(2s);
             std::printf("clients  : %zu\n", host.connected_clients());
