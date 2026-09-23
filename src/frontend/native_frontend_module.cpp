@@ -3257,6 +3257,16 @@ struct NativeFrontendModule::Impl final {
 #endif
     }
 
+    /**
+     * A player-hosted match verifies a ticket it is offered but does not
+     * demand one, so a joiner presents its AoSPlay identity when it has an
+     * online session and otherwise joins as a plain player.
+     */
+    [[nodiscard]] bool steam_join_wants_ticket() const {
+        return !steam_join_server_id.empty() && identity_service != nullptr &&
+               identity_service->has_online_session();
+    }
+
     void stop_steam_client() noexcept {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_client.stop();
@@ -12059,7 +12069,7 @@ struct NativeFrontendModule::Impl final {
             begin_match_loading(ServerConnectRequest{"steam:" + std::to_string(steam_id),
                                                      "127.0.0.1", port, {}, {}, {}, false,
                                                      steam_join_server_id,
-                                                     !steam_join_server_id.empty()});
+                                                     steam_join_wants_ticket()});
             return;
         }
         network::ServerEndpoint endpoint;
@@ -21079,7 +21089,7 @@ bool NativeFrontendModule::start() {
                 impl_->pending_startup_connection =
                     ServerConnectRequest{"steam:" + std::to_string(steam_id), "127.0.0.1", port,
                                          {}, {}, {}, false, impl_->steam_join_server_id,
-                                         !impl_->steam_join_server_id.empty()};
+                                         impl_->steam_join_wants_ticket()};
                 return true;
             }
             network::ServerEndpoint endpoint;
