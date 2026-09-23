@@ -801,6 +801,8 @@ struct SteamP2PClient::Impl final {
     std::atomic_int ping{-1};
     /** Last state seen by polling; -1 until the first poll succeeds. */
     std::atomic_int polled_state{-1};
+    /** Only the service thread touches this, so it needs no lock. */
+    std::chrono::steady_clock::time_point last_state_report{};
     std::string error;
 
     void on_status(const SteamNetConnectionStatusChangedCallback_t& event) {
@@ -870,7 +872,17 @@ struct SteamP2PClient::Impl final {
             // Polled, so it records the tunnel's progress even when no status
             // callback arrives: silence in the log otherwise cannot distinguish
             // a connection Steam never routes from callbacks never delivered.
-            if (const int state = status.m_eState; state != polled_state.exchange(state)) {
+            //
+            // A connection still waiting repeats every few seconds, because a
+            // state logged once cannot distinguish either of those from this
+            // thread having stopped polling at all.
+            const int state = status.m_eState;
+            const auto now = std::chrono::steady_clock::now();
+            const bool changed = state != polled_state.exchange(state);
+            const bool waiting = state == k_ESteamNetworkingConnectionState_Connecting ||
+                                 state == k_ESteamNetworkingConnectionState_FindingRoute;
+            if (changed || (waiting && now - last_state_report >= std::chrono::seconds{5})) {
+                last_state_report = now;
                 core::diagnostic("steam", std::string{"tunnel state: "} +
                                               connection_state_name(state));
             }
