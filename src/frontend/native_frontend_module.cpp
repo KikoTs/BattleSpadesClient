@@ -8279,7 +8279,7 @@ struct NativeFrontendModule::Impl final {
         // record. Retain only the browser endpoint; replaying any old map state
         // into the new Protocol 168 bootstrap would create ghost terrain.
         const auto request = *active_match_request;
-        teardown_tutorial();
+        teardown_tutorial(request_uses_steam_tunnel(request));
         active_match_request = request;
         map_transition_armed = true;
         map_transition_reconnecting = true;
@@ -8339,7 +8339,7 @@ struct NativeFrontendModule::Impl final {
         if (network_match && social_client != nullptr) {
             social_client->set_presence("online");
         }
-        teardown_tutorial();
+        teardown_tutorial(request_uses_steam_tunnel(request));
         match_ui_skin = supported_ui_skin(request.expected_skin);
         match_loading.begin(
             request.expected_map, request.expected_mode, request.expected_classic, match_ui_skin);
@@ -15074,13 +15074,18 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    void teardown_tutorial() {
+    /**
+     * ``keep_steam_tunnel`` preserves a Steam join's tunnel: loading a match
+     * tears the offline world down first, and the tunnel that join is about to
+     * dial was opened before that teardown.
+     */
+    void teardown_tutorial(bool keep_steam_tunnel = false) {
         initial_join_submitted = false;
         // Keep an outstanding future drainable without blocking the UI. Its
         // response must never authorize a later host attempt at the same port.
         if (pending_match_identity) pending_match_identity->generation = 0U;
         queued_match_identity.reset();
-        retire_match_connection();
+        retire_match_connection(keep_steam_tunnel);
         map_transition_armed = false;
         map_transition_reconnecting = false;
         map_transition_attempts = 0U;
