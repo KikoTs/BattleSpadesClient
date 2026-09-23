@@ -80,8 +80,15 @@ private:
 struct SteamP2PHostConfig final {
     /** The bundled server's loopback port. */
     std::uint16_t local_server_port{};
-    /** Shared with joining clients; distinct services may share one Steam id. */
-    int virtual_port{27015};
+    /**
+     * Shared with joining clients; distinct services may share one Steam id.
+     *
+     * Zero is the single-service case Valve documents. A value must match the
+     * joining client's and stay below 1000; a UDP port number such as 27015 is
+     * outside the range Steam routes, and a connection to it is accepted
+     * locally and then never routed.
+     */
+    int virtual_port{};
     std::size_t maximum_clients{24U};
     std::chrono::seconds client_idle_timeout{120};
     /**
@@ -120,7 +127,8 @@ private:
 
 struct SteamP2PClientConfig final {
     std::uint64_t host_steam_id{};
-    int virtual_port{27015};
+    /** Must match the host's; see SteamP2PHostConfig::virtual_port. */
+    int virtual_port{};
     std::chrono::seconds connect_timeout{20};
     /** Loopback port of a direct_listen_port host; zero keeps the relay path. */
     std::uint16_t direct_connect_port{};

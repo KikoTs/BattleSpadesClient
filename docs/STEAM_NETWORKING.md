@@ -63,7 +63,7 @@ Every step writes to `BattleSpadesClient.log` beside the executable:
 
 ```
 [steam] runtime ready: app=224540 id=76561198158362762 relays=ready
-[steam] hosting over the relay network on virtual port 27015
+[steam] hosting over the relay network on virtual port 0
 [steam] player joined over the relay network, now 1 connected
 [steam] joining 76561198158362762 failed: Steam refused the peer-to-peer connection
 ```
