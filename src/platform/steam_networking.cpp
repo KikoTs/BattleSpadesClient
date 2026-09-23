@@ -195,6 +195,26 @@ void close_library(void* handle) noexcept {
 #endif
 }
 
+/** Reads as a polled fact, so it holds even if no status callback arrives. */
+[[nodiscard]] const char* connection_state_name(int state) noexcept {
+    switch (state) {
+        case k_ESteamNetworkingConnectionState_None:
+            return "none";
+        case k_ESteamNetworkingConnectionState_Connecting:
+            return "connecting, waiting for the host to answer";
+        case k_ESteamNetworkingConnectionState_FindingRoute:
+            return "finding a route";
+        case k_ESteamNetworkingConnectionState_Connected:
+            return "connected";
+        case k_ESteamNetworkingConnectionState_ClosedByPeer:
+            return "closed by the host";
+        case k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
+            return "a problem was detected locally";
+        default:
+            return "an unnamed state";
+    }
+}
+
 /** Steam takes this process's application id from the environment at init. */
 void announce_app_id(const std::string& app_id) noexcept {
 #if defined(_WIN32)
@@ -779,6 +799,8 @@ struct SteamP2PClient::Impl final {
     mutable std::mutex mutex;
     std::atomic_bool running{};
     std::atomic_int ping{-1};
+    /** Last state seen by polling; -1 until the first poll succeeds. */
+    std::atomic_int polled_state{-1};
     std::string error;
 
     void on_status(const SteamNetConnectionStatusChangedCallback_t& event) {
@@ -845,6 +867,13 @@ struct SteamP2PClient::Impl final {
         SteamNetConnectionRealTimeStatus_t status{};
         if (api.real_time_status(api.sockets(), connection, &status, 0, nullptr) == k_EResultOK) {
             ping.store(status.m_nPing);
+            // Polled, so it records the tunnel's progress even when no status
+            // callback arrives: silence in the log otherwise cannot distinguish
+            // a connection Steam never routes from callbacks never delivered.
+            if (const int state = status.m_eState; state != polled_state.exchange(state)) {
+                core::diagnostic("steam", std::string{"tunnel state: "} +
+                                              connection_state_name(state));
+            }
         }
         // Steam reports a lost peer through the status queue, but a host that
         // vanishes mid-match can also surface here first.
