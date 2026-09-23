@@ -8081,8 +8081,18 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    void retire_match_connection() {
-        stop_steam_client();
+    /** Does this request dial the Steam tunnel this client opened? */
+    [[nodiscard]] bool request_uses_steam_tunnel(const ServerConnectRequest& request) const {
+        return steam_client.running() && request.host == "127.0.0.1" &&
+               request.port == steam_client.local_port();
+    }
+
+    void retire_match_connection(bool keep_steam_tunnel = false) {
+        // A Steam join opens its tunnel before the loader starts, so retiring
+        // "the previous connection" on the way in must not close the tunnel the
+        // new connection is about to dial: that ended every relayed join with
+        // "client closed" 750 ms after the host accepted it.
+        if (!keep_steam_tunnel) stop_steam_client();
         if (!match_connection) return;
         match_connection->request_stop();
         match_connection_cleanup.defer(std::packaged_task<void()>{
@@ -8096,7 +8106,7 @@ struct NativeFrontendModule::Impl final {
             static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
             active_steam_ticket = 0U;
         }
-        retire_match_connection();
+        retire_match_connection(request_uses_steam_tunnel(request));
         auto cleanup = connection_cleanup.try_reserve();
         if (!cleanup) {
             settings_warning = "Previous connections are still closing. Please try again shortly.";
@@ -8247,7 +8257,8 @@ struct NativeFrontendModule::Impl final {
     }
 
     void schedule_map_transition_retry(std::string error) {
-        retire_match_connection();
+        // A map change on a Steam-hosted match reconnects through the same tunnel.
+        retire_match_connection(steam_client.running());
         const auto now = std::chrono::steady_clock::now();
         if (map_transition_attempts >= map_transition_retry_delays.size() ||
             now >= map_transition_deadline) {
