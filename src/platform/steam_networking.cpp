@@ -330,14 +330,20 @@ public:
         std::erase_if(handlers_, [token](const auto& entry) { return entry.first == token; });
     }
 
+    /**
+     * Runs the handlers with the lock held, so remove() cannot return while one
+     * is still running.
+     *
+     * Every handler holds a raw pointer to a host or client implementation that
+     * stop() destroys immediately after removing its token. Copying the
+     * handlers and releasing the lock first let a teardown on the presentation
+     * thread free that object while the pump thread was inside the copy, which
+     * crashed the client on any failed join. No handler adds or removes one, so
+     * holding the lock cannot deadlock.
+     */
     void dispatch(const SteamNetConnectionStatusChangedCallback_t& event) {
-        std::vector<Handler> copies;
-        {
-            const std::scoped_lock lock{mutex_};
-            copies.reserve(handlers_.size());
-            for (const auto& entry : handlers_) copies.push_back(entry.second);
-        }
-        for (const auto& handler : copies) handler(event);
+        const std::scoped_lock lock{mutex_};
+        for (const auto& entry : handlers_) entry.second(event);
     }
 
 private:
@@ -423,13 +429,13 @@ struct SteamNetworkingRuntime::Impl final {
     void run(std::stop_token stop) {
         while (!stop.stop_requested()) {
             dispatch_callbacks();
-            std::vector<std::function<void()>> copies;
             {
+                // Held across the call for the same reason as the status
+                // handlers: a service borrows a host or client implementation
+                // that stop() destroys as soon as remove_service() returns.
                 const std::scoped_lock lock{services_mutex};
-                copies.reserve(services.size());
-                for (const auto& entry : services) copies.push_back(entry.second);
+                for (const auto& entry : services) entry.second();
             }
-            for (const auto& service : copies) service();
             SteamRelayNetworkStatus_t status{};
             const auto availability = api.relay_status(api.utils(), &status);
             relay_available.store(availability == k_ESteamNetworkingAvailability_Current);
