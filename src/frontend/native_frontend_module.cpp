@@ -3140,17 +3140,27 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
-     * Start Steam once per session, only when a match needs it.
+     * Start Steam once per session.
      *
-     * Failure is ordinary: a player without Steam keeps the AoSPlay relay.
+     * The client attaches at launch so Steam reports the game as running and
+     * the friends list is reachable; a match that arrives first starts it
+     * instead. Failure is ordinary: a player without Steam keeps the AoSPlay
+     * relay.
+     *
+     * The launch attempt passes a zero relay timeout. Steam is reached in a
+     * few hundred milliseconds, but its relay network needs seconds, and the
+     * boot frames cannot wait for that; the pump thread keeps warming the
+     * relays while the player is still in the menus.
      */
-    [[nodiscard]] bool ensure_steam_runtime() {
+    [[nodiscard]] bool ensure_steam_runtime(
+        std::chrono::seconds relay_timeout = std::chrono::seconds{20}) {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         if (steam_runtime.ready()) return true;
         if (steam_runtime_attempted) return false;
         steam_runtime_attempted = true;
         platform::SteamNetworkingRuntimeConfig steam_config;
         steam_config.search_directory = config.executable_directory;
+        steam_config.relay_timeout = relay_timeout;
         std::string error;
         if (!steam_runtime.start(std::move(steam_config), error)) {
             core::diagnostic("steam", "unavailable, using the AoSPlay relay: " + error);
@@ -3158,7 +3168,20 @@ struct NativeFrontendModule::Impl final {
         }
         return true;
 #else
+        static_cast<void>(relay_timeout);
         return false;
+#endif
+    }
+
+    /**
+     * Attach to Steam at launch so the player shows as in-game.
+     *
+     * A player may start Steam after the game, so a failed launch attempt
+     * leaves the retry to the first match rather than standing for the session.
+     */
+    void attach_steam_for_presence() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (!ensure_steam_runtime(std::chrono::seconds{0})) steam_runtime_attempted = false;
 #endif
     }
 
@@ -20973,6 +20996,9 @@ bool NativeFrontendModule::start() {
         impl_->window_suspended = false;
         impl_->suppress_next_settings_close = false;
         impl_->last_error.clear();
+        // Attach to Steam while the boot loader runs so the player shows as
+        // in-game and a later match reuses the session instead of waiting.
+        impl_->attach_steam_for_presence();
         if (impl_->config.startup_endpoint.has_value()) {
             // steam:<id> joins a player-hosted match over Valve's relays, so a
             // two-machine check needs no menu navigation.
