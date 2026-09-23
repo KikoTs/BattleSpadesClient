@@ -16,11 +16,20 @@ joiner's client ─UDP→ loopback port ─► Steam relays ─► host's client
 
 ## Application id
 
-Peer-to-peer networking and lobbies are per application id: a player running as
-480 cannot reach a host running as 224540. The transport therefore uses
-**Spacewar (480)**, which every Steam account owns, so players who do not own
-Ace of Spades stay in the same network. The retail id remains available for
-presence through the existing 32-bit bridge.
+The client attaches as **Ace of Spades (224540)**, so an owner appears in Steam
+as playing it. Steam refuses an id the account does not own — it answers
+`ConnectToGlobalUser failed.` — and that refusal selects **Spacewar (480)**,
+which every account owns, so a player without the game still plays.
+
+Peer-to-peer networking and lobbies are per application id, so the two networks
+do not meet: a player on Spacewar cannot join a host running as Ace of Spades.
+Setting `app_id` to `fallback_app_id` puts everyone on Spacewar instead, at the
+cost of every player showing as Spacewar in their friends list.
+
+The attach happens while the boot loader runs, with no wait for the relay
+network; the pump thread warms the relays while the player is in the menus. An
+attach that fails leaves the retry to the first match, because a player may
+start Steam after the game.
 
 ## Falling back
 
@@ -44,14 +53,16 @@ other runs `aos_steam_p2p_smoke join <id>` and reports the round trip through
 the relays.
 Its `host local` and `join local` modes exercise accepting, forwarding and
 teardown on a single machine, because Steam refuses a connection to your own
-account.
+account. A trailing application id and fallback exercise the refusal path on an
+account that owns the game: `host local 999999999 480` is refused and lands on
+Spacewar.
 
 ## Diagnostics
 
 Every step writes to `BattleSpadesClient.log` beside the executable:
 
 ```
-[steam] runtime ready: app=480 id=76561198158362762 relays=ready
+[steam] runtime ready: app=224540 id=76561198158362762 relays=ready
 [steam] hosting over the relay network on virtual port 27015
 [steam] player joined over the relay network, now 1 connected
 [steam] joining 76561198158362762 failed: Steam refused the peer-to-peer connection

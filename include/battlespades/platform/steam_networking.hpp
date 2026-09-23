@@ -9,15 +9,21 @@
 namespace battlespades::platform {
 
 /**
- * Steam runtime used only for peer-to-peer transport.
+ * Steam runtime used for peer-to-peer transport and for the player's presence.
  *
- * Networking, lobbies and invites are per application id, so every player must
- * share one. Spacewar (480) is owned by every Steam account and keeps players
- * who do not own Ace of Spades in the same network; the retail id stays
- * available for presence through the separate 32-bit bridge.
+ * Ace of Spades comes first so owners appear in Steam as playing it. Steam
+ * refuses an application id the account does not own, and that refusal selects
+ * `fallback_app_id`: Spacewar (480), which every account owns, so players
+ * without the game still play.
+ *
+ * Networking is per application id, so the two do not meet: a player on
+ * Spacewar cannot join a host running as Ace of Spades. Setting `app_id` to
+ * `fallback_app_id` puts everyone in the Spacewar network instead.
  */
 struct SteamNetworkingRuntimeConfig final {
-    std::uint32_t app_id{480U};
+    std::uint32_t app_id{224540U};
+    /** Used when the account does not own `app_id`; zero refuses the fallback. */
+    std::uint32_t fallback_app_id{480U};
     /** Explicit library path; empty searches `search_directory` and the default name. */
     std::filesystem::path library;
     /** Usually the executable's directory, where packaged builds install it. */

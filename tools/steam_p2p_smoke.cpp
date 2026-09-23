@@ -121,10 +121,21 @@ private:
     std::thread worker_;
 };
 
+/**
+ * A zero app id keeps the shipping preference: Ace of Spades, else Spacewar.
+ *
+ * An explicit pair exercises the refusal path on any account, since an owner
+ * cannot otherwise reach it: pass an application id nobody owns and the
+ * fallback Steam should land on.
+ */
 [[nodiscard]] platform::SteamNetworkingRuntime* start_runtime(platform::SteamNetworkingRuntime& runtime,
-                                                              std::uint32_t app_id) {
+                                                              std::uint32_t app_id,
+                                                              std::uint32_t fallback_app_id) {
     platform::SteamNetworkingRuntimeConfig config;
-    config.app_id = app_id;
+    if (app_id != 0U) {
+        config.app_id = app_id;
+        config.fallback_app_id = fallback_app_id;
+    }
     std::string error;
     if (!runtime.start(std::move(config), error)) {
         std::printf("steam runtime failed: %s\n", error.c_str());
@@ -140,11 +151,13 @@ private:
 
 int main(int argc, char** argv) {
     const std::string mode = argc > 1 ? argv[1] : "";
-    const std::uint32_t app_id = argc > 3 ? static_cast<std::uint32_t>(std::stoul(argv[3])) : 480U;
+    const std::uint32_t app_id = argc > 3 ? static_cast<std::uint32_t>(std::stoul(argv[3])) : 0U;
+    const std::uint32_t fallback_app_id =
+        argc > 4 ? static_cast<std::uint32_t>(std::stoul(argv[4])) : 0U;
     platform::SteamNetworkingRuntime runtime;
 
     if (mode == "host") {
-        if (start_runtime(runtime, app_id) == nullptr) return 1;
+        if (start_runtime(runtime, app_id, fallback_app_id) == nullptr) return 1;
         EchoService echo;
         std::uint16_t echo_port{};
         if (!echo.start(echo_port)) {
@@ -176,7 +189,7 @@ int main(int argc, char** argv) {
     }
 
     if (mode == "join" && argc > 2) {
-        if (start_runtime(runtime, app_id) == nullptr) return 1;
+        if (start_runtime(runtime, app_id, fallback_app_id) == nullptr) return 1;
         platform::SteamP2PClient client;
         platform::SteamP2PClientConfig config;
         if (std::string{argv[2]} == "local") {
@@ -241,6 +254,7 @@ int main(int argc, char** argv) {
         return samples.empty() ? 1 : 0;
     }
 
-    std::printf("usage: aos_steam_p2p_smoke host [local] [app-id] | join <host-steam-id|local> [app-id]\n");
+    std::printf("usage: aos_steam_p2p_smoke host [local] [app-id] [fallback-app-id]\n"
+                "       aos_steam_p2p_smoke join <host-steam-id|local> [app-id] [fallback-app-id]\n");
     return 2;
 }

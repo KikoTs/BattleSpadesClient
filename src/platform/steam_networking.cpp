@@ -195,6 +195,17 @@ void close_library(void* handle) noexcept {
 #endif
 }
 
+/** Steam takes this process's application id from the environment at init. */
+void announce_app_id(const std::string& app_id) noexcept {
+#if defined(_WIN32)
+    static_cast<void>(_putenv_s("SteamAppId", app_id.c_str()));
+    static_cast<void>(_putenv_s("SteamGameId", app_id.c_str()));
+#else
+    static_cast<void>(setenv("SteamAppId", app_id.c_str(), 1));
+    static_cast<void>(setenv("SteamGameId", app_id.c_str(), 1));
+#endif
+}
+
 [[nodiscard]] std::filesystem::path default_library_name() {
 #if defined(_WIN32)
     return "steam_api64.dll";
@@ -438,19 +449,30 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
         return false;
     }
 
-    const auto app_id = std::to_string(impl->config.app_id);
-#if defined(_WIN32)
-    static_cast<void>(_putenv_s("SteamAppId", app_id.c_str()));
-    static_cast<void>(_putenv_s("SteamGameId", app_id.c_str()));
-#else
-    static_cast<void>(setenv("SteamAppId", app_id.c_str(), 1));
-    static_cast<void>(setenv("SteamGameId", app_id.c_str(), 1));
-#endif
+    auto app_id = std::to_string(impl->config.app_id);
+    announce_app_id(app_id);
     SteamErrMsg message{};
     if (impl->api.init_flat(&message) != k_ESteamAPIInitResult_OK) {
-        error = message[0] != '\0' ? message : "Steam is not running";
-        close_library(impl->api.handle);
-        return false;
+        // Steam refuses an application id the account does not own. That is the
+        // ordinary case for a player without Ace of Spades, who joins the
+        // Spacewar network instead of being turned away.
+        const std::string refusal{message[0] != '\0' ? message : "Steam is not running"};
+        const auto fallback = impl->config.fallback_app_id;
+        if (fallback == 0U || fallback == impl->config.app_id) {
+            error = refusal;
+            close_library(impl->api.handle);
+            return false;
+        }
+        core::diagnostic("steam", "app " + app_id + " refused (" + refusal + "), using " +
+                                      std::to_string(fallback));
+        app_id = std::to_string(fallback);
+        announce_app_id(app_id);
+        message[0] = '\0';
+        if (impl->api.init_flat(&message) != k_ESteamAPIInitResult_OK) {
+            error = message[0] != '\0' ? message : "Steam is not running";
+            close_library(impl->api.handle);
+            return false;
+        }
     }
     impl->api.manual_dispatch_init();
     impl->pipe = impl->api.steam_pipe();
