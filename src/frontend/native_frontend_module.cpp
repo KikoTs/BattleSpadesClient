@@ -8221,6 +8221,8 @@ struct NativeFrontendModule::Impl final {
                 pending.ticket = service->game_ticket(server_id);
                 return pending;
             });
+        core::diagnostic("identity", "requesting a join ticket for " + server_id +
+                                         " as generation " + std::to_string(pending.generation));
         settings_warning = "Authorizing with AoSPlay...";
         match_loading.set_status(settings_warning);
         return true;
@@ -8233,6 +8235,10 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         auto outcome = match_identity_worker.get();
+        core::diagnostic("identity", std::string{"join ticket answered for "} +
+                                         outcome.request.identifier + ": " +
+                                         (outcome.ticket ? "granted"
+                                                         : "refused (" + outcome.ticket.error + ")"));
         const auto expected_generation = pending_match_identity->generation;
         pending_match_identity.reset();
         auto queued = std::move(queued_match_identity);
@@ -8280,6 +8286,8 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         settings_warning.clear();
+        core::diagnostic("identity", "connecting with the join ticket to " + outcome.request.host +
+                                         ":" + std::to_string(outcome.request.port));
         if (!start_match_transport(
                 outcome.request, outcome.timeout_ms, std::move(outcome.ticket.join_code))) {
             const auto error = match_connection ? match_connection->status().error : settings_warning;
