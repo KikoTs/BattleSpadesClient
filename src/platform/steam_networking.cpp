@@ -12,7 +12,9 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -582,6 +584,14 @@ std::string SteamNetworkingRuntime::last_error() const {
     return impl_->error;
 }
 
+/**
+ * First message a host sends a joiner, ahead of any game datagram: the
+ * AoSPlay server id the joiner authorizes with. Sent reliably, unlike the
+ * game traffic, and consumed by the joiner's tunnel rather than handed to the
+ * game.
+ */
+constexpr std::string_view host_hello_magic{"BSP2P-HELLO\x01"};
+
 struct SteamP2PHost::Impl final {
     struct Client final {
         HSteamNetConnection connection{};
@@ -632,6 +642,7 @@ struct SteamP2PHost::Impl final {
         }
         if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_Connected) {
             core::diagnostic("steam", "relay connection established with the joiner");
+            send_hello(event.m_hConn);
             return;
         }
         if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer ||
@@ -641,6 +652,28 @@ struct SteamP2PHost::Impl final {
                                           std::to_string(event.m_info.m_eEndReason) + ")");
             drop(event.m_hConn, "peer closed");
         }
+    }
+
+    /**
+     * Sent once the route exists and before the joiner dials: the joiner's
+     * tunnel holds its game back until this arrives, so the id always precedes
+     * the first game datagram.
+     */
+    void send_hello(HSteamNetConnection connection) {
+        auto& api = runtime->api;
+        std::string hello{host_hello_magic};
+        hello += config.server_identifier;
+        const auto result =
+            api.send_message(api.sockets(), connection, hello.data(),
+                             static_cast<uint32>(hello.size()), k_nSteamNetworkingSend_Reliable, nullptr);
+        if (result != k_EResultOK) {
+            core::diagnostic("steam", "sending the hello to the joiner failed: result " +
+                                          std::to_string(static_cast<int>(result)));
+            return;
+        }
+        core::diagnostic("steam", config.server_identifier.empty()
+                                      ? std::string{"told the joiner no identity is needed"}
+                                      : "told the joiner to authorize for " + config.server_identifier);
     }
 
     void drop(HSteamNetConnection connection, const char* reason) {
@@ -798,7 +831,11 @@ struct SteamP2PClient::Impl final {
     std::uint64_t service_token{};
     mutable std::mutex mutex;
     std::atomic_bool running{};
+    std::atomic_bool connected{};
     std::atomic_int ping{-1};
+    /** Guarded by ``mutex``: the host's hello, once it arrived. */
+    bool hello_received{};
+    std::string host_server_identifier;
     /** Last state seen by polling; -1 until the first poll succeeds. */
     std::atomic_int polled_state{-1};
     /** Only the service thread touches this, so it needs no lock. */
@@ -815,6 +852,7 @@ struct SteamP2PClient::Impl final {
             return;
         }
         if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_Connected) {
+            connected.store(true);
             core::diagnostic("steam", "relay connection established to the host");
             return;
         }
@@ -836,6 +874,17 @@ struct SteamP2PClient::Impl final {
         for (int index{}; index < received; ++index) {
             auto* const message = inbound[static_cast<std::size_t>(index)];
             if (message == nullptr) continue;
+            const std::string_view payload{static_cast<const char*>(message->m_pData),
+                                           static_cast<std::size_t>(message->m_cbSize)};
+            if (payload.starts_with(host_hello_magic)) {
+                {
+                    const std::scoped_lock lock{mutex};
+                    host_server_identifier = std::string{payload.substr(host_hello_magic.size())};
+                    hello_received = true;
+                }
+                api.release_message(message);
+                continue;
+            }
             {
                 const std::scoped_lock lock{mutex};
                 if (game_known) {
@@ -877,6 +926,7 @@ struct SteamP2PClient::Impl final {
             // state logged once cannot distinguish either of those from this
             // thread having stopped polling at all.
             const int state = status.m_eState;
+            if (state == k_ESteamNetworkingConnectionState_Connected) connected.store(true);
             const auto now = std::chrono::steady_clock::now();
             const bool changed = state != polled_state.exchange(state);
             const bool waiting = state == k_ESteamNetworkingConnectionState_Connecting ||
@@ -985,6 +1035,30 @@ std::uint16_t SteamP2PClient::local_port() const noexcept {
 
 int SteamP2PClient::ping_milliseconds() const noexcept {
     return impl_ == nullptr ? -1 : impl_->ping.load();
+}
+
+bool SteamP2PClient::connected() const noexcept {
+    return impl_ != nullptr && impl_->running.load() && impl_->connected.load();
+}
+
+std::optional<std::string> SteamP2PClient::wait_for_host_hello(std::chrono::seconds timeout) {
+    if (impl_ == nullptr) return std::nullopt;
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+        {
+            const std::scoped_lock lock{impl_->mutex};
+            if (impl_->hello_received) return impl_->host_server_identifier;
+        }
+        if (!impl_->running.load()) return std::nullopt;
+        if (std::chrono::steady_clock::now() >= deadline) {
+            const std::scoped_lock lock{impl_->mutex};
+            impl_->error = impl_->connected.load()
+                               ? "the host never said which server to authorize for"
+                               : "the host did not answer through the relays";
+            return std::nullopt;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
 }
 
 std::string SteamP2PClient::last_error() const {

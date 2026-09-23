@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace battlespades::platform {
@@ -98,6 +99,13 @@ struct SteamP2PHostConfig final {
      * peer-to-peer connection to your own account.
      */
     std::uint16_t direct_listen_port{};
+    /**
+     * AoSPlay server id the local server registered under, sent to every
+     * joiner once its relay connection is up. A public match admits only
+     * players holding a join ticket for that id, and the joiner has no other
+     * way to learn it. Empty when the match needs no identity.
+     */
+    std::string server_identifier;
 };
 
 /**
@@ -155,6 +163,16 @@ public:
     [[nodiscard]] std::uint16_t local_port() const noexcept;
     /** Round trip through the relays in milliseconds, negative when unknown. */
     [[nodiscard]] int ping_milliseconds() const noexcept;
+    /** True once Steam reports the relay connection to the host established. */
+    [[nodiscard]] bool connected() const noexcept;
+    /**
+     * Block until the host's hello arrives, at most ``timeout``.
+     *
+     * The hello carries the AoSPlay server id a joiner must hold a ticket for
+     * (empty when the match needs none). Nullopt means the tunnel failed or
+     * the host never answered; ``last_error()`` says which.
+     */
+    [[nodiscard]] std::optional<std::string> wait_for_host_hello(std::chrono::seconds timeout);
     [[nodiscard]] std::string last_error() const;
 
 private:

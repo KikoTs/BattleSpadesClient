@@ -2141,6 +2141,8 @@ struct NativeFrontendModule::Impl final {
     bool steam_runtime_attempted{};
 #endif
     std::uint64_t steam_host_id{};
+    /** AoSPlay server id the joined Steam host asks a ticket for; empty when none. */
+    std::string steam_join_server_id;
     std::optional<FrontendScreen> traced_screen;
     std::string traced_warning;
     std::string traced_lobby;
@@ -3186,7 +3188,8 @@ struct NativeFrontendModule::Impl final {
     }
 
     /** Accept friends over Valve's relays; returns the id they connect to. */
-    [[nodiscard]] std::uint64_t start_steam_host(std::uint16_t local_server_port) {
+    [[nodiscard]] std::uint64_t start_steam_host(std::uint16_t local_server_port,
+                                                 std::string server_identifier) {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_host.stop();
         if (local_server_port == 0U || !ensure_steam_runtime()) return 0U;
@@ -3196,6 +3199,7 @@ struct NativeFrontendModule::Impl final {
         static_cast<void>(steam_runtime.wait_for_relays(std::chrono::seconds{15}));
         platform::SteamP2PHostConfig host_config;
         host_config.local_server_port = local_server_port;
+        host_config.server_identifier = std::move(server_identifier);
         std::string error;
         if (!steam_host.start(steam_runtime, std::move(host_config), error)) {
             core::diagnostic("steam", "hosting over the relay network failed: " + error);
@@ -3204,6 +3208,7 @@ struct NativeFrontendModule::Impl final {
         return steam_runtime.steam_id();
 #else
         static_cast<void>(local_server_port);
+        static_cast<void>(server_identifier);
         return 0U;
 #endif
     }
@@ -3228,6 +3233,22 @@ struct NativeFrontendModule::Impl final {
                                           " failed: " + error);
             return 0U;
         }
+        // The hello names the AoSPlay server the match registered under. Joining
+        // without a ticket for it had the whole map come across and then the
+        // server reject the player as unverified.
+        auto hello = steam_client.wait_for_host_hello(std::chrono::seconds{30});
+        if (!hello.has_value()) {
+            error = steam_client.last_error();
+            if (error.empty()) error = "the Steam host did not answer";
+            core::diagnostic("steam", "joining " + std::to_string(host_steam_id) +
+                                          " failed: " + error);
+            steam_client.stop();
+            return 0U;
+        }
+        steam_join_server_id = std::move(*hello);
+        core::diagnostic("steam", steam_join_server_id.empty()
+                                      ? std::string{"the host needs no AoSPlay identity"}
+                                      : "the host asks for a ticket for " + steam_join_server_id);
         return steam_client.local_port();
 #else
         static_cast<void>(host_steam_id);
@@ -7057,7 +7078,9 @@ struct NativeFrontendModule::Impl final {
         // server. Open the Steam one first: it used to be tried only when the
         // relay had failed, so a healthy relay meant no Steam id was ever shown
         // and every friend arrived through the relay.
-        steam_host_id = start_steam_host(owned_local_server->port());
+        steam_host_id = start_steam_host(owned_local_server->port(),
+                                         owned_relay_lobby.has_value() ? owned_relay_lobby->server_id
+                                                                       : std::string{});
         const std::string steam_invite =
             steam_host_id != 0U ? "Friends can join with steam:" + std::to_string(steam_host_id)
                                 : std::string{};
@@ -12034,8 +12057,9 @@ struct NativeFrontendModule::Impl final {
                 return;
             }
             begin_match_loading(ServerConnectRequest{"steam:" + std::to_string(steam_id),
-                                                     "127.0.0.1", port, {}, {}, {}, false, {},
-                                                     false});
+                                                     "127.0.0.1", port, {}, {}, {}, false,
+                                                     steam_join_server_id,
+                                                     !steam_join_server_id.empty()});
             return;
         }
         network::ServerEndpoint endpoint;
@@ -21054,7 +21078,8 @@ bool NativeFrontendModule::start() {
                 }
                 impl_->pending_startup_connection =
                     ServerConnectRequest{"steam:" + std::to_string(steam_id), "127.0.0.1", port,
-                                         {}, {}, {}, false, {}, false};
+                                         {}, {}, {}, false, impl_->steam_join_server_id,
+                                         !impl_->steam_join_server_id.empty()};
                 return true;
             }
             network::ServerEndpoint endpoint;
