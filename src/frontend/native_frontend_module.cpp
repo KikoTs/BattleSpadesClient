@@ -2134,6 +2134,18 @@ struct NativeFrontendModule::Impl final {
     bool scoreboard_forced{};
     std::optional<std::uint8_t> forced_team;
     bool initial_join_submitted{};
+    /** When the join code in active_join_wire_name was issued; nullopt for a plain name. */
+    std::optional<std::chrono::steady_clock::time_point> join_code_issued_at;
+    /** A class pick held back while a fresh join code is fetched. */
+    struct JoinTicketRefresh final {
+        world::ClassSelection selection;
+        std::uint8_t fallback_team{};
+        /** Zero once the match it was started for is gone; its result is then dropped. */
+        std::uint64_t generation{};
+        std::future<network::RevivalTicketResult> ticket;
+    };
+    std::optional<JoinTicketRefresh> join_ticket_refresh;
+    std::uint64_t next_join_ticket_refresh_generation{1U};
 #if defined(AOS_HAS_STEAM_NETWORKING)
     platform::SteamNetworkingRuntime steam_runtime;
     platform::SteamP2PHost steam_host;
@@ -8147,6 +8159,9 @@ struct NativeFrontendModule::Impl final {
         }
         match_connection_cleanup = std::move(*cleanup);
         active_join_wire_name = wire_name;
+        join_code_issued_at = wire_name.starts_with('~')
+                                  ? std::optional{std::chrono::steady_clock::now()}
+                                  : std::nullopt;
         last_logged_connection_error.clear();
         match_connection = std::make_unique<network::LiveProtocol168Connection>();
         // Revoke local grants before any Protocol 168 packet can be queued.
@@ -15119,6 +15134,8 @@ struct NativeFrontendModule::Impl final {
         // response must never authorize a later host attempt at the same port.
         if (pending_match_identity) pending_match_identity->generation = 0U;
         queued_match_identity.reset();
+        if (join_ticket_refresh) join_ticket_refresh->generation = 0U;
+        join_code_issued_at.reset();
         retire_match_connection(keep_steam_tunnel);
         map_transition_armed = false;
         map_transition_reconnecting = false;
@@ -15725,6 +15742,78 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    /**
+     * A join code is one-use and expires on the master (90 s on the live site)
+     * while it is only sent with NewPlayerConnection, after the map loaded and
+     * the player chose a team and a class. A host that read chat for three
+     * minutes on those screens was refused with ERROR_NOTICKET.
+     */
+    [[nodiscard]] bool join_code_stale() const {
+        return join_code_issued_at.has_value() &&
+               std::chrono::steady_clock::now() - *join_code_issued_at >
+                   std::chrono::seconds{30};
+    }
+
+    void begin_join_ticket_refresh(world::ClassSelection selection, std::uint8_t fallback_team) {
+        if (join_ticket_refresh.has_value()) {
+            // A live refresh already holds a pick; an abandoned one is still
+            // draining and a second future would block on it, so the code we
+            // hold goes out as it is.
+            if (join_ticket_refresh->generation != 0U) return;
+            if (join_ticket_refresh->ticket.valid() &&
+                join_ticket_refresh->ticket.wait_for(std::chrono::milliseconds{0}) !=
+                    std::future_status::ready) {
+                join_code_issued_at.reset();
+                submit_loadout_selection(std::move(selection), fallback_team);
+                return;
+            }
+            join_ticket_refresh.reset();
+        }
+        if (!active_match_request.has_value() || active_match_request->identity_server_id.empty() ||
+            identity_service == nullptr) {
+            join_code_issued_at.reset();
+            submit_loadout_selection(std::move(selection), fallback_team);
+            return;
+        }
+        auto service = identity_service;
+        const auto server_id = active_match_request->identity_server_id;
+        JoinTicketRefresh refresh;
+        refresh.selection = std::move(selection);
+        refresh.fallback_team = fallback_team;
+        refresh.generation = next_join_ticket_refresh_generation++;
+        refresh.ticket = std::async(std::launch::async, [service, server_id] {
+            return service->game_ticket(server_id);
+        });
+        join_ticket_refresh = std::move(refresh);
+        settings_warning = "Authorizing with AoSPlay...";
+        core::diagnostic("identity", "join code older than 30 s; fetching a fresh one before joining");
+    }
+
+    void pump_join_ticket_refresh() {
+        if (!join_ticket_refresh.has_value() || !join_ticket_refresh->ticket.valid() ||
+            join_ticket_refresh->ticket.wait_for(std::chrono::milliseconds{0}) !=
+                std::future_status::ready) {
+            return;
+        }
+        auto refresh = std::move(*join_ticket_refresh);
+        join_ticket_refresh.reset();
+        auto ticket = refresh.ticket.get();
+        if (refresh.generation == 0U || match_connection == nullptr ||
+            !class_selection_initial_join) {
+            return;
+        }
+        if (ticket) {
+            active_join_wire_name = std::move(ticket.join_code);
+            join_code_issued_at = std::chrono::steady_clock::now();
+        } else {
+            // Send the code we hold and let the server decide.
+            core::diagnostic("identity", "join code refresh failed: " + ticket.error);
+            join_code_issued_at.reset();
+        }
+        settings_warning.clear();
+        submit_loadout_selection(std::move(refresh.selection), refresh.fallback_team);
+    }
+
     /** Commit either SelectClass or SelectUGC through the same packet-13 transaction. */
     void submit_loadout_selection(world::ClassSelection selection,
                                   std::uint8_t fallback_team) {
@@ -15732,6 +15821,10 @@ struct NativeFrontendModule::Impl final {
         // The first press already sent NewPlayerConnection. A repeat press
         // before CreatePlayer arrives would resend the loadout without a team.
         if (initial_join_submitted) return;
+        if (class_selection_initial_join && join_code_stale()) {
+            begin_join_ticket_refresh(std::move(selection), fallback_team);
+            return;
+        }
         if (selection.loadout.empty()) {
             settings_warning = "selected class has no valid Protocol 168 loadout";
             return;
@@ -21178,6 +21271,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     }
     impl_->pump_local_match_start();
     impl_->pump_match_identity();
+    impl_->pump_join_ticket_refresh();
     impl_->pump_match_connection();
     impl_->enforce_developer_access();
     impl_->prime_audio_listener();
