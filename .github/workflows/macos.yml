@@ -1,10 +1,10 @@
 name: macOS
 
+# Run it by hand from the Actions tab, or with `gh workflow run macOS`. The job
+# takes about ten minutes of macOS runner time, which bills at ten times the
+# Linux rate, and a day of small pushes spent more of it than the builds were
+# worth. Developers build and test locally before pushing.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
