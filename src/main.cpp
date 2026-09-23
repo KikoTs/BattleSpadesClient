@@ -340,6 +340,11 @@ void attach_parent_console_for_cli() noexcept {
  * executable, keeping one 5 MiB predecessor as BattleSpadesClient.log.1.
  * Returns the log path, or the bare file name if the executable is unknown.
  */
+#if defined(_WIN32)
+#include <io.h>
+#include <share.h>
+#endif
+
 std::filesystem::path open_diagnostic_log() noexcept {
     std::filesystem::path path{"BattleSpadesClient.log"};
     try {
@@ -353,8 +358,12 @@ std::filesystem::path open_diagnostic_log() noexcept {
             std::filesystem::rename(path, previous, error);
         }
 #if defined(_WIN32)
-        FILE* stream{};
-        const bool opened = _wfreopen_s(&stream, path.c_str(), L"a", stderr) == 0;
+        // _wfreopen_s opens without sharing, which locked the log against every
+        // reader for as long as the game ran. Open it shared and point stderr
+        // at it, so a session can be followed from outside.
+        FILE* const shared = _wfsopen(path.c_str(), L"a", _SH_DENYNO);
+        const bool opened =
+            shared != nullptr && _dup2(_fileno(shared), _fileno(stderr)) == 0;
 #else
         const bool opened = std::freopen(path.c_str(), "a", stderr) != nullptr;
 #endif
