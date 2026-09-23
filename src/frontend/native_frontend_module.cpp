@@ -7038,23 +7038,32 @@ struct NativeFrontendModule::Impl final {
         owned_host_cleanup = std::move(outcome.cleanup);
         owned_relay_tunnel = std::move(outcome.tunnel);
         owned_relay_lobby = std::move(outcome.relay);
+        // Steam and the AoSPlay relay are independent doors to the same local
+        // server. Open the Steam one first: it used to be tried only when the
+        // relay had failed, so a healthy relay meant no Steam id was ever shown
+        // and every friend arrived through the relay.
+        steam_host_id = start_steam_host(owned_local_server->port());
+        const std::string steam_invite =
+            steam_host_id != 0U ? "Friends can join with steam:" + std::to_string(steam_host_id)
+                                : std::string{};
         if (owned_relay_lobby.has_value()) {
             social_pending_owner_connect = std::move(outcome.request);
             const auto now = std::chrono::steady_clock::now();
             social_publish_deadline = now + std::chrono::seconds{20};
             social_publish_retry_at = now;
             social_publish_attempts = 0U;
-            settings_warning = "Local server ready; publishing its relay...";
+            settings_warning = steam_invite.empty()
+                                   ? "Local server ready; publishing its relay..."
+                                   : steam_invite + "; publishing its relay...";
             match_loading.set_status(settings_warning);
             if (!queue_social_publish()) {
                 social_publish_retry_at = now + std::chrono::milliseconds{250};
             }
             return;
         }
-        steam_host_id = start_steam_host(owned_local_server->port());
         settings_warning =
-            steam_host_id != 0U
-                ? "Friends can join with steam:" + std::to_string(steam_host_id)
+            !steam_invite.empty()
+                ? steam_invite
                 : "Local server ready on UDP " + std::to_string(owned_local_server->port());
         begin_match_loading(outcome.request);
     }
