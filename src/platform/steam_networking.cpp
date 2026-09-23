@@ -351,6 +351,17 @@ void S_CALLTYPE on_connection_status_changed(SteamNetConnectionStatusChangedCall
 }
 
 /** Every socket and connection reports status through one process-wide hook. */
+/**
+ * Steam allows 10 s by default for a connection to find its route. Two peers
+ * that both have to set up relay sessions were seen accepted on the host at the
+ * very moment the joiner gave up; give route finding half a minute.
+ */
+[[nodiscard]] SteamNetworkingConfigValue_t initial_timeout_option() {
+    SteamNetworkingConfigValue_t option{};
+    option.SetInt32(k_ESteamNetworkingConfig_TimeoutInitial, 30'000);
+    return option;
+}
+
 [[nodiscard]] SteamNetworkingConfigValue_t status_callback_option() {
     SteamNetworkingConfigValue_t option{};
     option.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged,
@@ -587,8 +598,21 @@ struct SteamP2PHost::Impl final {
                                           std::to_string(clients.size()) + " connected");
             return;
         }
+        // The joiner logs every state; the host logged nothing after accept, so
+        // a route that never formed and a tunnel that broke looked identical.
+        if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_FindingRoute) {
+            core::diagnostic("steam", "finding a route to the joiner through the relays");
+            return;
+        }
+        if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_Connected) {
+            core::diagnostic("steam", "relay connection established with the joiner");
+            return;
+        }
         if (event.m_info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer ||
             event.m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
+            core::diagnostic("steam", std::string{"joiner's relay connection ended: "} +
+                                          event.m_info.m_szEndDebug + " (reason " +
+                                          std::to_string(event.m_info.m_eEndReason) + ")");
             drop(event.m_hConn, "peer closed");
         }
     }
@@ -668,14 +692,15 @@ bool SteamP2PHost::start(SteamNetworkingRuntime& runtime, SteamP2PHostConfig con
     impl->runtime = runtime.impl();
     impl->config = config;
     auto& api = impl->runtime->api;
-    const auto option = status_callback_option();
+    const std::array<SteamNetworkingConfigValue_t, 2> options{status_callback_option(),
+                                                               initial_timeout_option()};
     if (config.direct_listen_port != 0U) {
         SteamNetworkingIPAddr address{};
         address.Clear();
         address.m_port = config.direct_listen_port;
-        impl->listen = api.create_listen_ip(api.sockets(), address, 1, &option);
+        impl->listen = api.create_listen_ip(api.sockets(), address, 2, options.data());
     } else {
-        impl->listen = api.create_listen_p2p(api.sockets(), config.virtual_port, 1, &option);
+        impl->listen = api.create_listen_p2p(api.sockets(), config.virtual_port, 2, options.data());
     }
     if (impl->listen == k_HSteamListenSocket_Invalid) {
         error = "Steam refused the peer-to-peer listen socket";
@@ -690,7 +715,8 @@ bool SteamP2PHost::start(SteamNetworkingRuntime& runtime, SteamP2PHostConfig con
     impl->running.store(true);
     impl_ = std::move(impl);
     core::diagnostic("steam", "hosting over the relay network on virtual port " +
-                                  std::to_string(config.virtual_port));
+                                  std::to_string(config.virtual_port) + ", relays " +
+                                  (impl_->runtime->relay_available.load() ? "ready" : "unavailable"));
     return true;
 }
 
@@ -858,15 +884,17 @@ bool SteamP2PClient::start(SteamNetworkingRuntime& runtime, SteamP2PClientConfig
         return false;
     }
     auto& api = impl->runtime->api;
-    const auto option = status_callback_option();
+    const std::array<SteamNetworkingConfigValue_t, 2> options{status_callback_option(),
+                                                               initial_timeout_option()};
     if (config.direct_connect_port != 0U) {
         SteamNetworkingIPAddr address{};
         address.SetIPv4(0x7F000001U, config.direct_connect_port);
-        impl->connection = api.connect_ip(api.sockets(), address, 1, &option);
+        impl->connection = api.connect_ip(api.sockets(), address, 2, options.data());
     } else {
         SteamNetworkingIdentity identity{};
         identity.SetSteamID64(config.host_steam_id);
-        impl->connection = api.connect_p2p(api.sockets(), identity, config.virtual_port, 1, &option);
+        impl->connection =
+            api.connect_p2p(api.sockets(), identity, config.virtual_port, 2, options.data());
     }
     if (impl->connection == k_HSteamNetConnection_Invalid) {
         close_socket(impl->socket);
