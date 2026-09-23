@@ -124,6 +124,10 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             options.headless = true;
             continue;
         }
+        if (argument == "--steam-only") {
+            options.steam_only = true;
+            continue;
+        }
         if (argument == "--pace") {
             options.runtime.pace_to_wall_clock = true;
             continue;
@@ -368,6 +372,8 @@ std::string_view command_line_usage() noexcept {
            "  --shader-quality T  Force a tier: compatibility|low|medium|high|ultra\n"
            "  --connect ADDRESS   Open the live loader for HOST:PORT, or for\n"
            "                      steam:STEAMID to join a player-hosted match\n"
+           "  --steam-only        Host a Local Match over Steam alone, with no\n"
+           "                      AoSPlay relay lobby (testing the Steam path)\n"
            "  --version           Print build version and profile\n"
            "  --help, -h          Show this help\n";
 }

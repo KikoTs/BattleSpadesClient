@@ -6738,6 +6738,13 @@ struct NativeFrontendModule::Impl final {
                                   std::string skin,
                                   std::optional<network::RevivalRelayLobbyRequest>
                                       relay_request = std::nullopt) {
+        // --steam-only isolates the Steam path. With both doors open, a friend
+        // who arrives through the relay makes a broken Steam tunnel look like a
+        // working one, which is exactly what a two-machine test must rule out.
+        if (config.steam_only && relay_request.has_value()) {
+            relay_request.reset();
+            core::diagnostic("steam", "--steam-only: no AoSPlay relay lobby will be published");
+        }
         // Include still-closing servers in the admission limit. A fast sequence
         // of Start/Back must not spawn an unbounded cleanup/process backlog.
         if (owned_local_server && !owned_local_server->running()) release_owned_local_match_host();

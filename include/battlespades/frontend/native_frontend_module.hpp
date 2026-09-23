@@ -79,6 +79,12 @@ struct NativeFrontendConfig final {
     std::vector<std::uint16_t> local_server_ports{27015U, 32887U};
     /** Optional automation shortcut; uses the same loader as Direct Connect. */
     std::optional<std::string> startup_endpoint;
+    /**
+     * Host a Local Match over Steam alone, publishing no AoSPlay relay lobby.
+     * Testing only: with both doors open, a friend who arrives through the
+     * relay makes a broken Steam path look like a working one.
+     */
+    bool steam_only{false};
     /** Offline production-renderer VFX oracle selected by --debug-vfx. */
     std::optional<std::string> debug_vfx;
     /** Exact age at which the oracle freezes for deterministic screenshots. */

@@ -21,6 +21,12 @@ struct LaunchOptions final {
     LaunchAction action{LaunchAction::run};
     RuntimeConfig runtime{};
     bool headless{false};
+    /**
+     * Host a Local Match over Steam alone, without publishing an AoSPlay relay
+     * lobby. Testing only: it isolates the Steam path, so a friend who cannot
+     * reach Steam has no second door to arrive through and mask the result.
+     */
+    bool steam_only{false};
     /** True when --ticks or --run-forever explicitly selected a lifetime. */
     bool runtime_lifetime_explicit{false};
     /** Developer automation: grant the Tutorial catalogue and equip this tool. */
