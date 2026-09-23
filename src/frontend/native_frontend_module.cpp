@@ -8247,6 +8247,25 @@ struct NativeFrontendModule::Impl final {
                     if (queued->map_transition) schedule_map_transition_retry(settings_warning);
                     else match_loading.fail(settings_warning);
                 }
+                return;
+            }
+            // Nothing is waiting to replace the discarded ticket, and the
+            // loader is still showing "Authorizing with AoSPlay...". Returning
+            // here left a Steam joiner on that screen for as long as it cared
+            // to wait: the ticket had arrived, and a teardown had already
+            // zeroed the generation it was issued under.
+            core::diagnostic("identity", "discarded the join ticket for " +
+                                             outcome.request.identifier + ": generation " +
+                                             std::to_string(outcome.generation) + " expected " +
+                                             std::to_string(expected_generation) +
+                                             (active_match_request.has_value()
+                                                  ? ", active " + active_match_request->identifier
+                                                  : ", no active match"));
+            if (active_match_request.has_value() &&
+                outcome.request.identifier == active_match_request->identifier) {
+                settings_warning = "Server authorization was interrupted. Go back to retry.";
+                if (outcome.map_transition) schedule_map_transition_retry(settings_warning);
+                else match_loading.fail(settings_warning);
             }
             return;
         }
