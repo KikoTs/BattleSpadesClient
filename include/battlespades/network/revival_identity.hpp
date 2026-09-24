@@ -92,6 +92,12 @@ struct RevivalRelayLobbyRequest final {
     std::uint16_t playlist_id{};
     std::string texture_skin{};
     bool classic{};
+    /**
+     * The host's Steam id, so a player browsing the list can reach the match
+     * over Valve's relays instead of the AoSPlay one. Empty when the host has
+     * no Steam session, which keeps the relay the only route.
+     */
+    std::string steam_host_id{};
 };
 
 struct RevivalIdentityConfig final {

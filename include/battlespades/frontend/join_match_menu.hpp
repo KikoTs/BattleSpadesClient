@@ -145,6 +145,8 @@ struct ServerBrowserEntry final {
     bool content_owned{true};
     std::string identity_server_id;
     bool identity_ticket{};
+    /** The host's Steam id when the listing had one; zero means relay only. */
+    std::uint64_t steam_host_id{};
 
     [[nodiscard]] std::string identifier() const;
 };
@@ -160,6 +162,15 @@ struct ServerConnectRequest final {
     bool expected_classic{};
     std::string identity_server_id;
     bool identity_ticket{};
+    /**
+     * Prefer Valve's relays to reach this host when it published a Steam id.
+     * The loader falls back to `host`:`port` when Steam cannot carry it, so a
+     * player without Steam still joins through the AoSPlay relay.
+     *
+     * Last so the positional initialisers throughout the frontend keep
+     * compiling and simply leave it zero.
+     */
+    std::uint64_t steam_host_id{};
 };
 
 enum class DirectConnectActionKind : std::uint8_t {

@@ -713,7 +713,8 @@ public:
                                   {"max_players", values.max_players},
                                   {"playlist_id", values.playlist_id},
                                   {"texture_skin", values.texture_skin},
-                                  {"classic", values.classic}};
+                                  {"classic", values.classic},
+                                  {"steam_host_id", values.steam_host_id}};
         const auto response = request("/api/lobbies", "POST",
                                       std::optional<Json>{payload}, token,
                                       std::chrono::milliseconds{8'000}, stop);

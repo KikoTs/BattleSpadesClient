@@ -3203,6 +3203,22 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
+     * The id a browsing player dials over Valve's relays for this match.
+     *
+     * It is the host's own account id, known as soon as Steam is attached and
+     * before the listen socket exists, so the listing can carry it. Empty
+     * without a Steam session, which leaves the AoSPlay relay the only route.
+     */
+    [[nodiscard]] std::string steam_host_identifier() const {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (!steam_runtime.ready()) return {};
+        return std::to_string(steam_runtime.steam_id());
+#else
+        return {};
+#endif
+    }
+
+    /**
      * What the friends list says the player is doing.
      *
      * The map and mode live in the loading model, which exposes no reader yet,
@@ -7066,6 +7082,7 @@ struct NativeFrontendModule::Impl final {
                     configuration.retail_playlist_id,
                     skin,
                     classic};
+                relay_request->steam_host_id = steam_host_identifier();
             }
         }
         begin_owned_local_server(std::move(launch), mode_key, classic, skin,
@@ -7534,6 +7551,7 @@ struct NativeFrontendModule::Impl final {
                 social.lobby->owner_id == friends_lobby_menu.local_account_id()) {
                 relay = network::RevivalRelayLobbyRequest{launch.server_name, launch.map_name,
                     "MAP_CREATOR", "ugc", launch.maximum_players, 0U, "ugc", false};
+                relay->steam_host_id = steam_host_identifier();
             }
         }
         begin_owned_local_server(std::move(launch), "MAP_CREATOR", false, "ugc", std::move(relay));
@@ -7984,6 +8002,7 @@ struct NativeFrontendModule::Impl final {
         entry.texture_skin = source.texture_skin;
         entry.players = source.players;
         entry.maximum_players = source.maximum_players;
+        entry.steam_host_id = source.steam_host_id;
         entry.classic = mode.classic;
         entry.official = source.official;
         entry.local = source.local;
@@ -8202,8 +8221,27 @@ struct NativeFrontendModule::Impl final {
                 settings_warning = "Steam ticket unavailable; connecting in offline mode.";
             }
         }
+        // Valve's relays first when the listing published a host id: their
+        // points of presence sit next to the players, while the AoSPlay relay
+        // sits in one place. A tunnel that cannot be opened is not fatal, and
+        // the AoSPlay endpoint the listing already carries is used instead, so
+        // a player without Steam is never turned away.
+        auto host = request.host;
+        auto port = request.port;
+        if (request.steam_host_id != 0U && !request_uses_steam_tunnel(request)) {
+            std::string steam_error;
+            if (const auto tunnel = start_steam_client(request.steam_host_id, steam_error);
+                tunnel != 0U) {
+                host = "127.0.0.1";
+                port = tunnel;
+            } else {
+                core::diagnostic("steam", "joining " + std::to_string(request.steam_host_id) +
+                                              " over the relay network failed (" + steam_error +
+                                              "), using the AoSPlay relay instead");
+            }
+        }
         const bool transport_started = match_connection->start(
-            network::EnetProtocol168Config{request.host, request.port, timeout_ms},
+            network::EnetProtocol168Config{host, port, timeout_ms},
             std::move(session));
         if (!transport_started && native_steam != nullptr && active_steam_ticket != 0U) {
             static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
@@ -8211,7 +8249,7 @@ struct NativeFrontendModule::Impl final {
         }
         if (transport_started && native_steam != nullptr && native_steam->ready()) {
             static_cast<void>(native_steam->set_server_presence(
-                request.host + ":" + std::to_string(request.port)));
+                host + ":" + std::to_string(port)));
         }
         return transport_started;
     }

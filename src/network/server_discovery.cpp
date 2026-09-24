@@ -131,6 +131,18 @@ template <typename Integer>
                      tag_present(value, "classic");
     result.official = boolean_value(value, "official");
     result.identity_ticket = tag_present(value, "identity=ticket-v1");
+    // The master sends this only for a player-hosted match that had a Steam
+    // session; a listing without it stays reachable through the relay alone.
+    if (const auto steam = bounded_string(value, "steam_host_id"); !steam.empty()) {
+        try {
+            result.steam_host_id = std::stoull(steam);
+        } catch (const std::exception&) {
+            result.steam_host_id = 0U;
+        }
+    }
+    // `players` counts bots, so a bot-filled server reads as full. Keep the
+    // human figure when the listing separates them.
+    result.human_players = bounded_integer<std::uint16_t>(value, "human_players", result.players);
     return result;
 }
 

@@ -38,6 +38,14 @@ struct DiscoveredServer final {
     bool official{};
     bool local{};
     bool identity_ticket{};
+    /**
+     * The host's Steam id when the listing carries one, so a join can take
+     * Valve's relays and leave the AoSPlay relay as the fallback. Zero for a
+     * dedicated server and for any host without a Steam session.
+     */
+    std::uint64_t steam_host_id{};
+    /** Humans only, when the listing separates them from bots. */
+    std::uint16_t human_players{};
 };
 
 struct DiscoveryResult final {
