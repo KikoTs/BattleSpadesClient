@@ -8260,7 +8260,10 @@ struct NativeFrontendModule::Impl final {
                     std::move(entry)));
             }
             for (const auto& match : pending_friend_matches) {
-                const auto host_id = parse_steam_endpoint(match.connect);
+                // What the host published is the address to dial; the friend's
+                // own id stands in if that value is not one we understand.
+                auto host_id = parse_steam_endpoint(match.connect);
+                if (host_id == 0U) host_id = match.steam_id;
                 if (host_id == 0U) continue;
                 ServerBrowserEntry entry;
                 entry.name = match.persona.empty() ? match.status : match.persona;

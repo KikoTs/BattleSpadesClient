@@ -173,8 +173,8 @@ private:
             return listing.lobby_id == lobby;
         });
         if (mine != listings.end()) {
-            std::printf("list     : %zu lobbies, ours found with status \"%s\"\n",
-                        listings.size(), mine->status.c_str());
+            std::printf("list     : %zu lobbies, ours found with status \"%s\" and %d member(s)\n",
+                        listings.size(), mine->status.c_str(), mine->members);
         } else {
             std::printf("list     : %zu lobbies, ours NOT among them\n", listings.size());
         }
