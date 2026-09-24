@@ -421,6 +421,54 @@ void server_browser_refresh_requests_reject_stale_discovery_callbacks() {
            "region labels must stay localization keys rather than English model text");
 }
 
+/**
+ * A friend's match found through Steam has no address of its own, so the row
+ * must still be joinable and must carry the host id the loader dials.
+ */
+void a_steam_only_row_is_joinable_by_its_host_id() {
+    battlespades::frontend::ServerBrowserModel browser;
+    battlespades::frontend::ServerBrowserEntry steam_row;
+    steam_row.name = "KikoTs";
+    steam_row.map = "Ancient Egypt, TDM";
+    steam_row.mode_id = "tdm";
+    steam_row.steam_host_id = 76561198158362762ULL;
+    steam_row.friend_hosted = true;
+    battlespades::frontend::ServerBrowserEntry relay_row;
+    relay_row.name = "Official TDM";
+    relay_row.address = "203.0.113.7";
+    relay_row.game_port = 32887U;
+    relay_row.mode_id = "tdm";
+    relay_row.steam_host_id = 76561198298183214ULL;
+    browser.replace_servers({steam_row, relay_row});
+
+    // The browser sorts its rows, so each is found by what it is rather than
+    // by the order it was added in.
+    std::optional<battlespades::frontend::ServerConnectRequest> steam_request;
+    std::optional<battlespades::frontend::ServerConnectRequest> relay_request;
+    for (std::size_t row{}; row < browser.visible_indices().size(); ++row) {
+        expect(browser.select_visible_row(row), "every listed row must be selectable");
+        auto request = browser.connect_request();
+        expect(request.has_value(), "every listed row must be able to connect");
+        if (request->identifier.starts_with("steam:")) steam_request = std::move(request);
+        else relay_request = std::move(request);
+    }
+
+    expect(steam_request.has_value(), "a Steam row without an address must still connect");
+    expect(steam_request->identifier == "steam:76561198158362762",
+           "an address-less row identifies itself by its host id");
+    expect(steam_request->steam_host_id == 76561198158362762ULL,
+           "the host id must reach the loader, which has nothing else to dial");
+    expect(steam_request->host.empty(), "a Steam row offers no AoSPlay endpoint");
+
+    expect(relay_request.has_value(), "a listed server must connect");
+    expect(relay_request->identifier == "aos://203.0.113.7:32887",
+           "a row with an address keeps identifying itself by it");
+    expect(relay_request->steam_host_id == 76561198298183214ULL,
+           "a listing may offer both routes, and the loader prefers Steam");
+    expect(relay_request->host == "203.0.113.7" && relay_request->port == 32887U,
+           "the endpoint stays available as the fallback");
+}
+
 void server_browser_double_click_and_scroll_are_bounded() {
     ServerBrowserModel browser;
     std::vector<ServerBrowserEntry> entries;
@@ -673,6 +721,8 @@ int main() {
          server_browser_preserves_identity_and_emits_safe_loading_handoff},
         {"server_browser_refresh_requests_reject_stale_discovery_callbacks",
          server_browser_refresh_requests_reject_stale_discovery_callbacks},
+        {"a_steam_only_row_is_joinable_by_its_host_id",
+         a_steam_only_row_is_joinable_by_its_host_id},
         {"server_browser_double_click_and_scroll_are_bounded",
          server_browser_double_click_and_scroll_are_bounded},
         {"join_presentation_is_complete_and_transition_composable",

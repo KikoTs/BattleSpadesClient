@@ -1549,6 +1549,8 @@ struct NativeFrontendModule::Impl final {
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
     /** Map and mode of the match in progress, for the friends list. */
     std::string steam_presence_match;
+    /** Friends' Steam matches gathered for the refresh now in flight. */
+    std::vector<platform::SteamFriendMatch> pending_friend_matches;
     /**
      * The friends-only lobby carrying this match, and the worker that opens it.
      *
@@ -8164,6 +8166,15 @@ struct NativeFrontendModule::Impl final {
                 std::unique(friend_server_ids.begin(), friend_server_ids.end()),
                 friend_server_ids.end());
         }
+        // Steam's own answer for the same question, read here rather than on
+        // the worker because the runtime belongs to this thread. A friend
+        // hosting over Steam is invisible to AoSPlay, which never saw a lobby.
+        pending_friend_matches.clear();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (request.source == ServerBrowserSource::friends && steam_runtime.ready()) {
+            pending_friend_matches = steam_runtime.friend_matches();
+        }
+#endif
         browser_refresh_worker =
             std::async(std::launch::async,
                        [request, public_url, local_ports,
@@ -8218,6 +8229,26 @@ struct NativeFrontendModule::Impl final {
                     outcome.request.generation,
                     std::move(entry)));
             }
+            for (const auto& match : pending_friend_matches) {
+                const auto host_id = parse_steam_endpoint(match.connect);
+                if (host_id == 0U) continue;
+                ServerBrowserEntry entry;
+                entry.name = match.persona.empty() ? match.status : match.persona;
+                entry.map = match.status;
+                entry.mode = "TDM_TITLE";
+                entry.mode_id = "tdm";
+                entry.region = "steam";
+                // Presence carries no population, and inventing one would read
+                // as a real count. The row exists to be joined, not compared.
+                entry.players = 0U;
+                entry.maximum_players = 0U;
+                entry.steam_host_id = host_id;
+                entry.friend_hosted = true;
+                entry.compatible = true;
+                static_cast<void>(server_browser.accept_response(
+                    outcome.request.generation, std::move(entry)));
+            }
+            pending_friend_matches.clear();
             static_cast<void>(server_browser.finish_refresh(outcome.request.generation));
             browser_refreshed_at = std::chrono::steady_clock::now();
             if (!outcome.discovery.error.empty()) {
@@ -8319,6 +8350,15 @@ struct NativeFrontendModule::Impl final {
                 tunnel != 0U) {
                 host = "127.0.0.1";
                 port = tunnel;
+            } else if (request.host.empty() || request.port == 0U) {
+                // Nothing to fall back to: this row only ever existed in Steam.
+                core::diagnostic("steam", "joining " + std::to_string(request.steam_host_id) +
+                                              " failed: " + steam_error);
+                settings_warning = steam_error.empty()
+                                       ? "Could not reach that friend's match through Steam."
+                                       : steam_error;
+                match_loading.fail(settings_warning);
+                return false;
             } else {
                 core::diagnostic("steam", "joining " + std::to_string(request.steam_host_id) +
                                               " over the relay network failed (" + steam_error +
@@ -8548,7 +8588,10 @@ struct NativeFrontendModule::Impl final {
     }
 
     void begin_match_loading(const ServerConnectRequest& request) {
-        if (request.host.empty() || request.port == 0U) {
+        // A friend's match found through Steam has no AoSPlay endpoint at all:
+        // its address is the host's Steam id, and the tunnel supplies the
+        // loopback endpoint once it opens.
+        if ((request.host.empty() || request.port == 0U) && request.steam_host_id == 0U) {
             direct_connect_menu.set_error("The server endpoint is invalid");
             return;
         }

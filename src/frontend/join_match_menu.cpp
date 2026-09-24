@@ -66,6 +66,13 @@ constexpr Rect direct_back_button = retail_bottom_left(248, 32, 78, 26);
 
 [[nodiscard]] bool same_server(const ServerBrowserEntry& left,
                                const ServerBrowserEntry& right) noexcept {
+    // A friend's match found through Steam has no address, so two of them would
+    // otherwise look like the same row and collapse into one.
+    if (left.steam_host_id != 0U || right.steam_host_id != 0U) {
+        if (left.address.empty() || right.address.empty()) {
+            return left.steam_host_id == right.steam_host_id;
+        }
+    }
     return left.game_port == right.game_port && left.address == right.address;
 }
 
@@ -458,6 +465,11 @@ bool DirectConnectMenuModel::input_hovered() const noexcept {
 }
 
 std::string ServerBrowserEntry::identifier() const {
+    // A friend's match found through Steam has no address of its own: the
+    // host's Steam id is the address, spelled the way Direct Connect takes it.
+    if (address.empty() && steam_host_id != 0U) {
+        return "steam:" + std::to_string(steam_host_id);
+    }
     return "aos://" + address + ':' + std::to_string(game_port);
 }
 
@@ -476,7 +488,11 @@ void ServerBrowserModel::replace_servers(std::vector<ServerBrowserEntry> servers
 }
 
 bool ServerBrowserModel::upsert(ServerBrowserEntry server) {
-    if (server.address.empty() || server.game_port == 0U || !server.compatible) {
+    // A row needs somewhere to go: either an AoSPlay endpoint, or the Steam id
+    // of a friend hosting, which the loader dials over Valve's relays. Dropping
+    // the second kind here hid every friend's match without saying anything.
+    const bool addressable = !server.address.empty() && server.game_port != 0U;
+    if ((!addressable && server.steam_host_id == 0U) || !server.compatible) {
         return false;
     }
     const auto iterator =
@@ -694,15 +710,19 @@ std::optional<ServerConnectRequest> ServerBrowserModel::connect_request() const 
     if (server == nullptr || !can_connect()) {
         return std::nullopt;
     }
-    return ServerConnectRequest{server->identifier(),
-                                server->address,
-                                server->game_port,
-                                server->map,
-                                server->mode_id,
-                                server->texture_skin,
-                                server->classic,
-                                server->identity_server_id,
-                                server->identity_ticket};
+    ServerConnectRequest request{server->identifier(),
+                                 server->address,
+                                 server->game_port,
+                                 server->map,
+                                 server->mode_id,
+                                 server->texture_skin,
+                                 server->classic,
+                                 server->identity_server_id,
+                                 server->identity_ticket};
+    // Carried separately from the endpoint: a listing may offer both, and the
+    // loader prefers Valve's relays while keeping the endpoint as the fallback.
+    request.steam_host_id = server->steam_host_id;
+    return request;
 }
 
 std::optional<ServerConnectRequest>
