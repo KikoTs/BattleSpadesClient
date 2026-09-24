@@ -577,6 +577,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::NativeSteam
             BattleSpades::NetworkEnet
     )
+    # --steam-tunnel drives the whole join the way a friend does, through the
+    # Steam transport instead of the AoSPlay relay, on one machine.
+    if(AOS_ENABLE_STEAM_NETWORKING)
+        target_link_libraries(aos_local_server_host_smoke PRIVATE BattleSpades::SteamNet)
+        target_compile_definitions(aos_local_server_host_smoke PRIVATE AOS_HAS_STEAM_NETWORKING=1)
+    endif()
     aos_enable_strict_warnings(aos_local_server_host_smoke)
     add_executable(aos_cosmetic_replication_smoke "${PROJECT_SOURCE_DIR}/tools/cosmetic_replication_smoke.cpp")
     target_link_libraries(aos_cosmetic_replication_smoke PRIVATE BattleSpades::LocalHost BattleSpades::NativeSteam BattleSpades::NetworkEnet)

@@ -3,6 +3,9 @@
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/platform/local_server_process.hpp"
 #include "battlespades/platform/relay_host_tunnel.hpp"
+#if defined(AOS_HAS_STEAM_NETWORKING)
+#include "battlespades/platform/steam_networking.hpp"
+#endif
 
 #include <chrono>
 #include <filesystem>
@@ -15,11 +18,23 @@
 int main(int argc, char** argv) {
     const bool public_relay = argc == 3 && std::string_view{argv[2]} == "--public";
     const bool native_bridge = argc == 3 && std::string_view{argv[2]} == "--native-bridge";
-    if (argc != 2 && !public_relay && !native_bridge) {
+    // Drives the join a friend makes: the bundled server, the Steam transport
+    // carrying its datagrams, the host's hello, and a real Protocol 168
+    // bootstrap through the tunnel. Steam refuses a peer-to-peer connection to
+    // your own account, so the transport runs in its direct mode, which
+    // exercises the same accept, hello and forwarding code on one machine.
+    const bool steam_tunnel = argc == 3 && std::string_view{argv[2]} == "--steam-tunnel";
+    if (argc != 2 && !public_relay && !native_bridge && !steam_tunnel) {
         std::cerr << "usage: aos_local_server_host_smoke <portable-server-directory> "
-                     "[--public|--native-bridge]\n";
+                     "[--public|--native-bridge|--steam-tunnel]\n";
         return 2;
     }
+#if !defined(AOS_HAS_STEAM_NETWORKING)
+    if (steam_tunnel) {
+        std::cerr << "this build has no Steam transport\n";
+        return 2;
+    }
+#endif
     battlespades::platform::LocalServerLaunchConfig config;
     config.bundle_root = std::filesystem::path{argv[1]};
     config.server_name = "BattleSpadesClient Host Smoke";
@@ -56,7 +71,17 @@ int main(int argc, char** argv) {
 
     battlespades::platform::LocalServerProcess process;
     battlespades::platform::RelayHostTunnel tunnel;
+#if defined(AOS_HAS_STEAM_NETWORKING)
+    battlespades::platform::SteamNetworkingRuntime steam_runtime;
+    battlespades::platform::SteamP2PHost steam_host;
+    battlespades::platform::SteamP2PClient steam_client;
+#endif
     const auto cleanup = [&] {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_client.stop();
+        steam_host.stop();
+        steam_runtime.stop();
+#endif
         tunnel.stop();
         process.stop();
         if (relay.has_value()) {
@@ -105,6 +130,49 @@ int main(int argc, char** argv) {
             battlespades::network::Protocol168SessionConfig session_config;
             auto endpoint = battlespades::network::ServerEndpoint{"127.0.0.1", process.port()};
             session_config.player_name = "LocalHostSmoke";
+#if defined(AOS_HAS_STEAM_NETWORKING)
+            if (steam_tunnel) {
+                constexpr std::uint16_t direct_port{27099U};
+                battlespades::platform::SteamNetworkingRuntimeConfig runtime_config;
+                // The direct mode never touches the relays, so waiting for them
+                // would only slow the check down.
+                runtime_config.relay_timeout = std::chrono::seconds{0};
+                // The build copies libsteam_api beside this tool, exactly as
+                // the install rules place it beside the game.
+                runtime_config.search_directory = std::filesystem::path{argv[0]}.parent_path();
+                if (!steam_runtime.start(std::move(runtime_config), error)) {
+                    std::cerr << "steam runtime failed: " << error << '\n';
+                    cleanup();
+                    return 1;
+                }
+                battlespades::platform::SteamP2PHostConfig host_config;
+                host_config.local_server_port = process.port();
+                host_config.direct_listen_port = direct_port;
+                if (!steam_host.start(steam_runtime, host_config, error)) {
+                    std::cerr << "steam host failed: " << error << '\n';
+                    cleanup();
+                    return 1;
+                }
+                battlespades::platform::SteamP2PClientConfig client_config;
+                client_config.direct_connect_port = direct_port;
+                if (!steam_client.start(steam_runtime, client_config, error)) {
+                    std::cerr << "steam join failed: " << error << '\n';
+                    cleanup();
+                    return 1;
+                }
+                const auto hello = steam_client.wait_for_host_hello(std::chrono::seconds{10});
+                if (!hello.has_value()) {
+                    std::cerr << "the host never sent its hello: " << steam_client.last_error()
+                              << '\n';
+                    cleanup();
+                    return 1;
+                }
+                std::cout << "steam tunnel ready: loopback port " << steam_client.local_port()
+                          << ", host asks for a ticket for "
+                          << (hello->empty() ? "no identity" : *hello) << '\n';
+                endpoint = {"127.0.0.1", steam_client.local_port()};
+            }
+#endif
             if (relay.has_value()) {
                 const auto publish_deadline = std::chrono::steady_clock::now() +
                                               std::chrono::seconds{30};
