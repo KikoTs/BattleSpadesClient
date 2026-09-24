@@ -170,6 +170,8 @@ struct SteamApi final {
                                       SteamNetConnectionInfo_t*){};
     uint64(S_CALLTYPE* steam_id)(ISteamUser*){};
     const char*(S_CALLTYPE* persona_name)(ISteamFriends*){};
+    bool(S_CALLTYPE* set_rich_presence)(ISteamFriends*, const char*, const char*){};
+    void(S_CALLTYPE* clear_rich_presence)(ISteamFriends*){};
 };
 
 [[nodiscard]] void* library_symbol(void* handle, const char* name) noexcept {
@@ -279,6 +281,10 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.utils)},
         Binding{"SteamAPI_SteamUser_v023", reinterpret_cast<void**>(&api.user)},
         Binding{"SteamAPI_SteamFriends_v018", reinterpret_cast<void**>(&api.friends)},
+        Binding{"SteamAPI_ISteamFriends_SetRichPresence",
+                reinterpret_cast<void**>(&api.set_rich_presence)},
+        Binding{"SteamAPI_ISteamFriends_ClearRichPresence",
+                reinterpret_cast<void**>(&api.clear_rich_presence)},
         Binding{"SteamAPI_ISteamNetworkingUtils_InitRelayNetworkAccess",
                 reinterpret_cast<void**>(&api.init_relay)},
         Binding{"SteamAPI_ISteamNetworkingUtils_GetRelayNetworkStatus",
@@ -406,6 +412,8 @@ struct SteamNetworkingRuntime::Impl final {
     std::jthread pump;
     std::atomic_bool ready{};
     std::atomic<std::uint64_t> steam_id{};
+    /** The id Steam accepted, which is the fallback when the first was refused. */
+    std::atomic<std::uint32_t> attached_app_id{};
     std::string persona;
     std::string relay_detail;
     std::atomic_bool relay_available{};
@@ -515,6 +523,7 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
     }
     impl->api.manual_dispatch_init();
     impl->pipe = impl->api.steam_pipe();
+    impl->attached_app_id.store(static_cast<std::uint32_t>(std::stoul(app_id)));
     impl->steam_id.store(impl->api.steam_id(impl->api.user()));
     if (const auto* const name = impl->api.persona_name(impl->api.friends()); name != nullptr) {
         impl->persona = name;
@@ -555,6 +564,41 @@ std::string SteamNetworkingRuntime::persona_name() const {
     if (impl_ == nullptr) return {};
     const std::scoped_lock lock{impl_->mutex};
     return impl_->persona;
+}
+
+std::uint32_t SteamNetworkingRuntime::app_id() const noexcept {
+    return impl_ == nullptr ? 0U : impl_->attached_app_id.load();
+}
+
+bool SteamNetworkingRuntime::tracking_enabled() const noexcept {
+    if (impl_ == nullptr) return false;
+    const auto attached = impl_->attached_app_id.load();
+    // Spacewar's statistics and achievements belong to Valve's test app, so
+    // reporting ours against it would write into someone else's schema. A
+    // player who does not own the game still plays; nothing is tracked.
+    return attached != 0U && attached != impl_->config.fallback_app_id;
+}
+
+bool SteamNetworkingRuntime::publish_presence(const std::string& status,
+                                              const std::string& connect) {
+    if (impl_ == nullptr || impl_->api.set_rich_presence == nullptr) return false;
+    auto* const friends = impl_->api.friends();
+    if (friends == nullptr) return false;
+    // "status" is what the friends list shows under view game info, and
+    // "connect" is the command line Steam hands a friend who clicks Join.
+    // Both are free-form, so neither needs anything defined for the app id.
+    const auto published = impl_->api.set_rich_presence(friends, "status", status.c_str()) &&
+                           impl_->api.set_rich_presence(friends, "connect", connect.c_str());
+    core::diagnostic("steam", published ? "presence published: " + status
+                                        : "presence was refused by Steam");
+    return published;
+}
+
+void SteamNetworkingRuntime::clear_presence() noexcept {
+    if (impl_ == nullptr || impl_->api.clear_rich_presence == nullptr) return;
+    if (auto* const friends = impl_->api.friends(); friends != nullptr) {
+        impl_->api.clear_rich_presence(friends);
+    }
 }
 
 SteamRelayStatus SteamNetworkingRuntime::relay_status() const {

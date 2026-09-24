@@ -60,6 +60,27 @@ public:
     /** The player's Steam id, which a joining client uses as the address. */
     [[nodiscard]] std::uint64_t steam_id() const noexcept;
     [[nodiscard]] std::string persona_name() const;
+    /** The application id Steam accepted, which may be `fallback_app_id`. */
+    [[nodiscard]] std::uint32_t app_id() const noexcept;
+    /**
+     * False while attached as Spacewar.
+     *
+     * Statistics and achievements live in the schema of the application id the
+     * process attached as, so reporting ours under Spacewar would write into
+     * Valve's test app. A player without the game still plays; nothing about
+     * their match is tracked.
+     */
+    [[nodiscard]] bool tracking_enabled() const noexcept;
+    /**
+     * Show the match in the player's friends list and let a friend join it.
+     *
+     * `status` is the line under "view game info". `connect` is the command
+     * line Steam gives a friend who clicks Join, so `steam:<id>` reaches the
+     * same loader as Direct Connect. Both keys are free-form and need nothing
+     * configured for the application id.
+     */
+    [[nodiscard]] bool publish_presence(const std::string& status, const std::string& connect);
+    void clear_presence() noexcept;
     [[nodiscard]] SteamRelayStatus relay_status() const;
     /**
      * Block until the relay network is usable.

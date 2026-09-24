@@ -3202,6 +3202,17 @@ struct NativeFrontendModule::Impl final {
 #endif
     }
 
+    /**
+     * What the friends list says the player is doing.
+     *
+     * The map and mode live in the loading model, which exposes no reader yet,
+     * so this stays a plain label until the match details are reported
+     * properly rather than guessed from whatever the host screen last set.
+     */
+    [[nodiscard]] static std::string host_presence_details() {
+        return "a Battle Spades match";
+    }
+
     /** Accept friends over Valve's relays; returns the id they connect to. */
     [[nodiscard]] std::uint64_t start_steam_host(std::uint16_t local_server_port,
                                                  std::string server_identifier) {
@@ -3220,7 +3231,12 @@ struct NativeFrontendModule::Impl final {
             core::diagnostic("steam", "hosting over the relay network failed: " + error);
             return 0U;
         }
-        return steam_runtime.steam_id();
+        const auto host_id = steam_runtime.steam_id();
+        // The friends list now carries the match and a Join that reaches the
+        // same loader as Direct Connect, so an invite needs no pasted id.
+        static_cast<void>(steam_runtime.publish_presence(
+            "Hosting " + host_presence_details(), "steam:" + std::to_string(host_id)));
+        return host_id;
 #else
         static_cast<void>(local_server_port);
         static_cast<void>(server_identifier);
@@ -3264,6 +3280,10 @@ struct NativeFrontendModule::Impl final {
         core::diagnostic("steam", steam_join_server_id.empty()
                                       ? std::string{"the host needs no AoSPlay identity"}
                                       : "the host asks for a ticket for " + steam_join_server_id);
+        // A joined match is worth showing too, and a friend of the joiner can
+        // reach the same host through the same connect string.
+        static_cast<void>(steam_runtime.publish_presence(
+            "Playing a friend's match", "steam:" + std::to_string(host_steam_id)));
         return steam_client.local_port();
 #else
         static_cast<void>(host_steam_id);

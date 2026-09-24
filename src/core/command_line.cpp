@@ -224,9 +224,12 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             options.shader_quality = std::string{arguments[index]};
             continue;
         }
-        if (argument == "--connect") {
+        // Steam launches a friend who clicks Join with the rich presence
+        // "connect" value, and it spells the switch "+connect". Accepting both
+        // means an invite needs no separate entry point.
+        if (argument == "--connect" || argument == "+connect") {
             if (++index >= arguments.size() || arguments[index].empty()) {
-                return failure("--connect requires HOST:PORT or steam:STEAMID");
+                return failure(std::string{argument} + " requires HOST:PORT or steam:STEAMID");
             }
             options.startup_endpoint = std::string{arguments[index]};
             continue;
@@ -372,6 +375,8 @@ std::string_view command_line_usage() noexcept {
            "  --shader-quality T  Force a tier: compatibility|low|medium|high|ultra\n"
            "  --connect ADDRESS   Open the live loader for HOST:PORT, or for\n"
            "                      steam:STEAMID to join a player-hosted match\n"
+           "                      (+connect is the same switch, which is how\n"
+           "                      Steam launches a friend who clicks Join)\n"
            "  --steam-only        Host a Local Match over Steam alone, with no\n"
            "                      AoSPlay relay lobby (testing the Steam path)\n"
            "  --version           Print build version and profile\n"
