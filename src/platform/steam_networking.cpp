@@ -128,7 +128,6 @@ struct SteamApi final {
     void* handle{};
     ESteamAPIInitResult(S_CALLTYPE* init_flat)(SteamErrMsg*){};
     void(S_CALLTYPE* shutdown)(){};
-    void(S_CALLTYPE* run_callbacks)(){};
     void(S_CALLTYPE* manual_dispatch_init)(){};
     HSteamPipe(S_CALLTYPE* steam_pipe)(){};
     void(S_CALLTYPE* dispatch_run_frame)(HSteamPipe){};
@@ -182,7 +181,6 @@ struct SteamApi final {
     bool(S_CALLTYPE* set_lobby_data)(ISteamMatchmaking*, uint64, const char*,
                                      const char*){};
     const char*(S_CALLTYPE* get_lobby_data)(ISteamMatchmaking*, uint64, const char*){};
-    bool(S_CALLTYPE* set_lobby_joinable)(ISteamMatchmaking*, uint64, bool){};
     void(S_CALLTYPE* leave_lobby)(ISteamMatchmaking*, uint64){};
     SteamAPICall_t(S_CALLTYPE* request_lobby_list)(ISteamMatchmaking*){};
     uint64(S_CALLTYPE* lobby_by_index)(ISteamMatchmaking*, int){};
@@ -293,7 +291,6 @@ void announce_app_id(const std::string& app_id) noexcept {
     const std::array bindings{
         Binding{"SteamAPI_InitFlat", reinterpret_cast<void**>(&api.init_flat)},
         Binding{"SteamAPI_Shutdown", reinterpret_cast<void**>(&api.shutdown)},
-        Binding{"SteamAPI_RunCallbacks", reinterpret_cast<void**>(&api.run_callbacks)},
         Binding{"SteamAPI_ManualDispatch_Init",
                 reinterpret_cast<void**>(&api.manual_dispatch_init)},
         Binding{"SteamAPI_GetHSteamPipe", reinterpret_cast<void**>(&api.steam_pipe)},
@@ -322,8 +319,6 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.set_lobby_data)},
         Binding{"SteamAPI_ISteamMatchmaking_GetLobbyData",
                 reinterpret_cast<void**>(&api.get_lobby_data)},
-        Binding{"SteamAPI_ISteamMatchmaking_SetLobbyJoinable",
-                reinterpret_cast<void**>(&api.set_lobby_joinable)},
         Binding{"SteamAPI_ISteamMatchmaking_LeaveLobby",
                 reinterpret_cast<void**>(&api.leave_lobby)},
         Binding{"SteamAPI_ISteamMatchmaking_RequestLobbyList",
@@ -519,6 +514,10 @@ struct SteamNetworkingRuntime::Impl final {
      * callback objects are unavailable and connection events are read
      * straight from Steam's queue.
      */
+    /** The address a friend's overlay invite asked us to join, once. */
+    std::mutex join_mutex;
+    std::string join_request;
+
     /** Bytes of a completed asynchronous call, keyed by its handle. */
     std::mutex results_mutex;
     std::map<SteamAPICall_t, std::vector<unsigned char>> call_results;
@@ -549,6 +548,17 @@ struct SteamNetworkingRuntime::Impl final {
                 StatusRouter::instance().dispatch(
                     *reinterpret_cast<SteamNetConnectionStatusChangedCallback_t*>(
                         message.m_pubParam));
+            } else if (message.m_iCallback == GameRichPresenceJoinRequested_t::k_iCallback &&
+                       message.m_pubParam != nullptr) {
+                // Steam launches a friend with +connect only when the game is
+                // closed. With it already running the invite arrives here
+                // instead, and ignoring it meant Join did nothing for anyone
+                // who already had the game open.
+                const auto* const request =
+                    reinterpret_cast<GameRichPresenceJoinRequested_t*>(message.m_pubParam);
+                const std::scoped_lock lock{join_mutex};
+                join_request.assign(request->m_rgchConnect);
+                core::diagnostic("steam", "a friend's invite asks us to join " + join_request);
             } else if (message.m_iCallback == SteamAPICallCompleted_t::k_iCallback &&
                        message.m_pubParam != nullptr) {
                 // An asynchronous call answers here rather than through a
@@ -695,6 +705,12 @@ std::string SteamNetworkingRuntime::persona_name() const {
 
 std::uint32_t SteamNetworkingRuntime::app_id() const noexcept {
     return impl_ == nullptr ? 0U : impl_->attached_app_id.load();
+}
+
+std::string SteamNetworkingRuntime::take_join_request() {
+    if (impl_ == nullptr) return {};
+    const std::scoped_lock lock{impl_->join_mutex};
+    return std::exchange(impl_->join_request, std::string{});
 }
 
 bool SteamNetworkingRuntime::tracking_enabled() const noexcept {
@@ -874,6 +890,10 @@ bool SteamNetworkingRuntime::unlock_achievement(const std::string& name) {
     // An achievement must exist in the attached application's schema, which
     // belongs to whoever owns that id. Steam refuses a name it does not know,
     // so a refusal here says the schema lacks it, not that the call is wrong.
+    // Steam keeps an unlock forever, so writing one twice only costs a store.
+    if (bool earned{}; impl_->api.get_achievement(stats, name.c_str(), &earned) && earned) {
+        return true;
+    }
     if (!impl_->api.set_achievement(stats, name.c_str())) {
         core::diagnostic("steam", "Steam does not know the achievement " + name);
         return false;

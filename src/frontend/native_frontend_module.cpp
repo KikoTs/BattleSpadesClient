@@ -3405,6 +3405,37 @@ struct NativeFrontendModule::Impl final {
         steam_host_id = 0U;
     }
 
+    /**
+     * Acts on a friend's overlay invite while the game is already running.
+     *
+     * Steam only launches with `+connect` when the game is closed, so without
+     * this the Join button did nothing for a player who already had it open.
+     * Ignored while a match is already loading or running, because an invite
+     * must not tear the player out of one they are in.
+     */
+    void pump_steam_join_request() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        auto request = steam_runtime.take_join_request();
+        if (request.empty()) return;
+        if (match_connection != nullptr || pending_match_identity.has_value() ||
+            owned_local_server) {
+            core::diagnostic("steam", "ignoring an invite to " + request +
+                                          " while already in a match");
+            return;
+        }
+        const auto steam_id = parse_steam_endpoint(request);
+        if (steam_id == 0U) {
+            core::diagnostic("steam", "an invite offered an address we do not understand: " +
+                                          request);
+            return;
+        }
+        ServerConnectRequest connect{"steam:" + std::to_string(steam_id), {}, {}, {}, {}, {},
+                                     false, {}, false};
+        connect.steam_host_id = steam_id;
+        begin_match_loading(connect);
+#endif
+    }
+
     /** Collects the lobby the host asked for, and leaves one nobody wants. */
     void pump_steam_lobby() {
 #if defined(AOS_HAS_STEAM_NETWORKING)
@@ -21522,6 +21553,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     impl_->pump_local_match_start();
     impl_->pump_server_browser_auto_refresh();
     impl_->pump_steam_lobby();
+    impl_->pump_steam_join_request();
     impl_->pump_match_identity();
     impl_->pump_join_ticket_refresh();
     impl_->pump_match_connection();

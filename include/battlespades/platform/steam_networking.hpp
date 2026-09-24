@@ -93,6 +93,14 @@ public:
      */
     [[nodiscard]] bool tracking_enabled() const noexcept;
     /**
+     * The address a friend's overlay invite asked us to join, taken once.
+     *
+     * Steam launches the game with `+connect` only when it is closed. A player
+     * who already has it open gets the invite as a callback instead, so this is
+     * the other half of Join working at all. Empty when nothing is waiting.
+     */
+    [[nodiscard]] std::string take_join_request();
+    /**
      * Show the match in the player's friends list and let a friend join it.
      *
      * `status` is the line under "view game info". `connect` is the command
