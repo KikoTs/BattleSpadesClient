@@ -1547,6 +1547,9 @@ struct NativeFrontendModule::Impl final {
     };
     std::future<BrowserRefreshOutcome> browser_refresh_worker;
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
+    /** When the last browser response landed; zero until the first one does. */
+    std::chrono::steady_clock::time_point browser_refreshed_at{};
+    static constexpr std::chrono::seconds browser_auto_refresh_period{10};
     struct QuickPlayRefreshOutcome final {
         QuickPlaySearchIntent request;
         network::DiscoveryResult discovery;
