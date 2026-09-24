@@ -1549,6 +1549,17 @@ struct NativeFrontendModule::Impl final {
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
     /** Map and mode of the match in progress, for the friends list. */
     std::string steam_presence_match;
+    /**
+     * The friends-only lobby carrying this match, and the worker that opens it.
+     *
+     * Creating one waits on Steam, so it runs off the presentation thread; the
+     * loader must not stop for it. `steam_lobby_abandoned` covers a host that
+     * shuts down while the lobby is still being created: the pump leaves it as
+     * soon as it arrives rather than leaving a lobby nobody is in.
+     */
+    std::future<std::uint64_t> steam_lobby_worker;
+    std::uint64_t steam_lobby_id{};
+    bool steam_lobby_abandoned{};
     /** When the last browser response landed; zero until the first one does. */
     std::chrono::steady_clock::time_point browser_refreshed_at{};
     static constexpr std::chrono::seconds browser_auto_refresh_period{10};
@@ -3265,8 +3276,17 @@ struct NativeFrontendModule::Impl final {
         const auto host_id = steam_runtime.steam_id();
         // The friends list now carries the match and a Join that reaches the
         // same loader as Direct Connect, so an invite needs no pasted id.
-        static_cast<void>(steam_runtime.publish_presence(
-            "Hosting " + host_presence_details(), "steam:" + std::to_string(host_id)));
+        const auto status = "Hosting " + host_presence_details();
+        const auto connect = "steam:" + std::to_string(host_id);
+        static_cast<void>(steam_runtime.publish_presence(status, connect));
+        // The lobby is the route that needs no pasted id and no public address.
+        // Opening it waits on Steam, so it happens on a worker.
+        if (!steam_lobby_worker.valid() && steam_lobby_id == 0U) {
+            steam_lobby_abandoned = false;
+            steam_lobby_worker = std::async(std::launch::async, [this, status, connect] {
+                return steam_runtime.create_lobby(status, connect);
+            });
+        }
         return host_id;
 #else
         static_cast<void>(local_server_port);
@@ -3342,8 +3362,35 @@ struct NativeFrontendModule::Impl final {
     void stop_steam_host() noexcept {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_host.stop();
+        if (steam_lobby_id != 0U) {
+            steam_runtime.leave_lobby(steam_lobby_id);
+            steam_lobby_id = 0U;
+        }
+        // A lobby still being opened is left by the pump, the only place that
+        // can wait for it without stalling this call.
+        if (steam_lobby_worker.valid()) steam_lobby_abandoned = true;
+        steam_runtime.clear_presence();
 #endif
         steam_host_id = 0U;
+    }
+
+    /** Collects the lobby the host asked for, and leaves one nobody wants. */
+    void pump_steam_lobby() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        using namespace std::chrono_literals;
+        if (!steam_lobby_worker.valid() ||
+            steam_lobby_worker.wait_for(0ms) != std::future_status::ready) {
+            return;
+        }
+        const auto lobby = steam_lobby_worker.get();
+        if (lobby == 0U) return;
+        if (steam_lobby_abandoned) {
+            steam_runtime.leave_lobby(lobby);
+            steam_lobby_abandoned = false;
+            return;
+        }
+        steam_lobby_id = lobby;
+#endif
     }
 
     /** Stop and unpublish every resource owned by a client-hosted match. */
@@ -8172,6 +8219,7 @@ struct NativeFrontendModule::Impl final {
                     std::move(entry)));
             }
             static_cast<void>(server_browser.finish_refresh(outcome.request.generation));
+            browser_refreshed_at = std::chrono::steady_clock::now();
             if (!outcome.discovery.error.empty()) {
                 server_browser_status = outcome.discovery.error;
             } else {
@@ -8184,6 +8232,25 @@ struct NativeFrontendModule::Impl final {
             const auto pending = *pending_browser_refresh;
             launch_browser_refresh(pending);
         }
+    }
+
+    /**
+     * Re-read the list while the player is looking at it.
+     *
+     * Nothing refreshed the browser except entering it, changing its source or
+     * region, and the Refresh button, so the player counts froze the moment the
+     * screen opened and stayed frozen however long they read it. The master
+     * re-probes each server about once a minute, so a ten-second poll shows
+     * every change it publishes without asking it for more.
+     */
+    void pump_server_browser_auto_refresh() {
+        if (screen() != FrontendScreen::server_browser) return;
+        if (server_browser.refreshing() || browser_refresh_worker.valid()) return;
+        if (browser_refreshed_at == std::chrono::steady_clock::time_point{}) return;
+        if (std::chrono::steady_clock::now() - browser_refreshed_at < browser_auto_refresh_period) {
+            return;
+        }
+        begin_server_browser_refresh();
     }
 
     /** Does this request dial the Steam tunnel this client opened? */
@@ -21377,6 +21444,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->cosmetic_icons->pump(impl_->renderer);
     }
     impl_->pump_local_match_start();
+    impl_->pump_server_browser_auto_refresh();
+    impl_->pump_steam_lobby();
     impl_->pump_match_identity();
     impl_->pump_join_ticket_refresh();
     impl_->pump_match_connection();
