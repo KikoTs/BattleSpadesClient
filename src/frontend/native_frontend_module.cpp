@@ -2345,6 +2345,26 @@ struct NativeFrontendModule::Impl final {
         terrain_effects.set_particle_sink(&particles);
     }
 
+    /**
+     * Waits for the lobby worker before any member is destroyed.
+     *
+     * The worker calls into steam_runtime, which is declared after the future
+     * and is therefore destroyed before it. Leaving this to the future's own
+     * destructor would run that call against a destroyed runtime. A destructor
+     * body runs before every member is released, so the wait belongs here and
+     * not in a declaration order that a later edit could quietly undo.
+     */
+    ~Impl() {
+        if (steam_lobby_worker.valid()) {
+            const auto lobby = steam_lobby_worker.get();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+            if (lobby != 0U) steam_runtime.leave_lobby(lobby);
+#else
+            static_cast<void>(lobby);
+#endif
+        }
+    }
+
     [[nodiscard]] std::string localized_text(std::string_view key) const {
         if (const auto translated = localization.lookup(key); translated.has_value()) {
             return std::string{*translated};
@@ -3286,7 +3306,11 @@ struct NativeFrontendModule::Impl final {
         if (!steam_lobby_worker.valid() && steam_lobby_id == 0U) {
             steam_lobby_abandoned = false;
             steam_lobby_worker = std::async(std::launch::async, [this, status, connect] {
-                return steam_runtime.create_lobby(status, connect);
+                // Quitting waits for this worker, so the timeout is also the
+                // worst delay a player sees on exit. Steam answered in about
+                // 300 ms when measured, so five seconds is already generous.
+                return steam_runtime.create_lobby(status, connect, 24,
+                                                  std::chrono::seconds{5});
             });
         }
         return host_id;
@@ -3357,7 +3381,12 @@ struct NativeFrontendModule::Impl final {
 
     void stop_steam_client() noexcept {
 #if defined(AOS_HAS_STEAM_NETWORKING)
+        const bool was_running = steam_client.running();
         steam_client.stop();
+        // Leaving a joined match must take its presence down as well, or the
+        // friends list keeps offering a Join that leads nowhere. Only when this
+        // client is not itself hosting, whose presence outlives the join.
+        if (was_running && steam_host_id == 0U) steam_runtime.clear_presence();
 #endif
     }
 
