@@ -1547,6 +1547,8 @@ struct NativeFrontendModule::Impl final {
     };
     std::future<BrowserRefreshOutcome> browser_refresh_worker;
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
+    /** Map and mode of the match in progress, for the friends list. */
+    std::string steam_presence_match;
     /** When the last browser response landed; zero until the first one does. */
     std::chrono::steady_clock::time_point browser_refreshed_at{};
     static constexpr std::chrono::seconds browser_auto_refresh_period{10};
@@ -3202,6 +3204,19 @@ struct NativeFrontendModule::Impl final {
 #endif
     }
 
+    /** "Ancient Egypt, TDM" from a map name and a mode title key. */
+    [[nodiscard]] static std::string presence_label(std::string_view map, std::string_view mode) {
+        if (map.empty()) return {};
+        auto readable = std::string{mode};
+        // Mode keys read TDM_TITLE or MAP_CREATOR in the catalogue; the suffix
+        // means nothing to a friend reading the Steam overlay.
+        if (const auto suffix = readable.rfind("_TITLE"); suffix != std::string::npos) {
+            readable.erase(suffix);
+        }
+        std::ranges::replace(readable, '_', ' ');
+        return readable.empty() ? std::string{map} : std::string{map} + ", " + readable;
+    }
+
     /**
      * The id a browsing player dials over Valve's relays for this match.
      *
@@ -3225,8 +3240,8 @@ struct NativeFrontendModule::Impl final {
      * so this stays a plain label until the match details are reported
      * properly rather than guessed from whatever the host screen last set.
      */
-    [[nodiscard]] static std::string host_presence_details() {
-        return "a Battle Spades match";
+    [[nodiscard]] std::string host_presence_details() const {
+        return steam_presence_match.empty() ? "a Battle Spades match" : steam_presence_match;
     }
 
     /** Accept friends over Valve's relays; returns the id they connect to. */
@@ -6820,6 +6835,9 @@ struct NativeFrontendModule::Impl final {
                                   std::string skin,
                                   std::optional<network::RevivalRelayLobbyRequest>
                                       relay_request = std::nullopt) {
+        // The Steam host publishes presence before any connect request exists,
+        // so the label comes from what the match was launched with.
+        steam_presence_match = presence_label(launch.map_name, mode_key);
         // --steam-only isolates the Steam path. With both doors open, a friend
         // who arrives through the relay makes a broken Steam tunnel look like a
         // working one, which is exactly what a two-machine test must rule out.
@@ -8467,6 +8485,7 @@ struct NativeFrontendModule::Impl final {
             direct_connect_menu.set_error("The server endpoint is invalid");
             return;
         }
+        steam_presence_match = presence_label(request.expected_map, request.expected_mode);
         // Stop advertising the previous public match before replacing its
         // transport. A successful Protocol 168 bootstrap below publishes the
         // new authoritative master-list identifier. Same-server map rotation

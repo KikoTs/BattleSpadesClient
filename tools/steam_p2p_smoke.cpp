@@ -150,6 +150,13 @@ private:
     // rather than assumed.
     std::printf("app      : %u\ntracking : %s\n", runtime.app_id(),
                 runtime.tracking_enabled() ? "enabled" : "disabled (attached as Spacewar)");
+    // Publishing and clearing proves the rich presence binding resolves and
+    // that Steam accepts both keys, which hosting a real match otherwise only
+    // exercises on a second machine.
+    const auto presence = runtime.publish_presence(
+        "Checking the Steam transport", "steam:" + std::to_string(runtime.steam_id()));
+    std::printf("presence : %s\n", presence ? "published and cleared" : "refused");
+    runtime.clear_presence();
     return &runtime;
 }
 } // namespace
