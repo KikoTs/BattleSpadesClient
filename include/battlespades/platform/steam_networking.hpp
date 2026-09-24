@@ -89,6 +89,24 @@ public:
      * whoever owns the id, so unlock_achievement() reports a refusal rather
      * than pretending the name was written.
      */
+    /**
+     * Open a friends-only lobby carrying this match, and return its id.
+     *
+     * A lobby needs no public address and no application configuration, so it
+     * reaches players behind any NAT. `status` and `connect` are stored on it
+     * with the same meaning as in rich presence, so a friend can read where to
+     * go. Zero means Steam refused or did not answer in time.
+     *
+     * This blocks briefly: creating a lobby is asynchronous, and the pump
+     * collects the answer.
+     */
+    [[nodiscard]] std::uint64_t create_lobby(const std::string& status,
+                                             const std::string& connect,
+                                             int maximum_members = 24,
+                                             std::chrono::seconds timeout =
+                                                 std::chrono::seconds{10});
+    [[nodiscard]] std::string lobby_data(std::uint64_t lobby, const std::string& key) const;
+    void leave_lobby(std::uint64_t lobby) noexcept;
     [[nodiscard]] bool unlock_achievement(const std::string& name);
     /** Shows Steam's progress toast; Steam ignores a completed target. */
     [[nodiscard]] bool report_achievement_progress(const std::string& name,

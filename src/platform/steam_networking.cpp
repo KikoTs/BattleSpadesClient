@@ -11,7 +11,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <map>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -172,6 +175,14 @@ struct SteamApi final {
     const char*(S_CALLTYPE* persona_name)(ISteamFriends*){};
     bool(S_CALLTYPE* set_rich_presence)(ISteamFriends*, const char*, const char*){};
     void(S_CALLTYPE* clear_rich_presence)(ISteamFriends*){};
+    bool(S_CALLTYPE* dispatch_call_result)(HSteamPipe, SteamAPICall_t, void*, int, int, bool*){};
+    ISteamMatchmaking*(S_CALLTYPE* matchmaking)(){};
+    SteamAPICall_t(S_CALLTYPE* create_lobby)(ISteamMatchmaking*, ELobbyType, int){};
+    bool(S_CALLTYPE* set_lobby_data)(ISteamMatchmaking*, uint64, const char*,
+                                     const char*){};
+    const char*(S_CALLTYPE* get_lobby_data)(ISteamMatchmaking*, uint64, const char*){};
+    bool(S_CALLTYPE* set_lobby_joinable)(ISteamMatchmaking*, uint64, bool){};
+    void(S_CALLTYPE* leave_lobby)(ISteamMatchmaking*, uint64){};
     ISteamUserStats*(S_CALLTYPE* user_stats)(){};
     bool(S_CALLTYPE* set_achievement)(ISteamUserStats*, const char*){};
     bool(S_CALLTYPE* get_achievement)(ISteamUserStats*, const char*, bool*){};
@@ -292,6 +303,19 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.set_rich_presence)},
         Binding{"SteamAPI_ISteamFriends_ClearRichPresence",
                 reinterpret_cast<void**>(&api.clear_rich_presence)},
+        Binding{"SteamAPI_ManualDispatch_GetAPICallResult",
+                reinterpret_cast<void**>(&api.dispatch_call_result)},
+        Binding{"SteamAPI_SteamMatchmaking_v009", reinterpret_cast<void**>(&api.matchmaking)},
+        Binding{"SteamAPI_ISteamMatchmaking_CreateLobby",
+                reinterpret_cast<void**>(&api.create_lobby)},
+        Binding{"SteamAPI_ISteamMatchmaking_SetLobbyData",
+                reinterpret_cast<void**>(&api.set_lobby_data)},
+        Binding{"SteamAPI_ISteamMatchmaking_GetLobbyData",
+                reinterpret_cast<void**>(&api.get_lobby_data)},
+        Binding{"SteamAPI_ISteamMatchmaking_SetLobbyJoinable",
+                reinterpret_cast<void**>(&api.set_lobby_joinable)},
+        Binding{"SteamAPI_ISteamMatchmaking_LeaveLobby",
+                reinterpret_cast<void**>(&api.leave_lobby)},
         Binding{"SteamAPI_SteamUserStats_v013", reinterpret_cast<void**>(&api.user_stats)},
         Binding{"SteamAPI_ISteamUserStats_SetAchievement",
                 reinterpret_cast<void**>(&api.set_achievement)},
@@ -462,6 +486,27 @@ struct SteamNetworkingRuntime::Impl final {
      * callback objects are unavailable and connection events are read
      * straight from Steam's queue.
      */
+    /** Bytes of a completed asynchronous call, keyed by its handle. */
+    std::mutex results_mutex;
+    std::map<SteamAPICall_t, std::vector<unsigned char>> call_results;
+    std::set<SteamAPICall_t> awaited_calls;
+
+    void await_call(SteamAPICall_t call) {
+        const std::scoped_lock lock{results_mutex};
+        awaited_calls.insert(call);
+    }
+
+    /** Takes the result if it has landed; nullopt while the call is in flight. */
+    [[nodiscard]] std::optional<std::vector<unsigned char>> take_call_result(SteamAPICall_t call) {
+        const std::scoped_lock lock{results_mutex};
+        const auto found = call_results.find(call);
+        if (found == call_results.end()) return std::nullopt;
+        auto bytes = std::move(found->second);
+        call_results.erase(found);
+        awaited_calls.erase(call);
+        return bytes;
+    }
+
     void dispatch_callbacks() {
         api.dispatch_run_frame(pipe);
         CallbackMsg_t message{};
@@ -471,9 +516,38 @@ struct SteamNetworkingRuntime::Impl final {
                 StatusRouter::instance().dispatch(
                     *reinterpret_cast<SteamNetConnectionStatusChangedCallback_t*>(
                         message.m_pubParam));
+            } else if (message.m_iCallback == SteamAPICallCompleted_t::k_iCallback &&
+                       message.m_pubParam != nullptr) {
+                // An asynchronous call answers here rather than through a
+                // callback, and its bytes must be read before the message is
+                // freed. Without this every Steam call that returns a handle,
+                // such as creating a lobby, never completes.
+                collect_call_result(
+                    *reinterpret_cast<SteamAPICallCompleted_t*>(message.m_pubParam));
             }
             api.dispatch_free(pipe);
         }
+    }
+
+    void collect_call_result(const SteamAPICallCompleted_t& completed) {
+        if (api.dispatch_call_result == nullptr) return;
+        {
+            const std::scoped_lock lock{results_mutex};
+            if (!awaited_calls.contains(completed.m_hAsyncCall)) return;
+        }
+        std::vector<unsigned char> bytes(static_cast<std::size_t>(completed.m_cubParam));
+        bool failed{};
+        if (!api.dispatch_call_result(pipe, completed.m_hAsyncCall, bytes.data(),
+                                      static_cast<int>(completed.m_cubParam),
+                                      completed.m_iCallback, &failed) ||
+            failed) {
+            core::diagnostic("steam", "an asynchronous Steam call failed");
+            const std::scoped_lock lock{results_mutex};
+            awaited_calls.erase(completed.m_hAsyncCall);
+            return;
+        }
+        const std::scoped_lock lock{results_mutex};
+        call_results.emplace(completed.m_hAsyncCall, std::move(bytes));
     }
 
     void run(std::stop_token stop) {
@@ -618,6 +692,61 @@ void SteamNetworkingRuntime::clear_presence() noexcept {
     if (impl_ == nullptr || impl_->api.clear_rich_presence == nullptr) return;
     if (auto* const friends = impl_->api.friends(); friends != nullptr) {
         impl_->api.clear_rich_presence(friends);
+    }
+}
+
+std::uint64_t SteamNetworkingRuntime::create_lobby(const std::string& status,
+                                                  const std::string& connect,
+                                                  int maximum_members,
+                                                  std::chrono::seconds timeout) {
+    if (impl_ == nullptr || impl_->api.create_lobby == nullptr) return 0U;
+    auto* const matchmaking = impl_->api.matchmaking();
+    if (matchmaking == nullptr) return 0U;
+    // Friends-only: the match is reached through the friends list, and a public
+    // lobby would advertise a player's machine to everyone running the app id.
+    const auto call = impl_->api.create_lobby(matchmaking, k_ELobbyTypeFriendsOnly,
+                                              maximum_members);
+    if (call == 0) return 0U;
+    impl_->await_call(call);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (const auto bytes = impl_->take_call_result(call); bytes.has_value()) {
+            if (bytes->size() < sizeof(LobbyCreated_t)) return 0U;
+            LobbyCreated_t created{};
+            std::memcpy(&created, bytes->data(), sizeof(created));
+            if (created.m_eResult != k_EResultOK) {
+                core::diagnostic("steam", "Steam refused the lobby, result " +
+                                              std::to_string(static_cast<int>(created.m_eResult)));
+                return 0U;
+            }
+            const std::uint64_t lobby{created.m_ulSteamIDLobby};
+            static_cast<void>(impl_->api.set_lobby_data(matchmaking, lobby, "status",
+                                                        status.c_str()));
+            static_cast<void>(impl_->api.set_lobby_data(matchmaking, lobby, "connect",
+                                                        connect.c_str()));
+            core::diagnostic("steam", "lobby " + std::to_string(lobby) + " open for friends: " +
+                                          status);
+            return lobby;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    core::diagnostic("steam", "Steam did not answer the lobby request in time");
+    return 0U;
+}
+
+std::string SteamNetworkingRuntime::lobby_data(std::uint64_t lobby,
+                                               const std::string& key) const {
+    if (impl_ == nullptr || impl_->api.get_lobby_data == nullptr || lobby == 0U) return {};
+    auto* const matchmaking = impl_->api.matchmaking();
+    if (matchmaking == nullptr) return {};
+    const auto* const value = impl_->api.get_lobby_data(matchmaking, lobby, key.c_str());
+    return value == nullptr ? std::string{} : std::string{value};
+}
+
+void SteamNetworkingRuntime::leave_lobby(std::uint64_t lobby) noexcept {
+    if (impl_ == nullptr || impl_->api.leave_lobby == nullptr || lobby == 0U) return;
+    if (auto* const matchmaking = impl_->api.matchmaking(); matchmaking != nullptr) {
+        impl_->api.leave_lobby(matchmaking, lobby);
     }
 }
 

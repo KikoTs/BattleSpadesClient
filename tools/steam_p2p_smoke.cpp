@@ -157,6 +157,19 @@ private:
         "Checking the Steam transport", "steam:" + std::to_string(runtime.steam_id()));
     std::printf("presence : %s\n", presence ? "published and cleared" : "refused");
     runtime.clear_presence();
+    // A lobby answers asynchronously, so creating one and reading a key back
+    // proves the call-result dispatch works. One account is enough.
+    const auto connect = "steam:" + std::to_string(runtime.steam_id());
+    if (const auto lobby = runtime.create_lobby("Checking the lobby", connect, 2);
+        lobby != 0U) {
+        const auto stored = runtime.lobby_data(lobby, "connect");
+        std::printf("lobby    : %llu, connect key reads %s\n",
+                    static_cast<unsigned long long>(lobby),
+                    stored == connect ? "back correctly" : "WRONG");
+        runtime.leave_lobby(lobby);
+    } else {
+        std::printf("lobby    : refused or timed out\n");
+    }
     return &runtime;
 }
 } // namespace
