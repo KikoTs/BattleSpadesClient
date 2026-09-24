@@ -1072,6 +1072,34 @@ struct SteamP2PHost::Impl final {
                     k_nSteamNetworkingSend_Unreliable | k_nSteamNetworkingSend_NoNagle, nullptr));
             }
         }
+        reap_idle_clients(api);
+    }
+
+    /**
+     * Release a player Steam never reported as gone.
+     *
+     * last_seen was recorded on every datagram and read by nothing, and
+     * client_idle_timeout was configuration that did nothing. A connection
+     * Steam leaves half open therefore kept its loopback socket and its slot
+     * for as long as the match ran, and enough of them turned a host with
+     * nobody in it into one that answers "server full".
+     *
+     * Called with the lock already held, so it closes and erases in place
+     * rather than going through drop(), which takes the lock itself.
+     */
+    void reap_idle_clients(SteamApi& api) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto stale = std::ranges::remove_if(clients, [&](const Client& client) {
+            if (now - client.last_seen < config.client_idle_timeout) return false;
+            close_socket(client.socket);
+            static_cast<void>(
+                api.close_connection(api.sockets(), client.connection, 0, "idle", false));
+            core::diagnostic("steam", "dropped a player silent for " +
+                                          std::to_string(config.client_idle_timeout.count()) +
+                                          " seconds");
+            return true;
+        });
+        clients.erase(stale.begin(), stale.end());
     }
 };
 

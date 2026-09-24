@@ -211,7 +211,12 @@ int main(int argc, char** argv) {
         platform::SteamP2PHost host;
         platform::SteamP2PHostConfig config;
         config.local_server_port = echo_port;
-        if (argc > 2 && std::string{argv[2]} == "local") config.direct_listen_port = 27099U;
+        if (argc > 2 && std::string{argv[2]} == "local") {
+            config.direct_listen_port = 27099U;
+            // Short enough to watch a player that died without closing get
+            // released, which a clean disconnect never exercises.
+            config.client_idle_timeout = 5s;
+        }
         std::string error;
         if (!host.start(runtime, config, error)) {
             std::printf("host failed: %s\n", error.c_str());
