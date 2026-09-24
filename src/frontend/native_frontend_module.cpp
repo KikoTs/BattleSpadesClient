@@ -3322,8 +3322,19 @@ struct NativeFrontendModule::Impl final {
     }
 
     /** Join a Steam host; returns the loopback port Protocol 168 connects to. */
+    /**
+     * ``route_allowance`` bounds how long Steam may look for a route.
+     *
+     * A listing that also carries an AoSPlay endpoint gets a short allowance,
+     * because there is somewhere else to go. That matters for a player on
+     * Spacewar dialling a host attached as Ace of Spades: peer-to-peer is per
+     * application id, so no route exists and waiting the full window only
+     * delays the relay that would have worked.
+     */
     [[nodiscard]] std::uint16_t start_steam_client(std::uint64_t host_steam_id,
-                                                   std::string& error) {
+                                                   std::string& error,
+                                                   std::chrono::seconds route_allowance =
+                                                       std::chrono::seconds{30}) {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_client.stop();
         if (!ensure_steam_runtime()) {
@@ -3336,6 +3347,7 @@ struct NativeFrontendModule::Impl final {
         static_cast<void>(steam_runtime.wait_for_relays(std::chrono::seconds{15}));
         platform::SteamP2PClientConfig client_config;
         client_config.host_steam_id = host_steam_id;
+        client_config.connect_timeout = route_allowance;
         if (!steam_client.start(steam_runtime, std::move(client_config), error)) {
             core::diagnostic("steam", "joining " + std::to_string(host_steam_id) +
                                           " failed: " + error);
@@ -8410,7 +8422,15 @@ struct NativeFrontendModule::Impl final {
         auto port = request.port;
         if (request.steam_host_id != 0U && !request_uses_steam_tunnel(request)) {
             std::string steam_error;
-            if (const auto tunnel = start_steam_client(request.steam_host_id, steam_error);
+            // Eight seconds when the listing offers a relay as well: that is
+            // long enough for a route that exists and short enough that a
+            // player whose application id cannot reach this host is not left
+            // waiting before the relay takes over.
+            const auto allowance = (request.host.empty() || request.port == 0U)
+                                       ? std::chrono::seconds{30}
+                                       : std::chrono::seconds{8};
+            if (const auto tunnel =
+                    start_steam_client(request.steam_host_id, steam_error, allowance);
                 tunnel != 0U) {
                 host = "127.0.0.1";
                 port = tunnel;

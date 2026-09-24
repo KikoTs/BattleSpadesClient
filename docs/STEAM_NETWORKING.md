@@ -107,6 +107,18 @@ The master must store and return `steam_host_id` from the lobby publish for a
 browsed match to offer the Steam route; the client sends it and ignores its
 absence.
 
+A player attached as Spacewar cannot reach a host attached as Ace of Spades at
+all, because peer-to-peer is per application id and no route between the two
+exists. The AoSPlay relay is what carries that player, and it is the reason the
+shipping path keeps both doors open: a host publishes its relay lobby as well as
+its Steam socket, and `--steam-only` is for isolating the Steam path in a test,
+not for a public match.
+
+Because that player's Steam attempt can only fail, a join that has an AoSPlay
+endpoint to fall back on gives Steam eight seconds to find a route rather than
+thirty. Thirty is kept for a match reachable through Steam alone, where waiting
+is better than failing.
+
 ## Statistics and achievements
 
 Both live in the schema of the application id the process attached as, so
