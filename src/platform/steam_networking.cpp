@@ -1,6 +1,7 @@
 #include "battlespades/platform/steam_networking.hpp"
 
 #include "battlespades/core/diagnostics.hpp"
+#include "battlespades/platform/steam_achievements.generated.hpp"
 
 #include <steam/steam_api.h>
 
@@ -752,6 +753,14 @@ void SteamNetworkingRuntime::leave_lobby(std::uint64_t lobby) noexcept {
 
 bool SteamNetworkingRuntime::unlock_achievement(const std::string& name) {
     if (!tracking_enabled() || impl_->api.set_achievement == nullptr) return false;
+    // The retail application defines the achievements, so a name outside its
+    // catalogue can only be a mistake on our side. Saying so here beats a
+    // silent refusal from Steam that looks identical to a network problem.
+    if (!is_retail_achievement(name)) {
+        core::diagnostic("steam", "refusing to unlock " + name +
+                                      ", which the retail achievement list does not define");
+        return false;
+    }
     auto* const stats = impl_->api.user_stats();
     if (stats == nullptr) return false;
     // An achievement must exist in the attached application's schema, which
