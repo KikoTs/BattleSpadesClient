@@ -4104,9 +4104,55 @@ struct NativeFrontendModule::Impl final {
         identity_operation = operation;
     }
 
+    /**
+     * A Steam account for this player, from the retail bridge or the runtime.
+     *
+     * The bridge speaks for the retail application and is preferred, but it
+     * exists only on Windows; the transport's runtime knows the same persona and
+     * id everywhere, so a Mac player is no longer told Steam is unavailable
+     * while their friends list is working.
+     */
+    [[nodiscard]] std::optional<network::RevivalAccount> steam_account() const {
+        std::string persona;
+        std::uint64_t steam_id{};
+        if (native_steam != nullptr && native_steam->ready() &&
+            native_steam->identity() != nullptr) {
+            persona = native_steam->identity()->persona_name;
+            steam_id = native_steam->identity()->steam_id;
+        }
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_id == 0U && steam_runtime.ready()) {
+            persona = steam_runtime.persona_name();
+            steam_id = steam_runtime.steam_id();
+        }
+#endif
+        if (steam_id == 0U) return std::nullopt;
+        // Protocol 168 carries a short name, and a persona may be long, or
+        // emoji, so it is cut on a code point rather than mid-character.
+        auto nickname = core::utf8_code_point_prefix(persona, 15U);
+        while (nickname.size() > 31U) {
+            const auto count = std::max<std::size_t>(1U, nickname.size() / 4U);
+            nickname = core::utf8_code_point_prefix(nickname, count - 1U);
+        }
+        if (nickname.empty()) nickname = "SteamPlayer";
+        network::RevivalAccount account;
+        account.public_id = "steam:" + std::to_string(steam_id);
+        account.legacy_id = std::to_string(steam_id);
+        account.nickname = std::move(nickname);
+        account.account_type = "steam";
+        account.identity_type = "steam";
+        account.ranked_eligible = true;
+        account.offline = false;
+        return account;
+    }
+
     void begin_identity_bootstrap() {
         identity_menu.reset_form();
-        identity_menu.set_steam_available(native_steam != nullptr && native_steam->ready());
+        auto steam_ready = native_steam != nullptr && native_steam->ready();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_ready = steam_ready || steam_runtime.ready();
+#endif
+        identity_menu.set_steam_available(steam_ready);
         authenticated_identity = false;
         enter_main_menu_pending = false;
         if (const auto cached = identity_service->cached_account(); cached.has_value()) {
@@ -4118,6 +4164,15 @@ struct NativeFrontendModule::Impl final {
             } else {
                 static_cast<void>(window.set_text_input_enabled(true));
             }
+        } else if (const auto account = steam_account(); account.has_value()) {
+            // Steam already says who this player is, so a first run has nothing
+            // to ask them. Anyone who wants a different identity can sign out
+            // and use the form.
+            core::diagnostic("identity", "signing in as " + account->nickname +
+                                             " because Steam is authorized and no profile "
+                                             "is stored");
+            apply_identity(*account);
+            request_main_menu_after_identity();
         } else {
             static_cast<void>(window.set_text_input_enabled(true));
         }
@@ -4132,33 +4187,15 @@ struct NativeFrontendModule::Impl final {
             launch_identity_operation(IdentityOperation::register_account);
             break;
         case IdentityAction::steam:
-            if (native_steam == nullptr || !native_steam->ready() ||
-                native_steam->identity() == nullptr) {
-                identity_menu.set_error(
-                    native_steam == nullptr || native_steam->last_error().empty()
-                        ? "Native Steam is unavailable. Import the retail game and start Steam."
-                        : std::string{native_steam->last_error()});
-                break;
-            }
-            {
-                const auto& steam = *native_steam->identity();
-                auto nickname = core::utf8_code_point_prefix(steam.persona_name, 15U);
-                while (nickname.size() > 31U) {
-                    const auto count = std::max<std::size_t>(1U, nickname.size() / 4U);
-                    nickname = core::utf8_code_point_prefix(nickname, count - 1U);
-                }
-                if (nickname.empty()) nickname = "SteamPlayer";
-                network::RevivalAccount account;
-                account.public_id = "steam:" + std::to_string(steam.steam_id);
-                account.legacy_id = std::to_string(steam.steam_id);
-                account.nickname = std::move(nickname);
-                account.account_type = "steam";
-                account.identity_type = "steam";
-                account.ranked_eligible = true;
-                account.offline = false;
-                apply_identity(account);
+            if (const auto account = steam_account(); account.has_value()) {
+                apply_identity(*account);
                 identity_menu.reset_form();
                 request_main_menu_after_identity();
+            } else {
+                identity_menu.set_error(
+                    native_steam != nullptr && !native_steam->last_error().empty()
+                        ? std::string{native_steam->last_error()}
+                        : "Steam is unavailable. Start Steam and try again.");
             }
             break;
         case IdentityAction::guest:
@@ -21444,6 +21481,10 @@ bool NativeFrontendModule::start() {
                     *impl_->config.debug_ui == "scoreboard");
             }
         } else {
+            // Steam must be attached first: the identity decision asks it who
+            // this player is, and a first run with Steam authorized should not
+            // stop at a form it can already fill in.
+            impl_->attach_steam_for_presence();
             impl_->begin_identity_bootstrap();
         }
         impl_->reset_create_match_page_transition();
@@ -21464,8 +21505,9 @@ bool NativeFrontendModule::start() {
         impl_->window_suspended = false;
         impl_->suppress_next_settings_close = false;
         impl_->last_error.clear();
-        // Attach to Steam while the boot loader runs so the player shows as
-        // in-game and a later match reuses the session instead of waiting.
+        // Harmless when the identity path above already attached: the runtime
+        // starts once and reports itself ready thereafter. This covers the
+        // debug-ui launches, which skip identity entirely.
         impl_->attach_steam_for_presence();
         if (impl_->config.startup_endpoint.has_value()) {
             // steam:<id> joins a player-hosted match over Valve's relays, so a
