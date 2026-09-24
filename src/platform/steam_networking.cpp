@@ -462,11 +462,16 @@ void S_CALLTYPE on_connection_status_changed(SteamNetConnectionStatusChangedCall
  * that both have to set up relay sessions were seen accepted on the host at the
  * very moment the joiner gave up; give route finding half a minute.
  */
-[[nodiscard]] SteamNetworkingConfigValue_t initial_timeout_option() {
+[[nodiscard]] SteamNetworkingConfigValue_t initial_timeout_option(std::chrono::seconds allowance) {
     SteamNetworkingConfigValue_t option{};
-    option.SetInt32(k_ESteamNetworkingConfig_TimeoutInitial, 30'000);
+    option.SetInt32(k_ESteamNetworkingConfig_TimeoutInitial,
+                    static_cast<std::int32_t>(
+                        std::chrono::milliseconds{allowance}.count()));
     return option;
 }
+
+/** What a listen socket allows a connecting peer, which has no config of its own. */
+constexpr std::chrono::seconds host_route_allowance{30};
 
 [[nodiscard]] SteamNetworkingConfigValue_t status_callback_option() {
     SteamNetworkingConfigValue_t option{};
@@ -1129,7 +1134,8 @@ bool SteamP2PHost::start(SteamNetworkingRuntime& runtime, SteamP2PHostConfig con
     impl->config = config;
     auto& api = impl->runtime->api;
     const std::array<SteamNetworkingConfigValue_t, 2> options{status_callback_option(),
-                                                               initial_timeout_option()};
+                                                               initial_timeout_option(
+                                                                   host_route_allowance)};
     if (config.direct_listen_port != 0U) {
         SteamNetworkingIPAddr address{};
         address.Clear();
@@ -1359,7 +1365,8 @@ bool SteamP2PClient::start(SteamNetworkingRuntime& runtime, SteamP2PClientConfig
     }
     auto& api = impl->runtime->api;
     const std::array<SteamNetworkingConfigValue_t, 2> options{status_callback_option(),
-                                                               initial_timeout_option()};
+                                                               initial_timeout_option(
+                                                                   config.connect_timeout)};
     if (config.direct_connect_port != 0U) {
         SteamNetworkingIPAddr address{};
         address.SetIPv4(0x7F000001U, config.direct_connect_port);

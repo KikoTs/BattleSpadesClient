@@ -235,7 +235,15 @@ struct SteamP2PClientConfig final {
     std::uint64_t host_steam_id{};
     /** Must match the host's; see SteamP2PHostConfig::virtual_port. */
     int virtual_port{};
-    std::chrono::seconds connect_timeout{20};
+    /**
+     * How long Steam may take to find a route before giving up.
+     *
+     * Thirty seconds rather than Steam's default ten: two peers that both have
+     * to set up relay sessions were once seen accepted on the host at the very
+     * moment the joiner gave up. This is passed as the connection's initial
+     * timeout, so lowering it shortens that window again.
+     */
+    std::chrono::seconds connect_timeout{30};
     /** Loopback port of a direct_listen_port host; zero keeps the relay path. */
     std::uint16_t direct_connect_port{};
 };

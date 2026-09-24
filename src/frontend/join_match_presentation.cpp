@@ -253,7 +253,14 @@ void validate_context(ui::PixelExtent window, std::uint16_t opacity) {
 }
 
 [[nodiscard]] std::string players_label(const ServerBrowserEntry& server) {
-    return std::to_string(server.players) + '/' + std::to_string(server.maximum_players);
+    // `players` counts bots, so a server filled with them reads as full and a
+    // player cannot tell whether anybody is actually there. Humans come first,
+    // with the bots in brackets when there are any.
+    const auto humans = (std::min)(server.human_players, server.players);
+    const auto bots = static_cast<std::uint16_t>(server.players - humans);
+    auto label = std::to_string(humans) + '/' + std::to_string(server.maximum_players);
+    if (bots != 0U) label += " +" + std::to_string(bots);
+    return label;
 }
 
 [[nodiscard]] std::size_t

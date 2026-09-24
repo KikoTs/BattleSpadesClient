@@ -8099,6 +8099,7 @@ struct NativeFrontendModule::Impl final {
         entry.players = source.players;
         entry.maximum_players = source.maximum_players;
         entry.steam_host_id = source.steam_host_id;
+        entry.human_players = source.human_players;
         entry.classic = mode.classic;
         entry.official = source.official;
         entry.local = source.local;

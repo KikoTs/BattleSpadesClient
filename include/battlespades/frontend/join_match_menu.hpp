@@ -147,6 +147,14 @@ struct ServerBrowserEntry final {
     bool identity_ticket{};
     /** The host's Steam id when the listing had one; zero means relay only. */
     std::uint64_t steam_host_id{};
+    /**
+     * Players who are not bots, when the listing separates them.
+     *
+     * `players` counts bots, so a bot-filled server reads as full and never
+     * appears to change. Defaults to `players` for a listing that says nothing,
+     * which is the old behaviour rather than a claim of zero humans.
+     */
+    std::uint16_t human_players{};
 
     [[nodiscard]] std::string identifier() const;
 };
