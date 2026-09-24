@@ -145,6 +145,11 @@ private:
     std::printf("account  : %s (%llu)\nrelays   : %s (%s)\n", runtime.persona_name().c_str(),
                 static_cast<unsigned long long>(runtime.steam_id()),
                 relays.available ? "ready" : "unavailable", relays.detail.c_str());
+    // Statistics and achievements belong to the attached application's schema,
+    // so Spacewar must report nothing. Printing both makes the gate checkable
+    // rather than assumed.
+    std::printf("app      : %u\ntracking : %s\n", runtime.app_id(),
+                runtime.tracking_enabled() ? "enabled" : "disabled (attached as Spacewar)");
     return &runtime;
 }
 } // namespace

@@ -81,6 +81,23 @@ public:
      */
     [[nodiscard]] bool publish_presence(const std::string& status, const std::string& connect);
     void clear_presence() noexcept;
+    /**
+     * Statistics and achievements for the attached application.
+     *
+     * Every one of these is a no-op returning false unless tracking_enabled().
+     * A name must exist in that application's schema, which is defined by
+     * whoever owns the id, so unlock_achievement() reports a refusal rather
+     * than pretending the name was written.
+     */
+    [[nodiscard]] bool unlock_achievement(const std::string& name);
+    /** Shows Steam's progress toast; Steam ignores a completed target. */
+    [[nodiscard]] bool report_achievement_progress(const std::string& name,
+                                                   std::uint32_t progress,
+                                                   std::uint32_t target);
+    [[nodiscard]] bool set_statistic(const std::string& name, std::int32_t value);
+    [[nodiscard]] std::optional<std::int32_t> statistic(const std::string& name) const;
+    /** Sends everything set since the last store; unlocks store themselves. */
+    [[nodiscard]] bool store_statistics();
     [[nodiscard]] SteamRelayStatus relay_status() const;
     /**
      * Block until the relay network is usable.

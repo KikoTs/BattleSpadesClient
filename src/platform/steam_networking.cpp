@@ -172,6 +172,13 @@ struct SteamApi final {
     const char*(S_CALLTYPE* persona_name)(ISteamFriends*){};
     bool(S_CALLTYPE* set_rich_presence)(ISteamFriends*, const char*, const char*){};
     void(S_CALLTYPE* clear_rich_presence)(ISteamFriends*){};
+    ISteamUserStats*(S_CALLTYPE* user_stats)(){};
+    bool(S_CALLTYPE* set_achievement)(ISteamUserStats*, const char*){};
+    bool(S_CALLTYPE* get_achievement)(ISteamUserStats*, const char*, bool*){};
+    bool(S_CALLTYPE* set_stat_int32)(ISteamUserStats*, const char*, int32){};
+    bool(S_CALLTYPE* get_stat_int32)(ISteamUserStats*, const char*, int32*){};
+    bool(S_CALLTYPE* indicate_progress)(ISteamUserStats*, const char*, uint32, uint32){};
+    bool(S_CALLTYPE* store_stats)(ISteamUserStats*){};
 };
 
 [[nodiscard]] void* library_symbol(void* handle, const char* name) noexcept {
@@ -285,6 +292,19 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.set_rich_presence)},
         Binding{"SteamAPI_ISteamFriends_ClearRichPresence",
                 reinterpret_cast<void**>(&api.clear_rich_presence)},
+        Binding{"SteamAPI_SteamUserStats_v013", reinterpret_cast<void**>(&api.user_stats)},
+        Binding{"SteamAPI_ISteamUserStats_SetAchievement",
+                reinterpret_cast<void**>(&api.set_achievement)},
+        Binding{"SteamAPI_ISteamUserStats_GetAchievement",
+                reinterpret_cast<void**>(&api.get_achievement)},
+        Binding{"SteamAPI_ISteamUserStats_SetStatInt32",
+                reinterpret_cast<void**>(&api.set_stat_int32)},
+        Binding{"SteamAPI_ISteamUserStats_GetStatInt32",
+                reinterpret_cast<void**>(&api.get_stat_int32)},
+        Binding{"SteamAPI_ISteamUserStats_IndicateAchievementProgress",
+                reinterpret_cast<void**>(&api.indicate_progress)},
+        Binding{"SteamAPI_ISteamUserStats_StoreStats",
+                reinterpret_cast<void**>(&api.store_stats)},
         Binding{"SteamAPI_ISteamNetworkingUtils_InitRelayNetworkAccess",
                 reinterpret_cast<void**>(&api.init_relay)},
         Binding{"SteamAPI_ISteamNetworkingUtils_GetRelayNetworkStatus",
@@ -599,6 +619,50 @@ void SteamNetworkingRuntime::clear_presence() noexcept {
     if (auto* const friends = impl_->api.friends(); friends != nullptr) {
         impl_->api.clear_rich_presence(friends);
     }
+}
+
+bool SteamNetworkingRuntime::unlock_achievement(const std::string& name) {
+    if (!tracking_enabled() || impl_->api.set_achievement == nullptr) return false;
+    auto* const stats = impl_->api.user_stats();
+    if (stats == nullptr) return false;
+    // An achievement must exist in the attached application's schema, which
+    // belongs to whoever owns that id. Steam refuses a name it does not know,
+    // so a refusal here says the schema lacks it, not that the call is wrong.
+    if (!impl_->api.set_achievement(stats, name.c_str())) {
+        core::diagnostic("steam", "Steam does not know the achievement " + name);
+        return false;
+    }
+    return store_statistics();
+}
+
+bool SteamNetworkingRuntime::report_achievement_progress(const std::string& name,
+                                                        std::uint32_t progress,
+                                                        std::uint32_t target) {
+    if (!tracking_enabled() || impl_->api.indicate_progress == nullptr) return false;
+    auto* const stats = impl_->api.user_stats();
+    if (stats == nullptr || target == 0U || progress >= target) return false;
+    return impl_->api.indicate_progress(stats, name.c_str(), progress, target);
+}
+
+bool SteamNetworkingRuntime::set_statistic(const std::string& name, std::int32_t value) {
+    if (!tracking_enabled() || impl_->api.set_stat_int32 == nullptr) return false;
+    auto* const stats = impl_->api.user_stats();
+    return stats != nullptr && impl_->api.set_stat_int32(stats, name.c_str(), value);
+}
+
+std::optional<std::int32_t> SteamNetworkingRuntime::statistic(const std::string& name) const {
+    if (!tracking_enabled() || impl_->api.get_stat_int32 == nullptr) return std::nullopt;
+    auto* const stats = impl_->api.user_stats();
+    if (stats == nullptr) return std::nullopt;
+    int32 value{};
+    if (!impl_->api.get_stat_int32(stats, name.c_str(), &value)) return std::nullopt;
+    return static_cast<std::int32_t>(value);
+}
+
+bool SteamNetworkingRuntime::store_statistics() {
+    if (!tracking_enabled() || impl_->api.store_stats == nullptr) return false;
+    auto* const stats = impl_->api.user_stats();
+    return stats != nullptr && impl_->api.store_stats(stats);
 }
 
 SteamRelayStatus SteamNetworkingRuntime::relay_status() const {
