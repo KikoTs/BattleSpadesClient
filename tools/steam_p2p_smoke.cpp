@@ -166,6 +166,25 @@ private:
         std::printf("lobby    : %llu, connect key reads %s\n",
                     static_cast<unsigned long long>(lobby),
                     stored == connect ? "back correctly" : "WRONG");
+        // Listing must find the lobby this account just opened, which is what a
+        // friend's browser does.
+        const auto listings = runtime.list_lobbies();
+        const auto mine = std::ranges::find_if(listings, [lobby](const auto& listing) {
+            return listing.lobby_id == lobby;
+        });
+        if (mine != listings.end()) {
+            std::printf("list     : %zu lobbies, ours found with status \"%s\"\n",
+                        listings.size(), mine->status.c_str());
+        } else {
+            std::printf("list     : %zu lobbies, ours NOT among them\n", listings.size());
+        }
+        // The friends route is the one that can see a friends-only host.
+        const auto friends = runtime.friend_matches();
+        std::printf("friends  : %zu in a joinable match\n", friends.size());
+        for (const auto& match : friends) {
+            std::printf("           %s -> %s (%s)\n", match.persona.c_str(),
+                        match.connect.c_str(), match.status.c_str());
+        }
         runtime.leave_lobby(lobby);
     } else {
         std::printf("lobby    : refused or timed out\n");

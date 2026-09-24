@@ -184,6 +184,15 @@ struct SteamApi final {
     const char*(S_CALLTYPE* get_lobby_data)(ISteamMatchmaking*, uint64, const char*){};
     bool(S_CALLTYPE* set_lobby_joinable)(ISteamMatchmaking*, uint64, bool){};
     void(S_CALLTYPE* leave_lobby)(ISteamMatchmaking*, uint64){};
+    SteamAPICall_t(S_CALLTYPE* request_lobby_list)(ISteamMatchmaking*){};
+    uint64(S_CALLTYPE* lobby_by_index)(ISteamMatchmaking*, int){};
+    void(S_CALLTYPE* filter_result_count)(ISteamMatchmaking*, int){};
+    void(S_CALLTYPE* filter_distance)(ISteamMatchmaking*, ELobbyDistanceFilter){};
+    int(S_CALLTYPE* lobby_members)(ISteamMatchmaking*, uint64){};
+    int(S_CALLTYPE* friend_count)(ISteamFriends*, int){};
+    uint64(S_CALLTYPE* friend_by_index)(ISteamFriends*, int, int){};
+    const char*(S_CALLTYPE* friend_persona)(ISteamFriends*, uint64){};
+    const char*(S_CALLTYPE* friend_presence)(ISteamFriends*, uint64, const char*){};
     ISteamUserStats*(S_CALLTYPE* user_stats)(){};
     bool(S_CALLTYPE* set_achievement)(ISteamUserStats*, const char*){};
     bool(S_CALLTYPE* get_achievement)(ISteamUserStats*, const char*, bool*){};
@@ -317,6 +326,24 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.set_lobby_joinable)},
         Binding{"SteamAPI_ISteamMatchmaking_LeaveLobby",
                 reinterpret_cast<void**>(&api.leave_lobby)},
+        Binding{"SteamAPI_ISteamMatchmaking_RequestLobbyList",
+                reinterpret_cast<void**>(&api.request_lobby_list)},
+        Binding{"SteamAPI_ISteamMatchmaking_GetLobbyByIndex",
+                reinterpret_cast<void**>(&api.lobby_by_index)},
+        Binding{"SteamAPI_ISteamMatchmaking_AddRequestLobbyListResultCountFilter",
+                reinterpret_cast<void**>(&api.filter_result_count)},
+        Binding{"SteamAPI_ISteamMatchmaking_AddRequestLobbyListDistanceFilter",
+                reinterpret_cast<void**>(&api.filter_distance)},
+        Binding{"SteamAPI_ISteamMatchmaking_GetNumLobbyMembers",
+                reinterpret_cast<void**>(&api.lobby_members)},
+        Binding{"SteamAPI_ISteamFriends_GetFriendCount",
+                reinterpret_cast<void**>(&api.friend_count)},
+        Binding{"SteamAPI_ISteamFriends_GetFriendByIndex",
+                reinterpret_cast<void**>(&api.friend_by_index)},
+        Binding{"SteamAPI_ISteamFriends_GetFriendPersonaName",
+                reinterpret_cast<void**>(&api.friend_persona)},
+        Binding{"SteamAPI_ISteamFriends_GetFriendRichPresence",
+                reinterpret_cast<void**>(&api.friend_presence)},
         Binding{"SteamAPI_SteamUserStats_v013", reinterpret_cast<void**>(&api.user_stats)},
         Binding{"SteamAPI_ISteamUserStats_SetAchievement",
                 reinterpret_cast<void**>(&api.set_achievement)},
@@ -733,6 +760,82 @@ std::uint64_t SteamNetworkingRuntime::create_lobby(const std::string& status,
     }
     core::diagnostic("steam", "Steam did not answer the lobby request in time");
     return 0U;
+}
+
+std::vector<SteamFriendMatch> SteamNetworkingRuntime::friend_matches() const {
+    std::vector<SteamFriendMatch> matches;
+    if (impl_ == nullptr || impl_->api.friend_count == nullptr) return matches;
+    auto* const friends = impl_->api.friends();
+    if (friends == nullptr) return matches;
+    // k_EFriendFlagImmediate is the friends list proper, not blocked users or
+    // people who merely share a chat.
+    const auto count = impl_->api.friend_count(friends, k_EFriendFlagImmediate);
+    for (int index{}; index < count; ++index) {
+        const std::uint64_t id{impl_->api.friend_by_index(friends, index,
+                                                          k_EFriendFlagImmediate)};
+        if (id == 0U) continue;
+        // A friend's "connect" value is what Steam would hand us if we clicked
+        // Join on them, so its presence is what makes a match joinable. Steam
+        // only serves rich presence for friends running the same application.
+        const auto* const connect = impl_->api.friend_presence(friends, id, "connect");
+        if (connect == nullptr || *connect == '\0') continue;
+        SteamFriendMatch match;
+        match.steam_id = id;
+        match.connect = connect;
+        if (const auto* const status = impl_->api.friend_presence(friends, id, "status");
+            status != nullptr) {
+            match.status = status;
+        }
+        if (const auto* const persona = impl_->api.friend_persona(friends, id);
+            persona != nullptr) {
+            match.persona = persona;
+        }
+        matches.push_back(std::move(match));
+    }
+    core::diagnostic("steam", "friends in a joinable match: " + std::to_string(matches.size()) +
+                                  " of " + std::to_string(count));
+    return matches;
+}
+
+std::vector<SteamLobbyListing> SteamNetworkingRuntime::list_lobbies(
+    int maximum, std::chrono::seconds timeout) {
+    std::vector<SteamLobbyListing> listings;
+    if (impl_ == nullptr || impl_->api.request_lobby_list == nullptr) return listings;
+    auto* const matchmaking = impl_->api.matchmaking();
+    if (matchmaking == nullptr) return listings;
+    impl_->api.filter_result_count(matchmaking, maximum);
+    // Worldwide: the relays carry the traffic, so a distant host is reachable
+    // and its ping is the relay's, not the raw distance.
+    impl_->api.filter_distance(matchmaking, k_ELobbyDistanceFilterWorldwide);
+    const auto call = impl_->api.request_lobby_list(matchmaking);
+    if (call == 0) return listings;
+    impl_->await_call(call);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (const auto bytes = impl_->take_call_result(call); bytes.has_value()) {
+            if (bytes->size() < sizeof(LobbyMatchList_t)) return listings;
+            LobbyMatchList_t matched{};
+            std::memcpy(&matched, bytes->data(), sizeof(matched));
+            const auto count = static_cast<int>(matched.m_nLobbiesMatching);
+            for (int index{}; index < count; ++index) {
+                const std::uint64_t lobby{impl_->api.lobby_by_index(matchmaking, index)};
+                if (lobby == 0U) continue;
+                SteamLobbyListing listing;
+                listing.lobby_id = lobby;
+                listing.status = lobby_data(lobby, "status");
+                listing.connect = lobby_data(lobby, "connect");
+                listing.members = impl_->api.lobby_members(matchmaking, lobby);
+                // A lobby with no connect value is not one of ours to join.
+                if (!listing.connect.empty()) listings.push_back(std::move(listing));
+            }
+            core::diagnostic("steam", "found " + std::to_string(listings.size()) +
+                                          " joinable lobbies of " + std::to_string(count));
+            return listings;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    core::diagnostic("steam", "Steam did not answer the lobby list in time");
+    return listings;
 }
 
 std::string SteamNetworkingRuntime::lobby_data(std::uint64_t lobby,

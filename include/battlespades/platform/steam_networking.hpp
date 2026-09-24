@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace battlespades::platform {
 
@@ -30,6 +31,26 @@ struct SteamNetworkingRuntimeConfig final {
     /** Usually the executable's directory, where packaged builds install it. */
     std::filesystem::path search_directory;
     std::chrono::seconds relay_timeout{20};
+};
+
+/** A friend in a match this player can join, read from their presence. */
+struct SteamFriendMatch final {
+    std::uint64_t steam_id{};
+    std::string persona;
+    /** The host's own line: map and mode. */
+    std::string status;
+    /** The address to dial, `steam:<id>`. */
+    std::string connect;
+};
+
+/** One friends-only lobby Steam offers, as the browser would show it. */
+struct SteamLobbyListing final {
+    std::uint64_t lobby_id{};
+    /** What the host published: map and mode, the friends-list line. */
+    std::string status;
+    /** The address to dial, `steam:<id>`, as rich presence spells it. */
+    std::string connect;
+    int members{};
 };
 
 /** Live relay-network state for the loader and diagnostics. */
@@ -105,6 +126,27 @@ public:
                                              int maximum_members = 24,
                                              std::chrono::seconds timeout =
                                                  std::chrono::seconds{10});
+    /**
+     * Friends who are in a match right now, with the address to join them.
+     *
+     * This is the list a player wants, and the one that works: Steam serves a
+     * friend's rich presence for anyone running the same application, so a
+     * friends-only host is visible here even though no lobby search can see it.
+     */
+    [[nodiscard]] std::vector<SteamFriendMatch> friend_matches() const;
+    /**
+     * The friends-only lobbies this account can see, newest offer first.
+     *
+     * Note that Steam's lobby search only returns public lobbies, so a
+     * friends-only match never appears here; friend_matches() is the route for
+     * those. Kept for a future public playlist.
+     *
+     * Only lobbies carrying a connect value are returned, because anything else
+     * is not a match of ours. Blocks briefly while Steam answers, as creating
+     * one does.
+     */
+    [[nodiscard]] std::vector<SteamLobbyListing> list_lobbies(
+        int maximum = 50, std::chrono::seconds timeout = std::chrono::seconds{10});
     [[nodiscard]] std::string lobby_data(std::uint64_t lobby, const std::string& key) const;
     void leave_lobby(std::uint64_t lobby) noexcept;
     [[nodiscard]] bool unlock_achievement(const std::string& name);
