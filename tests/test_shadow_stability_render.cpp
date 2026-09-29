@@ -127,6 +127,9 @@ int main(int argc, char** argv) {
         expect(!scene.upload_chunk(invalid) && !scene.set_world_model_mesh(1, invalid),
                "A partial mesh erased its resident replacement target");
         scene.clear_view_model();
+        // The observer below replaces the world view after submit, so the
+        // moving camera must not cull the models the observer looks at.
+        scene.set_model_culling(false);
         const std::array draws{render::WorldModelDraw{0}, render::WorldModelDraw{1}};
         const auto colour = bgfx::createTexture2D(size, size, false, 1, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_RT);
         const auto depth = bgfx::createTexture2D(size, size, false, 1, bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);

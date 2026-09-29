@@ -474,6 +474,95 @@ void only_timed_dynamite_gets_a_countdown_canvas() {
            "retail C4 is remote detonated and must never show a fuse canvas");
 }
 
+void objective_and_deployable_labels_follow_entity_update_3dtext() {
+    const Vec3 display{10.0, 20.0, 50.0};
+    auto intel = at(10.0, 20.0, 50.0);
+    intel.type = 16U;
+    expect(!entity_world_label(intel, display, std::nullopt, std::nullopt).visible,
+           "a carried/home intel has no return timer until set_fuse");
+    intel.fuse = 14.2;
+    const auto intel_label = entity_world_label(intel, display, std::nullopt, std::nullopt);
+    expect(intel_label.visible && intel_label.value == 15U &&
+               std::abs(intel_label.position.z - 48.7) < 1e-9 &&
+               intel_label.style == EntityWorldLabelStyle::countdown,
+           "the dropped intel shows ceil(fuse) at display z - 1.3");
+
+    auto diamond = at(10.0, 20.0, 50.0);
+    diamond.type = 15U;
+    diamond.fuse = 0.0;
+    const auto diamond_label = entity_world_label(diamond, display, std::nullopt, std::nullopt);
+    expect(diamond_label.visible && diamond_label.value == 0U,
+           "DiamondPickup always carries its lifetime text");
+
+    auto bomb = at(10.0, 20.0, 50.0);
+    bomb.type = 14U;
+    bomb.fuse = 3.5;
+    const auto bomb_label = entity_world_label(bomb, display, std::nullopt, std::nullopt);
+    expect(bomb_label.visible && bomb_label.value == 4U &&
+               std::abs(bomb_label.position.z - 48.5) < 1e-9,
+           "an armed bomb shows its fuse at display z - 1.5");
+
+    auto radar = at(10.0, 20.0, 50.0);
+    radar.type = 36U;
+    radar.fuse = 44.1;
+    const auto radar_label = entity_world_label(radar, display, std::nullopt, std::nullopt);
+    expect(radar_label.visible && radar_label.value == 45U &&
+               std::abs(radar_label.position.z - 49.0) < 1e-9,
+           "the radar station shows its lifetime at z - 1.0");
+
+    auto turret = at(10.0, 20.0, 50.0);
+    turret.type = 8U;
+    turret.team = 2U;
+    turret.ammo = 7U;
+    const auto own = entity_world_label(turret, display, std::uint8_t{2U}, Vec3{15.0, 20.0, 50.0});
+    expect(own.visible && own.value == 7U && own.style == EntityWorldLabelStyle::turret_ammo,
+           "a friendly turret within 20 blocks shows its ammo");
+    expect(!entity_world_label(turret, display, std::uint8_t{3U}, Vec3{15.0, 20.0, 50.0}).visible,
+           "an enemy turret never reveals its ammo");
+    expect(!entity_world_label(turret, display, std::uint8_t{2U}, Vec3{31.0, 20.0, 50.0}).visible,
+           "the ammo text disappears beyond A1626 = 20 blocks");
+}
+
+void crates_and_intel_spin_and_intel_floats_in_water() {
+    auto crate = at(10.0, 20.0, 50.0);
+    crate.type = 4U;
+    for (int step{}; step < 60; ++step) advance_entity_presentation(crate, 1.0 / 60.0);
+    expect(std::abs(crate.spin_degrees - 10.0) < 1e-6, "crates turn 10 degrees per second");
+
+    auto diamond = at(10.0, 20.0, 50.0);
+    diamond.type = 15U;
+    advance_entity_presentation(diamond, 1.0);
+    expect(diamond.spin_degrees == 0.0, "diamond and bomb are not SpinningEntity subclasses");
+
+    const auto* definition = find_entity_definition(4U);
+    expect(definition != nullptr && !definition->parts.empty(), "health crate definition");
+    auto unspun = at(10.0, 20.0, 50.0);
+    unspun.type = 4U;
+    const auto still = entity_presentation_transform(unspun, *definition, definition->parts[0U]);
+    const auto spun = entity_presentation_transform(crate, *definition, definition->parts[0U]);
+    expect(std::abs(still[0U] - spun[0U]) > 1e-4 && std::abs(still[14U] - spun[14U]) < 1e-6,
+           "the spin turns the model about the vertical without moving it");
+
+    auto intel = at(10.0, 20.0, 238.0);
+    intel.type = 16U;
+    for (int step{}; step < 180; ++step) advance_entity_presentation(intel, 1.0 / 60.0);
+    expect(std::abs(intel.floating_offset - 0.7) < 1e-9,
+           "intel rises out of the water to floating_range 0.7");
+    const auto* intel_definition = find_entity_definition(16U);
+    expect(intel_definition != nullptr && !intel_definition->parts.empty(), "intel definition");
+    auto dry = intel;
+    dry.floating_offset = 0.0;
+    const auto floating = entity_presentation_transform(intel, *intel_definition,
+                                                        intel_definition->parts[0U]);
+    const auto resting = entity_presentation_transform(dry, *intel_definition,
+                                                       intel_definition->parts[0U]);
+    expect(std::abs((resting[14U] - floating[14U]) - 0.7F) < 1e-4F,
+           "the float lifts the drawn intel (map z decreases)");
+    intel.position.z = 200.0;
+    advance_entity_presentation(intel, 1.0 / 60.0);
+    expect(intel.floating_offset == 0.0, "leaving the water resets the float");
+}
+
 [[nodiscard]] VxlMap empty_world() {
     std::vector<std::byte> bytes;
     bytes.reserve(static_cast<std::size_t>(VxlMap::width) * VxlMap::depth * 4U);
@@ -821,6 +910,10 @@ int main() {
          placement_transforms_follow_faces_and_keep_rigs_on_the_support},
         {"only_timed_dynamite_gets_a_countdown_canvas",
          only_timed_dynamite_gets_a_countdown_canvas},
+        {"objective_and_deployable_labels_follow_entity_update_3dtext",
+         objective_and_deployable_labels_follow_entity_update_3dtext},
+        {"crates_and_intel_spin_and_intel_floats_in_water",
+         crates_and_intel_spin_and_intel_floats_in_water},
         {"the_landmine_matches_the_alias_block", the_landmine_matches_the_alias_block},
         {"projectile_nose_never_turns_sideways", projectile_nose_never_turns_sideways},
         {"owning_rocket_exits_the_first_person_launcher",

@@ -189,6 +189,28 @@ ugc_entity_model_parts(std::uint8_t item_id) noexcept;
 /** Retail RMB grouping: cycle small/medium/large or health/ammo/blocks. */
 [[nodiscard]] std::uint8_t next_ugc_item_variant(std::uint8_t item_id) noexcept;
 
+/** MODE_NORMAL / MODE_OCCUPATION wire ids used by UGCEntity.get_ugc_mode. */
+inline constexpr std::uint8_t ugc_mode_normal{0U};
+inline constexpr std::uint8_t ugc_mode_occupation{4U};
+
+/**
+ * UGCEntity.get_ugc_mode (gameScene 0x100a7970): spawn/base zones belong to
+ * the mode they were placed in, the OCC bomb always to Occupation, and the
+ * three crate drop points to MODE_NORMAL (shared by every mode).
+ */
+[[nodiscard]] constexpr std::uint8_t ugc_item_edit_mode(std::uint8_t item_id,
+                                                        std::uint8_t placed_in_mode) noexcept {
+    if (item_id <= 2U) return ugc_mode_normal;
+    if (item_id == 3U) return ugc_mode_occupation;
+    return placed_in_mode;
+}
+
+/** The UGCEntity draw loop (0x10151a20): current edit mode or MODE_NORMAL. */
+[[nodiscard]] constexpr bool ugc_item_visible_in_mode(std::uint8_t item_mode,
+                                                      std::uint8_t edit_mode) noexcept {
+    return item_mode == edit_mode || item_mode == ugc_mode_normal;
+}
+
 /** Retail toolbar icon selected by a tool-41 slot's UGC item variant. */
 [[nodiscard]] std::string_view ugc_tool_icon_asset(std::uint8_t item_id) noexcept;
 

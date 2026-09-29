@@ -2,6 +2,7 @@
 #include "battlespades/world/vxl_map.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -45,11 +46,13 @@ void falling_mesh_culls_internal_faces() {
            "connected falling component must remain one visual object");
     expect(effects.instances().front().mesh.face_count() == 10U,
            "two adjacent falling voxels must cull their shared faces");
-    expect(effects.instances().front().position[2U] > 100.5F,
+    expect(effects.instances().front().position[2U] > 100.0F,
            "recovered gravity must advance the falling object downward");
     const auto rotation = effects.instances().front().rotation_degrees;
-    expect(std::abs(rotation[1U]) > std::abs(rotation[2U]) * 4.0F,
-           "a wide falling component must hinge sideways, not pirouette around z");
+    const float turned = std::sqrt(rotation[0U] * rotation[0U] + rotation[1U] * rotation[1U] +
+                                   rotation[2U] * rotation[2U]);
+    expect(std::abs(turned - 50.0F / 60.0F) < 0.01F,
+           "FallingBlocks tumbles about a random unit axis at 50 degrees per second");
 }
 
 void collapse_timing_sound_banks_and_cap_are_size_aware() {
@@ -66,18 +69,10 @@ void collapse_timing_sound_banks_and_cap_are_size_aware() {
                falling_sound_group(TerrainSoundKind::structure_break, 20U, true) ==
                    "des_imp_med_water_001-004",
            "collapse events must select their authored split/impact/water banks");
-    expect(std::abs(falling_animation_duration(1U) - 0.5F) < 0.001F &&
-               std::abs(falling_animation_duration(80U) - 0.9F) < 0.001F &&
-               std::abs(falling_animation_duration(2'048U) - 1.2F) < 0.001F &&
-               falling_animation_duration(16U) > 0.5F &&
-               falling_animation_duration(79U) < 0.9F,
-           "collapse duration must smoothly join the 0.5/0.9/1.2 second anchors");
-
     TerrainEffectSimulation effects;
     FallingComponent oversized;
-    for (std::size_t index{};
-         index < TerrainEffectSimulation::maximum_falling_voxels + 20U;
-         ++index) {
+    constexpr std::size_t large_component{2'068U};
+    for (std::size_t index{}; index < large_component; ++index) {
         oversized.push_back(
             {{static_cast<std::uint32_t>(index % VxlMap::width),
               static_cast<std::uint32_t>((index / VxlMap::width) % VxlMap::depth),
@@ -88,14 +83,16 @@ void collapse_timing_sound_banks_and_cap_are_size_aware() {
     const auto split = effects.take_sound_events();
     expect(split.size() == 1U &&
                split.front().kind == TerrainSoundKind::structure_split &&
-               split.front().structure_blocks ==
-                   static_cast<std::uint16_t>(
-                       TerrainEffectSimulation::maximum_falling_voxels) &&
+               split.front().structure_blocks == large_component &&
                std::abs(split.front().gain - 0.75F) < 0.001F,
-           "one collapse must hard-cap at 2048 visual blocks and retain retail volume");
+           "retail FallingBlocks has no size cap and keeps the retail volume");
+    effects.tick(1.0 / 60.0, empty_world());
+    expect(effects.instances().size() == 1U &&
+               effects.instances().front().mesh.face_count() > 2'048U,
+           "every voxel of a large component is drawn");
 }
 
-void falling_structure_phases_through_surviving_voxels() {
+void falling_structure_breaks_on_its_first_map_contact() {
     auto map = empty_world();
     for (std::uint32_t y{8U}; y <= 12U; ++y) {
         for (std::uint32_t x{8U}; x <= 12U; ++x) {
@@ -107,14 +104,49 @@ void falling_structure_phases_through_surviving_voxels() {
     TerrainEffectSimulation effects;
     effects.spawn_falling({{{10U, 10U, 100U}, stone}});
     static_cast<void>(effects.take_sound_events());
-    for (int tick{}; tick < 4; ++tick) {
-        effects.tick(0.1, map);
-    }
+    // Origin z = 100 (bbox centre). v.z += 0.1 per tick; z: 100.32, 100.96,
+    // then 101.92 lands in the platform cell and the body breaks.
+    effects.tick(0.1, map);
+    effects.tick(0.1, map);
     expect(effects.instances().size() == 1U &&
                effects.instances().front().kind == TerrainEffectKind::falling_structure,
-           "the falling body must remain alive before its timer expires");
-    expect(effects.instances().front().position[2U] > 103.0F,
-           "retail FallingBlocks must phase through a surviving voxel platform");
+           "the body keeps falling through air");
+    effects.tick(0.1, map);
+    expect(std::ranges::none_of(effects.instances(), [](const auto& effect) {
+               return effect.kind == TerrainEffectKind::falling_structure;
+           }),
+           "the first contact with a surviving voxel breaks the body");
+    const auto sounds = effects.take_sound_events();
+    expect(sounds.size() == 1U && sounds.front().kind == TerrainSoundKind::structure_break &&
+               std::abs(sounds.front().position[2U] - 100.96F) < 0.01F,
+           "the impact bank plays at the restored (pre-contact) origin");
+}
+
+void retail_falling_step_probes_bounces_and_uses_the_water_bed() {
+    auto map = empty_world();
+    std::array<float, 3U> position{10.5F, 10.5F, 238.9F};
+    std::array<float, 3U> velocity{0.0F, 0.0F, 1.0F};
+    expect(!retail_falling_blocks_step(map, position, velocity, 0.01F, 0.0F) &&
+               position[2U] > 239.0F,
+           "z = 239 probes z = 238, so the solid bed is water to a falling body");
+    int steps{};
+    while (!retail_falling_blocks_step(map, position, velocity, 0.01F, 0.0F) && steps < 10) {
+        ++steps;
+    }
+    expect(position[2U] < 240.0F && std::abs(velocity[2U] + 0.5F) < 1.0e-6F,
+           "z >= 240 always hits: restore, reflect z, halve");
+
+    expect(map.set_voxel(11U, 10U, 100U, stone), "wall fixture");
+    position = {10.9F, 10.5F, 100.5F};
+    velocity = {1.0F, 0.0F, 0.0F};
+    expect(retail_falling_blocks_step(map, position, velocity, 0.01F, 0.0F) &&
+               std::abs(position[0U] - 10.9F) < 1.0e-6F &&
+               std::abs(velocity[0U] + 0.5F) < 1.0e-6F,
+           "an x-cell change reflects and halves x");
+    position = {-5.0F, 10.5F, 100.5F};
+    velocity = {0.0F, 0.0F, 1.0F};
+    expect(!retail_falling_blocks_step(map, position, velocity, 0.01F, 1.0F),
+           "outside the map in x/y never collides");
 }
 
 void collapse_does_not_add_a_nonretail_smoke_plume() {
@@ -126,7 +158,7 @@ void collapse_does_not_add_a_nonretail_smoke_plume() {
                            {{21U, 30U, 80U}, stone},
                            {{22U, 30U, 80U}, stone},
                            {{23U, 30U, 80U}, stone}});
-    for (int tick{}; tick < 6; ++tick) {
+    for (int tick{}; tick < 40; ++tick) {
         effects.tick(0.1, map);
     }
     particles.build_draw_list({}, 0.0F);
@@ -208,8 +240,8 @@ void falling_structure_breaks_into_colored_debris() {
     }
     effects.spawn_falling(std::move(component));
 
-    // The detached body now owns a size-weighted presentation window rather
-    // than lingering until an arbitrarily distant floor contact.
+    // No timer: in an empty world the body falls from z = 80 until z >= 240
+    // (the z = 239 bed is water to it), 160 blocks at 32 g: about 3.16 s.
     int ticks{};
     const auto still_falling = [&effects] {
         return std::ranges::any_of(effects.instances(), [](const auto& effect) {
@@ -217,15 +249,15 @@ void falling_structure_breaks_into_colored_debris() {
         });
     };
     effects.tick(1.0 / 60.0, map);
-    while (still_falling() && ticks < 60 * 2) {
+    while (still_falling() && ticks < 60 * 5) {
         effects.tick(1.0 / 60.0, map);
         ++ticks;
     }
-    expect(!still_falling(), "the structure never reached its timed breakup");
-    expect(ticks >= 29 && ticks <= 40,
-           "a 20-block structure must use the smooth small-to-medium duration");
+    expect(!still_falling(), "the structure never reached the map bottom");
+    expect(ticks >= 180 && ticks <= 200,
+           "the body falls under gravity until its first contact, with no timer");
     expect(!effects.instances().empty(),
-           "a timed-out falling structure must be replaced by voxel debris");
+           "a landed falling structure must be replaced by voxel debris");
     for (const auto& effect : effects.instances()) {
         expect(effect.kind == TerrainEffectKind::block_debris,
                "post-impact effects must be individual block debris");
@@ -291,14 +323,18 @@ void explosives_create_retail_glow_and_persistent_aftermath() {
 void weapon_flash_is_small_bounded_and_tool_specific() {
     auto map = empty_world();
     TerrainEffectSimulation effects;
+    // Round 3: every gun with a propellant flash lights a few blocks around
+    // its muzzle (the old list keyed lights to wrong tool ids); tools without
+    // a muzzle flash, like the spade, stay dark.
     effects.spawn_weapon_flash({12.0F, 13.0F, 14.0F}, 17U);
     effects.spawn_weapon_flash({12.0F, 13.0F, 14.0F}, 18U);
+    effects.spawn_weapon_flash({12.0F, 13.0F, 14.0F}, 2U);
     effects.tick(1.0 / 120.0, map);
-    expect(effects.lights().size() == 1U,
-           "the pistol should flash while the sniper remains a laser-only weapon");
-    expect(effects.lights().front().radius < 2.0F &&
-               effects.lights().front().intensity < 0.6F,
-           "ordinary muzzle light must stay subtle beside an explosion");
+    expect(effects.lights().size() == 2U,
+           "the pistol and the sniper should flash while the spade stays dark");
+    expect(effects.lights().front().radius >= 2.5F && effects.lights().front().radius <= 4.5F &&
+               effects.lights().front().intensity < 1.2F,
+           "ordinary muzzle light must reach a few blocks yet stay far below an explosion");
     for (int tick{}; tick < 20; ++tick) {
         effects.tick(1.0 / 60.0, map);
     }
@@ -383,7 +419,10 @@ void falling_rubble_does_not_emit_light() {
     effects.tick(1.0 / 60.0, map);
     assert_unlit(effects, "a falling structure emits light",
                  "no falling-structure vertices were inspected");
-    for (int tick{}; tick < 61; ++tick) {
+    for (int tick{}; tick < 400 && std::ranges::any_of(effects.instances(), [](const auto& e) {
+                         return e.kind == TerrainEffectKind::falling_structure;
+                     });
+         ++tick) {
         effects.tick(1.0 / 60.0, map);
     }
     assert_unlit(effects, "post-impact debris emits light",
@@ -396,7 +435,8 @@ int main() {
     try {
         falling_mesh_culls_internal_faces();
         collapse_timing_sound_banks_and_cap_are_size_aware();
-        falling_structure_phases_through_surviving_voxels();
+        falling_structure_breaks_on_its_first_map_contact();
+        retail_falling_step_probes_bounces_and_uses_the_water_bed();
         collapse_does_not_add_a_nonretail_smoke_plume();
         falling_rubble_does_not_emit_light();
         impact_emits_bounded_chips_and_sound();

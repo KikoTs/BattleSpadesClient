@@ -486,6 +486,90 @@ std::optional<ControlAction> control_action_from_name(std::string_view name) noe
     return std::nullopt;
 }
 
+std::string_view retail_key_name_id(std::uint32_t scancode) noexcept {
+    // SDL/USB scancode -> pyglet key.symbol_string() after translate_key()'s
+    // '_'/'NUM_' stripping and KEY_TRANSLATIONS.
+    static constexpr std::array<std::string_view, 26U> letters{
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+        "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
+    static constexpr std::array<std::string_view, 10U> digits{
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+    static constexpr std::array<std::string_view, 12U> function_keys{
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"};
+    static constexpr std::array<std::string_view, 12U> upper_function_keys{
+        "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24"};
+    if (scancode >= 4U && scancode <= 29U) return letters[scancode - 4U];
+    if (scancode >= 30U && scancode <= 39U) return digits[scancode - 30U];
+    if (scancode >= 58U && scancode <= 69U) return function_keys[scancode - 58U];
+    if (scancode >= 104U && scancode <= 115U) return upper_function_keys[scancode - 104U];
+    if (scancode >= 89U && scancode <= 97U) return digits[scancode - 89U]; // NUM_1..NUM_9
+    switch (scancode) {
+    case 40U: return "RETURN";
+    case 41U: return "ESCAPE";
+    case 42U: return "BACKSPACE";
+    case 43U: return "TAB";
+    case 44U: return "SPACE";
+    case 45U: return "MINUS";
+    case 46U: return "EQUAL";
+    case 47U: return "BRACKETLEFT";
+    case 48U: return "BRACKETRIGHT";
+    case 49U: return "BACKSLASH";
+    case 50U: return "HASH";
+    case 51U: return "SEMICOLON";
+    case 52U: return "APOSTROPHE";
+    case 53U: return "GRAVE";
+    case 54U: return "COMMA";
+    case 55U: return "PERIOD";
+    case 56U: return "SLASH";
+    case 57U: return "CAPS_LOCK";
+    case 70U: return "PRINT";
+    case 71U: return "SCROLLLOCK";
+    case 72U: return "PAUSE";
+    case 73U: return "INSERT";
+    case 74U: return "HOME";
+    case 75U: return "PAGE_UP";
+    case 76U: return "DELETE";
+    case 77U: return "END";
+    case 78U: return "PAGE_DOWN";
+    case 79U: return "RIGHT";
+    case 80U: return "LEFT";
+    case 81U: return "DOWN";
+    case 82U: return "UP";
+    case 83U: return "NUM_LOCK";
+    case 84U: return "DIVIDE";
+    case 85U: return "MULTIPLY";
+    case 86U: return "SUBTRACT";
+    case 87U: return "ADD";
+    case 88U: return "ENTER";
+    case 98U: return "0";
+    case 99U: return "DECIMAL";
+    case 100U: return "BACKSLASH";
+    case 101U: return "MENU";
+    case 224U: return "CTRL";
+    case 225U: return "SHIFT";
+    case 226U: return "LALT";
+    case 227U: return "LWINDOWS";
+    case 228U: return "RCTRL";
+    case 229U: return "RSHIFT";
+    case 230U: return "RALT";
+    case 231U: return "RWINDOWS";
+    default: return {};
+    }
+}
+
+std::string retail_binding_name_id(InputBinding binding) {
+    if (!valid_binding(binding) || binding.is_unbound()) return "NONE";
+    if (binding.kind == BindingKind::keyboard_scancode) {
+        return std::string{retail_key_name_id(binding.code)};
+    }
+    switch (binding.code) {
+    case 1U: return "LMB";
+    case 2U: return "MMB";
+    case 3U: return "RMB";
+    default: return "MOUSE" + std::to_string(binding.code);
+    }
+}
+
 std::string binding_to_string(InputBinding binding) {
     if (!valid_binding(binding) || binding.is_unbound()) {
         return "unbound";

@@ -1,7 +1,10 @@
 #include "battlespades/world/tutorial_session.hpp"
+#include "battlespades/world/retail_effects.hpp"
 #include "battlespades/world/class_catalog.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_zoom.hpp"
+#include "battlespades/world/retail_recoil.hpp"
+#include "battlespades/world/retail_blast.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +37,7 @@ constexpr double degrees_to_radians{std::numbers::pi / 180.0};
 constexpr int default_block_health{5};
 constexpr double melee_world_range{4.0};
 // NONRETAIL: the tutorial server's block grant count was not recovered; 50
-// comfortably covers the two-block climb gate.
+// covers building up the tower side (the CLIMB gate is the tower top).
 constexpr int climb_block_grant{50};
 constexpr std::uint8_t retail_block_tool_id{5U};
 constexpr std::uint8_t retail_spade_tool_id{2U};
@@ -102,10 +105,6 @@ constexpr VxlColor target_white{232U, 233U, 233U, 255U};
             color.blue == target_white.blue);
 }
 
-[[nodiscard]] constexpr std::uint32_t
-pack_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
-    return (x << 17U) | (y << 8U) | z;
-}
 
 [[nodiscard]] Vec3 normalized(Vec3 value) noexcept {
     const double length = std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
@@ -419,7 +418,8 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
                                            TutorialSessionConfig config)
     : map_{std::move(map)}, config_{config},
       movement_class_{
-          movement_config_for_class(config.initial_class_id, config.movement_speed_scale)} {
+          movement_config_for_class(config.initial_class_id, config.movement_speed_scale,
+                                    config.fall_on_water_damage)} {
     const auto& pistol = tool_definition(retail_pistol_tool_id);
     pistol_clip_ = static_cast<int>(pistol.clip_size);
     pistol_stock_ = static_cast<int>(pistol.reserve_ammo);
@@ -460,6 +460,7 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
         }
         config_.initial_loadout = loadout;
         sync_movement_equipment(loadout);
+        sandbox_inventory_.set_block_wallet_multiplier(config_.block_wallet_multiplier);
         if (!sandbox_inventory_.spawn_with_selection(config_.initial_class_id,
                                                      loadout,
                                                      config_.initial_prefabs,
@@ -475,9 +476,10 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
         reset_tool_transition_state();
         return;
     }
-    // Retail parity: the tutorial spawns holding the spade (visible from the
-    // first lesson in the reference captures), pulled out on arrival.
-    sync_inventory_slots(TutorialTool::spade, InventorySelectionOrigin::loadout_sync);
+    // Movement lessons start empty-handed: SHOOTING_1 "You now have a
+    // pistol!" and CLIMB1 "You now have the block tool and spade!" grant the
+    // kit later, exactly like the server's MOVEMENT_LOADOUT=().
+    sync_inventory_slots(std::nullopt, InventorySelectionOrigin::loadout_sync);
 }
 
 void TutorialWorldSession::set_action_held(TutorialAction action, bool held) noexcept {
@@ -488,6 +490,9 @@ void TutorialWorldSession::set_action_held(TutorialAction action, bool held) noe
     // while airborne, so holding SPACE never re-fires on landing.
     if (action == TutorialAction::jump && held && !slot(held_, action)) {
         jump_requested_ = true;
+    }
+    if (held && !slot(held_, action)) {
+        slot(press_latch_, action) = true;
     }
     const bool was_held = slot(held_, action);
     slot(held_, action) = held;
@@ -522,9 +527,13 @@ bool TutorialWorldSession::action_held(TutorialAction action) const noexcept {
 void TutorialWorldSession::clear_input() noexcept {
     reload_aim_tool_.reset();
     held_.fill(false);
+    press_latch_.fill(false);
+    tick_held_.fill(false);
     jump_requested_ = false;
     primary_held_ = false;
     primary_edge_ = false;
+    primary_press_latch_ = false;
+    primary_tick_held_ = false;
     secondary_held_ = false;
     custom_held_ = false;
     zoomed_ = false;
@@ -542,11 +551,12 @@ void TutorialWorldSession::set_player_collision_bodies(
 
 bool TutorialWorldSession::set_server_movement_bounds(
     PlayerMovementBounds bounds) noexcept {
+    // world.pyd set_locked_to_box only stores the box; the next native
+    // update clamps the position (never velocity). Validate, don't move.
     auto probe = player_;
     if (!constrain_player_to_bounds(probe, bounds))
         return false;
     server_movement_bounds_ = bounds;
-    player_ = probe;
     return true;
 }
 
@@ -593,7 +603,17 @@ void TutorialWorldSession::apply_look_delta(double delta_x, double delta_y) noex
     }
 }
 
+void TutorialWorldSession::set_look_angles(double yaw_degrees, double pitch_degrees) noexcept {
+    if (!std::isfinite(yaw_degrees) || !std::isfinite(pitch_degrees)) return;
+    yaw_ = std::remainder(yaw_degrees, 360.0);
+    pitch_ = std::clamp(pitch_degrees, -pitch_limit_degrees, pitch_limit_degrees);
+}
+
 void TutorialWorldSession::tick() {
+    if (std::exchange(empty_magazine_unzoom_pending_, false) && zoomed_) {
+        zoomed_ = false;
+        attack_events_.zoom_dropped = true;
+    }
     update_reload_aim();
     sprint_pullout_remaining_ = std::max(0.0, sprint_pullout_remaining_ - config_.fixed_dt);
     // GameScene.update drives the sight ramp from the same fixed 60 Hz
@@ -617,24 +637,36 @@ void TutorialWorldSession::tick() {
                                quantized_orientation_component(player_.orientation.z)};
     }
 
-    apply_crouch_request(player_, action_held(TutorialAction::crouch), map_.get(),
+    // Consume latched key-down edges: an action pressed since the previous
+    // tick counts as held for this one tick even if already released.
+    for (std::size_t index{}; index < held_.size(); ++index) {
+        tick_held_[index] = held_[index] || press_latch_[index];
+    }
+    press_latch_.fill(false);
+    primary_tick_held_ = primary_held_ || primary_press_latch_;
+    primary_press_latch_ = false;
+    const auto tick_held = [this](TutorialAction action) {
+        return tick_held_[static_cast<std::size_t>(action)];
+    };
+
+    apply_crouch_request(player_, tick_held(TutorialAction::crouch), map_.get(),
                          player_collision_bodies_,
-                         action_held(TutorialAction::hover) && player_.jetpack == 4U);
+                         tick_held(TutorialAction::hover) && player_.jetpack == 4U);
 
     PlayerInputState sampled_input;
-    sampled_input.forward = action_held(TutorialAction::forward);
-    sampled_input.backward = action_held(TutorialAction::backward);
-    sampled_input.left = action_held(TutorialAction::left);
-    sampled_input.right = action_held(TutorialAction::right);
+    sampled_input.forward = tick_held(TutorialAction::forward);
+    sampled_input.backward = tick_held(TutorialAction::backward);
+    sampled_input.left = tick_held(TutorialAction::left);
+    sampled_input.right = tick_held(TutorialAction::right);
     // Combat packs consume sustained SPACE for ignition and thrust. Keeping
     // only the ordinary tutorial jump edge made offline packs stop after one
     // frame and prevented them from ever reaching their ignition delay.
     sampled_input.jump = (config_.network_authoritative || player_.jetpack != 0U)
-        ? action_held(TutorialAction::jump) : jump_requested_;
-    sampled_input.crouch = action_held(TutorialAction::crouch);
-    sampled_input.sneak = action_held(TutorialAction::sneak);
-    sampled_input.sprint = action_held(TutorialAction::sprint);
-    sampled_input.hover = action_held(TutorialAction::hover);
+        ? tick_held(TutorialAction::jump) : jump_requested_;
+    sampled_input.crouch = tick_held(TutorialAction::crouch);
+    sampled_input.sneak = tick_held(TutorialAction::sneak);
+    sampled_input.sprint = tick_held(TutorialAction::sprint);
+    sampled_input.hover = tick_held(TutorialAction::hover);
     jump_requested_ = false;
     auto input = sampled_input;
     const auto current_aim = player_.orientation;
@@ -668,30 +700,43 @@ void TutorialWorldSession::tick() {
     player_.jetpack_active = jetpack_prediction_.physics_active;
     player_.jetpack_passive = player_.jetpack == 2U && player_.jetpack_active;
     last_simulated_jetpack_active_ = player_.jetpack_active;
-    // BattleSpades' explicit Z deployment extension. The recovered mover's
-    // parachute gravity is retail; the original server's deploy trigger is
-    // unavailable. Predict the same airborne edge that our authority accepts.
-    last_simulated_parachute_pressed_ = input.hover && !parachute_deploy_last_held_;
+    // Canopy state is server-owned (WorldUpdate state bit 0x01). Stock
+    // world.pyd keeps the airborne SPACE request for parachute holders, so an
+    // airborne SPACE press deploys exactly as in retail; the negotiated Z/hover
+    // edge stays as an extra binding (decision D3). Both edges run through the
+    // server's own rules (BS/server/player.py _update_parachute), so a refused
+    // deploy never floats locally.
+    const bool hover_pressed = input.hover && !parachute_deploy_last_held_;
+    const bool jump_pressed = input.jump && !parachute_jump_last_held_;
     parachute_deploy_last_held_ = input.hover;
-    if (!alive() || !player_.parachute || !player_.airborne || player_.wade) {
-        player_.parachute_active = false;
-        player_.parachute_pending = false;
-    } else {
-        if (last_simulated_parachute_pressed_) player_.parachute_pending = true;
-        if (player_.parachute_pending &&
-            (!config_.flight_profile.descending_parachute_only || player_.velocity.z >= 0.0)) {
-            player_.parachute_active = true;
-            player_.parachute_pending = false;
-        }
-    }
+    parachute_jump_last_held_ = input.jump;
+    last_simulated_parachute_pressed_ = hover_pressed || jump_pressed;
+    advance_parachute_rules(player_, last_simulated_parachute_pressed_,
+                            alive() && player_.parachute && player_.jetpack == 0U,
+                            input.crouch, map_.get(), config_.fixed_dt);
     last_simulated_parachute_active_ = player_.parachute_active;
-    const auto movement = step_player(
+    const bool was_airborne = player_.airborne;
+    const double pre_move_vz = player_.velocity.z;
+    if (was_airborne && player_.parachute_active) parachute_fall_touched_ = true;
+    auto movement = step_player(
         player_, input, map_.get(), config_.fixed_dt, movement_class_,
-        player_collision_bodies_, config_.gravity);
+        player_collision_bodies_, config_.gravity,
+        server_movement_bounds_.has_value() ? &*server_movement_bounds_ : nullptr);
     if (!player_.airborne || player_.wade) {
-        player_.parachute_active = false;
-        player_.parachute_pending = false;
+        // A canopy zeroes the native fall distance every frame, but the server
+        // charges a late canopy the free fall that reaches the same landing
+        // speed (Player._parachute_after_move). Predict it for the land cue.
+        if (parachute_fall_touched_ && was_airborne) {
+            const int canopy_damage = parachute_landing_damage(
+                pre_move_vz, last_simulated_parachute_active_, config_.fixed_dt,
+                config_.gravity, movement_class_, player_.position.z);
+            if (canopy_damage > std::max(0, movement.landing_damage)) {
+                movement.landing_damage = canopy_damage;
+            }
+        }
+        parachute_fall_touched_ = false;
     }
+    settle_parachute_after_move(player_);
     player_.orientation = current_aim;
     movement_events_.jumped = movement_events_.jumped || movement.jumped;
     movement_events_.climbed = movement_events_.climbed || movement.climbed;
@@ -702,14 +747,6 @@ void TutorialWorldSession::tick() {
             std::max(movement_events_.landing_damage, movement.landing_damage);
     } else if (movement.landing_damage < 0 && movement_events_.landing_damage == 0) {
         movement_events_.landing_damage = movement.landing_damage;
-    }
-
-    if (server_movement_bounds_.has_value()) {
-        // LockToZone is a prediction boundary, not local game authority. The
-        // server supplied the complete volume and continues to reconcile the
-        // resulting position through ordinary WorldUpdate rows.
-        static_cast<void>(
-            constrain_player_to_bounds(player_, *server_movement_bounds_));
     }
 
     if (config_.network_authoritative) {
@@ -731,8 +768,8 @@ void TutorialWorldSession::tick() {
         handle_stage_entered();
     }
 
-    // External gates: five destroyed targets complete SHOOTING, two placed
-    // blocks complete CLIMB, exactly like the recovered tutorial mode.
+    // External gates: five destroyed targets complete SHOOTING, standing on
+    // the tower top completes CLIMB, exactly like the reconstructed server.
     if (!shooting_gate_reported_ && std::count(target_down_.begin(), target_down_.end(), true) ==
                                         static_cast<int>(target_down_.size())) {
         shooting_gate_reported_ = true;
@@ -740,7 +777,10 @@ void TutorialWorldSession::tick() {
             handle_stage_entered();
         }
     }
-    if (!climb_gate_reported_ && blocks_built_ >= 2) {
+    if (!config_.network_authoritative && !climb_gate_reported_ &&
+        lessons_.stage() == TutorialLessonStage::climb &&
+        TutorialLessons::on_tower_top(player_.position.x, player_.position.y,
+                                      player_.position.z)) {
         climb_gate_reported_ = true;
         if (lessons_.advance_external(TutorialLessonStage::climb)) {
             handle_stage_entered();
@@ -777,12 +817,13 @@ void TutorialWorldSession::tick() {
 
 void TutorialWorldSession::handle_stage_entered() {
     entered_stage_ = lessons_.stage();
-    // SetClassLoadout instant=1 equips the newly granted item: the pistol
-    // at the gallery, the block tool (with its supply) at the climb.
+    // SetClassLoadout instant=1 equips the final item of the granted list:
+    // the pistol at the gallery, the spade of (pistol, block, spade) at the
+    // climb (block supply granted alongside).
     if (lessons_.stage() == TutorialLessonStage::shooting) {
         sync_inventory_slots(TutorialTool::pistol, InventorySelectionOrigin::loadout_sync);
     } else if (lessons_.stage() == TutorialLessonStage::climb) {
-        sync_inventory_slots(TutorialTool::block, InventorySelectionOrigin::loadout_sync);
+        sync_inventory_slots(TutorialTool::spade, InventorySelectionOrigin::loadout_sync);
         blocks_remaining_ = climb_block_grant;
     }
 }
@@ -790,11 +831,9 @@ void TutorialWorldSession::handle_stage_entered() {
 void TutorialWorldSession::set_primary_held(bool held) noexcept {
     if (held && !primary_held_) {
         primary_edge_ = true;
+        primary_press_latch_ = true;
     }
     primary_held_ = held;
-    if (!held) {
-        primary_edge_ = false;
-    }
 }
 
 void TutorialWorldSession::set_secondary_held(bool held) noexcept {
@@ -991,7 +1030,7 @@ void TutorialWorldSession::update_weapon_sandbox() {
                          machine_gun_deployed_,
                          disguise_active_,
                          deployable_target_valid});
-    runtime.set_primary(primary_held_);
+    runtime.set_primary(primary_held_ || primary_tick_held_);
     runtime.set_custom(custom_held_);
     sandbox_inventory_.tick(config_.fixed_dt);
     const auto actions = runtime.take_actions();
@@ -1028,6 +1067,10 @@ void TutorialWorldSession::process_weapon_action(const WeaponAction& action) {
         }
     }
     weapon_actions_.push_back(action);
+    if (action.kind == WeaponActionKind::placement_rejected) {
+        // Audio-only edge: no wire action, no sequence, no local placement.
+        return;
+    }
     if (config_.network_authoritative) {
         if (action.kind != WeaponActionKind::reload_started &&
             action.kind != WeaponActionKind::reload_completed &&
@@ -1349,6 +1392,15 @@ void TutorialWorldSession::update_projectiles() {
         if (hit.has_value()) {
             const VoxelCell cell{hit->x, hit->y, hit->z};
             if (iterator->behavior == TutorialProjectileBehavior::bounce) {
+                // GRENADE_BOUNCE_SOUND is presentation for the frontend; the
+                // pre-reflection speed lets it ignore a grenade at rest.
+                projectile_bounces_.push_back(
+                    {iterator->id,
+                     iterator->tool_id,
+                     old,
+                     std::max({std::abs(iterator->velocity.x),
+                               std::abs(iterator->velocity.y),
+                               std::abs(iterator->velocity.z)})});
                 if (hit->nx != 0)
                     iterator->velocity.x = -iterator->velocity.x;
                 if (hit->ny != 0)
@@ -1480,8 +1532,14 @@ void TutorialWorldSession::explode_projectile(const TutorialProjectile& projecti
         // race BlockDamage/BlockBuild catch-up packets and manufacture holes
         // that existed on only one client.
         if (!authored_particle_color) {
-            effect_color = map_->color(center.x, center.y, center.z)
-                               .value_or(VxlColor{150U, 150U, 150U, 255U});
+            // Grenade/Rocket explode: map.get_point(x, y, z + 1), the block
+            // BELOW the blast (z grows downward). map.get_point on an air
+            // cell returns colour 0, so an air burst's debris is black in
+            // retail, not grey.
+            effect_color =
+                map_->color(center.x, center.y,
+                            std::min<std::uint32_t>(center.z + 1U, VxlMap::height - 1U))
+                    .value_or(VxlColor{0U, 0U, 0U, 255U});
         }
         TerrainImpactEvent impact{projectile.tool_id == 33U   ? TerrainImpactKind::fire
                                   : projectile.tool_id == 54U ? TerrainImpactKind::chemical
@@ -1491,7 +1549,9 @@ void TutorialWorldSession::explode_projectile(const TutorialProjectile& projecti
                                   {0, 0, -1},
                                   false,
                                   static_cast<float>(projectile.crater_radius),
-                                  projectile.tool_id};
+                                  projectile.explosion_sound_tool != 0U
+                                      ? projectile.explosion_sound_tool
+                                      : projectile.tool_id};
         impact.position = presentation_position;
         impact.source_velocity = presentation_velocity;
         terrain_impacts_.push_back(impact);
@@ -1526,7 +1586,9 @@ void TutorialWorldSession::explode_projectile(const TutorialProjectile& projecti
                               {0, 0, -1},
                               destroyed,
                               static_cast<float>(projectile.crater_radius),
-                              projectile.tool_id};
+                              projectile.explosion_sound_tool != 0U
+                                  ? projectile.explosion_sound_tool
+                                  : projectile.tool_id};
     impact.position = presentation_position;
     impact.source_velocity = presentation_velocity;
     terrain_impacts_.push_back(impact);
@@ -1621,15 +1683,39 @@ void TutorialWorldSession::step_entity_timers(LocalEntity& entity,
         return;
     }
 
+    // SpinningEntity turn and the intel water float are client presentation.
+    advance_entity_presentation(entity, dt);
+
     if (config_.network_authoritative) {
         // Reliable Create/Change/Destroy packets and WorldUpdate own every
         // gameplay transition in a live match. The client only supplies the
         // retail presentation gravity between snapshots. In particular it
         // must never arm a friendly mine or make a turret target its observer.
+        if ((entity.type == 14U || entity.type == 15U || entity.type == 16U ||
+             entity.type == 36U) &&
+            entity.fuse > 0.0) {
+            // BombPickup / DiamondPickup / IntelPickup / RadarStationEntity
+            // count their packet fuse down locally between server updates
+            // (their 3D label reads it); a later packet simply overwrites it.
+            entity.fuse = std::max(0.0, entity.fuse - dt);
+        }
         const auto physics = step_entity_terrain_physics(entity, definition, *map_, dt);
         if (physics.landed && !physics.bounced &&
             definition.category == EntityCategory::objective) {
             entity.home = entity.position;
+        }
+        if (physics.chute_opened) {
+            entity_events_.push_back(
+                {EntityEventKind::parachute_opened, entity.id, entity.type, entity.position});
+        }
+        if (physics.landed && entity.type >= 3U && entity.type <= 6U) {
+            entity_events_.push_back({EntityEventKind::landed, entity.id, entity.type,
+                                      entity.position, physics.impact_speed});
+        }
+        if (entity.type == 28U || entity.type == 31U) {
+            // BlockFire/BlockGoo colour ramps read the remaining fuse. The
+            // server owns the lifetime (DestroyEntity); this is presentation.
+            entity.fuse = std::max(0.0, entity.fuse - dt);
         }
         return;
     }
@@ -1818,20 +1904,10 @@ void TutorialWorldSession::step_entity_behaviour(LocalEntity& entity,
                                    static_cast<double>(VxlMap::height - 2U)))};
                 static_cast<void>(damage_voxel(cell.x, cell.y, cell.z, definition.block_damage));
             }
-            if (entity.accumulators[2U] >= 0.25) {
-                entity.accumulators[2U] = 0.0;
-                // Blockfire has no KV6 at all: the flame IS the particle
-                // system, so without this the entity would simulate invisibly.
-                terrain_impacts_.push_back(
-                    {TerrainImpactKind::fire,
-                     VoxelCell{static_cast<std::uint32_t>(entity.position.x),
-                               static_cast<std::uint32_t>(entity.position.y),
-                               static_cast<std::uint32_t>(entity.position.z)},
-                     VxlColor{255U, 200U, 40U, 255U},
-                     {0, 0, -1},
-                     false,
-                     1.5F});
-            }
+            // Presentation (colour-ramped patch, light, BLOCKFIRE smoke and
+            // the looping sound) is owned by the frontend for both offline
+            // and networked fire, exactly like retail's BlockFireEntity; a
+            // fire tick is not an explosion.
         }
         break;
     }
@@ -2053,6 +2129,10 @@ void TutorialWorldSession::handle_player_death() {
     player_.parachute_active = false;
     player_.parachute_pending = false;
     parachute_deploy_last_held_ = false;
+    parachute_jump_last_held_ = false;
+    parachute_fall_touched_ = false;
+    player_.parachute_used_this_fall = false;
+    player_.parachute_open_frames = 0U;
     // Character.set_dead calls the selected tool's on_unset before the corpse
     // lifecycle continues. A soft input release is not enough for minigun
     // spin, reload ownership, cooked throws, or queued burst edges.
@@ -2078,6 +2158,10 @@ void TutorialWorldSession::update_entities() {
     if (death_pending_) {
         handle_player_death();
     }
+    if (!server_flares_.empty()) {
+        refresh_server_flares();
+    }
+    refresh_patch_lights();
     if (entities_.empty()) {
         return;
     }
@@ -2184,12 +2268,29 @@ void TutorialWorldSession::apply_weapon_recoil(const WeaponAction& action,
                                                const WeaponDefinition& weapon) noexcept {
     const double up = weapon.retail.aim.recoil_up.value_or(0.0);
     const double side = weapon.retail.aim.recoil_side.value_or(0.0);
-    // Retail constants are angular radians applied directly to orientation.
-    // Convert into this session's degree yaw/pitch representation; negative
+    // Character.shoot (character.pyd 0x10049db0): a deterministic sawtooth
+    // side kick on the scene's millisecond clock, the walking/airborne/crouch
+    // stance multipliers and set_view(pitch + up*60, yaw + side*60). Negative
     // recoil-up raises the muzzle because positive pitch looks downward.
-    pitch_ += up * 180.0 / std::numbers::pi;
-    yaw_ += seed_signed(action.seed, 0xA05U) * side * 180.0 / std::numbers::pi;
+    const bool walking = action_held(TutorialAction::forward) ||
+                         action_held(TutorialAction::backward) ||
+                         action_held(TutorialAction::left) ||
+                         action_held(TutorialAction::right);
+    const auto kick = retail_recoil_kick(up, side, retail_scene_timer_ms(ticks_), walking,
+                                         player_.crouch, player_.airborne);
+    pitch_ += kick.pitch_degrees;
+    yaw_ += kick.yaw_degrees;
     pitch_ = std::clamp(pitch_, -pitch_limit_degrees, pitch_limit_degrees);
+    // The tail of Character.shoot: `if shot and self.main and not
+    // weapon.get_has_enough_ammo(): self.set_zoom(0)` -- the round that empties
+    // the magazine drops the sight (and set_zoom plays zoom_out). There is no
+    // can_zoom test. Deferred to the next tick so this shot's own presentation
+    // still reads the aimed accuracy it was fired with.
+    if (action.kind == WeaponActionKind::hitscan || action.kind == WeaponActionKind::oriented_item) {
+        if (const auto* ammo = selected_ammo(); ammo != nullptr && ammo->magazine == 0U) {
+            empty_magazine_unzoom_pending_ = true;
+        }
+    }
 }
 
 void TutorialWorldSession::fire_pistol() {
@@ -2354,17 +2455,13 @@ bool TutorialWorldSession::damage_voxel(
         }
         // Red voxels outside every live target fall through to block damage.
     }
-    const auto key = pack_voxel(x, y, z);
-    auto& taken = block_damage_[key];
-    taken += damage;
-    if (taken < default_block_health) {
-        if (map_->set_damage_fraction(x, y, z, static_cast<float>(taken) / default_block_health)) {
-            mark_dirty(x, y);
-        }
-        return false;
+    // Retail BlockManager.add_damage: per-cell health (map 5, built 9) and
+    // the compounding shared.common.dim darkening live in the map itself.
+    const auto outcome = map_->add_damage(x, y, z, static_cast<float>(damage));
+    if (outcome == BlockDamageOutcome::damaged) {
+        mark_dirty(x, y);
     }
-    block_damage_.erase(key);
-    if (!map_->clear_voxel(x, y, z)) {
+    if (outcome != BlockDamageOutcome::destroyed) {
         return false;
     }
     mark_dirty(x, y);
@@ -2401,7 +2498,10 @@ bool TutorialWorldSession::damage_voxel(
 void TutorialWorldSession::destroy_target(std::size_t index) {
     // Training.vxl authors each bullseye as one 21-voxel red/white disc
     // (13 red + 8 white) in front of a separately coloured metal stand.
-    // Retail detaches the complete disc when any red cell is hit. Keeping
+    // Any hit on a live target's red cell detaches the complete disc and
+    // counts it once (target_down_ guards repeats). The retail rule is
+    // unrecoverable (the tutorial server never shipped); this one-hit rule is
+    // a reconstruction shared with BattleSpades modes/tutorial.py. Keeping
     // only the white cells in the map creates the conspicuous floating ring
     // that the old colour-only cleanup produced.
     const auto& center = target_centers[index];
@@ -2476,6 +2576,10 @@ std::vector<FallingComponent> TutorialWorldSession::take_falling_components() {
     return std::exchange(falling_components_, {});
 }
 
+std::vector<ProjectileBounceEvent> TutorialWorldSession::take_projectile_bounces() {
+    return std::exchange(projectile_bounces_, {});
+}
+
 std::vector<TerrainImpactEvent> TutorialWorldSession::take_terrain_impacts() {
     return std::exchange(terrain_impacts_, {});
 }
@@ -2546,18 +2650,14 @@ double TutorialWorldSession::pullout_remaining() const noexcept {
 std::vector<TutorialTool> TutorialWorldSession::unlocked_tools() const {
     std::vector<TutorialTool> tools;
     const auto stage = lessons_.stage();
-    const bool shooting = debug_full_loadout_ || stage == TutorialLessonStage::shooting ||
-                          stage == TutorialLessonStage::climb ||
-                          stage == TutorialLessonStage::complete;
-    const bool climb = debug_full_loadout_ || stage == TutorialLessonStage::climb ||
-                       stage == TutorialLessonStage::complete;
-    if (climb) {
-        tools.push_back(TutorialTool::block);
-    }
-    // The spade is held from spawn in the retail tutorial.
-    tools.push_back(TutorialTool::spade);
-    if (shooting) {
-        tools.push_back(TutorialTool::pistol);
+    // Nothing before SHOOTING, the pistol at SHOOTING, then the server's
+    // CLIMB_LOADOUT order (pistol, block, spade).
+    const auto granted = TutorialLessons::loadout(
+        debug_full_loadout_ ? TutorialLessonStage::climb : stage);
+    for (const auto tool_id : granted) {
+        if (const auto tool = tutorial_tool_from_id(tool_id); tool.has_value()) {
+            tools.push_back(*tool);
+        }
     }
     return tools;
 }
@@ -2665,7 +2765,8 @@ void TutorialWorldSession::debug_cycle_class(int direction) noexcept {
     static_cast<void>(
         sandbox_inventory_.spawn_as(classes[index].class_id, PlayerLoadoutScope::all_weapons));
     movement_class_ = movement_config_for_class(classes[index].class_id,
-                                               config_.movement_speed_scale);
+                                               config_.movement_speed_scale,
+                                               config_.fall_on_water_damage);
     // The developer arsenal contains handheld tools only. Movement equipment
     // still comes from the selected class's original default equipment slot.
     std::vector<std::uint8_t> equipment;
@@ -2688,6 +2789,8 @@ void TutorialWorldSession::reset_tool_transition_state() noexcept {
     // changes replay the outgoing recoil, melee or throw pose on new hands.
     primary_held_ = false;
     primary_edge_ = false;
+    primary_press_latch_ = false;
+    primary_tick_held_ = false;
     secondary_held_ = false;
     custom_held_ = false;
     custom_edge_ = false;
@@ -2718,6 +2821,14 @@ double TutorialWorldSession::weapon_crosshair_radius_pixels(double viewport_heig
     if (!debug_full_loadout_) {
         // The ordinary tutorial's spade/block/pistol milestone uses the same
         // fixed tool reticle until it enters the full WeaponRuntime path.
+        // Plain Tools (spade, block) have no get_accuracy and keep retail's
+        // one-pixel small square; see WeaponRuntime::crosshair_radius_pixels.
+        const auto selected = selected_tool_id();
+        const auto* weapon =
+            selected.has_value() ? find_weapon_definition(*selected) : nullptr;
+        if (weapon != nullptr && !weapon->retail.class_name.ends_with("Weapon")) {
+            return 1.0;
+        }
         return 6.0;
     }
     return sandbox_inventory_.weapons().crosshair_radius_pixels(
@@ -2743,6 +2854,9 @@ bool TutorialWorldSession::weapon_trigger_live() const noexcept {
 }
 
 bool TutorialWorldSession::weapon_view_model_visible() const noexcept {
+    if (view_model_suppressed_) {
+        return false;
+    }
     if (!action_held(TutorialAction::sprint)) {
         return true;
     }
@@ -2898,13 +3012,13 @@ std::uint64_t TutorialWorldSession::spawn_entity(std::uint8_t type,
             std::clamp(std::floor(position.y), 0.0, static_cast<double>(VxlMap::depth - 1U)));
         const auto z = static_cast<std::uint32_t>(
             std::clamp(std::floor(position.z), 0.0, static_cast<double>(VxlMap::height - 2U)));
-        if (map_->solid(x, y, z) || !map_->set_voxel(x, y, z, VxlColor{255U, 214U, 150U, 255U})) {
+        if (map_->solid(x, y, z) || !map_->set_voxel(x, y, z, VxlColor{255U, 255U, 82U, 255U})) {
             return 0U;
         }
         mark_dirty(x, y);
         StaticLight light;
         light.cell = {x, y, z};
-        light.color = VxlColor{255U, 214U, 150U, 255U};
+        light.color = VxlColor{255U, 255U, 82U, 255U};
         light.radius = definition->light_radius > 0.0F ? definition->light_radius
                                                        : StaticLightField::flare_block_radius;
         if (static_lights_.add(light)) {
@@ -2959,8 +3073,12 @@ bool TutorialWorldSession::apply_server_entity(LocalEntity entity) {
     }
     // Retail ignores a duplicate CreateEntity rather than mutating the object
     // already registered under that id. The server relies on this invariant.
-    if (std::ranges::find(entities_, entity.id, &LocalEntity::id) != entities_.end()) {
+    if (std::ranges::find(entities_, entity.id, &LocalEntity::id) != entities_.end() ||
+        std::ranges::find(server_flares_, entity.id, &ServerFlare::id) != server_flares_.end()) {
         return true;
+    }
+    if (entity.type == 13U) {
+        return apply_server_flare(entity);
     }
     const auto model_parts =
         entity.type == 29U ? ugc_entity_model_parts(entity.ugc_item_id) : definition->parts;
@@ -2998,6 +3116,142 @@ bool TutorialWorldSession::apply_server_entity(LocalEntity entity) {
     next_entity_id_ = std::max(next_entity_id_, entity.id + 1U);
     entity_events_.push_back({EntityEventKind::spawned, entity.id, entity.type, entity.position});
     return true;
+}
+
+void TutorialWorldSession::mark_light_dirty(const StaticLight& light) {
+    const auto reach = static_cast<std::int64_t>(std::ceil(light.radius)) + 1;
+    for (std::int64_t offset_y = -reach; offset_y <= reach; ++offset_y) {
+        for (std::int64_t offset_x = -reach; offset_x <= reach; ++offset_x) {
+            const auto lit_x = static_cast<std::int64_t>(light.cell[0U]) + offset_x;
+            const auto lit_y = static_cast<std::int64_t>(light.cell[1U]) + offset_y;
+            if (lit_x < 0 || lit_y < 0 || lit_x >= static_cast<std::int64_t>(VxlMap::width) ||
+                lit_y >= static_cast<std::int64_t>(VxlMap::depth)) {
+                continue;
+            }
+            mark_dirty(static_cast<std::uint32_t>(lit_x), static_cast<std::uint32_t>(lit_y));
+        }
+    }
+}
+
+bool TutorialWorldSession::apply_server_flare(const LocalEntity& entity) {
+    // Retail FlareBlockEntity.post_initialize: add_user_block(x, y, z, RGB, 5)
+    // then add_static_point_light(x, y, z, RGB, FLAREBLOCK_LIGHT_RADIUS). Both
+    // player flares (packet 104) and the map's chroma-marker lights arrive
+    // here; the server always sends the colour, and the stock palette slot 0
+    // is only a defensive fallback.
+    if (entity.position.x < 0.0 || entity.position.y < 0.0 || entity.position.z < 0.0) {
+        return false;
+    }
+    const auto x = static_cast<std::uint32_t>(std::floor(entity.position.x));
+    const auto y = static_cast<std::uint32_t>(std::floor(entity.position.y));
+    const auto z = static_cast<std::uint32_t>(std::floor(entity.position.z));
+    // z=239 is the indestructible bed; nothing can be placed in it.
+    if (x >= VxlMap::width || y >= VxlMap::depth || z >= VxlMap::height - 1U) {
+        return false;
+    }
+    const VxlColor color = entity.has_color
+                               ? VxlColor{entity.color[0U], entity.color[1U], entity.color[2U], 255U}
+                               : VxlColor{255U, 255U, 82U, 255U};
+    // A marker cell may still hold the raw chroma voxel (the load-time
+    // cleanup removes only exposed markers); retail's add_user_block simply
+    // overwrites it with the static-light colour.
+    if (!map_->set_voxel(x, y, z, color)) {
+        return false;
+    }
+    mark_dirty(x, y);
+    StaticLight light;
+    light.cell = {x, y, z};
+    light.color = color;
+    light.radius = StaticLightField::flare_block_radius;
+    const bool lit = static_lights_.add(light);
+    if (lit) {
+        mark_light_dirty(light);
+    }
+    server_flares_.push_back(ServerFlare{entity.id, light.cell, lit});
+    next_entity_id_ = std::max(next_entity_id_, entity.id + 1U);
+    // No spawn event: retail's placement cue (build_light) belongs to the
+    // placing FlareBlockTool, and map lights arrive silently on join.
+    return true;
+}
+
+void TutorialWorldSession::refresh_server_flares() {
+    for (auto& flare : server_flares_) {
+        if (!flare.lit || map_->solid(flare.cell[0U], flare.cell[1U], flare.cell[2U])) {
+            continue;
+        }
+        // The terrain replica destroyed the lamp's voxel; its light goes with
+        // it even before the server's DestroyEntity arrives.
+        if (static_lights_.remove_at(flare.cell[0U], flare.cell[1U], flare.cell[2U])) {
+            StaticLight light;
+            light.cell = flare.cell;
+            light.radius = StaticLightField::flare_block_radius;
+            mark_light_dirty(light);
+        }
+        flare.lit = false;
+    }
+}
+
+void TutorialWorldSession::refresh_patch_lights() {
+    constexpr double recolour_period{0.25};
+    for (const auto& entity : entities_) {
+        if ((entity.type != 28U && entity.type != 31U) || !entity.alive || entity.retired ||
+            !std::isfinite(entity.position.x) || !std::isfinite(entity.position.y) ||
+            !std::isfinite(entity.position.z)) {
+            continue;
+        }
+        const std::array<std::uint32_t, 3U> cell{
+            static_cast<std::uint32_t>(std::clamp(std::floor(entity.position.x), 0.0,
+                                                  static_cast<double>(VxlMap::width - 1U))),
+            static_cast<std::uint32_t>(std::clamp(std::floor(entity.position.y), 0.0,
+                                                  static_cast<double>(VxlMap::depth - 1U))),
+            static_cast<std::uint32_t>(std::clamp(std::floor(entity.position.z), 0.0,
+                                                  static_cast<double>(VxlMap::height - 1U)))};
+        auto [found, inserted] = patch_lights_.try_emplace(entity.id, PatchLight{cell, 0.0});
+        found->second.clock -= config_.fixed_dt;
+        if (!inserted && found->second.clock > 0.0 && found->second.cell == cell) {
+            continue;
+        }
+        if (!inserted && found->second.cell != cell) {
+            // A patch whose voxel went drops onto the voxel below.
+            static_cast<void>(static_lights_.remove_at(
+                found->second.cell[0U], found->second.cell[1U], found->second.cell[2U]));
+            StaticLight old_light;
+            old_light.cell = found->second.cell;
+            old_light.radius = StaticLightField::block_fire_radius;
+            mark_light_dirty(old_light);
+        }
+        found->second.cell = cell;
+        found->second.clock = recolour_period;
+        const auto ramp = entity.type == 28U ? block_fire_colour(entity.fuse)
+                                             : block_goo_colour(entity.fuse);
+        const auto channel = [](float value) {
+            return static_cast<std::uint8_t>(std::clamp(std::lround(value * 255.0F), 0L, 255L));
+        };
+        StaticLight light;
+        light.cell = cell;
+        light.color = VxlColor{channel(ramp[0U]), channel(ramp[1U]), channel(ramp[2U]), 255U};
+        light.radius = StaticLightField::block_fire_radius;
+        if (static_lights_.add(light)) {
+            mark_light_dirty(light);
+        }
+    }
+    for (auto iterator = patch_lights_.begin(); iterator != patch_lights_.end();) {
+        const auto live = std::ranges::find_if(entities_, [&](const LocalEntity& entity) {
+            return entity.id == iterator->first && entity.alive && !entity.retired;
+        });
+        if (live != entities_.end()) {
+            ++iterator;
+            continue;
+        }
+        const auto [x, y, z] = iterator->second.cell;
+        if (static_lights_.remove_at(x, y, z)) {
+            StaticLight light;
+            light.cell = iterator->second.cell;
+            light.radius = StaticLightField::block_fire_radius;
+            mark_light_dirty(light);
+        }
+        iterator = patch_lights_.erase(iterator);
+    }
 }
 
 bool TutorialWorldSession::apply_server_entity_snapshot(const LocalEntity& entity) {
@@ -3166,7 +3420,24 @@ bool TutorialWorldSession::despawn_entity(std::uint64_t id) noexcept {
     return true;
 }
 
-bool TutorialWorldSession::destroy_server_entity(std::uint64_t id) {
+bool TutorialWorldSession::destroy_server_entity(
+    std::uint64_t id, std::optional<std::uint8_t> explosion_sound_tool) {
+    if (const auto flare = std::ranges::find(server_flares_, id, &ServerFlare::id);
+        flare != server_flares_.end()) {
+        // FlareBlockEntity.delete takes its point light and its user block.
+        const auto [x, y, z] = flare->cell;
+        StaticLight light;
+        light.cell = flare->cell;
+        light.radius = StaticLightField::flare_block_radius;
+        if (static_lights_.remove_at(x, y, z)) {
+            mark_light_dirty(light);
+        }
+        if (map_->solid(x, y, z) && map_->clear_voxel(x, y, z)) {
+            mark_dirty(x, y);
+        }
+        server_flares_.erase(flare);
+        return true;
+    }
     const auto found = std::ranges::find(entities_, id, &LocalEntity::id);
     if (found == entities_.end()) {
         return false;
@@ -3182,6 +3453,7 @@ bool TutorialWorldSession::destroy_server_entity(std::uint64_t id) {
             blast.velocity = found->velocity;
             blast.block_damage = weapon != nullptr ? weapon->block_damage : 0.0;
             blast.crater_radius = weapon != nullptr ? projectile_crater_radius(*weapon) : 3U;
+            blast.explosion_sound_tool = explosion_sound_tool.value_or(std::uint8_t{0U});
             // explode_projectile is presentation-only in a network session.
             explode_projectile(blast, std::nullopt);
         }
@@ -3340,6 +3612,10 @@ void TutorialWorldSession::set_server_health(double health) noexcept {
         player_.parachute_active = false;
         player_.parachute_pending = false;
         parachute_deploy_last_held_ = false;
+        parachute_jump_last_held_ = false;
+        parachute_fall_touched_ = false;
+        player_.parachute_used_this_fall = false;
+        player_.parachute_open_frames = 0U;
         sandbox_inventory_.weapons().on_unset();
         network_latched_input_ = {};
         network_latched_orientation_.reset();
@@ -3420,6 +3696,18 @@ TutorialWorldSession::placement_cell(double range) const noexcept {
     }
     return std::array<std::int16_t, 3U>{
         static_cast<std::int16_t>(x), static_cast<std::int16_t>(y), static_cast<std::int16_t>(z)};
+}
+
+std::optional<std::array<std::int16_t, 3U>>
+TutorialWorldSession::ugc_marker_cell(double range) const noexcept {
+    const auto hit =
+        raycast_voxels(*map_, player_.position, normalized(player_.orientation), range);
+    // Top face only: the marker sits in the air cell directly above (AoS z
+    // grows downward, so the up-facing normal is nz == -1).
+    if (!hit.has_value() || hit->nx != 0 || hit->ny != 0 || hit->nz != -1) {
+        return std::nullopt;
+    }
+    return placement_cell(range);
 }
 
 std::optional<VxlColor> TutorialWorldSession::looked_at_block_color(double range) const noexcept {
@@ -3600,30 +3888,37 @@ bool TutorialWorldSession::network_authoritative() const noexcept {
     return config_.network_authoritative;
 }
 
+bool TutorialWorldSession::sent_held(TutorialAction action) const noexcept {
+    // ClientData carries what the tick simulated: a tap latched into the
+    // tick is sent even when its release arrived in the same event poll.
+    return action_held(action) ||
+           (action != TutorialAction::count && tick_held_[static_cast<std::size_t>(action)]);
+}
+
 std::uint8_t TutorialWorldSession::movement_flags() const noexcept {
     std::uint8_t flags{};
-    if (action_held(TutorialAction::forward))
+    if (sent_held(TutorialAction::forward))
         flags |= 0x01U;
-    if (action_held(TutorialAction::backward))
+    if (sent_held(TutorialAction::backward))
         flags |= 0x02U;
-    if (action_held(TutorialAction::left))
+    if (sent_held(TutorialAction::left))
         flags |= 0x04U;
-    if (action_held(TutorialAction::right))
+    if (sent_held(TutorialAction::right))
         flags |= 0x08U;
-    if (action_held(TutorialAction::jump))
+    if (sent_held(TutorialAction::jump))
         flags |= 0x10U;
-    if (action_held(TutorialAction::crouch))
+    if (sent_held(TutorialAction::crouch))
         flags |= 0x20U;
-    if (action_held(TutorialAction::sneak))
+    if (sent_held(TutorialAction::sneak))
         flags |= 0x40U;
-    if (action_held(TutorialAction::sprint))
+    if (sent_held(TutorialAction::sprint))
         flags |= 0x80U;
     return flags;
 }
 
 std::uint8_t TutorialWorldSession::action_flags() const noexcept {
     std::uint8_t flags{0x10U}; // can_display_weapon, required for observers
-    if (primary_held_)
+    if (primary_held_ || primary_tick_held_)
         flags |= 0x01U;
     if (secondary_held_)
         flags |= 0x02U;
@@ -3631,7 +3926,7 @@ std::uint8_t TutorialWorldSession::action_flags() const noexcept {
         flags |= 0x04U;
     if (machine_gun_deployed_)
         flags |= 0x40U;
-    if (action_held(TutorialAction::hover))
+    if (sent_held(TutorialAction::hover))
         flags |= 0x80U;
     return flags;
 }
@@ -3658,6 +3953,10 @@ void TutorialWorldSession::apply_authoritative_transform(Vec3 position,
     jetpack_replay_required_ = false;
     last_simulated_jetpack_active_ = false;
     parachute_deploy_last_held_ = false;
+    parachute_jump_last_held_ = false;
+    parachute_fall_touched_ = false;
+    player_.parachute_used_this_fall = false;
+    player_.parachute_open_frames = 0U;
     last_simulated_parachute_active_ = false;
     last_simulated_parachute_pressed_ = false;
     last_jetpack_fuel_loop_ = std::numeric_limits<std::int32_t>::min();
@@ -3817,11 +4116,16 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
                                       config_.fixed_dt,
                                       iterator->movement_class,
                                       iterator->collision_bodies,
-                                      config_.gravity));
+                                      config_.gravity,
+                                      server_movement_bounds_.has_value()
+                                          ? &*server_movement_bounds_
+                                          : nullptr));
         replayed.orientation = recorded_aim;
         replayed.jetpack_active = recorded_state.jetpack_active;
         replayed.parachute_active = recorded_state.parachute_active;
         replayed.parachute_pending = recorded_state.parachute_pending;
+        replayed.parachute_used_this_fall = recorded_state.parachute_used_this_fall;
+        replayed.parachute_open_frames = recorded_state.parachute_open_frames;
         iterator->state = replayed;
     }
 
@@ -3837,8 +4141,24 @@ bool TutorialWorldSession::reconcile_authoritative(std::int32_t acknowledged_loo
     replayed.parachute = current_before.parachute;
     replayed.parachute_active = current_before.parachute_active;
     replayed.parachute_pending = current_before.parachute_pending;
+    replayed.parachute_used_this_fall = current_before.parachute_used_this_fall;
+    replayed.parachute_open_frames = current_before.parachute_open_frames;
     player_ = replayed;
     return true;
+}
+
+std::optional<Vec3> TutorialWorldSession::apply_blast_push(std::uint8_t damage_type,
+                                                          Vec3 explosion) noexcept {
+    if (!alive()) return std::nullopt;
+    const auto spec = retail_blast_for_damage_type(damage_type);
+    if (!spec.has_value()) return std::nullopt;
+    const auto impulse =
+        retail_blast_impulse(map_.get(), explosion, player_.position, player_.crouch, *spec);
+    if (!impulse.has_value()) return std::nullopt;
+    player_.velocity.x += impulse->x;
+    player_.velocity.y += impulse->y;
+    player_.velocity.z += impulse->z;
+    return impulse;
 }
 
 void TutorialWorldSession::apply_authoritative_delta(Vec3 position_delta,
@@ -3930,7 +4250,8 @@ void TutorialWorldSession::apply_server_movement_state(std::uint8_t action_flags
         // Compare it to the same ACK's resource state, never today's key.
         if (found->jetpack.advertised_active != active) {
             found->jetpack.advertised_active = active;
-            found->jetpack.activation_defer = active ? 2U : 0U;
+            found->jetpack.activation_defer =
+                active ? jetpack_activation_defer_frames : std::uint8_t{};
             found->jetpack.physics_active = false;
             found->jetpack.exhaustion_tail = 0U;
             found->jetpack.requires_release = !active && found->jetpack.fuel <= 0.0;
@@ -3957,7 +4278,16 @@ void TutorialWorldSession::apply_server_movement_state(std::uint8_t action_flags
         player_.parachute_active = parachute_active;
     }
     disguise_active_ = (state_flags & 0x02U) != 0U;
-    sandbox_inventory_.set_carried_pickup(pickup_id);
+    // Player pickup setter: the carrier equips PICKUPS[pickup] and cannot
+    // switch away, except the Classic CTF intel (can_shoot_holding_intel).
+    constexpr std::uint8_t intel_pickup{16U};
+    const auto held_before = sandbox_inventory_.toolbar().selected_tool_id();
+    sandbox_inventory_.set_carried_pickup(
+        pickup_id, !(pickup_id == intel_pickup && can_shoot_holding_intel_));
+    if (sandbox_inventory_.toolbar().selected_tool_id() != held_before) {
+        set_secondary_held(false);
+        reset_tool_transition_state();
+    }
     if (pickup_id == 0xFFU)
         player_.burdened = false;
 }
@@ -3992,7 +4322,8 @@ void TutorialWorldSession::advance_jetpack_prediction(
     // back: wire action 0x04 advertises ignition before native thrust begins.
     if (pack == 0U || pack > 4U) { state = {}; return; }
     const auto& profile = config_.flight_profile;
-    const double refill_delay = pack == 3U ? 0.5 : (pack == 4U ? 0.1 : 2.0);
+    const auto& props = jetpack_properties(pack);
+    const double refill_delay = props.refill_delay_due_damage;
     state.refill_delay_remaining = damaged ? refill_delay :
         std::max(0.0, state.refill_delay_remaining - dt);
     const bool held = pack == 4U ? input.hover : input.jump;
@@ -4016,14 +4347,14 @@ void TutorialWorldSession::advance_jetpack_prediction(
     bool newly_activated{};
     if (held) {
         state.held_seconds += dt;
-        const double delay = pack == 4U ? 0.1 : 0.25;
-        const double cost = pack == 4U ? 0.0 : 10.0;
+        const double delay = props.start_delay;
+        const double cost = props.activation_cost;
         if (!previously_active && !state.requires_release &&
             state.held_seconds >= delay && state.fuel >= std::max(cost, 1.0)) {
             state.advertised_active = true;
             state.fuel -= cost;
             state.physics_active = false;
-            state.activation_defer = 2U;
+            state.activation_defer = jetpack_activation_defer_frames;
             state.exhaustion_tail = 0U;
             newly_activated = true;
         }
@@ -4041,13 +4372,14 @@ void TutorialWorldSession::advance_jetpack_prediction(
             state.advertised_active = false;
             state.requires_release = true;
             state.activation_defer = 0U;
-            state.exhaustion_tail = state.physics_active ? 1U : 0U;
+            state.exhaustion_tail =
+                state.physics_active ? jetpack_exhaustion_tail_frames : std::uint8_t{};
         }
     }
     if (!state.advertised_active && !state.physics_active && state.refill_delay_remaining <= 0.0 &&
         (pack == 4U || !profile.grounded_refill_only ||
          (grounded && state.idle_seconds + 1e-9 >= profile.refill_idle_seconds))) {
-        state.fuel = std::min(100.0, state.fuel + profile.refill[pack] * dt);
+        state.fuel = std::min(props.max_fuel, state.fuel + profile.refill[pack] * dt);
     }
 }
 
@@ -4086,30 +4418,47 @@ void TutorialWorldSession::replay_parachute_prediction(
     const auto found = std::ranges::find(network_predictions_, acknowledged_loop,
                                         &NetworkPredictionSample::loop);
     if (found == network_predictions_.end()) return;
-    found->state.parachute_active = active && found->state.parachute;
+    // The ACKed row's bit 0x01 is authority for that frame. Adopt it, keeping
+    // the local fall bookkeeping when the two sides already agree. The same
+    // rules close a canopy on both sides in the same frame, so a closed row
+    // against a local canopy means the server never opened it: its one
+    // deploy for this fall is still unused.
+    auto& acknowledged = found->state;
+    const bool server_active = active && acknowledged.parachute;
+    if (acknowledged.parachute_active != server_active) {
+        acknowledged.parachute_active = server_active;
+        acknowledged.parachute_pending = false;
+        acknowledged.parachute_used_this_fall = server_active;
+        acknowledged.parachute_open_frames = 0U;
+    }
+    // Re-run the server rules over every later frame from its own pre-move
+    // state (the previous sample) and consumed edges.
     auto previous = found;
     for (auto next = std::next(found); next != network_predictions_.end(); ++next) {
-        active = previous->state.parachute_active;
-        bool pending = previous->state.parachute_pending;
-        if (!next->state.parachute || !previous->state.airborne || previous->state.wade) {
-            active = false;
-            pending = false;
-        } else {
-            if (next->parachute_deploy_pressed) pending = true;
-            if (pending && (!config_.flight_profile.descending_parachute_only ||
-                            previous->state.velocity.z >= 0.0)) {
-                active = true;
-                pending = false;
-            }
+        auto probe = previous->state;
+        probe.parachute = next->state.parachute;
+        probe.jetpack = next->state.jetpack;
+        advance_parachute_rules(probe, next->parachute_deploy_pressed,
+                                probe.parachute && probe.jetpack == 0U,
+                                next->consumed_input.crouch, map_.get(), config_.fixed_dt);
+        if (next->consumed_parachute_active != probe.parachute_active) {
+            jetpack_replay_required_ = true;
         }
-        if (next->consumed_parachute_active != active) jetpack_replay_required_ = true;
-        next->consumed_parachute_active = active;
-        next->state.parachute_active = active && next->state.airborne && !next->state.wade;
-        next->state.parachute_pending = pending && next->state.airborne && !next->state.wade;
+        next->consumed_parachute_active = probe.parachute_active;
+        auto& state = next->state;
+        state.parachute_active = probe.parachute_active;
+        state.parachute_pending = probe.parachute_pending;
+        state.parachute_used_this_fall = probe.parachute_used_this_fall;
+        state.parachute_open_frames = probe.parachute_open_frames;
+        settle_parachute_after_move(state);
         previous = next;
     }
-    player_.parachute_active = alive() && player_.parachute && previous->state.parachute_active;
-    player_.parachute_pending = alive() && player_.parachute && previous->state.parachute_pending;
+    const auto& latest = previous->state;
+    const bool holds = alive() && player_.parachute;
+    player_.parachute_active = holds && latest.parachute_active;
+    player_.parachute_pending = holds && latest.parachute_pending;
+    player_.parachute_used_this_fall = latest.parachute_used_this_fall;
+    player_.parachute_open_frames = latest.parachute_open_frames;
 }
 
 void TutorialWorldSession::sync_movement_equipment(std::span<const std::uint8_t> loadout) noexcept {
@@ -4148,7 +4497,8 @@ void TutorialWorldSession::apply_server_class(std::uint8_t class_id,
     if (std::isfinite(movement_speed_scale) && movement_speed_scale > 0.0) {
         config_.movement_speed_scale = movement_speed_scale;
     }
-    movement_class_ = movement_config_for_class(class_id, config_.movement_speed_scale);
+    movement_class_ = movement_config_for_class(class_id, config_.movement_speed_scale,
+                                                config_.fall_on_water_damage);
 }
 
 } // namespace battlespades::world

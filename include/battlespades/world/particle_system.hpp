@@ -3,6 +3,7 @@
 #include "battlespades/world/vxl_map.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -60,9 +61,11 @@ enum class ParticleAtlas : std::uint8_t {
     smoke_trail,
     pickup_twinkle,
     soft_round,
+    /** Retail `particle_snowke_trail` = SnowkeTrail_anim_8x8 (images.py:920). */
+    snowke_trail,
 };
 
-inline constexpr std::size_t particle_atlas_count{5U};
+inline constexpr std::size_t particle_atlas_count{6U};
 inline constexpr std::size_t particle_blend_count{3U};
 inline constexpr std::size_t particle_color_mode_count{3U};
 
@@ -165,6 +168,19 @@ public:
     void set_quality_scale(float scale) noexcept;
     [[nodiscard]] float quality_scale() const noexcept { return quality_scale_; }
 
+    /**
+     * World gravity for particles that fall (gravity_scale != 0).
+     *
+     * GameScene.process_packet_state_data calls
+     * ParticleEffectManager.set_particles_gravity(world.get_gravity()), so
+     * draw.pyd's particle gravity global follows StateData gravity (LunarBase
+     * 26/64), not a constant 1.0.
+     */
+    void set_gravity(float gravity) noexcept {
+        gravity_ = std::isfinite(gravity) ? gravity : 1.0F;
+    }
+    [[nodiscard]] float gravity() const noexcept { return gravity_; }
+
     void tick(double dt, const VxlMap& map);
     /** Advances particles without collision, for the offline VFX parity lab. */
     void tick_unbounded(double dt);
@@ -223,6 +239,7 @@ private:
     std::size_t cursor_{};
     std::size_t live_{};
     float quality_scale_{1.0F};
+    float gravity_{1.0F};
     std::size_t active_capacity_{maximum_particles};
 
     std::vector<ParticleInstance> instances_;

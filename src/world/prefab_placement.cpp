@@ -1,8 +1,13 @@
 #include "battlespades/world/prefab_placement.hpp"
 
+#include "battlespades/shared/retail_constants.hpp"
+#include "battlespades/world/particle_system.hpp"
+
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace battlespades::world {
 
@@ -73,6 +78,131 @@ std::array<float, 16U> prefab_preview_transform(
             anchor.z + 0.5F + pivot[0U] * x.z + pivot[1U] * y.z + pivot[2U] * z.z, 1.0F};
 }
 
+namespace {
+
+/** PrefabManager.intersects_with_world: only prefab_yaw is forwarded. */
+[[nodiscard]] bool prefab_intersects_world(const VxlMap& map,
+                                           std::span<const PrefabPlacementCell> authored,
+                                           PrefabPlacementCell anchor,
+                                           std::uint8_t yaw) noexcept {
+    for (const auto cell : authored) {
+        const auto rotated = rotate_prefab_cell(cell, yaw, std::uint8_t{0}, std::uint8_t{0});
+        const auto x = anchor.x + rotated.x;
+        const auto y = anchor.y + rotated.y;
+        const auto z = anchor.z + rotated.z;
+        if (x < 0 || y < 0 || z < 0) continue;
+        if (map.solid(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
+                      static_cast<std::uint32_t>(z))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+PrefabGhostPosition prefab_ghost_position(const VxlMap& map,
+                                          std::span<const PrefabPlacementCell> authored,
+                                          const PrefabGhostRequest& request) noexcept {
+    // shared/prefabManager.py get_prefab_ghost_position, line for line. The
+    // sizes are the KV6 header dimensions rotated as SIGNED values, so every
+    // `int(world_size / 2.0)` truncates toward zero on its own sign.
+    const auto& size = request.size;
+    const auto world_size = rotate_prefab_cell(
+        {size[0U], size[1U], size[2U]}, request.yaw, request.pitch, request.roll);
+    const double radius = std::sqrt(
+        (static_cast<double>(world_size.x) * world_size.x +
+         static_cast<double>(world_size.y) * world_size.y +
+         static_cast<double>(world_size.z) * world_size.z) /
+        4.0);
+    // PREFAB_DISTANCES: {radius key: constant, scaled, min, max}.
+    struct DistanceBand final {
+        double key;
+        double constant;
+        double scaled;
+        double minimum;
+        double maximum;
+    };
+    static constexpr std::array<DistanceBand, 6U> bands{{
+        {0.0, 1.0, 1.20, 7.0, 12.0},
+        {10.0, 1.0, 1.20, 7.0, 999999.0},
+        {20.0, 1.0, 1.15, 7.0, 999999.0},
+        {70.0, 1.0, 1.10, 7.0, 999999.0},
+        {120.0, 1.0, 1.05, 7.0, 999999.0},
+        {1000.0, 1.0, 1.00, 7.0, 999999.0},
+    }};
+    const DistanceBand* band = &bands.front();
+    for (const auto& candidate : bands) {
+        if (std::abs(candidate.key - radius) < std::abs(band->key - radius)) band = &candidate;
+    }
+    double distance = radius * band->scaled + band->constant;
+    if (distance < band->minimum) distance = band->minimum;
+    if (distance > band->maximum) distance = band->maximum;
+
+    const double target_x = request.position[0U] + distance * request.orientation[0U];
+    const double target_y = request.position[1U] + distance * request.orientation[1U];
+    double target_z = request.position[2U] + distance * request.orientation[2U];
+    constexpr double map_z_top = static_cast<double>(VxlMap::height) - 1.0;
+    if (target_z >= map_z_top) target_z = map_z_top;
+    PrefabPlacementCell scan{static_cast<std::int32_t>(std::floor(target_x)),
+                             static_cast<std::int32_t>(std::floor(target_y)),
+                             static_cast<std::int32_t>(std::floor(target_z))};
+    scan.x -= world_size.x / 2;
+    scan.y -= world_size.y / 2;
+    scan.z -= world_size.z / 2;
+
+    if (request.use_player_orientation) {
+        // NORTH, EAST, SOUTH, WEST = 0..3; the offset is authored relative to
+        // the player's facing and rotated into the world by that facing.
+        const auto direction = static_cast<std::uint8_t>(request.player_direction & 3U);
+        const auto relative = (static_cast<std::int32_t>(request.yaw & 3U) + 4 -
+                               static_cast<std::int32_t>(direction)) % 4;
+        PrefabPlacementCell offset{};
+        if ((size[0U] & 1) == 0) {
+            if (relative == 3) ++offset.y;
+            if (relative == 2) --offset.x;
+        }
+        if ((size[1U] & 1) == 0) {
+            if (relative == 0) ++offset.y;
+            if (relative == 3) --offset.x;
+        }
+        const auto world_offset =
+            rotate_prefab_cell(offset, direction, std::uint8_t{0}, std::uint8_t{0});
+        scan.x += world_offset.x;
+        scan.y += world_offset.y;
+        scan.z += world_offset.z;
+    }
+    // PREFAB_INITIAL_VERTICAL_OFFSET * size_z / 2.0 on the UNROTATED size.
+    scan.z += static_cast<std::int32_t>(-0.8 * static_cast<double>(size[2U]) / 2.0);
+
+    if (request.check_world_intersect && !authored.empty()) {
+        // KV6.get_bounds on the unrotated, pivot-reset model.
+        std::int32_t z_lo = authored.front().z;
+        std::int32_t z_hi = authored.front().z;
+        for (const auto cell : authored) {
+            z_lo = std::min(z_lo, cell.z);
+            z_hi = std::max(z_hi, cell.z);
+        }
+        const double feet = request.crouching ? 1.35 : 2.25;
+        const auto player_floor_z =
+            static_cast<std::int32_t>(std::floor(request.position[2U] + feet));
+        const bool looking_down = std::floor(request.orientation[2U]) >= 0.0;
+        const auto map_z_last = static_cast<std::int32_t>(VxlMap::height) - 1;
+        // move_point_towards_face(FACE_BOTTOM, 1.0) is z -= 1 (common.pyd).
+        // The bound only guards a pathological column; retail has none.
+        for (std::int32_t guard{}; guard < 1024; ++guard) {
+            const bool may_lift = (looking_down && scan.z + z_hi > player_floor_z) ||
+                                  scan.z - z_lo >= map_z_last;
+            if (!may_lift || !prefab_intersects_world(map, authored, scan, request.yaw)) break;
+            --scan.z;
+        }
+    }
+
+    return {scan,
+            {scan.x + world_size.x / 2, scan.y + world_size.y / 2,
+             scan.z + world_size.z / 2}};
+}
+
 void PrefabPlacementPreview::reset(std::span<const PrefabPlacementCell> authored) {
     authored_.assign(authored.begin(), authored.end());
     rotated_.clear();
@@ -139,6 +269,7 @@ PrefabPlacementEvaluation evaluate_prefab_placement(
     const VxlMap& map, std::span<const PrefabPlacementCell> footprint,
     PrefabPlacementCell anchor) noexcept {
     PrefabPlacementEvaluation result;
+    result.model_blocks = footprint.size();
     static constexpr std::array<std::array<std::int32_t, 3U>, 6U> neighbours{{
         {-1, 0, 0}, {1, 0, 0}, {0, -1, 0},
         {0, 1, 0},  {0, 0, -1}, {0, 0, 1},
@@ -249,6 +380,91 @@ PrefabCommitResult PrefabPlacementTransaction::commit(VxlMap& map) noexcept {
 void PrefabPlacementTransaction::clear() noexcept {
     staged_.clear();
     staged_indices_.clear();
+}
+
+VxlColor retail_prefab_blend(VxlColor base, VxlColor voxel) noexcept {
+    const auto channel = [](std::uint8_t a, std::uint8_t b) {
+        const double value =
+            static_cast<double>(b) + (static_cast<double>(a) - static_cast<double>(b)) * 0.5;
+        // Python int() truncates toward zero; the result is never negative.
+        return static_cast<std::uint8_t>(std::clamp(std::trunc(value), 0.0, 255.0));
+    };
+    return {channel(base.red, voxel.red), channel(base.green, voxel.green),
+            channel(base.blue, voxel.blue), 255U};
+}
+
+std::vector<PrefabSmokeRing> prefab_smoke_rings(
+    std::span<const PrefabModelVoxel> model, std::uint32_t model_size_x,
+    PrefabPlacementCell anchor, std::uint8_t yaw, std::uint8_t pitch,
+    std::uint8_t roll) {
+    std::vector<PrefabSmokeRing> rings;
+    if (model.empty()) return rings;
+    std::int32_t max_z = model.front().z;
+    for (const auto& voxel : model) max_z = std::max(max_z, voxel.z);
+    const float radius = (static_cast<float>(model_size_x) - 1.0F) / 2.0F;
+    for (const auto& voxel : model) {
+        if (voxel.z != max_z) continue;
+        const auto rotated = rotate_prefab_cell({voxel.x, voxel.y, voxel.z}, yaw, pitch, roll);
+        rings.push_back({{static_cast<float>(rotated.x + anchor.x),
+                          static_cast<float>(rotated.y + anchor.y),
+                          static_cast<float>(rotated.z + anchor.z) + 1.0F},
+                         radius});
+    }
+    return rings;
+}
+
+void emit_prefab_smoke_ring(ParticleSystem& particles, const VxlMap& map,
+                            const PrefabSmokeRing& ring, std::uint32_t seed) {
+    constexpr auto count = static_cast<std::uint32_t>(retail::SMOKE_RING_NOOF);
+    std::uint32_t state = seed * 747'796'405U + 2'891'336'453U;
+    const auto next_unit = [&state] {
+        state = state * 1'664'525U + 1'013'904'223U;
+        return static_cast<float>(state >> 8U) / 16'777'216.0F;
+    };
+    for (std::uint32_t index{}; index < count; ++index) {
+        const auto angle = 2.0 * std::numbers::pi * static_cast<double>(index) /
+                           static_cast<double>(count);
+        const std::array<float, 3U> position{
+            ring.position[0U] + static_cast<float>(std::cos(angle)) * ring.radius + 0.5F,
+            ring.position[1U] + static_cast<float>(std::sin(angle)) * ring.radius + 0.5F,
+            ring.position[2U]};
+        if (!std::isfinite(position[0U]) || !std::isfinite(position[1U]) ||
+            position[0U] < 0.0F || position[1U] < 0.0F || position[2U] < 0.0F) {
+            continue;
+        }
+        const auto x = static_cast<std::uint32_t>(position[0U]);
+        const auto y = static_cast<std::uint32_t>(position[1U]);
+        const auto z = static_cast<std::uint32_t>(position[2U]);
+        // Retail skips a ring particle whose colour lookup finds no voxel.
+        const auto color = map.color(x, y, z);
+        if (!color.has_value()) continue;
+        ParticleSpawn puff;
+        puff.position = position;
+        puff.color = VxlColor{color->red, color->green, color->blue, 255U};
+        puff.explode_velocity = static_cast<float>(retail::SMOKE_RING_VELOCITY) * 0.1F;
+        const auto size_min = static_cast<float>(retail::SMOKE_RING_PARTICLE_SIZE_MIN);
+        const auto size_max = static_cast<float>(retail::SMOKE_RING_PARTICLE_SIZE_MAX);
+        // draw.pyd's common 0.1 particle-size multiplier.
+        puff.size_begin = (size_min + (size_max - size_min) * next_unit()) * 0.1F;
+        const auto decay = static_cast<float>(retail::SMOKE_RING_DECAY_RATE_MIN) +
+                           (static_cast<float>(retail::SMOKE_RING_DECAY_RATE_MAX) -
+                            static_cast<float>(retail::SMOKE_RING_DECAY_RATE_MIN)) *
+                               next_unit();
+        puff.size_end = puff.size_begin * (1.0F + decay);
+        puff.alpha_begin = 0.8F;
+        puff.alpha_end = 0.0F;
+        puff.lifetime = static_cast<float>(retail::SMOKE_RING_LIFETIME);
+        puff.gravity_scale = 0.0F;
+        puff.atlas = ParticleAtlas::smoke_trail;
+        puff.blend = ParticleBlend::premultiplied;
+        puff.frames_x = 8U;
+        puff.frames_y = 8U;
+        puff.start_frame = 1U;
+        puff.framerate = 30U;
+        puff.loop = false;
+        puff.collide = false;
+        particles.emit_burst(puff, 1U, seed ^ (index * 0x9E3779B9U));
+    }
 }
 
 } // namespace battlespades::world

@@ -58,10 +58,57 @@ struct PrefabPlacementCell final {
 struct PrefabPlacementEvaluation final {
     bool all_in_bounds{true};
     bool touches_world{};
+    /** Footprint cells that are currently air. */
     std::size_t required_blocks{};
+    /**
+     * Retail wallet cost: `len(model.get_points())`. build_prefab refuses a
+     * model larger than the wallet and the owner is debited once per model
+     * voxel, overlap included (add_user_block replace_solids=True).
+     */
+    std::size_t model_blocks{};
 
     [[nodiscard]] bool has_effect() const noexcept { return required_blocks != 0U; }
 };
+
+/**
+ * Retail `shared.common.blend_color(base, voxel, 0.5)` per channel:
+ * `int(voxel + (base - voxel) * 0.5)` clamped to 0..255 (IDA
+ * common.pyd blend_color_component). No random jitter: vxl.pyd
+ * make_color/set_point store the exact value; per-voxel low-bit variation
+ * seen live comes from the KV6 voxel colours themselves.
+ */
+[[nodiscard]] VxlColor retail_prefab_blend(VxlColor base, VxlColor voxel) noexcept;
+
+/** One retail `GameScene.create_smoke_ring(position, size)` call. */
+struct PrefabSmokeRing final {
+    std::array<float, 3U> position{};
+    float radius{};
+};
+
+/**
+ * PrefabManager.build_prefab smoke: one ring per model voxel whose authored z
+ * equals `get_max_z_size()` (the model's lowest layer, z grows downward), at
+ * the rotated world cell + (0, 0, 1) with radius (x_size - 1) / 2.
+ */
+struct PrefabModelVoxel final {
+    std::int32_t x{};
+    std::int32_t y{};
+    std::int32_t z{};
+};
+[[nodiscard]] std::vector<PrefabSmokeRing> prefab_smoke_rings(
+    std::span<const PrefabModelVoxel> model, std::uint32_t model_size_x,
+    PrefabPlacementCell anchor, std::uint8_t yaw, std::uint8_t pitch,
+    std::uint8_t roll);
+
+class ParticleSystem;
+/**
+ * Emit one smoke ring: SMOKE_RING_NOOF (8) particles evenly around the ring,
+ * offset by (0.5, 0.5), each tinted by the map voxel under it and skipped when
+ * that cell is air. Lifetime SMOKE_RING_LIFETIME (1 s), particle size 3..10
+ * at the common 0.1 draw scale; the exact particle call is unverified.
+ */
+void emit_prefab_smoke_ring(ParticleSystem& particles, const VxlMap& map,
+                            const PrefabSmokeRing& ring, std::uint32_t seed);
 
 [[nodiscard]] PrefabPlacementEvaluation evaluate_prefab_placement(
     const VxlMap& map, std::span<const PrefabPlacementCell> footprint,
@@ -72,10 +119,50 @@ struct PrefabPlacementBounds final {
     std::array<std::int32_t, 3U> maximum{};
 };
 
+/** Inputs of retail `PrefabManager.get_prefab_ghost_position`. */
+struct PrefabGhostRequest final {
+    /** Player anchor (eye) in canonical +Z-down map coordinates. */
+    std::array<double, 3U> position{};
+    std::array<double, 3U> orientation{};
+    bool crouching{};
+    /** KV6 `get_sizes()`: the unrotated header dimensions. */
+    std::array<std::int32_t, 3U> size{};
+    std::uint8_t yaw{};
+    std::uint8_t pitch{};
+    std::uint8_t roll{};
+    /** `shared.common.get_facing(orientation.x, orientation.y)`. */
+    std::uint8_t player_direction{};
+    bool check_world_intersect{true};
+    bool use_player_orientation{true};
+};
+
+/** `(scan_position, prefab_center)` from get_prefab_ghost_position. */
+struct PrefabGhostPosition final {
+    /** Packet-30 anchor; the ghost is drawn at anchor + 0.5 + rotated voxel. */
+    PrefabPlacementCell anchor{};
+    std::array<std::int32_t, 3U> center{};
+};
+
+/**
+ * Retail `PrefabManager.get_prefab_ghost_position` (shared/prefabManager.py,
+ * compiled copy in gameScene.pyd): PREFAB_DISTANCES band by rotated radius,
+ * aim point floored, minus int(signed rotated size / 2), the even-size facing
+ * compensation, PREFAB_INITIAL_VERTICAL_OFFSET (-0.8) * size_z / 2, then the
+ * FACE_BOTTOM lift while the yaw-rotated model intersects the world.
+ * `authored` holds the unrotated model points (prefab pivots are reset to 0).
+ */
+[[nodiscard]] PrefabGhostPosition prefab_ghost_position(
+    const VxlMap& map, std::span<const PrefabPlacementCell> authored,
+    const PrefabGhostRequest& request) noexcept;
+
 /** Reuse one rotated footprint and placement result across simulation/render ticks. */
 class PrefabPlacementPreview final {
 public:
     void reset(std::span<const PrefabPlacementCell> authored = {});
+    /** The unrotated model points passed to reset(). */
+    [[nodiscard]] std::span<const PrefabPlacementCell> authored() const noexcept {
+        return authored_;
+    }
     [[nodiscard]] const PrefabPlacementBounds& bounds(
         std::uint8_t yaw, std::uint8_t pitch, std::uint8_t roll);
     [[nodiscard]] PrefabPlacementEvaluation evaluate(

@@ -805,6 +805,124 @@ APPEARANCE_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
 }
 
 
+# Native-only jetpack/parachute key hints (retail parity decision D4: an
+# option, off by default). Retail had no such text, so ship every locale.
+PARITY_HUD_OVERLAYS: dict[str, dict[str, str]] = {
+    "en": {
+        "ABILITY_HINTS": "Ability key hints",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Parachute deployed",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Parachute opens on descent",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: deploy parachute in air",
+        "ABILITY_HINT_JETPACK": "{0}: thrust",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: thrust; release + land to recharge",
+    },
+    "bg": {
+        "ABILITY_HINTS": "Подсказки за умения",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашутът е отворен",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Парашутът се отваря при спускане",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: отвори парашута във въздуха",
+        "ABILITY_HINT_JETPACK": "{0}: тяга",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; пусни и кацни за презареждане",
+    },
+    "ru": {
+        "ABILITY_HINTS": "Подсказки способностей",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашют раскрыт",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Парашют раскроется при снижении",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: раскрыть парашют в воздухе",
+        "ABILITY_HINT_JETPACK": "{0}: тяга",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; отпустите и приземлитесь для перезарядки",
+    },
+    "uk": {
+        "ABILITY_HINTS": "Підказки вмінь",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашут розкрито",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Парашут розкриється під час зниження",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: розкрити парашут у повітрі",
+        "ABILITY_HINT_JETPACK": "{0}: тяга",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; відпустіть і приземліться для перезарядки",
+    },
+    "pl": {
+        "ABILITY_HINTS": "Podpowiedzi umiejętności",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Spadochron otwarty",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Spadochron otworzy się przy opadaniu",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otwórz spadochron w powietrzu",
+        "ABILITY_HINT_JETPACK": "{0}: ciąg",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: ciąg; puść i wyląduj, aby naładować",
+    },
+    "cs": {
+        "ABILITY_HINTS": "Nápověda schopností",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Padák otevřen",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Padák se otevře při klesání",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otevřít padák ve vzduchu",
+        "ABILITY_HINT_JETPACK": "{0}: tah",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: tah; pusťte a přistaňte pro dobití",
+    },
+    "de": {
+        "ABILITY_HINTS": "Fähigkeitshinweise",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Fallschirm geöffnet",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Fallschirm öffnet sich beim Sinken",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: Fallschirm in der Luft öffnen",
+        "ABILITY_HINT_JETPACK": "{0}: Schub",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: Schub; loslassen und landen zum Aufladen",
+    },
+    "fr": {
+        "ABILITY_HINTS": "Aide des capacités",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Parachute déployé",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Le parachute s'ouvre en descente",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0} : déployer le parachute en l'air",
+        "ABILITY_HINT_JETPACK": "{0} : poussée",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0} : poussée ; relâchez et atterrissez pour recharger",
+    },
+    "es": {
+        "ABILITY_HINTS": "Ayudas de habilidad",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paracaídas desplegado",
+        "ABILITY_HINT_PARACHUTE_PENDING": "El paracaídas se abre al descender",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir el paracaídas en el aire",
+        "ABILITY_HINT_JETPACK": "{0}: empuje",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: empuje; suelta y aterriza para recargar",
+    },
+    "es-MX": {
+        "ABILITY_HINTS": "Ayudas de habilidad",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paracaídas desplegado",
+        "ABILITY_HINT_PARACHUTE_PENDING": "El paracaídas se abre al descender",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir el paracaídas en el aire",
+        "ABILITY_HINT_JETPACK": "{0}: empuje",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: empuje; suelta y aterriza para recargar",
+    },
+    "pt-BR": {
+        "ABILITY_HINTS": "Dicas de habilidade",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paraquedas aberto",
+        "ABILITY_HINT_PARACHUTE_PENDING": "O paraquedas abre na descida",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir o paraquedas no ar",
+        "ABILITY_HINT_JETPACK": "{0}: impulso",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: impulso; solte e aterrisse para recarregar",
+    },
+    "it": {
+        "ABILITY_HINTS": "Suggerimenti abilità",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paracadute aperto",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Il paracadute si apre in discesa",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: apri il paracadute in aria",
+        "ABILITY_HINT_JETPACK": "{0}: spinta",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: spinta; rilascia e atterra per ricaricare",
+    },
+    "tr": {
+        "ABILITY_HINTS": "Yetenek ipuçları",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paraşüt açıldı",
+        "ABILITY_HINT_PARACHUTE_PENDING": "Paraşüt inişte açılır",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: havada paraşütü aç",
+        "ABILITY_HINT_JETPACK": "{0}: itki",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: itki; bırak ve şarj için yere in",
+    },
+    "ja": {
+        "ABILITY_HINTS": "能力のヒント",
+        "ABILITY_HINT_PARACHUTE_DEPLOYED": "パラシュート展開中",
+        "ABILITY_HINT_PARACHUTE_PENDING": "降下中にパラシュートが開きます",
+        "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: 空中でパラシュートを開く",
+        "ABILITY_HINT_JETPACK": "{0}: 推進",
+        "ABILITY_HINT_JETPACK_RECHARGE": "{0}: 推進（離して着地で回復）",
+    },
+}
+
+
 # The shipped Japanese module accidentally mixed six Simplified-Chinese
 # characters into sixteen labels. The retail Japanese fonts correctly omit
 # those glyphs, so preserving the typos produces visible question marks.
@@ -876,7 +994,7 @@ def validate_japanese_source(strings: dict[str, str]) -> None:
 
 
 def recovered_strings(path: Path) -> dict[str, str]:
-    """Extract uppercase string assignments from one recovered module.
+    """Extract constant-style string assignments from one recovered module.
 
     Args:
         path: UTF-8 Python source module containing retail string constants.
@@ -896,7 +1014,9 @@ def recovered_strings(path: Path) -> dict[str, str]:
         if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
             continue
         target = statement.targets[0]
-        if not isinstance(target, ast.Name) or not target.id.isupper():
+        # Retail also keys score reasons and award names in mixed case
+        # (TDM_Kill, TC_Contend, MOST_Kills); keep every constant-style name.
+        if not isinstance(target, ast.Name) or not target.id[:1].isupper():
             continue
         try:
             value = ast.literal_eval(statement.value)
@@ -963,6 +1083,7 @@ def main() -> None:
         strings.update(MAJOR_CLIENT_OVERLAYS.get(locale, {}))
         strings.update(NATIVE_FLOW_OVERLAYS.get(locale, {}))
         strings.update(APPEARANCE_SETTINGS_OVERLAYS.get(locale, {}))
+        strings.update(PARITY_HUD_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,

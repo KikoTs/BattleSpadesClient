@@ -46,6 +46,12 @@
     "FRIENDS + LOBBY": "Přátelé + Lobby",
     "SHOW_SKINS": "Zobrazit skiny",
     "SHOW_OTHER_SKINS": "Zobrazit skiny ostatních hráčů",
-    "WEAPON_MOTION": "Pohyb zbraně"
+    "WEAPON_MOTION": "Pohyb zbraně",
+    "ABILITY_HINTS": "Nápověda schopností",
+    "ABILITY_HINT_PARACHUTE_DEPLOYED": "Padák otevřen",
+    "ABILITY_HINT_PARACHUTE_PENDING": "Padák se otevře při klesání",
+    "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otevřít padák ve vzduchu",
+    "ABILITY_HINT_JETPACK": "{0}: tah",
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: tah; pusťte a přistaňte pro dobití"
   }
 }

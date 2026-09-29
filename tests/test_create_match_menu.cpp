@@ -221,6 +221,46 @@ void map_picker_categories_selection_and_scrolling_are_stable() {
            "collapsing a pack must remove children and repair the scroll position");
 }
 
+void saved_and_subscribed_maps_are_filtered_by_mode_and_selectable() {
+    CreateMatchMenuModel menu;
+    menu.set_custom_maps({
+        CreateMatchCustomMap{"Custommap_1", "Desert", "Kiril", {"TDM", "ctf"}, false},
+        CreateMatchCustomMap{"Custommap_2", "Zombie Fort", "", {"zom"}, false},
+        CreateMatchCustomMap{"Subscribed_7", "Workshop Arena", "Someone", {"tdm"}, true},
+        CreateMatchCustomMap{"../escape", "Bad", "", {"tdm"}, false},
+    });
+    expect(menu.custom_maps().size() == 3U, "path-like custom stems must be dropped");
+    expect(menu.open_page(CreateMatchPage::choose_map), "map picker must open");
+    auto frame = menu.presentation();
+    expect(frame.rows.size() > 5U && frame.rows[0].stable_key == "SAVED_MAPS" &&
+               frame.rows[0].kind == CreateMatchRowKind::category &&
+               frame.rows[1].stable_key == "SAVED_MAPS/Custommap_1" &&
+               frame.rows[1].label_key == "Desert" && frame.rows[1].value_text == "Kiril" &&
+               frame.rows[2].stable_key == "SUBSCRIBED_MAPS" &&
+               frame.rows[3].stable_key == "SUBSCRIBED_MAPS/Subscribed_7" &&
+               frame.rows[4].stable_key == "STANDARD",
+           "retail packs order: SAVED_MAPS, SUBSCRIBED_MAPS, then the stock pack, TDM-only");
+    static_cast<void>(menu.take_effects());
+    expect(menu.activate_row("SAVED_MAPS/Custommap_1"), "a listed saved map must be selectable");
+    const auto& chosen = menu.configuration();
+    expect(chosen.custom_map && !chosen.subscribed_map && chosen.map_name == "Custommap_1" &&
+               chosen.map_title == "Desert" && chosen.map_author == "Kiril",
+           "Custom_UGC_Map, its author and the file stem travel with the snapshot");
+    expect(find_effect<CreateMatchConfigurationChangedEffect>(menu.take_effects()) != nullptr,
+           "choosing a custom map must publish the configuration");
+    expect(!menu.activate_row("SAVED_MAPS/Custommap_2"),
+           "a map whose tags lack the mode must not be selectable");
+
+    // Switching to CTF keeps the map (its tags include ctf); Zombie drops it.
+    expect(menu.open_page(CreateMatchPage::choose_game_mode) && menu.activate_row("ctf"),
+           "CTF must be selectable");
+    expect(menu.configuration().custom_map && menu.configuration().map_name == "Custommap_1",
+           "a custom map valid for the new mode stays selected");
+    expect(menu.activate_row("zom"), "Zombie must be selectable");
+    expect(!menu.configuration().custom_map && menu.configuration().map_name != "Custommap_1",
+           "a custom map without the new mode's tag falls back to a stock map");
+}
+
 void lobby_refresh_preserves_manual_scroll_and_focus() {
     for(const auto page:{CreateMatchPage::match_settings,CreateMatchPage::choose_map,
                          CreateMatchPage::game_rules}) {
@@ -748,6 +788,8 @@ int main() {
          nested_panels_emit_forward_and_backward_navigation},
         {"local_host_options_are_explicit_and_travel_with_start",
          local_host_options_are_explicit_and_travel_with_start},
+        {"saved_and_subscribed_maps_are_filtered_by_mode_and_selectable",
+         saved_and_subscribed_maps_are_filtered_by_mode_and_selectable},
         {"map_picker_categories_selection_and_scrolling_are_stable",
          map_picker_categories_selection_and_scrolling_are_stable},
         {"lobby_refresh_preserves_manual_scroll_and_focus",lobby_refresh_preserves_manual_scroll_and_focus},

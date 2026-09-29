@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,7 +18,6 @@ constexpr std::array<ChangeTeamAction, 4U> actions{
     ChangeTeamAction::spectator, ChangeTeamAction::back};
 constexpr std::size_t team_lock_difference_tolerance{2U};
 constexpr ui::ColorRgba8 menu_color{244U, 236U, 187U, 255U};
-constexpr ui::ColorRgba8 flat_join_background{112U, 216U, 224U, 255U};
 constexpr ui::ColorRgba8 dead_player_color{255U, 0U, 0U, 255U};
 constexpr ui::ColorRgba8 demo_player_color{255U, 194U, 81U, 255U};
 constexpr ui::ColorRgba8 white{255U, 255U, 255U, 255U};
@@ -103,12 +103,21 @@ void append_button(ui::DrawList& list, ui::Rect bounds, std::string label,
                      {}, intensity));
     list.push(sprite(part("right"), {x + width - cap, y, cap, height},
                      {}, intensity));
-    list.push(text(std::move(label),
-                   {x + 10.0, y + 1.0, width - 20.0, height - 2.0},
-                   text_size, ui::HorizontalTextAlignment::center,
-                   {20U, 20U, 20U, 255U}, "fonts/Spades.ttf",
-                   ui::TextTransform::uppercase, ui::TextFit::retail_width_scale,
-                   intensity));
+    // TextButton.initialize: text box = width - 2 * TEXT_BACKGROUND_SPACING
+    // (14) by height - 2 * UI_CONTROL_SPACING (4); set_text runs
+    // get_resized_font_and_formatted_text_to_fit_boundaries(text, w, h,
+    // font, 2), which wraps and shrinks (JOIN SURVIVOR ends on one smaller
+    // line instead of being squashed to the button width).
+    auto caption = text(std::move(label),
+                        {x + 14.0, y + 4.0, width - 28.0, height - 8.0},
+                        text_size, ui::HorizontalTextAlignment::center,
+                        {20U, 20U, 20U, 255U}, "fonts/Spades.ttf",
+                        ui::TextTransform::uppercase, ui::TextFit::retail_width_scale,
+                        intensity);
+    caption.layout = ui::TextLayout::retail_wrapped_lines;
+    caption.maximum_lines = 0U;
+    caption.line_spacing_pixels = 2.0;
+    list.push(std::move(caption));
 }
 
 void append_key_display(ui::DrawList& list, int key, double center_x,
@@ -255,6 +264,13 @@ void append_player_lists(ui::DrawList& list,
                        ui::TextFit::retail_width_scale, 1'000U,
                        ui::VerticalTextAlignment::baseline));
 
+        // draw_player_list reuses its local `color` for the row text and,
+        // inside the icon block, overwrites it with a living player's
+        // blend(team.color, white, 0.4). The first player row therefore uses
+        // the UI team colour and every later own-team row inherits the
+        // whitened colour of the previous living player (retail capture:
+        // blue first row, near-white second row).
+        auto leaked_row_color = color(team_ui_color);
         // Retail iterates xrange(17): one header plus sixteen player rows.
         for (std::size_t row{}; row < 16U; ++row) {
             const TeamRosterPlayer* row_player = row < players.size() ? &players[row] : nullptr;
@@ -294,12 +310,14 @@ void append_player_lists(ui::DrawList& list,
                                           ? dead_player_color
                                           : player.demo_player
                                                 ? demo_player_color
-                                                : color(row_ui_color);
+                                                : extra_player ? color(row_ui_color)
+                                                               : leaked_row_color;
             const auto& character_color = row_team == 3U ? state.team2_color
                                              : row_team == 2U ? state.team1_color
                                                               : spectator_color;
             const auto alive_icon_color = retail_blend_color(
                 color(character_color), {255U, 255U, 255U}, 0.4);
+            if (!player.dead) leaked_row_color = alive_icon_color;
             const auto* klass = world::find_class_definition(player.class_id);
             const bool ordinary_alive_icon =
                 !player.dead && !player.high_minimap_visibility;
@@ -386,11 +404,13 @@ void append_player_lists(ui::DrawList& list,
 }
 
 void append_navigation_back(ui::DrawList& list) {
+    // NavigationBar.draw_item (not hovered): MENU_FONT_COLOR2*0.7 glColor on
+    // the icon at x+PAD/2 and on the label in navigation_font (Spades 24).
     list.push(sprite("png/ui/common_elements/nav_bar/back_icon.png",
-                     {54.0, 543.0, 26.0, 26.0}));
-    list.push(text("Back", {82.0, 540.0, 100.0, 34.0}, 22.0,
+                     {56.5, 543.0, 26.0, 26.0}, {232U, 207U, 78U, 255U}, 700U));
+    list.push(text("Back", {84.0, 540.0, 110.0, 34.0}, 24.0,
                    ui::HorizontalTextAlignment::left,
-                   {180U, 165U, 75U, 255U}));
+                   {162U, 145U, 55U, 255U}));
 }
 
 [[nodiscard]] std::string localize_stock_team_name(std::string value) {
@@ -514,18 +534,23 @@ ui::DrawList ChangeTeamPresentation::build(
     list.reserve(160U);
     const auto& state = model.state();
     if (state.initial_join) {
-        // SelectTeam is rendered after the map has loaded but before a player
-        // camera exists. Retail clears that gate to the skydome's cyan.
-        list.push(sprite("png/high/white.png", {0.0, 0.0, 800.0, 600.0},
-                         flat_join_background));
+        // SelectTeam is drawn over the live GameScene: the native frontend
+        // renders the loaded map from CameraManager's initial pose behind it
+        // (retail live capture, 2026-09-29). No flat backdrop here.
         list.push(sprite("png/ui/common_elements/frames/ui_frame_large.png",
                          {25.0, 5.0, 750.0, 589.0}));
         list.push(sprite("png/ui/choose_team/choose_team_content_frames.png",
                          {31.0, 5.0, 739.0, 589.0}));
-        list.push(text("CHOOSE TEAM", {180.0, 14.0, 440.0, 59.0}, 46.0));
+        list.push(text("CHOOSE TEAM", {182.0, 16.0, 440.0, 59.0}, 46.0));
         append_player_lists(list, state, 0.0, 277.0);
-        append_key_display(list, 1, 93.0, 120.0, 34.0);
-        append_key_display(list, 2, 707.0, 120.0, 34.0);
+        // The KeyDisplay belongs to its team button: a locked team (Zombie's
+        // ZOMBIE side) hides both, as retail's SelectTeam does.
+        if (model.visible(ChangeTeamAction::team1)) {
+            append_key_display(list, 1, 93.0, 120.0, 34.0);
+        }
+        if (model.visible(ChangeTeamAction::team2)) {
+            append_key_display(list, 2, 707.0, 120.0, 34.0);
+        }
         if (model.visible(ChangeTeamAction::spectator)) {
             append_key_display(list, 3, 458.0, 481.0, 34.0);
         }
@@ -536,26 +561,42 @@ ui::DrawList ChangeTeamPresentation::build(
             {49.0, 62.0, 702.0, 476.0}));
         list.push(text("CHANGE TEAM", {180.0, 78.0, 440.0, 58.0}, 46.0));
         append_player_lists(list, state, 26.0, 263.0);
-        append_key_display(list, 1, 93.0, 145.0, 34.0);
-        append_key_display(list, 2, 707.0, 145.0, 34.0);
+        if (model.visible(ChangeTeamAction::team1)) {
+            append_key_display(list, 1, 93.0, 145.0, 34.0);
+        }
+        if (model.visible(ChangeTeamAction::team2)) {
+            append_key_display(list, 2, 707.0, 145.0, 34.0);
+        }
         if (model.visible(ChangeTeamAction::spectator)) {
             append_key_display(list, 3, 464.0, 496.0, 34.0);
         }
     }
 
+    // SelectTeam/ChangeTeam: TextButton(strings.JOIN_TEAM.format(team.name)).
+    const auto join_label = [this](const std::string& team_name) {
+        std::string format;
+        if (localize) format = localize("JOIN_TEAM");
+        if (format.empty() || format == "JOIN_TEAM") format = "Join {0}";
+        if (const auto slot = format.find("{0}"); slot != std::string::npos) {
+            format.replace(slot, 3U, team_name);
+        } else {
+            format += " " + team_name;
+        }
+        return format;
+    };
     for (const auto action : actions) {
         if (!model.visible(action) || action == ChangeTeamAction::back) continue;
         std::string label;
         double font_size{20.0};
         switch (action) {
         case ChangeTeamAction::team1:
-            label = "JOIN " + state.team1_name;
+            label = join_label(state.team1_name);
             // TextButton ignores the constructor's historical size argument.
             // A 49 px button selects big_button_aldo_font (36 px).
             font_size = 36.0;
             break;
         case ChangeTeamAction::team2:
-            label = "JOIN " + state.team2_name;
+            label = join_label(state.team2_name);
             font_size = 36.0;
             break;
         case ChangeTeamAction::spectator:
@@ -579,7 +620,34 @@ ui::DrawList ChangeTeamPresentation::build(
 std::string retail_match_result_message(
     const ChangeTeamServerState& state,
     std::optional<std::uint8_t> message_id,
-    std::int32_t winner_team) {
+    std::int32_t winner_team,
+    const RetailStringLookup& localize) {
+    // ViewScores/ViewGameStats.set_message (hud.pyd 0x10061280/0x1006ed20)
+    // read every line through `strings`; English is the fallback table.
+    const auto lookup = [&localize](std::string_view key,
+                                    std::string_view english) {
+        if (localize) {
+            auto value = localize(key);
+            if (!value.empty() && value != key) return value;
+        }
+        return std::string{english};
+    };
+    const auto format = [](std::string pattern,
+                           std::initializer_list<std::string_view> arguments) {
+        std::size_t index{};
+        for (const auto argument : arguments) {
+            const auto token = "{" + std::to_string(index++) + "}";
+            for (auto at = pattern.find(token); at != std::string::npos;
+                 at = pattern.find(token, at + argument.size())) {
+                pattern.replace(at, token.size(), argument);
+            }
+        }
+        return pattern;
+    };
+    const auto wins = [&](const std::string& name) {
+        return format(lookup("TEAM_DEFEAT", "{0} wins!"), {name});
+    };
+    const auto drawn = [&]() { return lookup("GAME_DRAWN", "Draw!"); };
     const auto score_winner = [&]() -> std::int32_t {
         if (state.team1_score > state.team2_score) return 2;
         if (state.team2_score > state.team1_score) return 3;
@@ -597,37 +665,38 @@ std::string retail_match_result_message(
     };
     const auto generic_score_title = [&]() {
         const auto winner = resolved_winner();
-        if (winner == 2 || winner == 3) return winning_name(winner) + " wins!";
-        return std::string{"Draw!"};
+        if (winner == 2 || winner == 3) return wins(winning_name(winner));
+        return drawn();
     };
 
     if (!message_id.has_value()) return generic_score_title();
     switch (*message_id) {
     case 0U:
-        return "End of map. Next map incoming...";
+        return lookup("END_OF_MAP", "End of map. Next map incoming...");
     case 1U: {
         const auto winner = score_winner();
-        if (winner == 2 || winner == 3) return winning_name(winner) + " wins!";
-        return "Draw!";
+        if (winner == 2 || winner == 3) return wins(winning_name(winner));
+        return drawn();
     }
     case 2U: {
         const auto winner = score_winner();
         if (winner == 2 || winner == 3) {
-            return winning_name(winner) + " destroyed " + losing_name(winner) +
-                   " base!";
+            return format(lookup("BASE_DESTROYED", "{0} destroyed {1} base!"),
+                          {winning_name(winner), losing_name(winner)});
         }
-        return "Draw!";
+        return drawn();
     }
     case 3U:
-        return "Zombie virus has claimed all survivors!";
+        return lookup("ZOMBIE_WIN", "Zombie virus has claimed all survivors!");
     case 4U:
-        return "Zombie outbreak contained! Survivors receive a score bonus!";
+        return lookup("SURVIVOR_WIN",
+                      "Zombie outbreak contained! Survivors receive a score bonus!");
     case 6U:
-        return state.team1_name + " wins!";
+        return wins(state.team1_name);
     case 7U:
-        return state.team2_name + " wins!";
+        return wins(state.team2_name);
     case 8U:
-        return "Draw!";
+        return drawn();
     case 5U:
     default:
         // OCCUPATION_WIN_MESSAGE has no dedicated branch in either retail
@@ -650,9 +719,13 @@ ui::DrawList ScoreboardPresentation::build(
     // ViewScores.draw calls title_font.draw(..., 400, 463, center=True).
     // Preserve its centre and baseline, fitting only overflow. Server-authored
     // names must not run beyond the frame on narrow windows.
+    // mode_text = strings.get_by_id(MODE_TITLE[mode]) is drawn as-is (IDA);
+    // only the fallback menu title goes through title.upper().
+    const auto title_transform = mode_title == "SCORES" ? ui::TextTransform::uppercase
+                                                        : ui::TextTransform::preserve;
     list.push(text(std::move(mode_title), {74.0, 137.0, 652.0, 0.0}, 46.0,
                    ui::HorizontalTextAlignment::center, menu_color,
-                   "fonts/Spades.ttf", ui::TextTransform::uppercase,
+                   "fonts/Spades.ttf", title_transform,
                    ui::TextFit::retail_width_scale, 1'000U,
                    ui::VerticalTextAlignment::baseline));
     append_player_lists(list, state, 53.0, 263.0, true);
@@ -663,7 +736,7 @@ ui::DrawList ScoreboardPresentation::build(
         list.push(sprite("png/ui/in_game_menus/score_text_frame.png",
                          {49.0, 511.0, 702.0, 28.0}));
         list.push(text(retail_match_result_message(state, message_id,
-                                                   winner_team),
+                                                   winner_team, localize),
                        {64.0, 530.0, 672.0, 0.0}, 14.0,
                        ui::HorizontalTextAlignment::center, menu_color,
                        "fonts/Spades.ttf", ui::TextTransform::uppercase,
@@ -671,6 +744,12 @@ ui::DrawList ScoreboardPresentation::build(
                        ui::VerticalTextAlignment::baseline));
     }
     return list;
+}
+
+void append_retail_player_lists(ui::DrawList& list, const ChangeTeamServerState& state,
+                                double vertical_offset, double list_height,
+                                bool scoreboard_extras) {
+    append_player_lists(list, state, vertical_offset, list_height, scoreboard_extras);
 }
 
 } // namespace battlespades::frontend

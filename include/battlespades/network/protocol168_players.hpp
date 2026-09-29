@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <string>
@@ -70,6 +71,12 @@ struct RemotePlayerReplica final {
     /** Retail KillAction relationship flags used by draw_player_list. */
     bool dominating_local_player{};
     bool dominated_by_local_player{};
+    /**
+     * Player.running_local_player_kills: consecutive kills of the local player
+     * by this player, reset when the local player kills them. DeathController
+     * reads it as killer_streak (>=2 faces the killer, >=3 flies toward them).
+     */
+    std::uint32_t running_local_player_kills{};
     std::string name;
     std::vector<std::uint8_t> loadout;
     std::vector<std::string> prefabs;
@@ -81,27 +88,133 @@ struct RemoteMotionSample final {
     world::Vec3 position{};
     world::Vec3 orientation{1.0, 0.0, 0.0};
     world::Vec3 velocity{};
+    /** WorldUpdate movement buttons (0x01 up .. 0x80 sprint). */
+    std::uint8_t input_flags{};
+    /** Action 0x80: UGC hover held. */
+    bool hover{};
+    /** Compact world.pyd pack enum 0..4 from the replicated loadout. */
+    std::uint8_t jetpack{};
+    /** WorldUpdate action bit 0x04. */
+    bool jetpack_active{};
+    bool parachute{};
+    /** WorldUpdate state bit 0x01. */
+    bool parachute_active{};
+    bool burdened{};
+    bool dead{};
+    std::uint8_t class_id{};
+    double movement_speed_scale{1.0};
 };
 
+/** Build the retail extrapolation input for one authoritative peer row. */
+[[nodiscard]] RemoteMotionSample
+remote_motion_sample(const RemotePlayerReplica& replica,
+                     double movement_speed_scale = 1.0) noexcept;
+
 /**
- * Presentation-only interpolation between authoritative 30 Hz WorldUpdates.
- * Collision and hit state continue to use RemotePlayerReplica directly; this
- * buffer only prevents observers from rendering each peer as 30 Hz teleports.
+ * Presentation of one remote player the retail way.
+ *
+ * Retail `Character.apply_interpolations` snaps the remote world object to the
+ * newest WorldUpdate position/velocity and keeps simulating it forward with
+ * the peer's replicated buttons (BS/docs/LAG_COMPENSATION.md). The server's
+ * lag compensation rewinds by exactly RTT for that view (`view_delay = 0`),
+ * so the native client must not render peers one snapshot interval late the
+ * way a buffered interpolator would. Each tick advances the peer with the
+ * same native mover the local player uses. Collision and hit state continue
+ * to use RemotePlayerReplica directly.
  */
 class RemoteMotionInterpolator final {
 public:
     void reset(RemoteMotionSample sample) noexcept;
+    /** Snap to the newest row; `snapshot_interval` is kept for API stability. */
     void push(RemoteMotionSample sample, double snapshot_interval) noexcept;
-    void tick(double dt) noexcept;
+    /** Advance the extrapolated peer by one simulation step. */
+    void tick(double dt, const world::VxlMap* map = nullptr,
+              double world_gravity = 1.0) noexcept;
     [[nodiscard]] const RemoteMotionSample& sample() const noexcept;
 
 private:
     RemoteMotionSample current_{};
-    RemoteMotionSample start_{};
-    RemoteMotionSample target_{};
-    double elapsed_{};
-    double duration_{1.0 / 30.0};
+    world::PlayerMovementState body_{};
     bool initialized_{};
+};
+
+/**
+ * Non-allocating view of the present roster slots, in player-id order.
+ *
+ * Protocol168Roster::players() copies every replica (names, loadouts,
+ * prefab strings) into a fresh vector; the frontend called it ~18 times per
+ * frame. This view iterates the fixed slot array in place. It is invalidated
+ * by any roster mutation, so it must not outlive a packet-handling step.
+ */
+class PresentPlayers final {
+public:
+    using Slots = std::array<std::optional<RemotePlayerReplica>, 128U>;
+
+    class iterator final {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = RemotePlayerReplica;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const RemotePlayerReplica*;
+        using reference = const RemotePlayerReplica&;
+
+        iterator() = default;
+        iterator(const Slots* slots, std::size_t index) noexcept
+            : slots_{slots}, index_{index} {
+            skip_empty();
+        }
+        [[nodiscard]] reference operator*() const noexcept {
+            return *(*slots_)[index_];
+        }
+        [[nodiscard]] pointer operator->() const noexcept {
+            return &*(*slots_)[index_];
+        }
+        iterator& operator++() noexcept {
+            ++index_;
+            skip_empty();
+            return *this;
+        }
+        iterator operator++(int) noexcept {
+            auto copy = *this;
+            ++*this;
+            return copy;
+        }
+        [[nodiscard]] friend bool operator==(const iterator& left,
+                                             const iterator& right) noexcept {
+            return left.index_ == right.index_;
+        }
+
+    private:
+        void skip_empty() noexcept {
+            while (slots_ != nullptr && index_ < slots_->size() &&
+                   !(*slots_)[index_].has_value()) {
+                ++index_;
+            }
+        }
+        const Slots* slots_{};
+        std::size_t index_{};
+    };
+
+    explicit PresentPlayers(const Slots& slots) noexcept : slots_{&slots} {}
+    [[nodiscard]] iterator begin() const noexcept {
+        return {slots_, 0U};
+    }
+    [[nodiscard]] iterator end() const noexcept {
+        return {slots_, slots_->size()};
+    }
+    [[nodiscard]] std::size_t size() const noexcept {
+        std::size_t count{};
+        for (const auto& slot : *slots_) {
+            count += slot.has_value() ? 1U : 0U;
+        }
+        return count;
+    }
+    [[nodiscard]] bool empty() const noexcept {
+        return begin() == end();
+    }
+
+private:
+    const Slots* slots_;
 };
 
 /**
@@ -158,6 +271,10 @@ public:
     [[nodiscard]] const RemotePlayerReplica*
     player(std::uint8_t player_id) const noexcept;
     [[nodiscard]] std::vector<RemotePlayerReplica> players() const;
+    /** Allocation-free iteration over the same players, for per-frame paths. */
+    [[nodiscard]] PresentPlayers present_players() const noexcept {
+        return PresentPlayers{players_};
+    }
 
 private:
     std::array<std::optional<RemotePlayerReplica>, 128U> players_{};

@@ -5,8 +5,10 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace battlespades::frontend {
@@ -109,6 +111,12 @@ class ChangeTeamPresentation final {
 public:
     [[nodiscard]] ui::DrawList build(const ChangeTeamMenuModel& model,
                                      ui::PixelExtent window) const;
+
+    /**
+     * strings.get_by_id for the JOIN_TEAM button format ("Join {0}"); unset
+     * keeps the English table.
+     */
+    std::function<std::string(std::string_view key)> localize{};
 };
 
 /**
@@ -118,10 +126,19 @@ public:
  * authoritative score winner retained by ViewGameStats; when absent, the
  * current team scores provide the same fallback used by ViewScores.
  */
+/** strings.get_by_id: resolves one retail string-table key. */
+using RetailStringLookup = std::function<std::string(std::string_view key)>;
+
+/**
+ * `localize` resolves END_OF_MAP / TEAM_DEFEAT / GAME_DRAWN / BASE_DESTROYED
+ * / ZOMBIE_WIN / SURVIVOR_WIN exactly like ViewScores.set_message; unset
+ * keeps the English string table.
+ */
 [[nodiscard]] std::string retail_match_result_message(
     const ChangeTeamServerState& state,
     std::optional<std::uint8_t> message_id,
-    std::int32_t winner_team = 0);
+    std::int32_t winner_team = 0,
+    const RetailStringLookup& localize = {});
 
 /** Hold-TAB overlay recovered from ViewScores and draw_player_list. */
 class ScoreboardPresentation final {
@@ -132,6 +149,18 @@ public:
                                      std::optional<std::uint8_t> message_id =
                                          std::nullopt,
                                      std::int32_t winner_team = 0) const;
+
+    /** Localises the ShowTextMessage headline; unset keeps English. */
+    RetailStringLookup localize{};
 };
+
+/**
+ * ingame_menus.draw_player_list for both columns. ChangeTeam and
+ * KickVotePlayerSelect use vertical_offset 26 / height 263; the kick screen
+ * and ViewScores also place spectators in the spare rows (scoreboard_extras).
+ */
+void append_retail_player_lists(ui::DrawList& list, const ChangeTeamServerState& state,
+                                double vertical_offset, double list_height,
+                                bool scoreboard_extras);
 
 } // namespace battlespades::frontend

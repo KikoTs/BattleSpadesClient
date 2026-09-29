@@ -66,6 +66,11 @@ uniform vec4 u_pointLightColorIntensity[8];
 // ambient and the whole model reads as flat.
 uniform vec4 u_upAxis;
 
+// rgb: map light (placed flare/fire light and emissive spill) sampled on the
+// CPU at a model's position, pre-multiplied by terrain's gains. Zero for
+// terrain, which carries the same light in its vertex bake / volume probe.
+uniform vec4 u_modelLight;
+
 vec3 retail_calculate_lighting(vec3 albedo, vec3 light_direction,
                                vec3 half_vector, vec3 light_color,
                                vec3 normal, float directional_influence)
@@ -105,9 +110,20 @@ void main()
     {
         if (v_retail_meta.w > 0.5)
         {
-            // Terrain normals are canonical x/y/z-down. Retail's OpenGL VXL
-            // shader consumes x/y-up/z, hence this exact basis conversion.
-            vec3 retail_normal = normalize(vec3(normal.x, -normal.z, normal.y));
+            // Terrain normals are canonical x/y/z-down and retail places VXL
+            // vertices at GL (x, -z, y). Its mesher (vxl.pyd sub_10030B60)
+            // however writes the SIDE-face normal codes with x and y
+            // exchanged: the +y face gets code 88 (GL +x), -y gets 80
+            // (GL -x), +x gets 148 (GL +z), -x gets 20 (GL -z). So the key
+            // light (-0.69, 0.30, 0) lights the -y faces, not -x -- the
+            // same side the diagonal sun-shadow walk (y-1, z-1) comes from.
+            // v_retail_meta.w in (0.5, 0.9) marks a static-light source
+            // voxel, whose codes retail inverts (record +4 flag).
+            vec3 retail_normal = normalize(vec3(normal.y, -normal.z, normal.x));
+            if (v_retail_meta.w < 0.9)
+            {
+                retail_normal = -retail_normal;
+            }
             vec3 light0 = normalize(u_retailLight0Direction.xyz);
             vec3 light1 = normalize(u_retailLight1Direction.xyz);
             vec3 eye = normalize(u_retailViewDirection.xyz);
@@ -120,13 +136,18 @@ void main()
             vec3 ambient = u_retailAmbient.rgb * u_retailAmbient.a;
             vec3 combined = clamp(ambient + dir0 + dir1,
                                   vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));
+            // u_modelOpacity.w marks the draw_sea quad: sea_frag reads the
+            // edge term from the AO coordinate and repeats the grain 2000x.
+            bool retail_sea = u_modelOpacity.w > 0.5;
             vec4 ao_sample = texture2D(s_retailAo, v_retail_uv.xy);
-            vec4 edge_sample = texture2D(s_retailAo, v_retail_uv.zw);
+            vec4 edge_sample = texture2D(s_retailAo,
+                                         retail_sea ? v_retail_uv.xy : v_retail_uv.zw);
             lit = combined * (ao_sample.r + 0.35);
             lit += (1.0 - edge_sample.g) * albedo * 0.3;
             // Retail vxl.pyd sub_10014A30 binds the same atlas with GL_LINEAR
             // min/mag, CLAMP_TO_EDGE and no mipmaps, including its blue grain.
-            lit *= texture2D(s_retailAo, v_retail_meta.xy).b;
+            lit *= texture2D(s_retailAo,
+                             retail_sea ? v_retail_meta.xy * 2000.0 : v_retail_meta.xy).b;
         }
         else if (v_retail_meta.w > 0.1)
         {
@@ -356,6 +377,12 @@ void main()
         // which is the entire point of carrying one.
         lit += albedo * v_placed.rgb * u_emissiveParams.y;
 
+        // The same placed (and, for the view model, emissive-spill) light
+        // sampled on the CPU at a model's position. Models carry no vertex
+        // bake, so without this the hands stayed dark under a lamp that lit
+        // the room around them. Zero for terrain and on the Retail tier.
+        lit += albedo * u_modelLight.rgb;
+
         // Light CAST BY emissive blocks. This is what makes a neon street feel
         // inhabited rather than decorated: a green sign bleeds green onto the
         // wall opposite, and a lantern pools light on the road below. Probed one
@@ -420,7 +447,10 @@ void main()
     // Radial fog from the eye, evaluated per pixel. Per-vertex fog bands
     // visibly across a 16-block chunk quad at grazing angles.
     vec3  offset   = v_world - u_cameraPosition.xyz;
-    float distance = u_lightParams.x < 1.5 ? v_placed.w : length(offset);
+    // Legacy fog is per vertex, except for the sea: its 2000-block quad
+    // has sea_frag's per-fragment FogEyeRadial(posView).
+    float distance = (u_lightParams.x < 1.5 && u_modelOpacity.w < 0.5)
+                         ? v_placed.w : length(offset);
     float d        = clamp(distance / u_fogParams.w, 0.0, 1.0);
 
     float fog;
@@ -459,5 +489,11 @@ void main()
 
     // Alpha is a literal 1.0, not v_color0.a: that channel now carries the
     // mesher's self-illumination strength, and terrain is opaque regardless.
-    gl_FragColor = vec4(mix(lit, fog_rgb, fog), u_modelOpacity.x);
+    vec3 final_rgb = mix(lit, fog_rgb, fog);
+    // sea_frag: "bump it up a little bit" after the fog mix.
+    if (u_modelOpacity.w > 0.5)
+    {
+        final_rgb *= 1.01;
+    }
+    gl_FragColor = vec4(final_rgb, u_modelOpacity.x);
 }

@@ -12,12 +12,10 @@ namespace {
 
 constexpr float body_scale{0.05F};
 
-// The raw standing body and leg volumes overlap by 0.125 world units after
-// applying the recovered BODY_PARTS anchors. Retail hides most of that inside
-// the hip seam; our centred KV6 cubes expose it as the torso sitting in the
-// thighs. Lift the complete upper body by two KV6 voxels, retaining a small
-// 0.025-unit seam so movement never opens a visible gap.
-constexpr float standing_upper_body_lift{-2.0F * body_scale};
+// The standing body and leg volumes overlap by 0.125 world units at the
+// recovered BODY_PARTS anchors (head/torso z 0.3, legs 1.1). Retail keeps that
+// overlap: Character.set_crouch (character.pyx 829-837) places the torso and
+// head exactly at those anchors, so no upper-body lift is applied here.
 
 // Retail has one shared crouched-leg asset but draws it at both leg anchors.
 // BODY_PART_LEG_CROUCH_Y is -0.3 in shared.constants; treating the catalog row
@@ -160,21 +158,14 @@ ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
         // Retail builds the visible upper/lower arms from the class arm KV6s.
         if (part.part == BodyPart::head || part.part == BodyPart::torso ||
             part.part == BodyPart::left_leg || part.part == BodyPart::right_leg) {
-            const std::array<float, 3U> adjustment =
-                part.part == BodyPart::head || part.part == BodyPart::torso
-                    ? std::array<float, 3U>{0.0F, 0.0F, standing_upper_body_lift}
-                    : std::array<float, 3U>{};
-            append_preview(result.standing_preview, *mesh, part, adjustment);
+            append_preview(result.standing_preview, *mesh, part);
         }
         if (part.part == BodyPart::head || part.part == BodyPart::torso) {
-            append_preview(result.standing_body_preview, *mesh, part,
-                           {0.0F, 0.0F, standing_upper_body_lift});
+            append_preview(result.standing_body_preview, *mesh, part);
             if (part.part == BodyPart::head) {
-                append_preview(result.head_preview, *mesh, part,
-                               {0.0F, 0.0F, standing_upper_body_lift});
+                append_preview(result.head_preview, *mesh, part);
             } else {
-                append_preview(result.standing_torso_preview, *mesh, part,
-                               {0.0F, 0.0F, standing_upper_body_lift});
+                append_preview(result.standing_torso_preview, *mesh, part);
             }
         } else if (part.part == BodyPart::left_leg) {
             append_preview(result.left_leg_preview, *mesh, part);

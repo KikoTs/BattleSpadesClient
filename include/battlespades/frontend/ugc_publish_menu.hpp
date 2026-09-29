@@ -45,6 +45,12 @@ struct UgcLocalMapRecord final {
     std::string preview_asset;
     UgcLocalMapState state{UgcLocalMapState::unpublished};
     std::vector<UgcPublishModeStatus> modes;
+    /** Sidecar `author` (retail Custom_UGC_Map_Author); may be empty. */
+    std::string author;
+    /** Sidecar `baseplate` stem, e.g. "DesertBaseplate"; may be empty. */
+    std::string baseplate;
+    /** Sidecar `prefab_set` (0..5) when the project pinned a palette. */
+    std::optional<std::uint8_t> prefab_set;
 
     [[nodiscard]] bool has_publishable_mode() const noexcept;
 };

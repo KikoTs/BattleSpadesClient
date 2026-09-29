@@ -79,8 +79,8 @@ int main() {
         menu.configure(advertised, 1U, 0U);
         battlespades::frontend::ClassSelectionPresentation presentation;
         const auto draw = presentation.build(menu, battlespades::ui::PixelExtent{800, 600});
-        expect(find_text(draw, "Commando") != nullptr,
-               "class byte 0 must retain the retail Commando UI name");
+        expect(find_text(draw, "SOLDIER") != nullptr,
+               "class byte 0 must use CLASS_NAMES' SOLDIER id (\"Commando\")");
         expect(battlespades::frontend::class_selection_item_icon(72U) ==
                    "png/ui/weapons/parachute.png",
                "Commando parachute must not reuse the generic jetpack icon");
@@ -164,7 +164,11 @@ int main() {
         expect(menu.classes().size() == 1U && menu.selected_class() == 0U,
                "an empty malformed roster must retain a usable fallback");
 
-        menu.configure(advertised, 2U, 12U);
+        // The server's default rules disable the flare block (tool 22), so
+        // the constructs table starts with the class prefabs.
+        battlespades::world::ClassSelectionRules no_flare;
+        no_flare.disabled_tools = {22U};
+        menu.configure(advertised, 2U, 12U, no_flare);
         const auto options = battlespades::world::class_prefab_options(12U);
         static_cast<void>(menu.click({480, 365})); // Fourth construct, platform.
         expect(menu.selected_prefabs().size() == 3U &&
@@ -191,7 +195,7 @@ int main() {
         expect(menu.selection().prefabs == engineer_selection.prefabs &&
                    menu.selection().loadout == engineer_selection.loadout,
                "browsing another class must preserve the previous class choices");
-        menu.configure(advertised, 2U, 12U);
+        menu.configure(advertised, 2U, 12U, no_flare);
         menu.restore_loadout(engineer_selection.loadout, engineer_selection.prefabs);
         expect(menu.selection().prefabs == engineer_selection.prefabs &&
                    menu.selection().loadout == engineer_selection.loadout,

@@ -482,6 +482,17 @@ struct TerritoryBaseStatePacket final {
     float capture_amount{};
 };
 
+/**
+ * Server camera focus (Demolition airstrike). GameScene.process_packet_poi_focus
+ * reads only the three fixed16 coordinates and starts a LookAtController on
+ * that point; there is no timeout and no release packet (BS docs/PROTOCOL.md
+ * row 18, live 2026-09-26).
+ */
+struct PoiFocusPacket final {
+    static constexpr std::uint8_t id{18U};
+    std::array<float, 3U> target{};
+};
+
 using RuntimePacket = std::variant<ClockSyncPacket,
                                    SetUgcEditModePacket,
                                    SetHpPacket,
@@ -532,7 +543,8 @@ using RuntimePacket = std::variant<ClockSyncPacket,
                                    RankUpsPacket,
                                    MapEndedPacket,
                                    TeamProgressPacket,
-                                   TerritoryBaseStatePacket>;
+                                   TerritoryBaseStatePacket,
+                                   PoiFocusPacket>;
 
 struct RuntimeDecodeResult final {
     std::optional<RuntimePacket> packet;
@@ -554,6 +566,9 @@ struct RuntimeDecodeResult final {
 
 /** Encode a safe stock sky definition selected by the UGC host. */
 [[nodiscard]] std::vector<std::byte> encode_packet(const SkyboxDataPacket& packet);
+
+/** Encode the UGC host's bounded PNG map preview (packet 102); empty if not a PNG. */
+[[nodiscard]] std::vector<std::byte> encode_packet(const UgcMapInfoPacket& packet);
 
 /** Encode the complete UGC RGB/Z-threshold terrain and water palette. */
 [[nodiscard]] std::vector<std::byte> encode_packet(const SetGroundColorsPacket& packet);

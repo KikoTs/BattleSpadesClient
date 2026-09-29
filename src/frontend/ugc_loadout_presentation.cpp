@@ -80,11 +80,15 @@ void append_button(ui::DrawList& list, DrawRect bounds, std::string label,
 void append_navigation_back(ui::DrawList& list, bool hovered) {
     const auto intensity = hovered ? std::uint16_t{1'000U}
                                    : std::uint16_t{700U};
+    // NavigationBar.draw_item: MENU_FONT_COLOR2 (x0.7 unless hovered) on the
+    // icon at x+PAD/2 and on the Spades-24 label PAD/2 after it, the same
+    // navbar the loader and team/class screens draw.
+    constexpr ColorRgba8 menu_font_color2{232U, 207U, 78U, 255U};
     list.push(sprite("png/ui/common_elements/nav_bar/back_icon.png",
-                     {54.0, 543.0, 26.0, 26.0}, {}, intensity));
-    auto command = text("BACK", {82.0, 540.0, 100.0, 34.0}, 22.0,
+                     {56.5, 543.0, 26.0, 26.0}, menu_font_color2, intensity));
+    auto command = text("BACK", {84.0, 540.0, 110.0, 34.0}, 24.0,
                         HorizontalTextAlignment::left,
-                        {180U, 165U, 75U, 255U}, "fonts/Spades.ttf", 1U);
+                        menu_font_color2, "fonts/Spades.ttf", 1U);
     command.modulation.intensity_per_mille = intensity;
     list.push(std::move(command));
 }

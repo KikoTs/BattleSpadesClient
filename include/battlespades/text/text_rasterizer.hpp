@@ -101,6 +101,14 @@ struct TextMetrics final {
     std::int32_t baseline_x_in_bitmap{};
     std::int32_t baseline_y_in_bitmap{};
     std::size_t glyph_count{};
+    /**
+     * aoslib.font Font.get_char_height: FTGL FTSize::Height() for a scalable
+     * face, y_ppem * (bbox.yMax - bbox.yMin) / units_per_EM (the global glyph
+     * box, not the face line height). Retail's wrap-and-shrink fitting
+     * (get_resized_font_and_formatted_text_to_fit_boundaries) measures lines
+     * with it.
+     */
+    double retail_char_height_pixels{};
 };
 
 /** Straight-alpha white glyph coverage in tightly packed RGBA8 rows. */

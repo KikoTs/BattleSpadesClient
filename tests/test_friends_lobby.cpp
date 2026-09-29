@@ -793,6 +793,56 @@ void search_results_keep_pending_relationship_actions_visible() {
 
 } // namespace
 
+void stabilisation_2026_09_28_contract() {
+    const auto now = std::chrono::steady_clock::now();
+    FriendsLobbyMenuModel model;
+    model.set_identity("self");
+    model.set_service_status(true, {});
+    model.enter(now);
+    auto snapshot = fixture();
+    snapshot.lobby = FriendsLobby{"own", "self", "Own lobby", "forming", {}, 8U, {{"self", "Self", "online", false}}};
+    model.apply_snapshot(snapshot, now);
+
+    // Pending work is visible on the tabs without opening them.
+    expect(model.incoming_request_count() == 1U, "incoming requests must be counted for the tab badge");
+
+    // A poll failure is shown, but must not grey out actions.
+    model.set_connected(false);
+    expect(!model.connected(), "poll health must be reported");
+    model.set_tab(FriendsLobbyTab::friends);
+    expect(model.move_selection(1), "selecting the first friend must work while reconnecting");
+    const auto online = model.primary_button();
+    expect(online.intent.has_value() && online.intent->kind == FriendsLobbyActionKind::invite_friend,
+           "invite must stay available while a background poll is failing");
+    model.set_connected(true);
+
+    // Offline friends can still be invited: AoSPlay keeps the invitation.
+    expect(model.move_selection(1), "select the offline friend");
+    const auto offline = model.primary_button();
+    expect(offline.label == "INVITE (OFFLINE)" && offline.intent.has_value() &&
+           offline.intent->kind == FriendsLobbyActionKind::invite_friend && offline.intent->target_id == "b",
+           "an offline friend must be invitable to an existing lobby");
+
+    // An invitation into another lobby is accepted as LEAVE + JOIN.
+    model.set_tab(FriendsLobbyTab::invitations);
+    expect(model.move_selection(1), "select the invitation");
+    const auto join = model.primary_button();
+    expect(join.label == "LEAVE + JOIN" && join.intent.has_value() &&
+           join.intent->kind == FriendsLobbyActionKind::accept_lobby_invite && join.intent->target_id == "i",
+           "an invitation must be acceptable while already in another lobby");
+
+    // Action errors explain themselves, then clear on their own.
+    const auto operation = model.begin(*join.intent, now + 1s);
+    expect(operation.has_value(), "the accept must begin");
+    expect(model.complete(operation->generation, false, "Lobby not found.", now + 2s), "failure completes");
+    expect(model.error() == "Lobby not found.", "the concrete error must be shown");
+    model.tick(now + 2s + FriendsLobbyMenuModel::error_display_duration - 1ms);
+    expect(!model.error().empty(), "the error must stay readable for its display time");
+    model.tick(now + 2s + FriendsLobbyMenuModel::error_display_duration);
+    expect(model.error().empty() && model.phase() != FriendsLobbyPhase::error,
+           "the error must clear itself afterwards");
+}
+
 int main() {
     try {
         keyboard_selection_reveals_rows_and_wheel_targets_its_panel();
@@ -820,6 +870,7 @@ int main() {
         inviting_without_a_lobby_creates_and_invites_atomically();
         accepted_friends_route_to_their_authoritative_lobby_or_server();
         authoritative_snapshots_complete_lost_write_responses();
+        stabilisation_2026_09_28_contract();
         std::cout << "friends/lobby tests passed\n";
         return 0;
     } catch (const std::exception& error) {

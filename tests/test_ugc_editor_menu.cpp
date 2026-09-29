@@ -221,7 +221,7 @@ void title_editing_is_transactional_and_bounded() {
                    UgcEditorLobbyModel::maximum_title_code_units,
            "retail title storage must remain bounded to 19 code units");
     model.cancel_title_edit();
-    expect(!model.title_editing() && model.configuration().map_title == "DesertBaseplate",
+    expect(!model.title_editing() && model.configuration().map_title == "Desert",
            "Cancel must restore the pre-edit title atomically");
 
     expect(model.begin_title_edit(), "second title edit must start after cancellation");
@@ -230,6 +230,49 @@ void title_editing_is_transactional_and_bounded() {
     expect(model.append_title_text("Arena") && model.commit_title_edit() &&
                model.configuration().map_title == "Arena",
            "Commit must preserve a valid non-empty authored title");
+}
+
+void saved_maps_and_templates_have_unique_project_identity() {
+    UgcEditorLobbyModel model;
+    expect(model.configuration().map_title == "Desert" &&
+               model.configuration().project_stem == "Custommap_1" &&
+               !model.configuration().saved_project,
+           "the default Desert template opens a brand-new project");
+    model.set_saved_projects(
+        {UgcEditorSavedProject{"Custommap_1", "Desert", "DesertBaseplate", "Kiril", std::nullopt},
+         UgcEditorSavedProject{"Custommap_4", "Castle", "TempleBaseplate", "", std::uint8_t{5U}},
+         UgcEditorSavedProject{"../bad", "Bad", "DesertBaseplate", "", std::nullopt},
+         UgcEditorSavedProject{"Custommap_9", "Moon", "NotABaseplate", "", std::nullopt}},
+        {"Custommap_1", "Custommap_4", "Custommap_5"});
+    expect(model.saved_projects().size() == 2U &&
+               model.saved_projects()[1].baseplate == "Templebaseplate",
+           "unsafe stems and unknown baseplates never reach SAVED_MAPS");
+    expect(model.configuration().map_title == "Desert-1" &&
+               model.configuration().project_stem == "Custommap_6",
+           "a template gets generate_ugc_map_title -N and a fresh Custommap_N");
+    // Saved maps come first on the Map row: Water template -> first saved.
+    for (int step = 0; step < 8; ++step) {
+        expect(model.cycle(UgcEditorSettingId::map, 1), "template cycling");
+    }
+    expect(model.configuration().map_name == "WaterBaseplate", "last template is Water");
+    expect(model.cycle(UgcEditorSettingId::map, 1) && model.configuration().saved_project &&
+               model.configuration().project_stem == "Custommap_1" &&
+               model.configuration().map_title == "Desert" &&
+               model.configuration().map_name == "DesertBaseplate" &&
+               model.value_text(UgcEditorSettingId::map) == "Desert",
+           "SAVED_MAPS follow the templates and reopen by file stem, never by title");
+    expect(model.cycle(UgcEditorSettingId::map, 1) &&
+               model.configuration().project_stem == "Custommap_4" &&
+               model.configuration().map_name == "Templebaseplate" &&
+               model.configuration().prefab_set == 5U,
+           "a saved project keeps its own baseplate and prefab set");
+    expect(model.cycle(UgcEditorSettingId::map, 1) && !model.configuration().saved_project &&
+               model.configuration().map_name == "DesertBaseplate" &&
+               model.configuration().map_title == "Desert-1",
+           "wrapping past the saved maps returns to the first template");
+    expect(ugc_editor_map_for_baseplate("marshbaseplate") == "MarshTemplate" &&
+               ugc_editor_map_for_baseplate("../x").empty(),
+           "sidecar baseplates map case-insensitively onto the playlist names");
 }
 
 void start_is_the_only_transition_to_loading_boundary() {
@@ -451,6 +494,8 @@ int main() {
         {"lobby_exposes_only_the_six_retail_ugc_settings",
          lobby_exposes_only_the_six_retail_ugc_settings},
         {"title_editing_is_transactional_and_bounded", title_editing_is_transactional_and_bounded},
+        {"saved_maps_and_templates_have_unique_project_identity",
+         saved_maps_and_templates_have_unique_project_identity},
         {"start_is_the_only_transition_to_loading_boundary",
          start_is_the_only_transition_to_loading_boundary},
         {"presentations_show_real_browser_and_lobby_not_fake_loading",

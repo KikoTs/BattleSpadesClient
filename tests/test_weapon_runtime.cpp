@@ -153,9 +153,10 @@ void crosshair_tracks_retail_accuracy_and_fixed_tool_rules() {
     runtime.replace_loadout(std::array<std::uint8_t, 3U>{2U, 7U, 18U},
                             std::uint8_t{2U});
 
-    expect(std::fabs(runtime.crosshair_radius_pixels(900.0, 75.0, false) - 6.0) <
-               1.0e-12,
-           "melee must retain retail's fixed accuracy_spread * 6 reticle");
+    // SpadeTool is a Tool, not a Weapon: no get_accuracy, so the reticle
+    // stays at the one-pixel minimum (retail's small square, live A/B).
+    expect(runtime.crosshair_radius_pixels(900.0, 75.0, false) == 1.0,
+           "melee tools must draw retail's fixed small-square reticle");
 
     expect(runtime.select(18U) == battlespades::world::WeaponStateResult::accepted,
            "sniper must be selectable for reticle parity");
@@ -393,8 +394,17 @@ void invalid_deployable_targets_do_not_spend_stock_or_emit_packets() {
     runtime.set_context(WeaponRuntimeContext{false, false, false, false});
     runtime.set_primary(true);
     runtime.tick(1.0 / 60.0);
+    {
+        const auto refused = runtime.take_actions();
+        expect(refused.size() == 1U &&
+                   refused.front().kind == WeaponActionKind::placement_rejected &&
+                   count(refused, WeaponActionKind::deployable_place) == 0U,
+               "a missing retail ghost target must suppress landmine placement and "
+               "report one BUILD_ERROR edge");
+    }
+    runtime.tick(1.0 / 60.0);
     expect(runtime.take_actions().empty(),
-           "a missing retail ghost target must suppress landmine placement");
+           "holding the trigger on an invalid target must not repeat build_error");
     expect(runtime.replication().ammo(20U)->magazine == stock,
            "an invalid landmine target must not consume local stock");
 
@@ -800,6 +810,215 @@ void only_burst_weapons_mark_follow_up_rounds() {
     }
 }
 
+/**
+ * P0-10: a trigger press during a clip_reload shell cycle stops the chain
+ * after the shell in progress and fires with the shells loaded so far.
+ */
+void a_shell_reload_press_fires_after_the_current_shell() {
+    WeaponRuntime runtime{9091U};
+    runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
+    const auto& shotgun = weapon_catalog()[9U];
+    expect(shotgun.retail.ammo.clip_reload, "the shotgun must be a clip_reload weapon");
+    for (int shot{}; shot < 2; ++shot) {
+        runtime.set_primary(true);
+        runtime.tick(1.0 / 60.0);
+        runtime.set_primary(false);
+        tick_for(runtime, shotgun.fire_interval + 0.05);
+    }
+    static_cast<void>(runtime.take_actions());
+    const auto magazine_before = runtime.replication().ammo(9U)->magazine;
+    expect(runtime.request_reload() == battlespades::world::WeaponStateResult::accepted,
+           "the shotgun shell reload must start");
+    runtime.tick(1.0 / 60.0);
+    runtime.set_primary(true);
+    runtime.tick(1.0 / 60.0);
+    runtime.set_primary(false);
+    auto actions = runtime.take_actions();
+    expect(count(actions, WeaponActionKind::hitscan) == 0U,
+           "the press must not fire while the current shell is still loading");
+    tick_for(runtime, shotgun.retail.use.reload_time.value_or(shotgun.reload_time));
+    actions = runtime.take_actions();
+    const auto completed = std::ranges::find(actions, WeaponActionKind::reload_completed,
+                                             &WeaponAction::kind);
+    const auto shot = std::ranges::find(actions, WeaponActionKind::hitscan,
+                                        &WeaponAction::kind);
+    expect(completed != actions.end() && completed->value == 1.0 &&
+               count(actions, WeaponActionKind::reload_started) == 0U,
+           "the latched press must end the shell chain after the current shell");
+    expect(shot != actions.end() && shot > completed,
+           "the latched press must fire once that shell is loaded");
+    expect(runtime.replication().ammo(9U)->magazine == magazine_before &&
+               runtime.reload_remaining() == 0.0,
+           "the interrupted chain fires with the shells loaded so far");
+}
+
+/**
+ * V1: Character.end_reload stops the chain on `shoot_primary` (the trigger
+ * merely HELD at the shell boundary) and, when the shot that emptied the gun
+ * had the trigger down (shoot_primary_held), loads ONE shell and fires again.
+ */
+void a_held_trigger_stops_the_shell_chain_and_resumes_fire() {
+    WeaponRuntime runtime{9092U};
+    runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
+    const auto& shotgun = weapon_catalog()[9U];
+    const auto reload_time = shotgun.retail.use.reload_time.value_or(shotgun.reload_time);
+    // Fire one shell and keep the trigger held (no new press edge), then
+    // reload: the held trigger ends the chain after the first shell.
+    runtime.set_primary(true);
+    runtime.tick(1.0 / 60.0);
+    tick_for(runtime, shotgun.fire_interval + 0.05);
+    static_cast<void>(runtime.take_actions());
+    const auto magazine_before = runtime.replication().ammo(9U)->magazine;
+    expect(runtime.request_reload() == battlespades::world::WeaponStateResult::accepted,
+           "the manual shell reload must start");
+    tick_for(runtime, reload_time + 1.0 / 60.0);
+    auto actions = runtime.take_actions();
+    const auto completed = std::ranges::find(actions, WeaponActionKind::reload_completed,
+                                             &WeaponAction::kind);
+    expect(completed != actions.end() && completed->value == 1.0 &&
+               runtime.reload_remaining() == 0.0,
+           "a held trigger stops the chain after the shell in progress");
+    expect(runtime.replication().ammo(9U)->magazine == magazine_before + 1U,
+           "exactly one shell was loaded");
+    runtime.set_primary(false);
+    tick_for(runtime, shotgun.fire_interval + 0.05);
+
+    // Empty the magazine; the last shot has the trigger down.
+    while (runtime.replication().ammo(9U)->magazine > 1U) {
+        runtime.set_primary(true);
+        runtime.tick(1.0 / 60.0);
+        runtime.set_primary(false);
+        tick_for(runtime, shotgun.fire_interval + 0.05);
+    }
+    static_cast<void>(runtime.take_actions());
+    runtime.set_primary(true);
+    runtime.tick(1.0 / 60.0);
+    expect(runtime.replication().ammo(9U)->magazine == 0U && runtime.reload_remaining() > 0.0,
+           "the emptying shot starts the automatic shell reload");
+    static_cast<void>(runtime.take_actions());
+    runtime.set_primary(false); // released during the reload: retail still resumes
+    std::size_t shots{};
+    for (int tick{}; tick < 600 && shots == 0U; ++tick) {
+        runtime.tick(1.0 / 60.0);
+        shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
+    }
+    expect(shots == 1U, "empty-while-held loads one shell and fires it");
+    expect(runtime.replication().ammo(9U)->magazine == 0U,
+           "the resumed shot spent the single loaded shell");
+}
+
+/**
+ * P0-11: Tool.use_secondary returns None for every melee tool except the two
+ * alternate digs, so RMB must never put a secondary melee ShootPacket on the
+ * wire. The spade's RMB is only the inert can_swap lock.
+ */
+void melee_right_click_sends_no_secondary_attack() {
+    for (const std::uint8_t tool : std::array<std::uint8_t, 10U>{
+             0U, 1U, 2U, 3U, 24U, 34U, 44U, 49U, 50U, 52U}) {
+        WeaponRuntime runtime{77U};
+        runtime.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
+        runtime.set_secondary(true);
+        tick_for(runtime, 1.5);
+        runtime.set_secondary(false);
+        runtime.tick(1.0 / 60.0);
+        expect(runtime.take_actions().empty(),
+               "a melee RMB without a retail override must emit nothing");
+    }
+
+    WeaponRuntime spade{78U};
+    spade.replace_loadout(std::array<std::uint8_t, 2U>{2U, 17U}, std::uint8_t{2U});
+    spade.set_secondary(true);
+    spade.tick(1.0 / 60.0);
+    expect(spade.swap_locked(), "spade RMB must block tool swaps while it charges");
+    tick_for(spade, 1.05);
+    expect(!spade.swap_locked(), "the spade lock must end after its 1.0 s charge");
+    spade.set_secondary(false);
+    spade.tick(1.0 / 60.0);
+    spade.set_secondary(true);
+    spade.tick(1.0 / 60.0);
+    spade.set_secondary(false);
+    spade.tick(1.0 / 60.0);
+    expect(!spade.swap_locked(), "releasing RMB must clear the spade lock");
+    expect(spade.take_actions().empty(), "the spade RMB lock must emit no action");
+
+    WeaponRuntime ugc{79U};
+    ugc.replace_loadout(std::array<std::uint8_t, 1U>{45U}, std::uint8_t{45U});
+    ugc.set_secondary(true);
+    tick_for(ugc, 0.5);
+    const auto dig = ugc.take_actions();
+    expect(count(dig, WeaponActionKind::melee) >= 1U &&
+               std::ranges::all_of(dig, [](const WeaponAction& action) {
+                   return action.secondary;
+               }),
+           "the UGC super spade RMB is an immediate alternate dig");
+}
+
+/** P2-19: a dry weapon asks to switch away; a crate restock auto-reloads. */
+void empty_weapons_auto_switch_and_crates_auto_reload() {
+    WeaponRuntime runtime{4444U};
+    runtime.replace_loadout(std::array<std::uint8_t, 2U>{7U, 2U}, std::uint8_t{7U});
+    runtime.set_primary(true);
+    bool switch_requested{};
+    for (int tick{}; tick < 60 * 40 && !switch_requested; ++tick) {
+        runtime.tick(1.0 / 60.0);
+        static_cast<void>(runtime.take_actions());
+        switch_requested = runtime.take_auto_switch_request();
+    }
+    runtime.set_primary(false);
+    const auto* ammo = runtime.replication().ammo(7U);
+    expect(switch_requested && ammo != nullptr && ammo->magazine == 0U &&
+               ammo->reserve == 0U,
+           "a dry pull with no reserve must request Character.auto_switch_tool");
+    expect(!runtime.take_auto_switch_request(), "the switch request is one-shot");
+
+    expect(runtime.restock_from_ammo_crate(), "the crate must add reserve ammunition");
+    runtime.tick(1.0 / 60.0);
+    expect(count(runtime.take_actions(), WeaponActionKind::reload_started) == 1U &&
+               runtime.reload_remaining() > 0.0,
+           "an empty magazine must reload on the update after a crate restock");
+
+    WeaponRuntime grenade{4445U};
+    grenade.replace_loadout(std::array<std::uint8_t, 2U>{11U, 2U}, std::uint8_t{11U});
+    bool grenade_switch{};
+    for (int attempt{}; attempt < 12 && !grenade_switch; ++attempt) {
+        grenade.set_primary(true);
+        grenade.tick(1.0 / 60.0);
+        grenade.set_primary(false);
+        tick_for(grenade, 1.0);
+        static_cast<void>(grenade.take_actions());
+        grenade_switch = grenade.take_auto_switch_request();
+    }
+    expect(grenade_switch, "an empty grenade pull must request an auto switch");
+}
+
+/** P2-17: hitscan actions carry the bloomed Weapon.accuracy of their shot. */
+void hitscan_actions_carry_the_current_bloom() {
+    const auto catalog = weapon_catalog();
+    const auto found = std::ranges::find_if(catalog, [](const auto& weapon) {
+        return weapon.retail.aim.variable_accuracy &&
+               weapon.mechanism == WeaponMechanism::firearm_automatic &&
+               weapon.retail.aim.spread_increase_per_shot.value_or(0.0) > 0.0;
+    });
+    expect(found != catalog.end(), "a variable-accuracy automatic must exist");
+    WeaponRuntime runtime{5151U};
+    runtime.replace_loadout(std::array<std::uint8_t, 1U>{found->tool_id}, found->tool_id);
+    runtime.set_primary(true);
+    std::vector<double> accuracies;
+    for (int tick{}; tick < 60; ++tick) {
+        runtime.tick(1.0 / 60.0);
+        for (const auto& action : runtime.take_actions()) {
+            if (action.kind == WeaponActionKind::hitscan) {
+                accuracies.push_back(action.accuracy);
+            }
+        }
+    }
+    const double first = found->retail.aim.accuracy_min.value_or(
+        found->retail.aim.accuracy.value_or(0.0));
+    expect(accuracies.size() >= 3U && std::abs(accuracies.front() - first) < 1e-9 &&
+               accuracies.back() > accuracies.front(),
+           "the first shot uses base accuracy and sustained fire blooms");
+}
+
 int main() {
     try {
         every_original_tool_has_a_concrete_mechanism();
@@ -820,6 +1039,11 @@ int main() {
         invalid_deployable_targets_do_not_spend_stock_or_emit_packets();
         reloads_match_retail_magazine_and_shell_cycles();
         block_cannon_repeats_and_empty_firearms_auto_reload();
+        a_shell_reload_press_fires_after_the_current_shell();
+        a_held_trigger_stops_the_shell_chain_and_resumes_fire();
+        melee_right_click_sends_no_secondary_attack();
+        empty_weapons_auto_switch_and_crates_auto_reload();
+        hitscan_actions_carry_the_current_bloom();
         std::cout << "All-tool weapon runtime tests passed\n";
         return 0;
     } catch (const std::exception& error) {

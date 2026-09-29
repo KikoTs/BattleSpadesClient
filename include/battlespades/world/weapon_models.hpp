@@ -57,6 +57,18 @@ struct WeaponModelLoadResult final {
     std::array<float, 3U> tint = {1.0F, 1.0F, 1.0F},
     std::optional<VxlColor> team_color = std::nullopt,
     std::uint8_t inverse_scale = 1U,
-    const WeaponCosmeticFinish* finish = nullptr);
+    const WeaponCosmeticFinish* finish = nullptr,
+    bool force_default_color = false);
+
+/**
+ * Applies a use_color (block colour) tint to models loaded with tint {1,1,1}.
+ *
+ * Bit-identical to passing `tint` to load_weapon_models (KV6 meshes are built
+ * unshaded, so each channel is exactly `min(255, c * tint + 0.5)`), including
+ * the ZombiePrefabTool rule that only its middle block part is tinted. Lets a
+ * client recolour a cached set for every palette pick without disk I/O.
+ */
+[[nodiscard]] WeaponModelSet tinted_weapon_models(WeaponModelSet untinted,
+                                                  std::array<float, 3U> tint);
 
 } // namespace battlespades::world

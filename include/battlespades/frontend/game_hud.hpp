@@ -383,6 +383,8 @@ struct GameHudScoreLineState final {
     double alive_seconds{};
     double show_after_seconds{};
     bool title{};
+    /** SCORE_REASON_CODES identifier; drawn through the retail strings. */
+    std::string localization_key{};
 
     [[nodiscard]] bool can_draw() const noexcept {
         return ttl_seconds > 0.0 && alive_seconds >= show_after_seconds;
@@ -416,7 +418,14 @@ struct GameHudBigMessage final {
     std::string text;
     double remaining_seconds{};
     double age_seconds{};
-    /** hud.pyd caps bigMsgList_text/time at six deferred rows. */
+    /** big_text_duration of the line on screen. */
+    double duration_seconds{};
+    /** min(duration, BIG_TEXT_MIN_DURATION=1.5): dwell once a line is queued. */
+    double min_duration_seconds{};
+    /**
+     * hud.pyd caps bigMsgList_text/time at six deferred rows. Retail takes
+     * rows with list.pop(), so back() is the next line to show.
+     */
     std::vector<GameHudPendingBigMessage> pending;
 };
 
@@ -541,6 +550,8 @@ public:
     void set_help_messages(std::vector<std::string> lines, std::string close_hint,
                            double delay_seconds);
     void toggle_help() noexcept;
+    /** HelpPanel.force_open / force_close (ToolsHelpPanel temp_close). */
+    void set_help_open(bool open) noexcept;
     void toggle_hud() noexcept;
     /** Preserve the authoritative raw HP value; the wire is not capped at 100. */
     void set_health(std::int32_t health) noexcept;
@@ -611,6 +622,15 @@ public:
     /** WorldUpdate state bit 0x01, drawn with TOOL_IMAGES[PARACHUTE_TOOL]. */
     void set_parachute_active(bool active) noexcept;
     void set_ability_hint(std::string text) { ability_hint_ = std::move(text); }
+    /**
+     * Dead-screen hints: DEATH_CLASS_CHANGE_HINT (already resolved, with the
+     * change-class key) while a respawn is pending, and
+     * VIP_DEAD_CAM_INSTRUCTION in the VIP dead camera.
+     */
+    void set_death_hints(std::string class_change_hint, bool vip_dead_camera) {
+        death_class_hint_ = std::move(class_change_hint);
+        vip_dead_camera_ = vip_dead_camera;
+    }
     /** Top-centre HeadCount readouts and the countdown between them. */
     void set_team_scores(GameHudTeamScore left, GameHudTeamScore right,
                          bool visible) noexcept;
@@ -643,10 +663,25 @@ public:
     void add_score_award(std::int32_t delta, std::uint8_t reason);
     /**
      * Show one top-screen message. Non-overriding arrivals enter retail's
-     * bounded six-row FIFO and never cut the current four-second message short.
+     * bounded six-row queue; while a row is queued the current line yields
+     * after min(duration, 1.5 s) and the newest queued row shows next.
      */
     void set_big_message(std::string text, bool override_previous = false,
                          double duration_seconds = 4.0);
+    /**
+     * HUD.add_big_messageBackGround(text, duration=BIG_TEXT_TIME): shows the
+     * line now when the big-text lane is idle, and remembers it so HUD.update
+     * re-shows it once whenever the lane empties before `duration` expires.
+     * Character.update_respawn_time posts VIP_DEAD_CAM_INSTRUCTION this way
+     * every frame while never_respawn is set.
+     */
+    void set_background_big_message(std::string text,
+                                    double duration_seconds = 4.0);
+    /**
+     * GameScene hides big_text when it still shows `text` (the VIP dead-cam
+     * instruction on respawn): big_text_time = None.
+     */
+    void hide_big_message_if(std::string_view text) noexcept;
     /** Zero is an immediate/mode transition; 255 is NEVER_RESPAWN_TIME. */
     void set_respawn_time(std::uint8_t seconds) noexcept;
     /** Clear only at the authoritative local CreatePlayer life boundary. */
@@ -659,6 +694,21 @@ public:
     void set_full_map_visible(bool visible) noexcept;
     /** Retail packet-43 full-screen tint, absent outside visible objective zones. */
     void set_inside_zone_tint(std::optional<ui::ColorRgba8> tint) noexcept;
+    /**
+     * SetHP burn (type 3) and sudden-death (type 4) indicators: HUD.draw's
+     * draw_fsquad_tex(inside_zone_texture, colour) quads, fading out over
+     * BURN/SUDDEN_DEATH_INDICATOR_TIME. Burn is red, sudden death the local
+     * team colour; both draw when both run (burn first).
+     */
+    void set_status_tints(std::optional<ui::ColorRgba8> burn,
+                          std::optional<ui::ColorRgba8> sudden_death) noexcept {
+        burn_tint_ = burn;
+        sudden_death_tint_ = sudden_death;
+    }
+    [[nodiscard]] std::optional<ui::ColorRgba8> burn_tint() const noexcept { return burn_tint_; }
+    [[nodiscard]] std::optional<ui::ColorRgba8> sudden_death_tint() const noexcept {
+        return sudden_death_tint_;
+    }
     /**
      * Additional CTF-only corner icon. A carrier shows the opposing team's
      * intel colour; team ids are retail wire ids 2=Blue and 3=Green.
@@ -728,6 +778,8 @@ public:
     [[nodiscard]] bool disguise_active() const noexcept { return disguise_active_; }
     [[nodiscard]] bool parachute_active() const noexcept { return parachute_active_; }
     [[nodiscard]] const std::string& ability_hint() const noexcept { return ability_hint_; }
+    [[nodiscard]] const std::string& death_class_hint() const noexcept { return death_class_hint_; }
+    [[nodiscard]] bool vip_dead_camera() const noexcept { return vip_dead_camera_; }
     [[nodiscard]] const GameHudTeamScore& left_team_score() const noexcept {
         return left_team_score_;
     }
@@ -790,6 +842,8 @@ public:
     }
 
 private:
+    void start_big_message(std::string text, double duration);
+
     std::vector<std::string> help_lines_;
     std::string help_close_hint_;
     double help_transition_{};
@@ -820,6 +874,8 @@ private:
     bool disguise_active_{};
     bool parachute_active_{};
     std::string ability_hint_;
+    std::string death_class_hint_;
+    bool vip_dead_camera_{};
     GameHudTeamScore left_team_score_{};
     GameHudTeamScore right_team_score_{hud_layout::Team::team2, 0, 0, false};
     bool team_scores_visible_{};
@@ -834,10 +890,14 @@ private:
     std::vector<GameHudKillEntry> kill_feed_;
     GameHudScoreAwardState score_award_{};
     GameHudBigMessage big_message_{};
+    std::string big_message_background_text_{};
+    std::optional<double> big_message_background_seconds_{};
     GameHudRespawnState respawn_{};
     std::vector<GameHudDamageIndicator> damage_indicators_;
     GameHudMinimapState minimap_{};
     std::optional<ui::ColorRgba8> inside_zone_tint_{};
+    std::optional<ui::ColorRgba8> burn_tint_{};
+    std::optional<ui::ColorRgba8> sudden_death_tint_{};
     std::uint8_t intel_carrier_team_{};
     bool intel_carried_{};
     GameHudSounds pending_sounds_{};
@@ -865,6 +925,18 @@ struct GameHudPresentationContext final {
         measure_big_text{};
     /** Spectators have no local health, inventory, or equipment to display. */
     bool player_widgets_visible{true};
+    /**
+     * False while the local character is dead: retail's character-driven
+     * widgets (health bar, tool/ammo panels, intel icon, crosshair, tool
+     * strip, block palette) draw nothing on the death screen, while the
+     * score, HeadCount, minimap and feeds stay (live A/B, 2026-09-29).
+     */
+    bool character_widgets_visible{true};
+    /**
+     * Retail `strings` lookup for HUD labels (score reasons, respawn text,
+     * VIP banner, dead-camera hints). Unset keeps the built-in English.
+     */
+    std::function<std::string(std::string_view key)> localize{};
 };
 
 /**
@@ -878,23 +950,44 @@ public:
                                      const GameHudPresentationContext& context) const;
 };
 
-/** Display names for the movement bindings, derived from the settings. */
+/**
+ * Key names for the 20 controls retail's translate_controls_in_message
+ * substitutes (aoslib/text.py:649-661). Defaults are the English
+ * translate_key names of the retail default bindings; live values come from
+ * retail_control_key_names (retail_input_rules.hpp).
+ */
 struct ControlKeyNames final {
     std::string forward{"W"};
     std::string backward{"S"};
     std::string left{"A"};
     std::string right{"D"};
     std::string jump{"SPACE"};
-    std::string crouch{"LCTRL"};
+    std::string crouch{"CTRL"};
+    std::string change_class{"COMMA"};
+    std::string view_scores{"TAB"};
+    std::string palette_up{"UP"};
+    std::string palette_down{"DOWN"};
+    std::string palette_left{"Left"};
+    std::string palette_right{"Right"};
+    std::string weapon_custom{"E"};
+    std::string cancel_prefab_placement{"Q"};
+    std::string carve_prefab{"C"};
     std::string tool_help{"H"};
+    std::string hover{"Z"};
+    std::string sprint{"SHIFT"};
+    std::string ugc_settings{"X"};
+    std::string menu{"ESCAPE"};
 
-    [[nodiscard]] std::string_view lookup(std::string_view placeholder) const noexcept;
+    /** The name for `key_<control>`, or nullopt for a non-retail placeholder. */
+    [[nodiscard]] std::optional<std::string_view>
+    lookup(std::string_view placeholder) const noexcept;
 };
 
 /**
  * Resolves the retail `{key_*}` control placeholders into bracketed key
- * names, e.g. "Use {key_forward} to move." -> "Use [W] to move.".
- * Unknown placeholders resolve to "[?]" so missing bindings stay visible.
+ * names, e.g. "Use {key_forward} to move." -> "Use [W] to move.". Exactly
+ * like retail, only the 20 known `{key_<control>}` tokens are replaced; any
+ * other brace text (`{0}`, unknown keys) is left untouched.
  */
 [[nodiscard]] std::string resolve_control_placeholders(std::string_view text,
                                                        const ControlKeyNames& names);

@@ -62,7 +62,7 @@ results, lobby membership and active games. Query changes discard old
 search-only rows; search refreshes preserve authoritative friendship state.
 
 RmlUi owns the Inventory document in `assets/client/ui/inventory.rml` and
-`inventory.rcss`; the other native menu presentations remain in C++. The F11
+`inventory.rcss`; the other native menu presentations remain in C++. The Ctrl+Shift+F11
 layout editor edits native presentation elements, not RML/RCSS. See
 [UI_CUSTOMIZATION.md](UI_CUSTOMIZATION.md) and [INVENTORY.md](INVENTORY.md).
 

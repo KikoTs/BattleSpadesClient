@@ -221,7 +221,9 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
             --live_;
             continue;
         }
-        particle.velocity[2U] += seconds * particle.gravity_scale;
+        // draw.pyd sub_1000BED0: v.z += dt * particle_gravity (the StateData
+        // world gravity) for particles created with gravity=True.
+        particle.velocity[2U] += seconds * particle.gravity_scale * gravity_;
         if (particle.drag > 0.0F) {
             const float retained = std::max(0.0F, 1.0F - particle.drag * drag_steps);
             for (float& axis : particle.velocity) {
@@ -229,6 +231,10 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
             }
         }
 
+        // sub_10033D70 first copies the current position into the particle's
+        // "previous" slot and only then moves it; that slot is the position
+        // sub_10033C00 hands to the spawn-point child.
+        const std::array<float, 3U> previous_position = particle.position;
         std::array<float, 3U> next{
             particle.position[0U] + particle.velocity[0U] * retail_motion,
             particle.position[1U] + particle.velocity[1U] * retail_motion,
@@ -267,22 +273,28 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
         if (particle.child_emitter == ParticleChildEmitter::glow_smoke_trail &&
             child_spawns_.size() < maximum_particles) {
             // draw.pyd sub_10033D70 calls the configured spawn point exactly
-            // once after moving each glow parent. sub_10033C00 then creates a
-            // single stationary child at that position. Its two hard-coded
-            // MSVCRT ranges are authored size [3,9] and an arbitrary initial
-            // rotation; the spawn-point record supplies decay [0,.5], a one
-            // second life, 8x8 non-looping LUT animation and no gravity or
-            // collision. Authored sizes use the native x0.1 renderer scale.
+            // once per parent update. sub_10033C00 then creates one
+            // stationary child from four MSVCRT rand() calls, in this order:
+            //   size     = rand()/5458.1665 + 3     (authored 3..9)
+            //   rotation = rand()/3.8350067 + 160
+            //   frame    = rand() % 64 + 1          (overrides the record's 1)
+            //   forward  = rand() != 0              (practically always true)
+            // Everything else comes from GLOW_SMOKE_TRAIL_SPAWN_POINT, built
+            // at gameScene module init (0x101BA447..0x101BA9E4):
+            // create_particle_spawn_point(1, 0.0, uniform(3,6), randint(160,
+            // 200), 0, -1, BLOCK_SMOKE_TRAIL_LIFETIME=1.0, False, False,
+            // particle_smoke_trail, particle_smoke_lut, 1, 8, 8, 1, 0, 60,
+            // ALPHA_BLEND_MODE_BLEND). decay_rate -1 means the puff GROWS to
+            // twice its size over its life (sub_10033D70: size *
+            // (1 - elapsed01 * decay) * 0.1), at 60 fps without looping.
             RetailRand child_random{
                 mix(particle.child_seed ^
                     (particle.child_emissions++ * 0x9E3779B9U))};
             const float authored_size =
                 static_cast<float>(child_random.next()) / 5458.16650390625F + 3.0F;
-            const float decay =
-                static_cast<float>(child_random.next()) / 65534.0F;
 
             ParticleSpawn child;
-            child.position = particle.position;
+            child.position = previous_position;
             child.color = VxlColor{
                 static_cast<std::uint8_t>(std::clamp(
                     std::lround(particle.color[0U] * 255.0F), 0L, 255L)),
@@ -292,7 +304,7 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
                     std::lround(particle.color[2U] * 255.0F), 0L, 255L)),
                 255U};
             child.size_begin = authored_size * 0.1F;
-            child.size_end = child.size_begin * (1.0F - decay);
+            child.size_end = child.size_begin * 2.0F;
             child.alpha_begin = 1.0F;
             child.alpha_end = 1.0F;
             child.rotation_degrees =
@@ -312,8 +324,8 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
             child.frames_y = 8U;
             child.start_frame = static_cast<std::uint8_t>(
                 child_random.next() % 64U + 1U);
-            child.framerate = 30U;
-            child.forward_animate = (child_random.next() & 1U) != 0U;
+            child.framerate = 60U;
+            child.forward_animate = child_random.next() != 0U;
             child.loop = false;
             child.collide = false;
             child_spawns_.push_back(child);
@@ -371,41 +383,67 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
     const float cull = fog_distance > 0.0F ? fog_distance : 0.0F;
     const float cull_squared = cull * cull;
 
+    // Rocket.delete creates the LUT glow first and the map-colour chunks
+    // second. Preserve that painter order across renderer batches: debris
+    // must sit over the central glow, as in retail and the packet capture.
+    constexpr std::array color_mode_order{
+        ParticleColorMode::smoke_lut,
+        ParticleColorMode::glow_lut,
+        ParticleColorMode::tinted};
+    constexpr std::size_t combo_count =
+        particle_blend_count * color_mode_order.size() * particle_atlas_count;
+    const auto color_mode_rank = [&](ParticleColorMode mode) -> std::size_t {
+        for (std::size_t rank{}; rank < color_mode_order.size(); ++rank) {
+            if (color_mode_order[rank] == mode) return rank;
+        }
+        return color_mode_order.size();
+    };
+    // One pass over the pool buckets every live, unculled particle by its
+    // (blend, colour mode, atlas) batch. The previous form rescanned all 4096
+    // slots once per combination -- 54 full scans a frame even when idle.
+    thread_local std::array<std::vector<std::pair<float, std::uint32_t>>, combo_count> buckets;
+    for (auto& bucket : buckets) bucket.clear();
+    for (std::uint32_t index{}; index < pool_.size(); ++index) {
+        const Particle& particle = pool_[index];
+        if (!particle.alive) {
+            continue;
+        }
+        const auto rank = color_mode_rank(particle.color_mode);
+        const auto blend_index = static_cast<std::size_t>(particle.blend);
+        const auto atlas_index = static_cast<std::size_t>(particle.atlas);
+        if (rank >= color_mode_order.size() || blend_index >= particle_blend_count ||
+            atlas_index >= particle_atlas_count) {
+            continue;
+        }
+        const float dx = particle.position[0U] - eye[0U];
+        const float dy = particle.position[1U] - eye[1U];
+        const float dz = particle.position[2U] - eye[2U];
+        const float distance_squared = dx * dx + dy * dy + dz * dz;
+        if (cull_squared > 0.0F && distance_squared > cull_squared) {
+            continue;
+        }
+        buckets[(blend_index * color_mode_order.size() + rank) * particle_atlas_count +
+                atlas_index]
+            .emplace_back(distance_squared, index);
+    }
+
     for (std::size_t blend_index{}; blend_index < particle_blend_count; ++blend_index) {
         const auto blend = static_cast<ParticleBlend>(blend_index);
-        // Rocket.delete creates the LUT glow first and the map-colour chunks
-        // second. Preserve that painter order across renderer batches: debris
-        // must sit over the central glow, as in retail and the packet capture.
-        constexpr std::array color_mode_order{
-            ParticleColorMode::smoke_lut,
-            ParticleColorMode::glow_lut,
-            ParticleColorMode::tinted};
-        for (const auto color_mode : color_mode_order) {
+        for (std::size_t rank{}; rank < color_mode_order.size(); ++rank) {
+            const auto color_mode = color_mode_order[rank];
             for (std::size_t atlas_index{}; atlas_index < particle_atlas_count; ++atlas_index) {
                 const auto atlas = static_cast<ParticleAtlas>(atlas_index);
-                sort_scratch_.clear();
-                for (std::uint32_t index{}; index < pool_.size(); ++index) {
-                    const Particle& particle = pool_[index];
-                    if (!particle.alive || particle.blend != blend ||
-                        particle.color_mode != color_mode || particle.atlas != atlas) {
-                        continue;
-                    }
-                    const float dx = particle.position[0U] - eye[0U];
-                    const float dy = particle.position[1U] - eye[1U];
-                    const float dz = particle.position[2U] - eye[2U];
-                    const float distance_squared = dx * dx + dy * dy + dz * dz;
-                    if (cull_squared > 0.0F && distance_squared > cull_squared) {
-                        continue;
-                    }
-                    sort_scratch_.emplace_back(distance_squared, index);
-                }
-                if (sort_scratch_.empty()) {
+                auto& bucket =
+                    buckets[(blend_index * color_mode_order.size() + rank) *
+                                particle_atlas_count +
+                            atlas_index];
+                if (bucket.empty()) {
                     continue;
                 }
                 if (blend != ParticleBlend::additive) {
                     // Additive is order-independent; the others must resolve
                     // back-to-front because nothing writes depth.
-                    std::ranges::sort(sort_scratch_, std::greater{},
+                    std::ranges::sort(bucket, std::greater{},
                                       &std::pair<float, std::uint32_t>::first);
                 }
 
@@ -438,7 +476,7 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                     instance.atlas_grid_x = static_cast<float>(particle.frames_x);
                     instances_.push_back(instance);
                 };
-                for (const auto& [distance_squared, index] : sort_scratch_) {
+                for (const auto& [distance_squared, index] : bucket) {
                     static_cast<void>(distance_squared);
                     const Particle& particle = pool_[index];
                     append_instance(particle);

@@ -11,7 +11,9 @@ namespace {
 
 constexpr double degrees_per_turn{360.0};
 constexpr double half_turn{180.0};
-constexpr double entity_gravity{32.0};
+// GenericMovement gravity: 30 blocks/s^2, the same world gravity the retail
+// crate drop was live-measured at (CRATES_CLASSES_RETAIL.md section 1).
+constexpr double entity_gravity{30.0};
 constexpr double maximum_entity_speed{511.98999};
 constexpr double maximum_sweep_distance{0.2};
 // Retail GenericMovement reverses a bouncing object's vertical velocity at
@@ -56,8 +58,14 @@ constexpr std::size_t maximum_sweep_steps{4096U};
     return std::clamp(std::floor(value), 0.0, static_cast<double>(VxlMap::height - 1U));
 }
 
+[[nodiscard]] constexpr bool is_supply_crate(std::uint8_t type) noexcept {
+    return type >= 3U && type <= 6U;
+}
+
 [[nodiscard]] double bounce_restitution(const EntityDefinition& definition) noexcept {
-    if (definition.type_id == 11U)
+    // Crate.initialize: set_bouncing(True). A dropped crate bounces twice on
+    // the GenericMovement half-strength rebound before it rests.
+    if (definition.type_id == 11U || is_supply_crate(definition.type_id))
         return grave_bounce_restitution;
     if (definition.type_id == 12U)
         return corpse_bounce_restitution;
@@ -110,6 +118,87 @@ TimedExplosivePresentation timed_explosive_presentation(
     return result;
 }
 
+bool retail_entity_spins(std::uint8_t type) noexcept {
+    return is_supply_crate(type) || type == 16U;
+}
+
+void advance_entity_presentation(LocalEntity& entity, double dt) noexcept {
+    if (!std::isfinite(dt) || dt <= 0.0 || !entity.alive) {
+        return;
+    }
+    if (retail_entity_spins(entity.type)) {
+        entity.spin_degrees = std::fmod(
+            entity.spin_degrees + dt * retail_entity_spin_degrees_per_second, degrees_per_turn);
+    }
+    if (entity.type == 16U) {
+        // intel.py:60-65: only while the pickup sits at the waterplane.
+        if (std::isfinite(entity.position.z) &&
+            entity.position.z >= retail_z_above_waterplane) {
+            entity.floating_offset =
+                std::min(retail_intel_floating_range,
+                         entity.floating_offset + retail_intel_floating_speed * dt);
+        } else {
+            entity.floating_offset = 0.0;
+        }
+    }
+}
+
+EntityWorldLabel entity_world_label(const LocalEntity& entity,
+                                    Vec3 display_position,
+                                    std::optional<std::uint8_t> local_team,
+                                    std::optional<Vec3> local_position) noexcept {
+    EntityWorldLabel result;
+    if (!entity.alive || !finite(display_position)) {
+        return result;
+    }
+    const auto ceil_value = [](double value) {
+        return static_cast<std::uint32_t>(
+            std::clamp(std::ceil(value), 0.0, 99999.0));
+    };
+    const auto at = [&display_position](double lift) {
+        return Vec3{display_position.x, display_position.y, display_position.z - lift};
+    };
+    const bool running_fuse = std::isfinite(entity.fuse) && entity.fuse > 0.0;
+    switch (entity.type) {
+    case 16U: // IntelPickup.set_fuse: the dropped intel's return timer.
+        if (running_fuse) {
+            result = {true, ceil_value(entity.fuse), at(1.3)};
+        }
+        break;
+    case 15U: // DiamondPickup.initialize always creates the lifetime text.
+        result = {true, ceil_value(std::isfinite(entity.fuse) ? std::max(entity.fuse, 0.0) : 0.0),
+                  at(1.3)};
+        break;
+    case 14U: // BombPickup.set_fuse: an armed bomb's fuse.
+        if (running_fuse) {
+            result = {true, ceil_value(entity.fuse), at(1.5)};
+        }
+        break;
+    case 36U: // RadarStationEntity lifetime (draw_lifetime; packet fuse).
+        if (running_fuse) {
+            result = {true, ceil_value(entity.fuse), at(1.0)};
+        }
+        break;
+    case 8U: { // RocketTurret.update: own team within A1626 (20) blocks.
+        constexpr double radius{20.0};
+        if (!local_team.has_value() || !local_position.has_value() ||
+            *local_team != entity.team) {
+            break;
+        }
+        const double dx = local_position->x - entity.position.x;
+        const double dy = local_position->y - entity.position.y;
+        const double dz = local_position->z - entity.position.z;
+        if (dx * dx + dy * dy + dz * dz < radius * radius) {
+            result = {true, entity.ammo, at(1.0), EntityWorldLabelStyle::turret_ammo};
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return result;
+}
+
 EntityPhysicsStep step_entity_terrain_physics(LocalEntity& entity,
                                               const EntityDefinition& definition,
                                               const VxlMap& map,
@@ -118,6 +207,74 @@ EntityPhysicsStep step_entity_terrain_physics(LocalEntity& entity,
     if (!uses_entity_terrain_gravity(definition) || !entity.alive || !std::isfinite(dt) ||
         dt <= 0.0 || !finite(entity.position) || !finite(entity.velocity)) {
         return result;
+    }
+
+    if (is_supply_crate(definition.type_id) && !entity.attached) {
+        if (!entity.crate_drop.falling && !entity.grounded && near_zero(entity.velocity) &&
+            !solid_at(map, entity.position)) {
+            // Created (or re-created) in the air: the retail client falls and
+            // parachutes it by itself; the server sends nothing during the fall.
+            entity.crate_drop.falling = true;
+            entity.crate_drop_clock = 0.0;
+        } else if (!entity.crate_drop.falling && !entity.grounded &&
+                   entity.velocity.z > 0.0 && !solid_at(map, entity.position) &&
+                   !entity.crate_drop.parachute_deployed) {
+            // A late joiner receives the current fall speed.
+            entity.crate_drop.falling = true;
+            entity.crate_drop_clock = 0.0;
+        }
+        if (entity.crate_drop.falling) {
+            const auto x = std::floor(entity.position.x);
+            const auto y = std::floor(entity.position.y);
+            double support = static_cast<double>(VxlMap::height - 1U);
+            if (x >= 0.0 && y >= 0.0 && x < static_cast<double>(VxlMap::width) &&
+                y < static_cast<double>(VxlMap::depth)) {
+                for (auto z = static_cast<std::uint32_t>(
+                         std::clamp(std::floor(entity.position.z), 0.0,
+                                    static_cast<double>(VxlMap::height - 1U)));
+                     z < VxlMap::height; ++z) {
+                    if (map.solid(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
+                                  z)) {
+                        support = static_cast<double>(z);
+                        break;
+                    }
+                }
+            }
+            entity.crate_drop_clock += dt;
+            std::size_t steps{};
+            while (entity.crate_drop_clock >= crate_drop_step && steps < 30U) {
+                entity.crate_drop_clock -= crate_drop_step;
+                ++steps;
+                const auto step = step_crate_drop(entity.position.z, entity.velocity.z, support,
+                                                  entity.crate_drop);
+                result.moved = true;
+                result.chute_opened = result.chute_opened || step.chute_opened;
+                result.chute_released = result.chute_released || step.chute_released;
+                if (step.landed) {
+                    entity.crate_drop.falling = false;
+                    entity.crate_drop.parachute_deployed = true;
+                    entity.crate_drop.parachute_removed = true;
+                    entity.crate_drop_clock = 0.0;
+                    entity.face = 4U;
+                    result.landed = true;
+                    result.impact_speed = step.impact_speed;
+                    const auto rebound = step.impact_speed * grave_bounce_restitution;
+                    if (rebound >= minimum_bounce_speed) {
+                        entity.velocity = {0.0, 0.0, -rebound};
+                        entity.grounded = false;
+                        result.bounced = true;
+                    } else {
+                        entity.velocity = {};
+                        entity.grounded = true;
+                    }
+                    break;
+                }
+            }
+            if (steps >= 30U) {
+                entity.crate_drop_clock = 0.0;
+            }
+            return result;
+        }
     }
 
     if (entity.attached) {
@@ -420,6 +577,9 @@ std::array<float, 16U> entity_presentation_transform(
     rotate(0U, -90.0F);
     const auto face = entity_face_rotation(entity.face);
     if (face.degrees != 0.0F) rotate(face.axis, face.degrees);
+    // SpinningEntity turns about the display's up axis (map -Z).
+    if (retail_entity_spins(entity.type) && entity.spin_degrees != 0.0)
+        rotate(2U, static_cast<float>(-entity.spin_degrees));
     const auto aim = entity_aim_rotation(entity.type, entity.aim_yaw, entity.aim_pitch);
     if (part.rotation_mode >= 2U)
         rotate(aim.pitch_axis, static_cast<float>(aim.pitch_degrees));
@@ -430,7 +590,7 @@ std::array<float, 16U> entity_presentation_transform(
             basis[1U][0U], basis[1U][1U], basis[1U][2U], 0.0F,
             basis[2U][0U], basis[2U][1U], basis[2U][2U], 0.0F,
             static_cast<float>(origin.x), static_cast<float>(origin.y),
-            static_cast<float>(origin.z + contact_adjustment), 1.0F};
+            static_cast<float>(origin.z + contact_adjustment - entity.floating_offset), 1.0F};
 }
 
 double entity_vertical_contact_adjustment(const LocalEntity& entity,
@@ -506,6 +666,40 @@ std::optional<Vec3> health_crate_spot_shadow_position(const LocalEntity& entity,
             // Map Z grows downward. A tiny upward bias prevents depth fighting
             // without making the decal visibly float above the voxel face.
             return Vec3{x, y, static_cast<double>(z) - surface_bias};
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<CharacterSpotShadow> character_spot_shadow(const Vec3& position,
+                                                         const VxlMap& map) noexcept {
+    // SPOT_SHADOW_RAY_CAST_CHARACTER_HEIGHT (constants.py) via
+    // set_shadow_char_height; create_spot_shadows adds char_h - 1.
+    constexpr double character_height{3.0};
+    constexpr std::uint32_t search_cells{10U};
+    constexpr double surface_bias{0.001};
+    if (!finite(position) || position.x < 0.0 || position.y < 0.0 ||
+        position.x >= static_cast<double>(VxlMap::width) ||
+        position.y >= static_cast<double>(VxlMap::depth)) {
+        return std::nullopt;
+    }
+    const double start =
+        std::min(std::clamp(position.z, 0.0, static_cast<double>(VxlMap::height)) +
+                     character_height - 1.0,
+                 static_cast<double>(VxlMap::height - 1U));
+    const auto cell_x = static_cast<std::uint32_t>(std::floor(position.x));
+    const auto cell_y = static_cast<std::uint32_t>(std::floor(position.y));
+    const auto first_z = static_cast<std::uint32_t>(std::floor(start));
+    for (std::uint32_t step{}; step < search_cells; ++step) {
+        const auto z = first_z + step;
+        if (z >= VxlMap::height) {
+            break;
+        }
+        if (map.solid(cell_x, cell_y, z)) {
+            const double drop = std::max(0.0, static_cast<double>(z) - start);
+            return CharacterSpotShadow{
+                Vec3{position.x, position.y, static_cast<double>(z) - surface_bias},
+                std::clamp(1.0 - drop / static_cast<double>(search_cells), 0.0, 1.0)};
         }
     }
     return std::nullopt;

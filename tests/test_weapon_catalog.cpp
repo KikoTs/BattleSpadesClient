@@ -107,7 +107,7 @@ void recovered_retail_classes_keep_exact_inherited_tuning() {
     const auto* pistol = find_weapon_definition(17U);
     expect(pistol != nullptr && pistol->retail.damage.hit_regions.has_value() &&
                *pistol->retail.damage.hit_regions ==
-                   std::array<double, 5U>{20.0, 50.0, 20.0, 20.0, 20.0} &&
+                   std::array<double, 5U>{20.0, 45.0, 20.0, 20.0, 20.0} &&
                pistol->retail.ammo.magazine_capacity == 6U &&
                pistol->retail.ammo.initial_magazine == 6U &&
                pistol->retail.ammo.reserve_capacity == 30U &&
@@ -116,8 +116,8 @@ void recovered_retail_classes_keep_exact_inherited_tuning() {
            "pistol must retain region damage and the full retail ammo tuple");
     expect_near(*pistol->retail.aim.accuracy, 0.015,
                 "pistol accuracy must match the recovered class");
-    expect_near(*pistol->retail.aim.recoil_up, -0.005,
-                "pistol recoil must match the recovered class");
+    expect_near(*pistol->retail.aim.recoil_up, -0.05,
+                "pistol recoil must be the stock -0.05 (A1122), not the mod's -0.005");
 }
 
 void explosives_and_special_tools_keep_behavior_constants() {
@@ -163,19 +163,22 @@ void explosives_and_special_tools_keep_behavior_constants() {
         double block_damage;
     };
     constexpr std::array expected_blasts{
+        // Radii are the stock ExplosionDamageManager handler radii
+        // (BS/docs/WEAPONS_RETAIL.md "Explosives"), not the stale named
+        // *_EXPLOSION_RADIUS block (RPG 4, dynamite 5, classic grenade 2...).
         BlastExpectation{11U, 4.0, 4.0},
-        BlastExpectation{12U, 4.0, 5.0},
-        BlastExpectation{13U, 4.0, 2.0},
+        BlastExpectation{12U, 6.0, 5.0},
+        BlastExpectation{13U, 6.0, 2.0},
         BlastExpectation{14U, 3.0, 5.0},
-        BlastExpectation{20U, 3.0, 15.0},
-        BlastExpectation{21U, 5.0, 7.0},
-        BlastExpectation{31U, 2.0, 15.0},
-        BlastExpectation{32U, 2.0, 0.5},
+        BlastExpectation{20U, 6.0, 15.0},
+        BlastExpectation{21U, 8.0, 7.0},
+        BlastExpectation{31U, 9.0, 15.0},
+        BlastExpectation{32U, 6.0, 0.5},
         BlastExpectation{33U, 4.0, 3.0},
         BlastExpectation{54U, 3.0, 3.0},
         BlastExpectation{55U, 4.0, 6.0},
         BlastExpectation{57U, 5.0, 6.0},
-        BlastExpectation{58U, 3.0, 15.0},
+        BlastExpectation{58U, 6.0, 15.0},
         BlastExpectation{59U, 8.0, 7.0},
     };
     for (const auto& expected : expected_blasts) {
@@ -186,6 +189,56 @@ void explosives_and_special_tools_keep_behavior_constants() {
         expect_near(explosive->block_damage, expected.block_damage,
                     "primary explosion block damage must match its exact constant");
     }
+}
+
+/**
+ * P0-05: every stock value the parity audit found modded in the old catalog.
+ * The numbers are the stock Steam client's (BS/docs/WEAPONS_RETAIL.md and the
+ * STOCK RESTORE block of BS/shared/constants.py); the generator reads them
+ * from the server working tree, and aos_weapon_catalog_contract_check fails
+ * when this table drifts from it.
+ */
+void stock_restore_values_replace_the_nonsteam_mod() {
+    struct Timing final {
+        std::uint8_t tool_id;
+        double interval;
+    };
+    for (const auto& expected : std::array{Timing{0U, 0.6}, Timing{1U, 0.5},
+                                           Timing{2U, 0.8}, Timing{34U, 0.5},
+                                           Timing{17U, 0.4}}) {
+        const auto* weapon = find_weapon_definition(expected.tool_id);
+        expect(weapon != nullptr, "stock timing owner must exist");
+        expect_near(weapon->fire_interval, expected.interval,
+                    "fire interval must be the stock value");
+        expect_near(weapon->retail.use.shoot_interval.value_or(-1.0), expected.interval,
+                    "the retail class interval must be the stock value");
+    }
+    const auto* pistol = find_weapon_definition(17U);
+    expect(pistol != nullptr, "pistol must exist");
+    expect_near(pistol->reload_time, 0.6, "pistol reload must be the stock 0.6 s");
+    expect_near(pistol->maximum_range, 550.0, "pistol range must be the stock 550");
+    expect_near(pistol->head_damage, 45.0, "pistol head damage must be the stock 45");
+    expect_constant(17U, "PISTOL_RECOIL_UP", -0.05, "pistol recoil constant is stock");
+    expect_near(find_weapon_definition(7U)->maximum_range, 350.0,
+                "SMG range must be the stock 350 (A1151)");
+    expect_constant(0U, "PICKAXE_DAMAGE_AMOUNT", 7.0, "pickaxe block damage is stock");
+    expect_constant(0U, "PICKAXE_HITPLAYER_DAMAGE_AMOUNT", 40.0,
+                    "pickaxe player damage is stock");
+    expect_constant(1U, "KNIFE_HITPLAYER_DAMAGE_AMOUNT", 80.0,
+                    "knife player damage is stock");
+    expect_near(find_weapon_definition(13U)->base_damage, 40.0,
+                "RPG2 blast damage must be the stock 40");
+    expect_near(find_weapon_definition(16U)->base_damage, 50.0,
+                "turret rocket damage must be the stock handler's 50");
+    expect_constant(56U, "RADAR_STATION_RANGE", 250.0,
+                    "radar range (A1900) must not be swapped with its lifetime");
+    expect_constant(56U, "RADAR_STATION_LIFETIME", 45.0,
+                    "radar lifetime (A1901) must not be swapped with its range");
+    // Character.throw_* reads these aliases directly (chemical, sticky).
+    expect_constant(54U, "A1663", 50.0, "chemical bomb added throw speed is 50");
+    expect_constant(54U, "A1664", 25.0, "chemical bomb minimum throw speed is 25");
+    expect_constant(57U, "A1682", 50.0, "sticky grenade added throw speed is 50");
+    expect_constant(57U, "A1683", 25.0, "sticky grenade minimum throw speed is 25");
 }
 
 void every_tool_has_a_recovered_runtime_identity() {
@@ -327,6 +380,7 @@ int main() {
         recovered_server_stats_cover_old_and_new_weapons();
         recovered_retail_classes_keep_exact_inherited_tuning();
         explosives_and_special_tools_keep_behavior_constants();
+        stock_restore_values_replace_the_nonsteam_mod();
         every_tool_has_a_recovered_runtime_identity();
         right_mouse_behavior_requires_a_real_retail_capability();
         multipart_and_special_view_models_match_retail();

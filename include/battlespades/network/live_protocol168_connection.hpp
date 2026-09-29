@@ -32,9 +32,25 @@ struct LiveProtocol168Status final {
     std::size_t queued_inbound{};
     std::size_t queued_outbound{};
     std::string error;
-    /** Raw retail ENet disconnect data, including ERROR_MATCH_ENDED (18). */
+    /**
+     * Raw retail ENet disconnect data, including ERROR_MATCH_ENDED (18). A
+     * connect that never completes within NetworkClient.timeout (5 s) reports
+     * DISCONNECT.ERROR_TIMEOUT (11) here, as retail raises it locally.
+     */
     std::optional<std::uint32_t> disconnect_reason;
+    /** Retail string key for a local failure without a disconnect reason. */
+    std::string failure_key;
+    /** Handshake milestones driving the loader bar before the bootstrap. */
+    Protocol168LoadingProgress loading;
+    /** InitialInfo as soon as it decodes (loadingMenu CHECKING_MAP). */
+    std::shared_ptr<const Protocol168InitialInfo> initial_info;
 };
+
+/**
+ * NetworkClient.send_packet(packet, unreliable): true only for ClockSync(0)
+ * and ClientData(4), which retail sends ENet UNSEQUENCED; all else reliable.
+ */
+[[nodiscard]] bool protocol168_client_packet_unsequenced(std::uint8_t packet_id) noexcept;
 
 /** Loading clients can receive ERROR_MATCH_ENDED without packet 52 first. */
 [[nodiscard]] inline bool protocol168_should_reconnect_after_map_change(
@@ -53,27 +69,22 @@ struct LiveProtocol168Status final {
 /**
  * Bound the amount of ordered protocol work applied by one presentation tick.
  *
- * WorldUpdate authority and the terrain mutations preceding it share one FIFO.
- * A fixed 16-packet drain lets a reliable terrain/entity burst hide fresh owner
- * acknowledgements for several frames, which turns an otherwise small replay
- * correction into a visible rollback.  Keep the ordinary cost at retail's
- * small tranche, but catch up a real backlog without reordering packets.
+ * Retail NetworkClient.update (network.pyd) drains both event queues
+ * completely on every update, so a playable world applies everything queued:
+ * a partial drain delays that tick's WorldUpdate (and the terrain mutations
+ * preceding it) by whole ticks after any ENet burst. While the world is still
+ * being built retail blocks network reads (block_network_read); the native
+ * loader keeps applying a bounded tranche instead.
  */
 [[nodiscard]] constexpr std::size_t
 protocol168_inbound_apply_budget(std::size_t queued_inbound,
                                  bool world_is_playable) noexcept {
-    constexpr std::size_t ordinary_budget{16U};
-    constexpr std::size_t catchup_budget{64U};
-    constexpr std::size_t severe_backlog_budget{128U};
-    constexpr std::size_t severe_backlog_threshold{512U};
+    constexpr std::size_t minimum_budget{16U};
+    constexpr std::size_t loading_budget{128U};
 
     if (!world_is_playable)
-        return severe_backlog_budget;
-    if (queued_inbound <= ordinary_budget)
-        return ordinary_budget;
-    if (queued_inbound > severe_backlog_threshold)
-        return severe_backlog_budget;
-    return std::min(queued_inbound, catchup_budget);
+        return loading_budget;
+    return std::max(queued_inbound, minimum_budget);
 }
 
 /** Immutable join result transferred once from the ENet worker to gameplay. */

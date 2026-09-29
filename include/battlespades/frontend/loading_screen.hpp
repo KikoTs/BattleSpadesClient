@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace battlespades::frontend {
@@ -44,6 +45,18 @@ struct LoadingScoreRow final {
     bool expanded{};
 };
 
+/**
+ * One row of loadingMenu's CUSTOM GAME RULES list: a category heading, or a
+ * rule name (240 px column) and its value (60 px column).
+ */
+struct LoadingCustomRuleRow final {
+    std::string label_key;
+    std::string value;
+    bool category{};
+    /** Mode categories keep their title's case; the others are upper-cased. */
+    bool uppercase{};
+};
+
 struct MatchLoadingSnapshot final {
     MatchLoadingState state{MatchLoadingState::connecting};
     std::string map_name;
@@ -60,6 +73,17 @@ struct MatchLoadingSnapshot final {
     std::array<std::string, 3U> infographic_captions;
     std::vector<LoadingScoreRow> score_rows;
     std::size_t score_scroll{};
+    /** map_previews[map][2], drawn 238x238 inside loading_map_frame. */
+    std::string map_preview_asset;
+    /** MAP_NAME_TAGLINES id; non-empty also selects the smaller title font. */
+    std::string map_tagline_key;
+    std::vector<LoadingCustomRuleRow> custom_rules;
+    /**
+     * loadingMenu.mode_text: strings.get_by_id(InitialInfo.mode_name, with a
+     * CLASSIC_ prefix for classic servers).upper(), drawn over the MODE
+     * infographic. Empty until InitialInfo named the mode.
+     */
+    std::string mode_title_key;
 };
 
 /** Retail boot splash projection: 36 bullets backed by real preload progress. */
@@ -100,10 +124,33 @@ public:
     void checking_map() noexcept;
     void receiving_map() noexcept;
     void map_progress(double progress) noexcept;
+    /** MapDataValidation(60): LOADING_MAP. */
+    void loading_map() noexcept;
+    /** MapSyncStart(55): the second third of the bar, SYNCING_MAP. */
+    void map_sync_started() noexcept;
+    /** MapSyncChunk percent_complete / 100 within the second third. */
+    void map_sync_progress(double progress) noexcept;
+    /** MapSyncEnd(59): the last third, INITIALISING_MAP. */
+    void map_sync_finished() noexcept;
+    /** Local world build (mesh + upload) inside the last third. */
+    void world_build_progress(double progress) noexcept;
     void syncing_map() noexcept;
     void begin_asset_preload() noexcept;
     void set_preload_snapshot(assets::PreloadSnapshot snapshot) noexcept;
     void fail(std::string status_key = "LOAD_FAILED");
+    /**
+     * InitialInfo.custom_game_rules as (rule id, value) pairs. Grouped by
+     * GAME_RULES_NAMES category; ignored in the tutorial (loadingMenu.py).
+     */
+    void set_custom_game_rules(std::vector<std::pair<std::string, std::string>> rules);
+    /**
+     * LoadingMenu.draw_map_tab for a Map Creator project: the project's own
+     * preview png (ugc_data.local_png_data) replaces the stock map preview.
+     * Empty restores the stock art; begin() clears it.
+     */
+    void set_map_preview_override(std::string asset) { map_preview_override_ = std::move(asset); }
+    /** loadingMenu: any mouse press or key sets tab_timer_interupted. */
+    void interrupt_tab_cycle() noexcept { tab_cycle_interrupted_ = true; }
     void tick(double delta_seconds) noexcept;
     [[nodiscard]] bool select_tab(std::size_t index) noexcept;
     [[nodiscard]] bool handle_score_click(double design_x, double design_y);
@@ -114,10 +161,13 @@ public:
 private:
     void rebuild_tabs(bool map_creator);
     void observe_progress() noexcept;
+    [[nodiscard]] double initialising_progress() const noexcept;
 
     MatchLoadingState state_{MatchLoadingState::connecting};
     std::string map_name_;
+    std::string map_preview_override_;
     std::string mode_key_;
+    std::string mode_title_key_;
     std::string texture_skin_;
     std::string status_key_{"CONNECTING_TO_SERVER"};
     bool classic_{};
@@ -127,6 +177,7 @@ private:
     double tab_timer_{};
     double map_progress_{};
     double sync_progress_{};
+    double world_build_progress_{};
     assets::PreloadSnapshot preload_{};
     double last_observed_progress_{};
     double no_progress_remaining_{no_progress_timeout_seconds};
@@ -134,6 +185,7 @@ private:
     std::size_t score_scroll_{};
     bool friendly_fire_{};
     std::array<std::string, 3U> infographic_captions_;
+    std::vector<LoadingCustomRuleRow> custom_rules_;
 };
 
 [[nodiscard]] LoadingTextureSelection select_loading_textures(std::string_view map_name,

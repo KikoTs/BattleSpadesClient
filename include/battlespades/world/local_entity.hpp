@@ -2,6 +2,7 @@
 
 #include "battlespades/world/entity_catalog.hpp"
 #include "battlespades/world/player_movement.hpp"
+#include "battlespades/world/retail_effects.hpp"
 
 #include <array>
 #include <chrono>
@@ -97,6 +98,14 @@ struct LocalEntity final {
      * pivot can never change packet positions, pickup radii, or blast centres.
      */
     bool grounded{};
+    /**
+     * Retail Crate air-drop state (types 3..6): GenericMovement gravity 30,
+     * Crate_Parachute between 10 and 2 blocks above the support, 0.75
+     * slowdown while open. A crate created on the ground never falls.
+     */
+    CrateDropState crate_drop{};
+    /** Fixed 1/60 s accumulator for the crate drop integrator. */
+    double crate_drop_clock{};
     /** A trap that has finished arming and will now trip. */
     bool armed{};
     /** Set the tick it should detonate; the blast pass consumes it. */
@@ -110,7 +119,63 @@ struct LocalEntity final {
      * and the fire stops feeling like fire.
      */
     std::array<double, 3U> accumulators{};
+    /**
+     * SpinningEntity.update: crates (3..6, also under the chute) and the
+     * dropped intel (16) turn 10 degrees per second about the vertical.
+     */
+    double spin_degrees{};
+    /** IntelPickup.floating_offset: rise out of the water, up to 0.7 blocks. */
+    double floating_offset{};
 };
+
+/** SpinningEntity.update: rotate(Vector3(0, 1, 0), dt * 10). */
+inline constexpr double retail_entity_spin_degrees_per_second{10.0};
+/** IntelPickup class attribute floating_range (gameScene initgameScene, intel.py:21). */
+inline constexpr double retail_intel_floating_range{0.7};
+/** intel.py:61: floating_offset grows by 0.5 * dt while in the water. */
+inline constexpr double retail_intel_floating_speed{0.5};
+/** Z_ABOVE_WATERPLANE (A2215). */
+inline constexpr double retail_z_above_waterplane{238.0};
+
+/** True for the SpinningEntity subclasses: Crate (3..6) and IntelPickup (16). */
+[[nodiscard]] bool retail_entity_spins(std::uint8_t type) noexcept;
+
+/**
+ * Client-side presentation clocks that retail entities advance in update():
+ * the SpinningEntity turn, the intel water float, and the local countdown of
+ * packet fuses that retail decrements between server updates.
+ */
+void advance_entity_presentation(LocalEntity& entity, double dt) noexcept;
+
+/**
+ * Entity.create_3dText labels other than dynamite (Text3D, 0.005 * d^0.7,
+ * drawn through walls, ceil-formatted by Entity.update_3dText).
+ */
+enum class EntityWorldLabelStyle : std::uint8_t {
+    /** text3d_font (Edo 22), default white. */
+    countdown,
+    /** RocketTurret.set_ammo: ammo_font (Aldo 26), A47 yellow / A48 red at zero. */
+    turret_ammo,
+};
+struct EntityWorldLabel final {
+    bool visible{};
+    std::uint32_t value{};
+    Vec3 position{};
+    EntityWorldLabelStyle style{EntityWorldLabelStyle::countdown};
+};
+
+/**
+ * IntelPickup (return timer, display z - 1.3), DiamondPickup (lifetime,
+ * always, z - 1.3), BombPickup (armed fuse, z - 1.5), RadarStationEntity
+ * (lifetime, z - 1.0) and RocketTurret (ammo, z - 1.0, only for the local
+ * character's team within A1626 = 20 blocks). `display_position` is where the
+ * entity's model is drawn.
+ */
+[[nodiscard]] EntityWorldLabel entity_world_label(
+    const LocalEntity& entity,
+    Vec3 display_position,
+    std::optional<std::uint8_t> local_team,
+    std::optional<Vec3> local_position) noexcept;
 
 /**
  * World-space countdown presentation for retail's timed dynamite.
@@ -174,6 +239,10 @@ enum class EntityEventKind : std::uint8_t {
     target_changed,
     /** The local player's health moved; the frontend forwards it to the HUD. */
     health_changed,
+    /** Crate.update opened Crate_Parachute (cratedrop_chuteopen). */
+    parachute_opened,
+    /** A dropped crate hit the ground; `value` is the impact speed. */
+    landed,
 };
 
 struct EntityEvent final {
@@ -196,6 +265,9 @@ struct EntityPhysicsStep final {
     bool support_lost{};
     /** Downward speed immediately before contact; zero without a landing. */
     double impact_speed{};
+    /** Crate.update opened Crate_Parachute this step (cratedrop_chuteopen). */
+    bool chute_opened{};
+    bool chute_released{};
 };
 
 /**
@@ -408,6 +480,25 @@ private:
  */
 [[nodiscard]] std::optional<Vec3>
 health_crate_spot_shadow_position(const LocalEntity& entity, const VxlMap& map) noexcept;
+
+/** Where a character's retail spot shadow lands and how strongly. */
+struct CharacterSpotShadow final {
+    /** Centre of the decal on the ground face (z just above the solid cell). */
+    Vec3 position{};
+    /** Vertex alpha: 1 - drop / 10 over the ten-cell search. */
+    double fade{1.0};
+};
+
+/**
+ * Retail character spot shadow. GameScene.update appends every live,
+ * non-spectator character (local player included) to spot_shadow_pos_list
+ * with the "character" flag; vxl.pyd create_spot_shadows (0x1002F7D0 /
+ * 0x1002EF10) then lowers the point by SPOT_SHADOW_RAY_CAST_CHARACTER_HEIGHT - 1
+ * (to the feet), scans at most ten cells down for solid ground and fades the
+ * decal with the drop. Nothing within ten cells: no shadow.
+ */
+[[nodiscard]] std::optional<CharacterSpotShadow>
+character_spot_shadow(const Vec3& position, const VxlMap& map) noexcept;
 
 /**
  * How far a drawn entity sits from its wire position: half a block along the

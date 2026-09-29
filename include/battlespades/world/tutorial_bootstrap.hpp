@@ -73,6 +73,13 @@ public:
     TutorialWorldBootstrap(TutorialWorldBootstrap&&) = delete;
     TutorialWorldBootstrap& operator=(TutorialWorldBootstrap&&) = delete;
 
+    /** Water-bed colour for the mesher (ground-colour row 239); call before start(). */
+    void set_bed_water_color(VxlColor color) noexcept { bed_water_color_ = color; }
+    /**
+     * Retail tier: mesh without the authored emissive palette, as vxl.pyd
+     * did. Call before start(); the live remesher re-meshes on a tier change.
+     */
+    void set_retail_look(bool retail) noexcept { retail_look_ = retail; }
     void start();
     void cancel() noexcept;
 
@@ -91,6 +98,8 @@ private:
     std::shared_ptr<VxlMap> supplied_map_;
     std::string map_name_;
     std::uint32_t worker_count_;
+    std::optional<VxlColor> bed_water_color_{};
+    bool retail_look_{};
 };
 
 } // namespace battlespades::world

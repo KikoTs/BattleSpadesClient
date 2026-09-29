@@ -118,13 +118,23 @@ void chat_limits_count_cyrillic_characters() {
     const std::string cyrillic_letter{"\xD0\x96"};  // U+0416, two UTF-8 bytes
     GameChatModel chat;
     chat.begin(ChatChannel::global);
+    // HUD.on_text: MAX_CHAT_MESSAGE_LENGTH (200) characters, not MAX_CHAT_SIZE.
     for (std::size_t index{}; index < GameChatModel::maximum_input_code_points; ++index) {
-        expect(chat.append_text(cyrillic_letter), "Cyrillic input must reach the character limit");
+        expect(chat.append_text("a"), "ASCII input must reach the 200-character limit");
     }
-    expect(!chat.append_text(cyrillic_letter), "chat input must stop at its character limit");
-    const auto submitted = chat.submit();
-    expect(submitted.has_value() && submitted->second.size() == 180U,
-           "90 Cyrillic characters must survive as 180 UTF-8 bytes");
+    expect(GameChatModel::maximum_input_code_points == 200U &&
+               !chat.append_text("a"),
+           "chat input must stop at MAX_CHAT_MESSAGE_LENGTH");
+    auto submitted = chat.submit();
+    expect(submitted.has_value() && submitted->second.size() == 200U,
+           "200 characters must survive submission");
+
+    chat.begin(ChatChannel::global);
+    std::size_t cyrillic{};
+    while (chat.append_text(cyrillic_letter)) ++cyrillic;
+    expect(cyrillic == GameChatModel::maximum_input_bytes / cyrillic_letter.size(),
+           "two-byte characters stop at the ChatMessage byte ceiling");
+    chat.cancel();
 
     const std::string wide_letter{"\xE6\x97\xA5"};  // U+65E5, three UTF-8 bytes
     chat.begin(ChatChannel::global);
@@ -134,14 +144,57 @@ void chat_limits_count_cyrillic_characters() {
            "three-byte characters must stop at the ChatMessage byte ceiling");
     chat.cancel();
 
+    // chat_font.contains_character: unsupported glyphs are dropped, the rest kept.
+    chat.set_glyph_filter([](std::string_view character) { return character != "#"; });
+    chat.begin(ChatChannel::global);
+    expect(chat.append_text("a#b"), "a pasted run keeps the drawable characters");
+    expect(chat.input() == "ab", "characters the font lacks never enter the line");
+    chat.cancel();
+    chat.set_glyph_filter({});
+
     std::string incoming(199U, 'a');
     incoming += cyrillic_letter;
     chat.add(incoming);
-    expect(chat.entries().front().text == std::string(199U, 'a'),
-           "incoming chat must be cut before a split UTF-8 sequence");
+    // The server accepts 200 UTF-8 characters (up to 800 bytes): the 200th,
+    // two-byte character survives, and MAX_CHAT_SIZE wraps into 90 + 90 + 20.
+    expect(chat.entries().size() == 3U && chat.entries()[2U].text == std::string(90U, 'a') &&
+               chat.entries().front().text == std::string(19U, 'a') + cyrillic_letter,
+           "incoming 200-character chat must survive intact and wrap at 90");
+    std::string overlong(900U, 'c');
+    overlong += cyrillic_letter;
+    chat.add(overlong);
+    std::size_t kept_bytes{};
+    for (std::size_t index{}; index < 9U && index < chat.entries().size(); ++index) {
+        kept_bytes += chat.entries()[index].text.size();
+    }
+    expect(kept_bytes <= 800U,
+           "incoming chat must still be bounded at the 800-byte UTF-8 ceiling");
     chat.add_player_message(std::string(63U, 'b') + cyrillic_letter, {}, "hi", false);
     expect(chat.entries().front().text.starts_with(std::string(63U, 'b') + ": "),
            "sender names must be cut before a split UTF-8 sequence");
+
+    GameChatModel wrapped;
+    wrapped.add_player_message("Builder", {44U, 117U, 179U, 255U},
+                               std::string(60U, 'x') + " " + std::string(60U, 'y'), false);
+    expect(wrapped.entries().size() == 2U &&
+               wrapped.entries()[1U].runs.size() == 2U &&
+               wrapped.entries()[1U].runs[0U].text == "Builder: " &&
+               wrapped.entries()[0U].text == std::string(60U, 'y') &&
+               wrapped.entries()[0U].runs.size() == 1U,
+           "a long player line breaks at a space and keeps the sender run on line one");
+}
+
+void chat_channel_labels_are_localised() {
+    GameChatModel chat;
+    chat.begin(ChatChannel::team);
+    GameChatPresentation presentation;
+    presentation.set_channel_labels("Teamchat:", "Globaler Chat:");
+    const auto draw = presentation.build(chat, {1280, 720});
+    const auto found = std::ranges::any_of(draw.commands(), [](const auto& command) {
+        const auto* text = std::get_if<battlespades::ui::TextDrawCommand>(&command);
+        return text != nullptr && text->localization_key == "Teamchat:";
+    });
+    expect(found, "the channel label is '%s:' % strings.TEAM_CHAT in the active language");
 }
 
 void player_chat_preserves_retail_sender_and_body_labels() {
@@ -810,7 +863,7 @@ void end_results_group_the_server_snapshot_by_roster_team() {
     const auto result = find_text("Blue wins!");
     const auto blue_score = find_text("10/200");
     const auto green_score = find_text("8/200");
-    const auto footer = find_text("Press TAB to show scores");
+    const auto footer = find_text("Press [TAB] to show scores");
     expect(mode != draw.commands().end() && result != draw.commands().end() &&
                blue_score != draw.commands().end() &&
                green_score != draw.commands().end() &&
@@ -1077,7 +1130,7 @@ void end_results_group_the_server_snapshot_by_roster_team() {
                            std::get_if<ui::TextDrawCommand>(&command);
                        return value != nullptr &&
                               value->localization_key ==
-                                  "Press TAB to show scores";
+                                  "Press [TAB] to show scores";
                    }),
            "active rank-up must replace the footer with exact label/score geometry");
 
@@ -1255,9 +1308,18 @@ void end_results_select_the_local_win_or_lose_sting() {
                match_result_audio_stem(2U, 3U) ==
                    std::optional<std::string_view>{"mu_lose_game"},
            "winner team must select the local retail win/lose sting");
-    expect(!match_result_audio_stem(0U, 2U).has_value() &&
-               !match_result_audio_stem(2U, 0U).has_value(),
-           "draws and spectators must not receive a false win/lose sting");
+    // ViewGameStats.play_win_loose_sound (hud.pyd 0x10070c00): a draw leaves
+    // win == lose == TEAM_NEUTRAL, and a spectator matches neither, so both
+    // fall to the final `else` and hear mu_win_game.
+    expect(match_result_audio_stem(0U, 2U) ==
+                   std::optional<std::string_view>{"mu_win_game"} &&
+               match_result_audio_stem(0U, 3U) ==
+                   std::optional<std::string_view>{"mu_win_game"} &&
+               match_result_audio_stem(2U, 0U) ==
+                   std::optional<std::string_view>{"mu_win_game"} &&
+               match_result_audio_stem(3U, 1U) ==
+                   std::optional<std::string_view>{"mu_win_game"},
+           "draws and spectators fall through to retail's mu_win_game");
 }
 
 void end_results_derive_winner_from_authoritative_scores() {
@@ -1455,29 +1517,96 @@ void end_results_camera_matches_retail_pan_controller() {
 
 void scoreboard_mode_titles_follow_retail_mode_tables() {
     using battlespades::frontend::retail_scoreboard_mode_title;
+    // constants_gamemode.MODE_TITLE keys, resolved by set_mode_text through
+    // strings.get_by_id. MODE_NORMAL (None), 11 and unknown ids keep SCORES.
     constexpr std::array expected{
-        std::string_view{"Scores"},
-        std::string_view{"Demolition!"},
-        std::string_view{"Zombie!"},
-        std::string_view{"Multi-Hill!"},
-        std::string_view{"Occupation!"},
-        std::string_view{"Diamond Mine!"},
-        std::string_view{"Team Deathmatch!"},
-        std::string_view{"VIP"},
-        std::string_view{"Capture the Flag"},
-        std::string_view{"Territory Control"},
-        std::string_view{"Tutorial"},
-        std::string_view{"Classic CTF"},
-        std::string_view{"Map Creator"},
+        std::string_view{"SCORES"},
+        std::string_view{"DEMOLITION_TITLE"},
+        std::string_view{"ZOMBIE_MODE_TITLE"},
+        std::string_view{"MULTIHILL_TITLE"},
+        std::string_view{"OCCUPATION_MODE_TITLE"},
+        std::string_view{"DIAMOND_MINE_TITLE"},
+        std::string_view{"TDM_TITLE"},
+        std::string_view{"VIP_MODE_TITLE"},
+        std::string_view{"CTF_TITLE"},
+        std::string_view{"TC_TITLE"},
+        std::string_view{"TUTORIAL_MODE_TITLE"},
+        std::string_view{"SCORES"},
+        std::string_view{"MAP_CREATOR"},
     };
     for (std::size_t index{}; index < expected.size(); ++index) {
         expect(retail_scoreboard_mode_title(static_cast<std::uint8_t>(index), false) ==
                    expected[index],
-               "every retail MODE_TITLE ordinal must resolve to its authored English title");
+               "every retail MODE_TITLE ordinal must resolve to its string-table key");
     }
-    expect(retail_scoreboard_mode_title(8U, true) == "Classic CTF" &&
-               retail_scoreboard_mode_title(250U, false) == "Scores",
-           "InitialInfo.classic must select CLASSIC_CTF_TITLE and malformed modes must fail closed");
+    expect(retail_scoreboard_mode_title(8U, true) == "CTF_TITLE" &&
+               retail_scoreboard_mode_title(250U, false) == "SCORES",
+           "set_mode_text never reads InitialInfo.classic: Classic CTF shows CTF_TITLE");
+}
+
+void chat_lanes_follow_retail_game_scene() {
+    using namespace battlespades::frontend;
+    const ui::ColorRgba8 blue{44U, 117U, 179U, 255U};
+    expect(localised_message_lane_color(2U, blue) ==
+               ui::ColorRgba8{255U, 100U, 100U, 255U},
+           "LocalisedMessage CHAT_SYSTEM uses add_server_message (255,100,100)");
+    expect(localised_message_lane_color(0U, blue) ==
+               ui::ColorRgba8{255U, 255U, 255U, 255U},
+           "LocalisedMessage CHAT_ALL is add_message white");
+    // blend_color((44,117,179), white, 0.4) truncates per channel.
+    expect(localised_message_lane_color(1U, blue) ==
+               ui::ColorRgba8{128U, 172U, 209U, 255U},
+           "LocalisedMessage CHAT_TEAM blends the local team colour with white by 0.4");
+    expect(localised_message_lane_color(9U, blue) ==
+               ui::ColorRgba8{255U, 255U, 255U, 255U},
+           "unknown LocalisedMessage lanes fall through to white");
+    expect(chat_message_lane(2U, 4U) == ChatMessageLane::server_message &&
+               chat_message_lane(3U, 4U) == ChatMessageLane::big_message &&
+               chat_message_lane(0U, 0xFFU) == ChatMessageLane::server_chat &&
+               chat_message_lane(1U, 0xFFU) == ChatMessageLane::server_chat &&
+               chat_message_lane(0U, 4U) == ChatMessageLane::player_chat &&
+               chat_message_lane(1U, 4U) == ChatMessageLane::player_chat &&
+               chat_message_lane(7U, 4U) == ChatMessageLane::ignored,
+           "ChatMessage lanes follow process_packet_chat_message");
+    expect(retail_server_chat_color == ui::ColorRgba8{150U, 150U, 255U, 255U},
+           "player -1 ALL/TEAM chat uses add_server_message(value, True)");
+}
+
+void localised_results_and_ballot() {
+    using namespace battlespades::frontend;
+    ChangeTeamServerState state;
+    state.team1_name = "Blue";
+    state.team2_name = "Green";
+    state.team1_score = 5;
+    state.team2_score = 3;
+    const auto message = [](int value) {
+        return std::optional<std::uint8_t>{static_cast<std::uint8_t>(value)};
+    };
+    const RetailStringLookup german = [](std::string_view key) -> std::string {
+        if (key == "TEAM_DEFEAT") return "{0} gewinnt!";
+        if (key == "GAME_DRAWN") return "Unentschieden!";
+        if (key == "END_OF_MAP") return "Kartenende";
+        if (key == "BASE_DESTROYED") return "{0} zerstoert {1}";
+        return std::string{key};
+    };
+    expect(retail_match_result_message(state, message(1), 0, german) == "Blue gewinnt!" &&
+               retail_match_result_message(state, message(0), 0, german) == "Kartenende" &&
+               retail_match_result_message(state, message(8), 0, german) == "Unentschieden!" &&
+               retail_match_result_message(state, message(2), 0, german) == "Blue zerstoert Green" &&
+               retail_match_result_message(state, message(7), 0, german) == "Green gewinnt!",
+           "ViewScores.set_message headlines resolve through strings");
+    expect(retail_match_result_message(state, message(1)) == "Blue wins!" &&
+               retail_match_result_message(state, message(3)) ==
+                   "Zombie virus has claimed all survivors!",
+           "without a language pack the English table remains");
+    expect(GenericVotingModel::decode_retail_literal(
+               "('VOTE_MAP_TITLE', ())",
+               [](std::string_view key) -> std::string {
+                   return key == "VOTE_MAP_TITLE" ? "KARTE WAEHLEN" : std::string{key};
+               }) == "KARTE WAEHLEN",
+           "ballot titles resolve through the active language pack");
+    expect(retail_default_show_scores_text == "Press [TAB] to show scores",
+           "SHOW_SCORES renders the bound key in brackets");
 }
 
 } // namespace
@@ -1486,6 +1615,7 @@ int main() {
     try {
         chat_is_bounded_and_utf8_safe();
         chat_limits_count_cyrillic_characters();
+        chat_channel_labels_are_localised();
         chat_presentation_matches_retail_geometry_stroke_and_fade();
         player_chat_preserves_retail_sender_and_body_labels();
         vote_decoding_and_cast_are_crash_safe();
@@ -1500,6 +1630,8 @@ int main() {
         map_ended_preserves_vote_and_chat_layers();
         end_results_camera_matches_retail_pan_controller();
         scoreboard_mode_titles_follow_retail_mode_tables();
+        chat_lanes_follow_retail_game_scene();
+        localised_results_and_ballot();
         std::cout << "Match overlay tests passed\n";
         return 0;
     } catch (const std::exception& error) {

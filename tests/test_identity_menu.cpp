@@ -15,6 +15,7 @@ using battlespades::frontend::IdentityMenuModel;
 using battlespades::frontend::IdentityMenuPhase;
 using battlespades::frontend::IdentityPresentation;
 using battlespades::frontend::IdentityPresentationContext;
+using battlespades::frontend::IdentitySteamState;
 using battlespades::ui::Point;
 using battlespades::ui::SpriteDrawCommand;
 using battlespades::ui::TextDrawCommand;
@@ -127,6 +128,42 @@ void presentation_uses_original_menu_assets() {
            "identity gate should preserve the main-menu backdrop");
 }
 
+void steam_button_is_deterministic_across_attach_states() {
+    IdentityMenuModel model;
+    const Point steam{400 * 8, 468 * 8};
+    model.set_steam_state(IdentitySteamState::connecting);
+    expect(model.controls()[2].widget.state.visible &&
+               model.controls()[2].label == "CONNECTING TO STEAM...",
+           "a Steam runtime still attaching must show a pending button, not nothing");
+    model.pointer_press(steam);
+    expect(!model.pointer_release(steam).has_value(),
+           "the pending Steam button must not submit");
+
+    // reset_form (every bootstrap and sign-out) used to restore visibility
+    // from a bool captured once at startup; the state must survive it.
+    model.reset_form();
+    expect(model.controls()[2].widget.state.visible,
+           "reset_form must keep the pending Steam button visible");
+    model.set_steam_state(IdentitySteamState::available);
+    model.set_busy(true, "Signing in...");
+    model.set_error("rejected");
+    expect(model.controls()[2].widget.state.enabled &&
+               model.controls()[2].label == "SIGN IN THROUGH STEAM",
+           "an error after busy must re-enable the ready Steam button");
+    model.pointer_press(steam);
+    expect(model.pointer_release(steam) == IdentityAction::steam,
+           "the ready Steam button must submit the Steam identity");
+
+    model.set_steam_state(IdentitySteamState::connecting);
+    model.set_error("again");
+    expect(!model.controls()[2].widget.state.enabled,
+           "set_error must not enable a Steam button that is still connecting");
+    model.set_steam_state(IdentitySteamState::hidden);
+    model.reset_form();
+    expect(!model.controls()[2].widget.state.visible,
+           "no Steam runtime at all hides the button");
+}
+
 } // namespace
 
 int main() {
@@ -134,6 +171,7 @@ int main() {
         form_never_exposes_clear_password_to_rendering();
         pointer_routes_login_register_steam_guest_and_recovery();
         field_focus_limits_and_busy_state_fail_closed();
+        steam_button_is_deterministic_across_attach_states();
         presentation_uses_original_menu_assets();
         presentation_reserves_non_overlapping_text_bands();
         std::cout << "identity menu tests passed\n";

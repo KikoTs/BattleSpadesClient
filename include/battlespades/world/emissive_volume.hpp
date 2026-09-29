@@ -60,9 +60,52 @@ public:
     /** Light at a world position, for tests and for CPU-side queries. */
     [[nodiscard]] std::array<float, 3U> sample(float x, float y, float z) const noexcept;
 
+    /**
+     * Trilinear light at a world position, filtered as the GPU samples the
+     * uploaded volume (texel centres at (cell + 0.5) * cell_size, clamped at
+     * the edges). Used to light models, which cannot probe the 3D texture
+     * themselves when they are drawn in view space.
+     */
+    [[nodiscard]] std::array<float, 3U> sample_filtered(float x, float y,
+                                                        float z) const noexcept;
+
 private:
     std::vector<std::uint8_t> cells_;
     std::size_t sources_{};
 };
+
+/**
+ * The local map light arriving at a model, split by source.
+ *
+ * Terrain receives placed (flare/fire) light through the mesher's per-vertex
+ * bake and emissive spill through the 3D volume probe. A KV6 model has
+ * neither: its vertices carry no bake, and the first-person view model is
+ * drawn in view space, where the volume probe reads an unrelated cell. This
+ * samples both sources on the CPU at the model's world position so the
+ * renderer can add the same light to it (enhanced tiers only; retail's
+ * model_frag reads only the two packet-45 lights and ambient).
+ */
+struct ModelLightSample final {
+    /** StaticLightField::sample at the position, 0..1 per channel. */
+    std::array<float, 3U> placed{};
+    /** EmissiveVolume::sample_filtered at the position, 0..1 per channel. */
+    std::array<float, 3U> cast{};
+};
+
+/** Either source may be null (not built yet); its term is then zero. */
+[[nodiscard]] ModelLightSample sample_model_light(const StaticLightField* placed,
+                                                  const EmissiveVolume* cast,
+                                                  std::array<float, 3U> position) noexcept;
+
+/**
+ * The additive diffuse light the world shader applies to a model:
+ * placed * placed_gain + cast * cast_gain, the same gains terrain uses
+ * (u_emissiveParams.y for the flare bake, u_indirectParams.x for spill).
+ * Pass cast_gain 0 for world-space models, whose shader probes the volume
+ * itself. Both gains are 0 under the Retail tier, which yields black.
+ */
+[[nodiscard]] std::array<float, 3U> model_light_rgb(const ModelLightSample& sample,
+                                                    float placed_gain,
+                                                    float cast_gain) noexcept;
 
 } // namespace battlespades::world

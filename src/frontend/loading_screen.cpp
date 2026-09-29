@@ -1,14 +1,18 @@
 #include "battlespades/frontend/loading_screen.hpp"
 #include "battlespades/core/utf8.hpp"
+#include "battlespades/frontend/create_match_menu.hpp"
+#include "battlespades/frontend/settings_menu.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace battlespades::frontend {
 namespace {
@@ -101,6 +105,13 @@ infographic_name(std::string_view mode, bool classic, std::string_view skin) noe
         return "infographic_ugc";
     }
     return "infographic_tdm";
+}
+
+/** shared.constants.MAP_NAME_TAGLINES: only these two stock maps carry one. */
+[[nodiscard]] std::string map_tagline_key(std::string_view map_name) {
+    if (map_name == "Hiesville") return "Hiesville_TagLine";
+    if (map_name == "Trenches") return "Trenches_TagLine";
+    return {};
 }
 
 [[nodiscard]] double clamp_progress(double value) noexcept {
@@ -243,6 +254,7 @@ void MatchLoadingModel::begin(std::string expected_map,
                               bool classic,
                               std::string texture_skin) {
     state_ = MatchLoadingState::connecting;
+    map_preview_override_.clear();
     map_name_ = std::move(expected_map);
     mode_key_ = std::move(expected_mode);
     classic_ = classic;
@@ -254,13 +266,17 @@ void MatchLoadingModel::begin(std::string expected_map,
     tab_timer_ = 0.0;
     map_progress_ = 0.0;
     sync_progress_ = 0.0;
+    world_build_progress_ = 0.0;
     preload_ = {};
     last_observed_progress_ = 0.0;
     no_progress_remaining_ = no_progress_timeout_seconds;
     score_expanded_ = {true, true};
     score_scroll_ = 0U;
     friendly_fire_ = false;
+    custom_rules_.clear();
     infographic_captions_ = mode_captions(mode_key_);
+    // initialize_from_frontend clears mode_text; only InitialInfo sets it.
+    mode_title_key_.clear();
     if (!mode_key_.empty()) rebuild_tabs(canonical_mode(mode_key_) == "ugc");
 }
 
@@ -275,7 +291,18 @@ void MatchLoadingModel::initial_info(std::string map_name,
     classic_ = classic;
     texture_skin_ = std::move(texture_skin);
     friendly_fire_ = friendly_fire;
+    custom_rules_.clear();
     infographic_captions_ = mode_captions(mode_key_);
+    // loadingMenu: mode_name = packet.mode_name, 'CLASSIC_' + it when the
+    // server is classic, then strings.get_by_id(mode_name).upper().
+    {
+        const auto resolved = resolve_server_mode(mode_key_, classic_);
+        mode_title_key_ = resolved.title_key;
+        // CLASSIC_CTF_TITLE is the only CLASSIC_ title in the string table.
+        if (resolved.classic && mode_title_key_ == "CTF_TITLE") {
+            mode_title_key_ = "CLASSIC_CTF_TITLE";
+        }
+    }
     score_expanded_ = {true, true};
     score_scroll_ = 0U;
     state_ = MatchLoadingState::checking_map;
@@ -323,6 +350,42 @@ void MatchLoadingModel::map_progress(double progress) noexcept {
     observe_progress();
 }
 
+void MatchLoadingModel::loading_map() noexcept {
+    state_ = MatchLoadingState::checking_map;
+    status_key_ = "LOADING_MAP";
+}
+
+void MatchLoadingModel::map_sync_started() noexcept {
+    // loadingMenu MapSyncStart: current_part += 1, SYNCING_MAP.
+    map_progress_ = 1.0;
+    state_ = MatchLoadingState::syncing_map;
+    status_key_ = "SYNCING_MAP";
+    observe_progress();
+}
+
+void MatchLoadingModel::map_sync_progress(double progress) noexcept {
+    sync_progress_ = std::max(sync_progress_, clamp_progress(progress));
+    observe_progress();
+}
+
+void MatchLoadingModel::map_sync_finished() noexcept {
+    // loadingMenu MapSyncEnd: current_part += 1, INITIALISING_MAP.
+    map_progress_ = 1.0;
+    sync_progress_ = 1.0;
+    state_ = MatchLoadingState::preloading_assets;
+    status_key_ = "INITIALISING_MAP";
+    observe_progress();
+}
+
+void MatchLoadingModel::world_build_progress(double progress) noexcept {
+    world_build_progress_ = std::max(world_build_progress_, clamp_progress(progress));
+    observe_progress();
+}
+
+double MatchLoadingModel::initialising_progress() const noexcept {
+    return std::max(clamp_progress(preload_.progress), world_build_progress_);
+}
+
 void MatchLoadingModel::syncing_map() noexcept {
     map_progress_ = 1.0;
     sync_progress_ = 1.0;
@@ -365,13 +428,15 @@ void MatchLoadingModel::fail(std::string status_key) {
 
 void MatchLoadingModel::tick(double delta_seconds) noexcept {
     if (!std::isfinite(delta_seconds) || delta_seconds <= 0.0 ||
-        state_ == MatchLoadingState::ready || state_ == MatchLoadingState::failed ||
-        state_ == MatchLoadingState::timed_out) {
+        state_ == MatchLoadingState::failed || state_ == MatchLoadingState::timed_out) {
         return;
     }
     const auto progress = clamp_progress((map_progress_ + sync_progress_ +
-        clamp_progress(preload_.progress)) / 3.0);
-    if (progress > last_observed_progress_ + 1.0e-9) {
+        initialising_progress()) / 3.0);
+    if (state_ == MatchLoadingState::ready) {
+        // A finished load waits for START without a timeout, and the tabs
+        // keep cycling until then (loadingMenu.update).
+    } else if (progress > last_observed_progress_ + 1.0e-9) {
         last_observed_progress_ = progress;
         no_progress_remaining_ = no_progress_timeout_seconds;
     } else {
@@ -428,7 +493,7 @@ bool MatchLoadingModel::set_score_scroll(double fraction) {
 MatchLoadingSnapshot MatchLoadingModel::snapshot() const {
     const auto network = clamp_progress((map_progress_ + sync_progress_) / 3.0);
     const auto assets =
-        state_ == MatchLoadingState::ready ? 1.0 : clamp_progress(preload_.progress);
+        state_ == MatchLoadingState::ready ? 1.0 : initialising_progress();
     const auto overall = state_ == MatchLoadingState::ready
                              ? 1.0
                              : clamp_progress((map_progress_ + sync_progress_ + assets) / 3.0);
@@ -445,7 +510,55 @@ MatchLoadingSnapshot MatchLoadingModel::snapshot() const {
         overall,
         no_progress_remaining_,
         state_ == MatchLoadingState::ready,
-        infographic_captions_, score_rows(mode_key_, score_expanded_, friendly_fire_), score_scroll_};
+        infographic_captions_, score_rows(mode_key_, score_expanded_, friendly_fire_), score_scroll_,
+        map_preview_override_.empty() ? resolve_server_map_preview_asset(map_name_)
+                                      : map_preview_override_,
+        map_tagline_key(map_name_), custom_rules_,
+        mode_title_key_};
+}
+
+void MatchLoadingModel::set_custom_game_rules(
+    std::vector<std::pair<std::string, std::string>> rules) {
+    custom_rules_.clear();
+    const auto code = canonical_mode(mode_key_);
+    // `if packet.mode_key != A2445`: the tutorial never lists rules, and the
+    // Map Creator loader has no rules panel either.
+    if (rules.empty() || code == "tut" || code == "ugc" || map_name_ == "Training") return;
+    struct Group final {
+        std::string key;
+        bool uppercase{};
+        std::vector<LoadingCustomRuleRow> rows;
+    };
+    std::vector<Group> groups;
+    for (auto& [rule, value] : rules) {
+        // get_game_rule_catagory: the GAME_RULES_NAMES bucket owning this id.
+        std::string_view category{"GENERAL"};
+        for (const auto& definition : retail_create_match_rules()) {
+            if (definition.rule_key == rule) {
+                category = definition.category_key;
+                break;
+            }
+        }
+        // A2448 (MODE_MAP_TITLES) names the per-mode buckets by their title;
+        // the shared buckets are upper-cased catalogue ids.
+        const auto mode = resolve_server_mode(category);
+        const bool mode_category = mode.code == category;
+        auto key = mode_category ? mode.title_key : std::string{category};
+        auto found = std::ranges::find(groups, key, &Group::key);
+        if (found == groups.end()) {
+            groups.push_back({key, !mode_category, {}});
+            found = std::prev(groups.end());
+        }
+        // Values are drawn verbatim, as retail printed custom_rule[1].
+        found->rows.push_back(
+            {std::move(rule), std::string{literal_text_prefix} + value, false, false});
+    }
+    // setup_custom_game_rules walks sorted(category_list).
+    std::ranges::sort(groups, {}, &Group::key);
+    for (auto& group : groups) {
+        custom_rules_.push_back({group.key, {}, true, group.uppercase});
+        for (auto& row : group.rows) custom_rules_.push_back(std::move(row));
+    }
 }
 
 void MatchLoadingModel::rebuild_tabs(bool map_creator) {
@@ -462,7 +575,7 @@ void MatchLoadingModel::rebuild_tabs(bool map_creator) {
 
 void MatchLoadingModel::observe_progress() noexcept {
     const auto progress = state_ == MatchLoadingState::ready ? 1.0 :
-        clamp_progress((map_progress_ + sync_progress_ + clamp_progress(preload_.progress)) / 3.0);
+        clamp_progress((map_progress_ + sync_progress_ + initialising_progress()) / 3.0);
     if (progress > last_observed_progress_ + 1.0e-9) {
         last_observed_progress_ = progress;
         no_progress_remaining_ = no_progress_timeout_seconds;
@@ -506,6 +619,9 @@ std::string resolve_server_map_preview_asset(std::string_view map_name) {
         NameAsset{"blockness", "blockness.png"},
         NameAsset{"brancastle", "brancastle.png"},
         NameAsset{"castlewars", "castlewars.png"},
+        // images.reset_map_previews: "City Of Chicago" -> midtownmassacre.
+        NameAsset{"cityofchicago", "midtownmassacre.png"},
+        NameAsset{"midtownmassacre", "midtownmassacre.png"},
         NameAsset{"classic", "Classic.png"},
         NameAsset{"thecolosseum", "colosseum.png"},
         NameAsset{"colosseum", "colosseum.png"},
@@ -526,6 +642,12 @@ std::string resolve_server_map_preview_asset(std::string_view map_name) {
         NameAsset{"trenches", "Trenches.png"},
         NameAsset{"wintervalley", "wintervalley.png"},
         NameAsset{"ww1", "ww1.png"},
+        NameAsset{"desert", "DesertBaseplate.png"},
+        NameAsset{"grassland", "GrasslandBaseplate.png"},
+        NameAsset{"lunar", "LunarBaseplate.png"},
+        NameAsset{"mountain", "MountainBaseplate.png"},
+        NameAsset{"temple", "TempleBaseplate.png"},
+        NameAsset{"urban", "UrbanBaseplate.png"},
         NameAsset{"desertbaseplate", "DesertBaseplate.png"},
         NameAsset{"grasslandbaseplate", "GrasslandBaseplate.png"},
         NameAsset{"lunarbaseplate", "LunarBaseplate.png"},

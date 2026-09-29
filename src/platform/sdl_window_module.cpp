@@ -5,10 +5,15 @@
 #include <SDL3/SDL_main.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <limits>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
@@ -114,6 +119,23 @@ namespace {
     return {};
 }
 
+[[nodiscard]] std::optional<std::string> input_script_path() {
+#if defined(_WIN32)
+    char* buffer{};
+    std::size_t size{};
+    if (_dupenv_s(&buffer, &size, "BATTLESPADES_INPUT_SCRIPT") != 0 || buffer == nullptr) {
+        return std::nullopt;
+    }
+    std::string value{buffer};
+    std::free(buffer);
+#else
+    const char* raw = std::getenv("BATTLESPADES_INPUT_SCRIPT");
+    std::string value{raw == nullptr ? "" : raw};
+#endif
+    if (value.empty()) return std::nullopt;
+    return value;
+}
+
 [[nodiscard]] std::string sdl_error_or(std::string fallback) {
     const char* const error = SDL_GetError();
     if (error != nullptr && error[0] != '\0') {
@@ -123,6 +145,94 @@ namespace {
 }
 
 } // namespace
+
+std::vector<ScriptedInputStep> parse_input_script(std::istream& file) {
+    std::vector<ScriptedInputStep> steps;
+    std::string line;
+    std::uint64_t clock{};
+    float cursor_x{};
+    float cursor_y{};
+    const auto button_of = [](const std::string& name) {
+        return name == "right" ? MouseButton::right : MouseButton::left;
+    };
+    while (std::getline(file, line)) {
+        std::istringstream fields{line};
+        std::uint64_t delay{};
+        std::string verb;
+        if (line.empty() || line.front() == '#' || !(fields >> delay >> verb)) continue;
+        clock += delay;
+        if (verb == "key" || verb == "tap") {
+            std::uint32_t scancode{};
+            std::string state;
+            fields >> scancode >> state;
+            const bool tap = verb == "tap";
+            const bool down = tap || state == "down";
+            steps.push_back({clock, WindowEvent{.type = down ? WindowEventType::key_pressed
+                                                              : WindowEventType::key_released,
+                                                .scancode = scancode}});
+            if (tap) {
+                std::uint64_t hold{80U};
+                if (!state.empty()) {
+                    std::istringstream{state} >> hold;
+                }
+                steps.push_back({clock + hold, WindowEvent{.type = WindowEventType::key_released,
+                                                           .scancode = scancode}});
+            }
+        } else if (verb == "click") {
+            std::string button{"left"};
+            fields >> cursor_x >> cursor_y >> button;
+            steps.push_back({clock, WindowEvent{.type = WindowEventType::mouse_moved,
+                                                .mouse_x = cursor_x, .mouse_y = cursor_y}});
+            steps.push_back({clock + 30U, WindowEvent{.type = WindowEventType::mouse_button_pressed,
+                                                      .mouse_x = cursor_x, .mouse_y = cursor_y,
+                                                      .mouse_button = button_of(button),
+                                                      .click_count = 1U}});
+            steps.push_back({clock + 90U,
+                             WindowEvent{.type = WindowEventType::mouse_button_released,
+                                         .mouse_x = cursor_x, .mouse_y = cursor_y,
+                                         .mouse_button = button_of(button), .click_count = 1U}});
+        } else if (verb == "button") {
+            std::string button;
+            std::string state;
+            fields >> button >> state;
+            steps.push_back({clock, WindowEvent{.type = state == "up"
+                                                            ? WindowEventType::mouse_button_released
+                                                            : WindowEventType::mouse_button_pressed,
+                                                .mouse_x = cursor_x, .mouse_y = cursor_y,
+                                                .mouse_button = button_of(button),
+                                                .click_count = 1U}});
+        } else if (verb == "look") {
+            float dx{};
+            float dy{};
+            fields >> dx >> dy;
+            steps.push_back({clock, WindowEvent{.type = WindowEventType::mouse_moved,
+                                                .mouse_x = cursor_x, .mouse_y = cursor_y,
+                                                .mouse_delta_x = dx, .mouse_delta_y = dy}});
+        } else if (verb == "wheel") {
+            float dy{};
+            fields >> dy;
+            steps.push_back({clock, WindowEvent{.type = WindowEventType::mouse_wheel,
+                                                .mouse_x = cursor_x, .mouse_y = cursor_y,
+                                                .mouse_delta_y = dy}});
+        } else if (verb == "quit") {
+            steps.push_back({clock, WindowEvent{.type = WindowEventType::close_requested}});
+        } else if (verb == "window") {
+            // Window-state transitions (alt-tab, minimise) for focus tests.
+            std::string state;
+            fields >> state;
+            const auto type = state == "focus_lost"   ? WindowEventType::focus_lost
+                              : state == "focus_gained" ? WindowEventType::focus_gained
+                              : state == "minimized"    ? WindowEventType::minimized
+                              : state == "restored"     ? WindowEventType::restored
+                              : state == "maximized"    ? WindowEventType::maximized
+                                                        : WindowEventType::mouse_entered;
+            steps.push_back({clock, WindowEvent{.type = type}});
+        }
+    }
+    std::ranges::stable_sort(steps, {}, &ScriptedInputStep::at_ms);
+    return steps;
+}
+
 
 struct SdlWindowModule::Impl final {
     explicit Impl(SdlWindowConfig requested_config) : config{std::move(requested_config)} {}
@@ -218,6 +328,10 @@ struct SdlWindowModule::Impl final {
     std::vector<DisplayMode> display_modes;
     std::string last_error;
     std::thread::id owner_thread{};
+    std::vector<ScriptedInputStep> input_script;
+    std::size_t input_script_next{};
+    std::optional<std::chrono::steady_clock::time_point> input_script_start;
+    std::optional<std::pair<float, float>> input_script_cursor;
     bool video_initialized{};
     bool owns_sdl_runtime{};
     bool close_requested{};
@@ -334,6 +448,12 @@ bool SdlWindowModule::start() {
         .pressed_buttons = translate_mouse_buttons(mouse_buttons),
     };
     impl_->refresh_display_modes();
+    if (const auto script = input_script_path(); script.has_value()) {
+        std::ifstream file{std::filesystem::path{*script}};
+        impl_->input_script = parse_input_script(file);
+        impl_->input_script_next = 0U;
+        impl_->input_script_start.reset();
+    }
     return true;
 }
 
@@ -413,6 +533,17 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
                     return core::TickDecision::stop;
                 }
                 impl_->push_window_event(WindowEventType::restored, source.window);
+            }
+            break;
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+            // Restoring a window that was minimised while maximised reports
+            // MAXIMIZED, not RESTORED. The frontend treats it as "visible".
+            if (impl_->belongs_to_window(source.window.windowID)) {
+                if (!impl_->refresh_extents()) {
+                    impl_->last_error = sdl_error_or("SDL maximized extent refresh failed");
+                    return core::TickDecision::stop;
+                }
+                impl_->push_window_event(WindowEventType::maximized, source.window);
             }
             break;
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
@@ -509,12 +640,31 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
         }
     }
 
+    if (impl_->input_script_next < impl_->input_script.size()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!impl_->input_script_start.has_value()) impl_->input_script_start = now;
+        const auto elapsed = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - *impl_->input_script_start).count());
+        while (impl_->input_script_next < impl_->input_script.size() &&
+               impl_->input_script[impl_->input_script_next].at_ms <= elapsed) {
+            auto event = impl_->input_script[impl_->input_script_next++].event;
+            event.extent = impl_->logical_extent;
+            event.drawable_extent = impl_->drawable_extent;
+            if (event.type == WindowEventType::mouse_moved ||
+                event.type == WindowEventType::mouse_button_pressed) {
+                impl_->input_script_cursor = std::pair{event.mouse_x, event.mouse_y};
+            }
+            impl_->events.push_back(std::move(event));
+        }
+    }
+
     float mouse_x{};
     float mouse_y{};
     const SDL_MouseButtonFlags mouse_buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
     impl_->mouse_state = {
-        .x = mouse_x,
-        .y = mouse_y,
+        .x = impl_->input_script_cursor.has_value() ? impl_->input_script_cursor->first : mouse_x,
+        .y = impl_->input_script_cursor.has_value() ? impl_->input_script_cursor->second : mouse_y,
         .pressed_buttons = translate_mouse_buttons(mouse_buttons),
     };
 
@@ -591,7 +741,30 @@ bool SdlWindowModule::is_fullscreen() const noexcept {
            (SDL_GetWindowFlags(impl_->window) & SDL_WINDOW_FULLSCREEN) != 0U;
 }
 
-bool SdlWindowModule::apply_display_mode(WindowExtent extent, bool fullscreen) {
+FullscreenKind SdlWindowModule::fullscreen_kind() const noexcept {
+    // SDL3 reports no fullscreen mode for a desktop (borderless) fullscreen.
+    return impl_->window != nullptr && SDL_GetWindowFullscreenMode(impl_->window) == nullptr
+               ? FullscreenKind::borderless
+               : FullscreenKind::exclusive;
+}
+
+std::uint32_t SdlWindowModule::current_refresh_rate_millihertz() const noexcept {
+    if (impl_->window == nullptr) {
+        return 0U;
+    }
+    const SDL_DisplayMode* mode = SDL_GetWindowFullscreenMode(impl_->window);
+    if (mode == nullptr || (SDL_GetWindowFlags(impl_->window) & SDL_WINDOW_FULLSCREEN) == 0U) {
+        const SDL_DisplayID display = SDL_GetDisplayForWindow(impl_->window);
+        mode = display != 0U ? SDL_GetCurrentDisplayMode(display) : nullptr;
+    }
+    if (mode == nullptr || !(mode->refresh_rate > 0.0F) || mode->refresh_rate > 2'000.0F) {
+        return 0U;
+    }
+    return static_cast<std::uint32_t>(std::lround(mode->refresh_rate * 1'000.0F));
+}
+
+bool SdlWindowModule::apply_display_mode(WindowExtent extent, bool fullscreen,
+                                         FullscreenKind kind) {
     if (impl_->window == nullptr || impl_->owner_thread != std::this_thread::get_id()) {
         impl_->last_error = impl_->window == nullptr
                                 ? "SDL window module is not started"
@@ -606,7 +779,15 @@ bool SdlWindowModule::apply_display_mode(WindowExtent extent, bool fullscreen) {
         return false;
     }
 
-    if (fullscreen) {
+    if (fullscreen && kind == FullscreenKind::borderless) {
+        // Desktop fullscreen: a null mode keeps the display's current mode,
+        // so alt-tab never triggers a mode switch or an SDL auto-minimise.
+        if (!SDL_SetWindowFullscreenMode(impl_->window, nullptr) ||
+            !SDL_SetWindowFullscreen(impl_->window, true)) {
+            impl_->last_error = sdl_error_or("SDL could not apply borderless fullscreen");
+            return false;
+        }
+    } else if (fullscreen) {
         SDL_DisplayMode closest{};
         const SDL_DisplayID display = SDL_GetDisplayForWindow(impl_->window);
         if (display == 0U ||

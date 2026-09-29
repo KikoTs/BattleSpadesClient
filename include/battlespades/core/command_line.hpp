@@ -37,6 +37,15 @@ struct LaunchOptions final {
     /** Developer/live-smoke shortcut through the normal Protocol 168 loader. */
     std::optional<std::string> startup_endpoint;
     /**
+     * Steam lobby to join at startup.
+     *
+     * Steam launches a game that is not running with `+connect_lobby <id>`
+     * when the player accepts a lobby invite or clicks Join Game on a friend
+     * whose presence names a lobby. The frontend resolves the lobby's connect
+     * value once Steam is attached.
+     */
+    std::optional<std::uint64_t> startup_steam_lobby;
+    /**
      * Offline visual oracle: open the production particle renderer directly
      * and replay one named effect. This deliberately bypasses identity/menu
      * automation so a parity capture cannot accidentally photograph a menu.

@@ -79,6 +79,8 @@ struct NativeFrontendConfig final {
     std::vector<std::uint16_t> local_server_ports{27015U, 32887U};
     /** Optional automation shortcut; uses the same loader as Direct Connect. */
     std::optional<std::string> startup_endpoint;
+    /** Steam lobby from "+connect_lobby <id>", resolved once Steam is attached. */
+    std::optional<std::uint64_t> startup_steam_lobby;
     /**
      * Host a Local Match over Steam alone, publishing no AoSPlay relay lobby.
      * Testing only: with both doors open, a friend who arrives through the
@@ -122,6 +124,8 @@ public:
     [[nodiscard]] bool start() override;
     [[nodiscard]] core::TickDecision tick(const core::TickContext& context) override;
     void stop() noexcept override;
+    [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const noexcept override;
+    [[nodiscard]] core::TickDecision present_intermediate(double alpha) override;
 
     [[nodiscard]] bool is_started() const noexcept;
     [[nodiscard]] std::string_view last_error() const noexcept;

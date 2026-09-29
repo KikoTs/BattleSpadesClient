@@ -187,19 +187,24 @@ void append_navigation_button(ui::DrawList& list,
     const auto highlighted = button.visual_state == CreateMatchVisualState::hovered ||
                              button.visual_state == CreateMatchVisualState::focused;
     const auto intensity = highlighted ? std::uint16_t{1'000U} : std::uint16_t{700U};
+    // NavigationBar.draw_item: MENU_FONT_COLOR2 (x0.7 unless hovered) on the
+    // icon at x+PAD/2 and on the navigation_font (Spades 24) label.
+    constexpr ColorRgba8 menu_font_color2{232U, 207U, 78U, 255U};
     list.push(sprite(create_match_presentation_assets::back_icon,
                      {bounds.x + 2.5, bounds.y + 3.5, 25.0, 25.0},
                      DrawSpace::design_pixels,
                      TextureAnchor::center,
                      0.64,
-                     color(white, intensity)));
-    list.push(text(button.label_key,
-                   {bounds.x + 35.0, bounds.y, bounds.width - 35.0, bounds.height},
-                   20.0,
-                   selected_gold,
-                   HorizontalTextAlignment::left,
-                   TextTransform::uppercase,
-                   create_match_presentation_assets::title_font));
+                     color(menu_font_color2, intensity)));
+    auto label = text(button.label_key,
+                      {bounds.x + 30.0, bounds.y, bounds.width - 30.0, bounds.height},
+                      24.0,
+                      menu_font_color2,
+                      HorizontalTextAlignment::left,
+                      TextTransform::uppercase,
+                      "fonts/Spades.ttf");
+    label.modulation.intensity_per_mille = intensity;
+    list.push(std::move(label));
 }
 
 void append_arrow(ui::DrawList& list,
@@ -280,6 +285,16 @@ void append_row(ui::DrawList& list,
                        disabled ? disabled_grey : highlighted ? white : cream,
                        HorizontalTextAlignment::left,
                        TextTransform::preserve));
+        if (!row.value_text.empty()) {
+            // Custom maps (SAVED/SUBSCRIBED) carry their author, right-aligned.
+            list.push(text(row.value_text,
+                           {bounds.x + bounds.width * 0.5, bounds.y,
+                            bounds.width * 0.5 - 12.0, bounds.height},
+                           12.0,
+                           disabled ? disabled_grey : highlighted ? white : cream,
+                           HorizontalTextAlignment::right,
+                           TextTransform::preserve));
+        }
         return;
     }
 

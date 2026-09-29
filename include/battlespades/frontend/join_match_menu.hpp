@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -289,6 +290,11 @@ public:
     void select_sort_column(ServerSortColumn column);
     [[nodiscard]] ServerSortColumn sort_column() const noexcept;
     [[nodiscard]] bool sort_descending() const noexcept;
+    /**
+     * serverInfo.py sorts MODE on the localised title, not the string id.
+     * Without a lookup the id itself is compared.
+     */
+    void set_mode_title_lookup(std::function<std::string(std::string_view)> lookup);
 
     [[nodiscard]] bool toggle_selected_favourite() noexcept;
     [[nodiscard]] bool can_connect() const noexcept;
@@ -321,8 +327,10 @@ private:
     std::vector<ServerBrowserEntry> servers_{};
     std::vector<std::size_t> visible_indices_{};
     std::optional<std::string> selected_identifier_{};
+    std::function<std::string(std::string_view)> mode_title_lookup_{};
     ServerBrowserSource source_{ServerBrowserSource::all};
-    ServerBrowserRegion region_{ServerBrowserRegion::europe};
+    /** config.py: server_region defaults to US West until the player picks one. */
+    ServerBrowserRegion region_{ServerBrowserRegion::us_west};
     ServerSortColumn sort_column_{ServerSortColumn::ping};
     bool sort_descending_{};
     bool show_full_servers_{true};

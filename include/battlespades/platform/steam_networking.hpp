@@ -53,6 +53,14 @@ struct SteamLobbyListing final {
     int members{};
 };
 
+/** A Steam Join Game, accepted invite or relaunch delivered to this process. */
+struct SteamJoinRequest final {
+    /** A connect value or launch command line; empty for a lobby request. */
+    std::string connect;
+    std::uint64_t lobby_id{};
+    std::uint64_t friend_id{};
+};
+
 /** Live relay-network state for the loader and diagnostics. */
 struct SteamRelayStatus final {
     bool available{};
@@ -96,12 +104,49 @@ public:
      * Show the match in the player's friends list and let a friend join it.
      *
      * `status` is the line under "view game info". `connect` is the command
-     * line Steam gives a friend who clicks Join, so `steam:<id>` reaches the
-     * same loader as Direct Connect. Both keys are free-form and need nothing
-     * configured for the application id.
+     * line Steam gives a friend who clicks Join (appended to the launch
+     * command line when the friend's game is closed, or delivered as a
+     * GameRichPresenceJoinRequested_t while it runs), so it must be a whole
+     * switch: "+connect steam:<id>". Both keys are free-form and need nothing
+     * configured for the application id. `group` (steam_player_group) puts
+     * everyone in one match together in the friends list; empty leaves it
+     * unset.
      */
-    [[nodiscard]] bool publish_presence(const std::string& status, const std::string& connect);
+    [[nodiscard]] bool publish_presence(const std::string& status, const std::string& connect,
+                                        const std::string& group = {});
     void clear_presence() noexcept;
+    /**
+     * Join requests Steam delivered to this process, oldest first.
+     *
+     * GameRichPresenceJoinRequested_t (a friend's Join Game or an accepted
+     * invite) carries the connect value; GameLobbyJoinRequested_t carries a
+     * lobby id instead, and NewUrlLaunchParameters_t (Steam relaunching the
+     * running game with new arguments) the new launch command line.
+     */
+    [[nodiscard]] std::vector<SteamJoinRequest> take_join_requests();
+    /** Arguments Steam launched this process with (steam://run/…//args). */
+    [[nodiscard]] std::string launch_command_line() const;
+    /**
+     * Read the connect value of a lobby this player was invited to.
+     *
+     * Joins the lobby, reads "connect" (falling back to "+connect
+     * steam:<owner>"), and leaves again. Blocks up to `timeout`; call it off
+     * the presentation thread. Empty when Steam refused or did not answer.
+     */
+    [[nodiscard]] std::string resolve_lobby_connect(std::uint64_t lobby,
+                                                    std::chrono::seconds timeout =
+                                                        std::chrono::seconds{8});
+    /** True when Steam's in-game overlay is running in this process. */
+    [[nodiscard]] bool overlay_enabled() const;
+    /**
+     * Open Steam's invite dialog for the current match.
+     *
+     * Uses the connect-string invite when this Steam client supports it, the
+     * lobby invite otherwise. False when the overlay is not in this process
+     * (the game was not launched through Steam), in which case the friends
+     * list's own "Invite to Game" still works because presence carries connect.
+     */
+    [[nodiscard]] bool open_invite_dialog(const std::string& connect, std::uint64_t lobby);
     /**
      * Statistics and achievements for the attached application.
      *

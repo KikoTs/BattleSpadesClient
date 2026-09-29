@@ -106,18 +106,56 @@ void zombie_tools_own_their_visible_hands() {
     expect(!prefab.draws_player_arms, "ZombiePrefabTool also supplies its own visible hands");
     expect(prefab.tool_part_count == 3U,
            "ZombiePrefabTool third person must retain right hand, block, and left hand");
-    expect_near(prefab.tool_model_scale, 0.065,
-                "Zombie prefab third-person model must keep inherited Tool size");
+    // Character.draw's ZombiePrefabTool branch (pyx 1910-1940): size 0.04
+    // and three hard-coded transforms instead of the generic Tool loop.
+    expect_near(prefab.tool_model_scale, 0.04,
+                "Zombie prefab third-person draw forces weapon size 0.04");
+    expect_near(prefab.tool_parts[0U].position.x, -0.95, "right hand x");
+    expect_near(prefab.tool_parts[0U].position.y, -0.2, "right hand y");
+    expect_near(prefab.tool_parts[0U].position.z, 0.65, "right hand z");
+    expect_near(prefab.tool_parts[0U].orientation_degrees.z, 180.0, "right hand rotation");
+    expect_near(prefab.tool_parts[1U].position.x, -0.72, "block x");
+    expect_near(prefab.tool_parts[1U].position.z, -0.25, "block z");
+    expect_near(prefab.tool_parts[1U].orientation_degrees.x, 45.0, "block pitch");
+    expect_near(prefab.tool_parts[1U].orientation_degrees.y, 45.0, "block yaw");
+    expect_near(prefab.tool_parts[2U].position.x, 0.65, "left hand x");
+    expect_near(prefab.tool_parts[2U].orientation_degrees.x, 90.0, "left hand x rotation");
+    expect_near(prefab.tool_parts[2U].orientation_degrees.z, -90.0, "left hand z rotation");
 
     const auto placing_prefab = evaluate_retail_third_person_pose(28U, 3U, 0.0, 1U);
-    expect_near(placing_prefab.tool_parts[0U].position.x, -0.5,
-                "remote Zombie right hand must inherit AnimPlaceBlock");
-    expect_near(placing_prefab.tool_parts[1U].position.y, -0.5,
-                "remote Zombie block must inherit AnimPlaceBlock");
-    expect_near(placing_prefab.tool_parts[2U].position.x, 0.0,
-                "third Zombie prefab part exceeds view_model transform arrays and stays static");
-    expect_near(placing_prefab.tool_parts[2U].position.y, 0.0,
-                "remote Zombie left hand must keep its authored attachment");
+    expect_near(placing_prefab.tool_parts[0U].position.x, -0.95,
+                "the special branch never applies AnimPlaceBlock to observers");
+    expect_near(placing_prefab.tool_parts[1U].position.y, 0.5,
+                "the special branch never applies AnimPlaceBlock to observers");
+}
+
+void minigun_barrel_rolls_about_its_recovered_pivot() {
+    const auto rest = evaluate_retail_third_person_pose(8U, 2U);
+    const auto spun = evaluate_retail_third_person_pose(8U, 2U, 1.0e9, 0U, 0.0, true, 0.25);
+    expect_near(spun.tool_parts[1U].orientation_degrees.z, 90.0,
+                "a quarter revolution rolls the barrel 90 degrees");
+    expect_near(spun.tool_parts[0U].orientation_degrees.z, 0.0,
+                "AnimRoll never turns the minigun body");
+    // Row-vector Rz(90) about q = size*(-7,-6.5): q - q*Rz = (qx + qy, qy - qx).
+    const double size = rest.tool_model_scale;
+    expect_near(spun.tool_parts[1U].position.x - rest.tool_parts[1U].position.x,
+                (-7.0 - 6.5) * size, "barrel pivot x compensation");
+    expect_near(spun.tool_parts[1U].position.y - rest.tool_parts[1U].position.y,
+                (-6.5 + 7.0) * size, "barrel pivot y compensation");
+    expect_near(spun.tool_parts[1U].position.z, rest.tool_parts[1U].position.z,
+                "the roll axis is z; z never moves");
+
+    using battlespades::world::advance_retail_remote_minigun_spin;
+    battlespades::world::RetailRemoteMinigunSpin spin{};
+    for (int step{}; step < 120; ++step) {
+        spin = advance_retail_remote_minigun_spin(spin, 1.0 / 60.0, true);
+    }
+    expect_near(spin.ratio, 1.0, "two seconds of trigger reach full spin (0.75/s)");
+    for (int step{}; step < 60; ++step) {
+        spin = advance_retail_remote_minigun_spin(spin, 1.0 / 60.0, false);
+    }
+    expect(spin.ratio > 0.6 && spin.ratio < 0.65, "spin winds down at 0.375/s");
+    expect(spin.phase >= 0.0 && spin.phase < 1.0, "phase stays a revolution fraction");
 }
 
 void hidden_or_unavailable_weapon_keeps_observer_class_arms() {
@@ -127,10 +165,21 @@ void hidden_or_unavailable_weapon_keeps_observer_class_arms() {
            "authority may hide the held weapon while the observer keeps the character body");
     expect(hidden.draws_player_arms,
            "retail class arms must remain visible when can_display_weapon clears");
+    // Character.draw adds 50 (not shoot_pitch) when the tool is hidden, then
+    // clamps to the tool's arm range: 30 + 50 = 80 -> 70 for a pistol.
+    expect_near(visible.weapon_pitch_degrees, 30.0, "a shown pistol follows the aim");
+    expect_near(hidden.weapon_pitch_degrees, 70.0,
+                "a hidden tool drops the arms by 50 degrees, clamped to +70");
     for (std::size_t index{}; index < hidden.arms.size(); ++index) {
-        expect_near(hidden.arms[index].pitch_degrees, visible.arms[index].pitch_degrees,
-                    "hiding the tool must preserve the existing class arm pose");
+        expect_near(hidden.arms[index].pitch_degrees, hidden.weapon_pitch_degrees,
+                    "every class arm follows the hidden-tool pitch");
     }
+    const auto hidden_up = evaluate_retail_third_person_pose(17U, 1U, 1.0e9, 0U, -30.0, false);
+    expect_near(hidden_up.weapon_pitch_degrees, 20.0,
+                "sprinting while looking up still drops the arms by 50 degrees");
+    const auto hidden_shield = evaluate_retail_third_person_pose(52U, 1U, 1.0e9, 0U, -30.0, false);
+    expect_near(hidden_shield.weapon_pitch_degrees, 0.0,
+                "a hidden riot shield keeps RiotShieldTool's (-80, 0) range");
     const auto missing = evaluate_retail_third_person_pose(17U, 0U);
     expect(missing.draws_player_arms && missing.tool_part_count == 0U,
            "missing held-tool geometry must not remove valid class arms");
@@ -196,6 +245,51 @@ void root_yaw_matches_retail_orientation_basis() {
                 "vertical-only corrupt input must fail to a stable yaw");
 }
 
+void riot_shield_uses_its_recovered_arm_pitch_range_and_bash() {
+    // Character.draw: pitch + shoot_pitch (RiotShieldTool's DiggingTool.pitch,
+    // resting at pitch_initial -4), clamped to get_arm_pitch_range() =
+    // (A1886, A1887) = (-80, 0). Positive pitch looks down.
+    const auto level = evaluate_retail_third_person_pose(52U, 1U, 1.0e9, 0U, 0.0);
+    expect_near(level.head_pitch_degrees, 0.0, "the head keeps the raw look pitch");
+    expect_near(level.weapon_pitch_degrees, -4.0, "resting shield carries pitch_initial");
+    expect_near(level.tool_model_scale, 0.073, "RiotShieldTool.model_size is 0.073");
+    expect_near(level.tool_parts[0U].position.z, 0.0,
+                "remote shields have no main-character initial_position");
+    for (const auto& arm : level.arms) {
+        expect_near(arm.pitch_degrees, -4.0, "shield arms share the clamped weapon pitch");
+    }
+
+    const auto down = evaluate_retail_third_person_pose(52U, 1U, 1.0e9, 0U, 60.0);
+    expect_near(down.weapon_pitch_degrees, 0.0,
+                "looking down must never swing the shield into the legs (max 0)");
+    const auto up = evaluate_retail_third_person_pose(52U, 1U, 1.0e9, 0U, -60.0);
+    expect_near(up.weapon_pitch_degrees, -64.0, "looking up tilts the shield with the aim");
+    const auto straight_up = evaluate_retail_third_person_pose(52U, 1U, 1.0e9, 0U, -89.0);
+    expect_near(straight_up.weapon_pitch_degrees, -80.0, "shield pitch floor is A1886 = -80");
+
+    // use_spade(): offset = max(aim + 10 - 0, 0); pitch runs from
+    // (-4 + 10 - offset) to (-4 - offset) across the 1 s shoot interval.
+    const auto swing_start = evaluate_retail_third_person_pose(52U, 1U, 0.0, 1U, -30.0);
+    expect_near(swing_start.weapon_pitch_degrees, -24.0, "swing starts 10 degrees low");
+    const auto swing_mid = evaluate_retail_third_person_pose(52U, 1U, 0.5, 1U, -30.0);
+    expect_near(swing_mid.weapon_pitch_degrees, -29.0, "swing interpolates toward rest");
+    const auto swing_level = evaluate_retail_third_person_pose(52U, 1U, 0.0, 1U, 0.0);
+    expect_near(swing_level.weapon_pitch_degrees, -4.0,
+                "the overshoot offset keeps a level swing inside the 0 degree ceiling");
+
+    // AnimUseRiotShield is applied through Tool.apply_transform for observers.
+    const auto bash_start = evaluate_retail_third_person_pose(52U, 1U, 0.0, 1U, 0.0);
+    expect_near(bash_start.tool_parts[0U].position.z, 0.0, "start() frame is the rest pose");
+    const auto bash = evaluate_retail_third_person_pose(52U, 1U, 0.25, 1U, 0.0);
+    expect_near(bash.tool_parts[0U].position.z, 0.3, "bash thrusts the shield forward");
+    const auto hidden = evaluate_retail_third_person_pose(52U, 1U, 0.25, 1U, 0.0, false);
+    expect(hidden.tool_part_count == 0U, "a hidden shield draws no parts");
+
+    // Ordinary tools keep the generic -90..70 range and no digging pitch.
+    const auto pistol = evaluate_retail_third_person_pose(17U, 1U, 0.0, 1U, 60.0);
+    expect_near(pistol.weapon_pitch_degrees, 60.0, "the shield range must not leak to guns");
+}
+
 void aim_pitch_uses_retail_joint_pivots() {
     const auto aimed = evaluate_retail_third_person_pose(17U, 1U, 1.0e9, 0U, 30.0);
     expect_near(aimed.head_pitch_degrees,
@@ -259,6 +353,87 @@ void walk_cycle_matches_character_update_animation() {
                 "crouch gait must use retail's 0.016/0.028 arc ratio");
 }
 
+void digging_tools_use_retail_pitch_and_range() {
+    using battlespades::world::retail_tool_arm_pitch_range;
+    using battlespades::world::retail_tool_pitch;
+    // DiggingTool: pitch_initial -4; get_arm_pitch_range() upper limit is
+    // 70 - pitch_increase at rest and 70 while the swing runs.
+    const auto spade_rest = evaluate_retail_third_person_pose(2U, 1U, 1.0e9, 0U, 0.0);
+    expect_near(spade_rest.weapon_pitch_degrees, -4.0, "a resting spade carries pitch_initial");
+    const auto spade_down = evaluate_retail_third_person_pose(2U, 1U, 1.0e9, 0U, 60.0);
+    expect_near(spade_down.weapon_pitch_degrees, 30.0,
+                "a resting spade (pitch_increase 40) stops at 70 - 40");
+    const auto knife_down = evaluate_retail_third_person_pose(1U, 1U, 1.0e9, 0U, 60.0);
+    expect_near(knife_down.weapon_pitch_degrees, 20.0,
+                "a resting knife (pitch_increase 50) stops at 70 - 50");
+    const auto pickaxe_down = evaluate_retail_third_person_pose(0U, 1U, 1.0e9, 0U, 60.0);
+    expect_near(pickaxe_down.weapon_pitch_degrees, 40.0,
+                "a resting pickaxe (pitch_increase 30) stops at 70 - 30");
+
+    // use_spade(): offset = max(aim + 40 - 30, 0) = 10 at a level aim, so the
+    // 0.8 s swing runs from -4 + 40 - 10 = 26 to -4 - 10 = -14.
+    const auto swing_start = evaluate_retail_third_person_pose(2U, 1U, 0.0, 1U, 0.0);
+    expect_near(swing_start.weapon_pitch_degrees, 26.0, "spade swing starts raised");
+    const auto swing_mid = evaluate_retail_third_person_pose(2U, 1U, 0.4, 1U, 0.0);
+    expect_near(swing_mid.weapon_pitch_degrees, 6.0, "spade swing interpolates linearly");
+    expect_near(retail_tool_arm_pitch_range(2U, 0.4).maximum, 70.0,
+                "the swing lifts the upper limit back to +70");
+    expect_near(retail_tool_arm_pitch_range(2U, 0.8).maximum, 30.0,
+                "the limit drops again once shoot_interval elapses");
+    const auto swing_down = evaluate_retail_third_person_pose(2U, 1U, 0.0, 1U, 60.0);
+    expect_near(swing_down.weapon_pitch_degrees, 26.0,
+                "looking down, the overshoot offset starts the swing 4 below the rest limit");
+
+    // ZombieHandTool restores pitch around every update and keeps Tool's range.
+    expect_near(retail_tool_pitch(24U, 0.1, 0.0), -4.0, "zombie hands never swing pitch");
+    const auto zombie_down = evaluate_retail_third_person_pose(24U, 2U, 1.0e9, 0U, 89.0);
+    expect_near(zombie_down.weapon_pitch_degrees, 70.0, "zombie hands keep the +70 limit");
+    // Grenades rest at GrenadeTool.pitch_initial for observers.
+    const auto grenade = evaluate_retail_third_person_pose(11U, 1U, 1.0e9, 0U, 0.0);
+    expect_near(grenade.weapon_pitch_degrees, -4.0, "grenades rest at pitch_initial -4");
+    // Weapon/BlockTool class `pitch` attributes never reach Character.draw.
+    expect_near(retail_tool_pitch(5U, 0.0, 0.0), 0.0, "block tool keeps pitch 0");
+    expect_near(retail_tool_pitch(60U, 0.0, 0.0), 0.0, "firearms keep pitch 0");
+}
+
+void observer_tools_animate_and_use_remote_initial_positions() {
+    // Character.draw's generic branch calls Tool.apply_transform(i) with the
+    // default animation position/orientation for remote characters.
+    const auto rifle = evaluate_retail_third_person_pose(60U, 1U, 0.1, 1U, 0.0);
+    expect(rifle.tool_parts[0U].position.x < 0.0 && rifle.tool_parts[0U].orientation_degrees.x < 0.0,
+           "observers see AnimWeaponShoot recoil");
+    const auto knife = evaluate_retail_third_person_pose(1U, 1U, 0.1, 1U, 0.0);
+    expect(knife.tool_parts[0U].orientation_degrees.x > 0.0 && knife.tool_parts[0U].position.z > 0.0,
+           "observers see the AnimUseKnife swing");
+    expect_near(knife.tool_parts[0U].position.x, 0.0,
+                "KnifeTool's initial_position is main-character only");
+    const auto spade = evaluate_retail_third_person_pose(2U, 1U, 0.1, 1U, 0.0);
+    expect(spade.tool_parts[0U].orientation_degrees.x > 0.0, "observers see AnimUseSpade");
+    const auto block = evaluate_retail_third_person_pose(5U, 1U, 0.0, 1U, 0.0);
+    expect_near(block.tool_parts[0U].position.x, 0.0,
+                "BlockTool only starts AnimPlaceBlock on the local placing path");
+    const auto grenade = evaluate_retail_third_person_pose(11U, 1U, 0.2, 1U, 0.0);
+    expect_near(grenade.tool_parts[0U].position.x, 0.0,
+                "the throw animation has stopped by the time an observer sees the throw");
+
+    const auto rpg2 = evaluate_retail_third_person_pose(13U, 1U);
+    expect_near(rpg2.tool_parts[0U].position.y, 0.3, "RPG2Weapon lifts remote models 0.3");
+    const auto ugc_rpg2 = evaluate_retail_third_person_pose(46U, 1U);
+    expect_near(ugc_rpg2.tool_parts[0U].position.y, 0.3, "UGC RPG2 inherits the remote lift");
+    const auto turret = evaluate_retail_third_person_pose(16U, 3U);
+    for (std::size_t part{}; part < 3U; ++part) {
+        expect_near(turret.tool_parts[part].position.x, -0.75,
+                    "remote turret parts share (-15, 0.18, 10) * 0.05");
+        expect_near(turret.tool_parts[part].position.y, 0.009,
+                    "remote turret parts are not stacked like the FPS model");
+        expect_near(turret.tool_parts[part].position.z, 0.5,
+                    "remote turret parts sit 10 authored units forward");
+    }
+    const auto minigun = evaluate_retail_third_person_pose(8U, 2U, 0.1, 1U, 0.0);
+    expect_near(minigun.tool_parts[0U].position.x, 0.0,
+                "the MINIGUN branch never applies AnimWeaponShoot to observers");
+}
+
 } // namespace
 
 int main() {
@@ -266,12 +441,16 @@ int main() {
         arm_chain_matches_character_reset_tp_arms();
         display_vectors_match_retail_draw_axis_order();
         zombie_tools_own_their_visible_hands();
+        minigun_barrel_rolls_about_its_recovered_pivot();
         hidden_or_unavailable_weapon_keeps_observer_class_arms();
         minigun_barrel_keeps_its_authored_third_person_offset();
         muzzle_attachments_match_retail_weapon_subclasses();
         root_yaw_matches_retail_orientation_basis();
         aim_pitch_uses_retail_joint_pivots();
+        riot_shield_uses_its_recovered_arm_pitch_range_and_bash();
         walk_cycle_matches_character_update_animation();
+        digging_tools_use_retail_pitch_and_range();
+        observer_tools_animate_and_use_remote_initial_positions();
         std::cout << "retail third-person character pose tests passed\n";
         return 0;
     } catch (const std::exception& error) {

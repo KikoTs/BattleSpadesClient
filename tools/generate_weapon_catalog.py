@@ -237,6 +237,22 @@ PRIMARY_EXPLOSION_PREFIX: dict[int, str] = {
     57: "STICKY_GRENADE", 58: "LANDMINE", 59: "C4",
 }
 
+# Blast radius and damage come from the server's stock catalog row, NOT from the
+# named *_EXPLOSION_RADIUS/_DAMAGE constants. The stock ExplosionDamageManager
+# handlers bind the A#### aliases (RPG/RPG2/AP/landmine/mine launcher 6,
+# classic grenade 9, dynamite 8 = A1632, turret rocket 50), while the named
+# block is a stale descriptive copy (4/2/3/5/100). BS/docs/WEAPONS_RETAIL.md
+# "Explosives" is the audited table the server catalog carries. Block damage
+# still reads the named constant: the server row leaves most of them at zero.
+PRIMARY_EXPLOSION_FROM_SERVER_PROFILE = frozenset({"RADIUS", "DAMAGE"})
+
+# Throw speeds the stock Character.throw_* reads straight from the alias block
+# (character.pyd), so they never appear in the weapon module's own names.
+EXTRA_TOOL_CONSTANTS: dict[int, tuple[str, ...]] = {
+    54: ("A1663", "A1664"),  # chemical bomb: added 50, minimum 25
+    57: ("A1682", "A1683"),  # sticky grenade: added 50, minimum 25
+}
+
 _BINARY_OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -305,7 +321,7 @@ def primary_explosion_value(constants: Any, tool_id: int, suffix: str,
                             fallback: float) -> float:
     """Resolve one primary blast field through an exact, audited name."""
     prefix = PRIMARY_EXPLOSION_PREFIX.get(tool_id)
-    if prefix is None:
+    if prefix is None or suffix in PRIMARY_EXPLOSION_FROM_SERVER_PROFILE:
         return float(fallback)
     value = getattr(constants, f"{prefix}_EXPLOSION_{suffix}", fallback)
     return float(value) if _is_number(value) else float(fallback)
@@ -613,6 +629,13 @@ def _tool_constants(tool_id: int, retail: RetailClass, constants: Any,
             continue
         display_name = aliases.get(source_name, source_name)
         collected[display_name] = converted
+
+    # Kept under the raw alias: tutorial_session.cpp looks these up by name.
+    for source_name in EXTRA_TOOL_CONSTANTS.get(tool_id, ()):
+        converted = _constant_value(values.get(source_name))
+        if converted is None:
+            raise RuntimeError(f"{source_name} is missing from shared.constants")
+        collected[source_name] = converted
 
     all_prefixes = {prefix for prefixes in TOOL_CONSTANT_PREFIXES.values()
                     for prefix in prefixes}

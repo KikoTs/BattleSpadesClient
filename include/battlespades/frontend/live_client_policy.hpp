@@ -34,13 +34,24 @@ namespace battlespades::frontend {
  *
  * Multiplayer authority never pauses. Escape/settings/team screens release
  * input, but gravity, prediction, ClientData cadence, and reconciliation must
- * continue until the world route is actually removed or the window is
- * suspended.
+ * continue until the world route is actually removed.
+ *
+ * Window state is deliberately NOT an input: retail ran
+ * `schedule_interval_soft(manager.update)` regardless of minimise/alt-tab, and
+ * SDL minimises exclusive-fullscreen windows on focus loss. Stopping here froze
+ * the body, starved the server of ClientData/ClockSync and stalled the
+ * connection watchdog on every alt-tab. A minimised window only skips
+ * presentation (see live_world_presentation_allowed).
  */
 [[nodiscard]] constexpr bool live_world_simulation_allowed(
-    bool has_session, bool world_in_navigation_stack,
-    bool window_suspended) noexcept {
-    return has_session && world_in_navigation_stack && !window_suspended;
+    bool has_session, bool world_in_navigation_stack) noexcept {
+    return has_session && world_in_navigation_stack;
+}
+
+/** Only presentation stops while the platform window is minimised. */
+[[nodiscard]] constexpr bool live_world_presentation_allowed(
+    bool window_suspended, bool present_this_tick) noexcept {
+    return !window_suspended && present_this_tick;
 }
 
 /**

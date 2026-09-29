@@ -16,6 +16,7 @@ constexpr std::array<std::uint16_t, 3U> class_0_group_3{{11U, 32U, 72U}};
 constexpr std::array<std::uint16_t, 3U> class_0_group_4{{0U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_0_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_0_group_6{{}};
+constexpr std::array<std::string_view, 4U> class_0_prefabs{{std::string_view{"prefab_ultrabarrier"}, std::string_view{"prefab_superbarrier"}, std::string_view{"prefab_supersmallwall"}, std::string_view{"prefab_fort_wall"}}};
 
 constexpr std::array<std::uint16_t, 2U> class_1_group_0{{0U, 1U}};
 constexpr std::array<std::uint16_t, 2U> class_1_group_1{{18U, 19U}};
@@ -24,6 +25,7 @@ constexpr std::array<std::uint16_t, 2U> class_1_group_3{{20U, 56U}};
 constexpr std::array<std::uint16_t, 3U> class_1_group_4{{1U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_1_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_1_group_6{{}};
+constexpr std::array<std::string_view, 4U> class_1_prefabs{{std::string_view{"prefab_supertower"}, std::string_view{"prefab_superbridge"}, std::string_view{"prefab_superminibunker"}, std::string_view{"prefab_caltrop"}}};
 
 constexpr std::array<std::uint16_t, 2U> class_2_group_0{{2U, 0U}};
 constexpr std::array<std::uint16_t, 1U> class_2_group_1{{7U}};
@@ -32,6 +34,7 @@ constexpr std::array<std::uint16_t, 2U> class_2_group_3{{67U, 66U}};
 constexpr std::array<std::uint16_t, 3U> class_2_group_4{{2U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_2_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_2_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_2_prefabs{{std::string_view{"prefab_caltrop"}, std::string_view{"prefab_superminibunker"}, std::string_view{"prefab_safety_tube"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_3_group_0{{3U}};
 constexpr std::array<std::uint16_t, 2U> class_3_group_1{{9U, 10U}};
@@ -40,6 +43,7 @@ constexpr std::array<std::uint16_t, 2U> class_3_group_3{{21U, 59U}};
 constexpr std::array<std::uint16_t, 3U> class_3_group_4{{3U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_3_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_3_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_3_prefabs{{std::string_view{"prefab_superdome"}, std::string_view{"prefab_superpole"}, std::string_view{"prefab_safety_corridor"}}};
 
 constexpr std::array<std::uint16_t, 0U> class_4_group_0{{}};
 constexpr std::array<std::uint16_t, 1U> class_4_group_1{{24U}};
@@ -48,6 +52,7 @@ constexpr std::array<std::uint16_t, 0U> class_4_group_3{{}};
 constexpr std::array<std::uint16_t, 1U> class_4_group_4{{4U}};
 constexpr std::array<std::uint16_t, 1U> class_4_group_5{{28U}};
 constexpr std::array<std::uint16_t, 0U> class_4_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_4_prefabs{{std::string_view{"prefab_zombiehand"}, std::string_view{"prefab_zombiebone"}, std::string_view{"prefab_zombiehead"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_5_group_0{{4U}};
 constexpr std::array<std::uint16_t, 3U> class_5_group_1{{6U, 38U, 37U}};
@@ -56,6 +61,7 @@ constexpr std::array<std::uint16_t, 1U> class_5_group_3{{31U}};
 constexpr std::array<std::uint16_t, 0U> class_5_group_4{{}};
 constexpr std::array<std::uint16_t, 4U> class_5_group_5{{5U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_5_group_6{{}};
+constexpr std::array<std::string_view, 0U> class_5_prefabs{{}};
 
 constexpr std::array<std::uint16_t, 1U> class_6_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_6_group_1{{35U}};
@@ -64,6 +70,7 @@ constexpr std::array<std::uint16_t, 1U> class_6_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_6_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_6_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_6_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_6_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_7_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_7_group_1{{35U}};
@@ -72,6 +79,7 @@ constexpr std::array<std::uint16_t, 1U> class_7_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_7_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_7_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_7_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_7_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_8_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_8_group_1{{35U}};
@@ -80,6 +88,7 @@ constexpr std::array<std::uint16_t, 1U> class_8_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_8_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_8_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_8_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_8_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_9_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_9_group_1{{35U}};
@@ -88,6 +97,7 @@ constexpr std::array<std::uint16_t, 1U> class_9_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_9_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_9_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_9_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_9_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_10_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_10_group_1{{35U}};
@@ -96,6 +106,7 @@ constexpr std::array<std::uint16_t, 1U> class_10_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_10_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_10_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_10_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_10_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_11_group_0{{34U}};
 constexpr std::array<std::uint16_t, 1U> class_11_group_1{{35U}};
@@ -104,6 +115,7 @@ constexpr std::array<std::uint16_t, 1U> class_11_group_3{{33U}};
 constexpr std::array<std::uint16_t, 3U> class_11_group_4{{6U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_11_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_11_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_11_prefabs{{std::string_view{"prefab_small_platform"}, std::string_view{"prefab_ladder"}, std::string_view{"prefab_square_bunker"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_12_group_0{{0U}};
 constexpr std::array<std::uint16_t, 1U> class_12_group_1{{7U}};
@@ -112,6 +124,7 @@ constexpr std::array<std::uint16_t, 2U> class_12_group_3{{68U, 64U}};
 constexpr std::array<std::uint16_t, 3U> class_12_group_4{{9U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_12_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_12_group_6{{}};
+constexpr std::array<std::string_view, 7U> class_12_prefabs{{std::string_view{"prefab_caltrop"}, std::string_view{"prefab_supertower"}, std::string_view{"prefab_ultrabarrier"}, std::string_view{"prefab_platform"}, std::string_view{"prefab_superminibunker"}, std::string_view{"prefab_superdome"}, std::string_view{"prefab_fort_wall"}}};
 
 constexpr std::array<std::uint16_t, 1U> class_13_group_0{{45U}};
 constexpr std::array<std::uint16_t, 1U> class_13_group_1{{47U}};
@@ -120,6 +133,7 @@ constexpr std::array<std::uint16_t, 1U> class_13_group_3{{69U}};
 constexpr std::array<std::uint16_t, 3U> class_13_group_4{{10U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 9U> class_13_group_5{{5U, 43U, 22U, 30U, 42U, 41U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 1U> class_13_group_6{{0U}};
+constexpr std::array<std::string_view, 0U> class_13_prefabs{{}};
 
 constexpr std::array<std::uint16_t, 0U> class_14_group_0{{}};
 constexpr std::array<std::uint16_t, 1U> class_14_group_1{{24U}};
@@ -128,6 +142,7 @@ constexpr std::array<std::uint16_t, 0U> class_14_group_3{{}};
 constexpr std::array<std::uint16_t, 1U> class_14_group_4{{4U}};
 constexpr std::array<std::uint16_t, 1U> class_14_group_5{{28U}};
 constexpr std::array<std::uint16_t, 0U> class_14_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_14_prefabs{{std::string_view{"prefab_zombiehand"}, std::string_view{"prefab_zombiebone"}, std::string_view{"prefab_zombiehead"}}};
 
 constexpr std::array<std::uint16_t, 0U> class_15_group_0{{}};
 constexpr std::array<std::uint16_t, 1U> class_15_group_1{{24U}};
@@ -136,6 +151,7 @@ constexpr std::array<std::uint16_t, 0U> class_15_group_3{{}};
 constexpr std::array<std::uint16_t, 1U> class_15_group_4{{4U}};
 constexpr std::array<std::uint16_t, 1U> class_15_group_5{{28U}};
 constexpr std::array<std::uint16_t, 0U> class_15_group_6{{}};
+constexpr std::array<std::string_view, 3U> class_15_prefabs{{std::string_view{"prefab_zombiehand"}, std::string_view{"prefab_zombiebone"}, std::string_view{"prefab_zombiehead"}}};
 
 constexpr std::array<std::uint16_t, 2U> class_16_group_0{{2U, 50U}};
 constexpr std::array<std::uint16_t, 2U> class_16_group_1{{62U, 7U}};
@@ -144,6 +160,7 @@ constexpr std::array<std::uint16_t, 2U> class_16_group_3{{54U, 57U}};
 constexpr std::array<std::uint16_t, 3U> class_16_group_4{{13U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_16_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_16_group_6{{}};
+constexpr std::array<std::string_view, 4U> class_16_prefabs{{std::string_view{"prefab_caltrop"}, std::string_view{"prefab_superpole"}, std::string_view{"prefab_fort_wall"}, std::string_view{"prefab_safety_corridor"}}};
 
 constexpr std::array<std::uint16_t, 2U> class_17_group_0{{0U, 49U}};
 constexpr std::array<std::uint16_t, 2U> class_17_group_1{{61U, 10U}};
@@ -152,6 +169,7 @@ constexpr std::array<std::uint16_t, 1U> class_17_group_3{{51U}};
 constexpr std::array<std::uint16_t, 3U> class_17_group_4{{14U, 8U, 7U}};
 constexpr std::array<std::uint16_t, 7U> class_17_group_5{{5U, 23U, 22U, 30U, 25U, 26U, 30U}};
 constexpr std::array<std::uint16_t, 0U> class_17_group_6{{}};
+constexpr std::array<std::string_view, 4U> class_17_prefabs{{std::string_view{"prefab_supersmallwall"}, std::string_view{"prefab_ultrabarrier"}, std::string_view{"prefab_fort_wall"}, std::string_view{"prefab_superbridge"}}};
 
 constexpr std::array<ClassDefinition, retail_class_count> classes{{
     ClassDefinition{
@@ -408,6 +426,172 @@ constexpr std::array<ClassDefinition, retail_class_count> classes{{
         {"png/ui/in_game_menus/select_class/medic_icon_team1.png", "png/ui/in_game_menus/select_class/medic_icon_team2.png"}, "", 1.0},
 }};
 
+constexpr std::array<std::span<const std::string_view>, retail_class_count> prefab_names{{
+    std::span<const std::string_view>{class_0_prefabs},
+    std::span<const std::string_view>{class_1_prefabs},
+    std::span<const std::string_view>{class_2_prefabs},
+    std::span<const std::string_view>{class_3_prefabs},
+    std::span<const std::string_view>{class_4_prefabs},
+    std::span<const std::string_view>{class_5_prefabs},
+    std::span<const std::string_view>{class_6_prefabs},
+    std::span<const std::string_view>{class_7_prefabs},
+    std::span<const std::string_view>{class_8_prefabs},
+    std::span<const std::string_view>{class_9_prefabs},
+    std::span<const std::string_view>{class_10_prefabs},
+    std::span<const std::string_view>{class_11_prefabs},
+    std::span<const std::string_view>{class_12_prefabs},
+    std::span<const std::string_view>{class_13_prefabs},
+    std::span<const std::string_view>{class_14_prefabs},
+    std::span<const std::string_view>{class_15_prefabs},
+    std::span<const std::string_view>{class_16_prefabs},
+    std::span<const std::string_view>{class_17_prefabs},
+}};
+
+constexpr std::array<std::string_view, retail_class_count> class_names{{std::string_view{"SOLDIER"}, std::string_view{"SCOUT"}, std::string_view{"ENGINEER"}, std::string_view{"MINER"}, std::string_view{"ZOMBIE"}, std::string_view{"CLASSIC_SOLDIER"}, std::string_view{"GANGSTER_1_NAME"}, std::string_view{"GANGSTER_2_NAME"}, std::string_view{"GANGSTER_3_NAME"}, std::string_view{"GANGSTER_4_NAME"}, std::string_view{"GANGSTER_VIP_1_NAME"}, std::string_view{"GANGSTER_VIP_2_NAME"}, std::string_view{"ENGINEER2"}, std::string_view{"UGCBUILDER"}, std::string_view{"FAST_ZOMBIE"}, std::string_view{"JUMP_ZOMBIE"}, std::string_view{"SPECIALIST"}, std::string_view{"MEDIC"}}};
+constexpr std::array<std::string_view, retail_class_count> class_descriptions{{std::string_view{"SOLDIER_DESCRIPTION"}, std::string_view{"SCOUT_DESCRIPTION"}, std::string_view{"ROCKETEER_DESCRIPTION"}, std::string_view{"MINER_DESCRIPTION"}, std::string_view{"ZOMBIE_DESCRIPTION"}, std::string_view{"SOLDIER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"GANGSTER_DESCRIPTION"}, std::string_view{"ENGINEER_DESCRIPTION"}, std::string_view{"UGCBUILDER_DESCRIPTION"}, std::string_view{"ZOMBIE_DESCRIPTION"}, std::string_view{"ZOMBIE_DESCRIPTION"}, std::string_view{"SPECIALIST_DESCRIPTION"}, std::string_view{"MEDIC_DESCRIPTION"}}};
+
+constexpr std::string_view tool_name_key_for(std::uint16_t tool) noexcept {
+    switch (tool) {
+    case 0U: return "PICKAXE";
+    case 1U: return "KNIFE";
+    case 2U: return "SPADE";
+    case 3U: return "SUPER_SPADE";
+    case 4U: return "SPADE";
+    case 5U: return "A301";
+    case 6U: return "RIFLE";
+    case 7U: return "SUB_MACHINE_GUN";
+    case 8U: return "MINIGUN";
+    case 9U: return "SHOTGUN";
+    case 10U: return "SHOTGUN2";
+    case 11U: return "A307";
+    case 12U: return "ROCKET_PROPELLED_GRENADE";
+    case 13U: return "ROCKET_PROPELLED_GRENADE2";
+    case 14U: return "DRILL_TOOL";
+    case 15U: return "MOUNTED_GUN";
+    case 16U: return "ROCKET_TURRET";
+    case 17U: return "PISTOL";
+    case 18U: return "SNIPER_RIFLE";
+    case 19U: return "SNIPER2_RIFLE";
+    case 20U: return "A316";
+    case 21U: return "A317";
+    case 22U: return "FLARE_BLOCK_TOOL";
+    case 23U: return "A319";
+    case 24U: return "ZOMBIE_HANDS";
+    case 25U: return "A321";
+    case 26U: return "A322";
+    case 27U: return "A323";
+    case 28U: return "ZOMBIE_PREFAB_TOOL";
+    case 29U: return "SNOWBLOWER";
+    case 30U: return "A326";
+    case 31U: return "CLASSIC_GRENADE";
+    case 32U: return "A328";
+    case 33U: return "A329";
+    case 35U: return "A331";
+    case 36U: return "A332";
+    case 37U: return "CLASSIC_SHOTGUN";
+    case 38U: return "CLASSIC_SUB_MACHINE_GUN";
+    case 39U: return "NULL_TOOL";
+    case 40U: return "FAKE_PISTOL_TOOL";
+    case 41U: return "A337";
+    case 42U: return "UGC_PREFAB_TOOL";
+    case 43U: return "PAINTBRUSH_TOOL";
+    case 44U: return "UGC_PICKAXE";
+    case 45U: return "UGC_SUPERSPADE";
+    case 46U: return "UGC_RPG2";
+    case 47U: return "DRILL_TOOL";
+    case 48U: return "SNOWBLOWER";
+    case 49U: return "RIOTSTICK";
+    case 50U: return "MACHETE";
+    case 51U: return "MEDPACK_WEAPON";
+    case 52U: return "RIOTSHIELD";
+    case 53U: return "AUTOMATIC_PISTOL";
+    case 54U: return "CHEMICALBOMB";
+    case 55U: return "GRENADE_LAUNCHER_WEAPON";
+    case 56U: return "RADAR_STATION";
+    case 57U: return "STICKY_GRENADE";
+    case 58U: return "MINE_LAUNCHER";
+    case 59U: return "C4";
+    case 60U: return "ASSAULT_RIFLE";
+    case 61U: return "LIGHT_MACHINE_GUN";
+    case 62U: return "AUTO_SHOTGUN";
+    case 63U: return "BLOCK_SUCKER";
+    case 64U: return "DISGUISE";
+    case 66U: return "A364";
+    case 67U: return "JETPACK_2";
+    case 68U: return "A366";
+    case 69U: return "A367";
+    case 72U: return "A370";
+    default: return {};
+    }
+}
+
+constexpr std::string_view tool_description_key_for(std::uint16_t tool) noexcept {
+    switch (tool) {
+    case 0U: return "PICKAXE_TOOL_DESCRIPTION";
+    case 1U: return "KNIFE_TOOL_DESCRIPTION";
+    case 2U: return "SPADE_TOOL_DESCRIPTION";
+    case 3U: return "SUPERSPADE_TOOL_DESCRIPTION";
+    case 4U: return "CLASSIC_SPADE_TOOL_DESCRIPTION";
+    case 6U: return "RIFLE_TOOL_DESCRIPTION";
+    case 7U: return "SMG_TOOL_DESCRIPTION";
+    case 8U: return "MINIGUN_TOOL_DESCRIPTION";
+    case 9U: return "SHOTGUN_TOOL_DESCRIPTION";
+    case 10U: return "SHOTGUN2_TOOL_DESCRIPTION";
+    case 11U: return "GRENADE_TOOL_DESCRIPTION";
+    case 12U: return "RPG_TOOL_DESCRIPTION";
+    case 13U: return "RPG2_TOOL_DESCRIPTION";
+    case 14U: return "DRILLGUN_TOOL_DESCRIPTION";
+    case 15U: return "MG_TOOL_DESCRIPTION";
+    case 16U: return "ROCKET_TURRET_TOOL_DESCRIPTION";
+    case 17U: return "PISTOL_TOOL_DESCRIPTION";
+    case 18U: return "SNIPER_TOOL_DESCRIPTION";
+    case 19U: return "SNIPER2_TOOL_DESCRIPTION";
+    case 20U: return "LANDMINE_TOOL_DESCRIPTION";
+    case 21U: return "DYNAMITE_TOOL_DESCRIPTION";
+    case 24U: return "ZOMBIEHAND_TOOL_DESCRIPTION";
+    case 29U: return "SNOWBLOWER_DESCRIPTION";
+    case 31U: return "CLASSIC_GRENADE_TOOL_DESCRIPTION";
+    case 32U: return "ANTIPERSONNEL_GRENADE_TOOL_DESCRIPTION";
+    case 33U: return "MOLOTOV_TOOL_DESCRIPTION";
+    case 34U: return "CROWBAR_TOOL_DESCRIPTION";
+    case 35U: return "TOMMYGUN_TOOL_DESCRIPTION";
+    case 36U: return "SNUB_PISTOL_TOOL_DESCRIPTION";
+    case 37U: return "CLASSIC_SHOTGUN_TOOL_DESCRIPTION";
+    case 38U: return "CLASSIC_SMG_TOOL_DESCRIPTION";
+    case 39U: return "NULL_TOOL_DESCRIPTION";
+    case 40U: return "FAKE_PISTOL_TOOL_DESCRIPTION";
+    case 41U: return "UGC_TOOL_DESCRIPTION";
+    case 43U: return "PAINTBRUSH_TOOL_DESCRIPTION";
+    case 44U: return "UGC_PICKAXE_TOOL_DESCRIPTION";
+    case 45U: return "UGC_SUPERSPADE_TOOL_DESCRIPTION";
+    case 46U: return "UGC_RPG2_TOOL_DESCRIPTION";
+    case 47U: return "DRILLGUN_TOOL_DESCRIPTION";
+    case 48U: return "SNOWBLOWER_DESCRIPTION";
+    case 49U: return "RIOTSTICK_TOOL_DESCRIPTION";
+    case 50U: return "MACHETE_TOOL_DESCRIPTION";
+    case 51U: return "MEDPACK_TOOL_DESCRIPTION";
+    case 52U: return "RIOTSHIELD_TOOL_DESCRIPTION";
+    case 53U: return "AUTOPISTOL_TOOL_DESCRIPTION";
+    case 54U: return "CHEMICALBOMB_TOOL_DESCRIPTION";
+    case 55U: return "GRENADE_LAUNCHER_TOOL_DESCRIPTION";
+    case 56U: return "RADAR_STATION_TOOL_DESCRIPTION";
+    case 57U: return "STICKY_GRENADE_TOOL_DESCRIPTION";
+    case 58U: return "MINE_LAUNCHER_TOOL_DESCRIPTION";
+    case 59U: return "C4_TOOL_DESCRIPTION";
+    case 60U: return "ASSAULTRIFLE_TOOL_DESCRIPTION";
+    case 61U: return "LIGHTMACHINEGUN_TOOL_DESCRIPTION";
+    case 62U: return "AUTOSHOTGUN_TOOL_DESCRIPTION";
+    case 63U: return "BLOCKSUCKER_TOOL_DESCRIPTION";
+    case 64U: return "DISGUISE_TOOL_DESCRIPTION";
+    case 66U: return "JETPACK_NORMAL_DESCRIPTION";
+    case 67U: return "JETPACK_2_DESCRIPTION";
+    case 68U: return "JETPACK_ENGINEER_DESCRIPTION";
+    case 69U: return "JETPACK_UGCBUILDER_DESCRIPTION";
+    case 72U: return "PARACHUTE_NORMAL_DESCRIPTION";
+    default: return {};
+    }
+}
+
 constexpr std::array<UiSkinDefinition, 2U> skins{{
     UiSkinDefinition{"default", ""},
     UiSkinDefinition{"mafia", "skins/mafia/"},
@@ -471,6 +655,22 @@ std::string_view class_item_group_name(ClassItemGroup group) noexcept {
     const auto index = static_cast<std::size_t>(group); return index < names.size() ? names[index] : std::string_view{};
 }
 
-std::string_view class_catalog_contract_sha256() noexcept { return "698729231cc2464b7b94eb16d8555e9dee41229929ca39e74864e41c18adaae0"; }
+std::string_view class_catalog_contract_sha256() noexcept { return "2e6b9f8f0955ea0db37ff29d735e07aae5bb233869645aaa6c6d946f43d3d22d"; }
+
+std::span<const std::string_view> class_prefab_names(std::uint8_t class_id) noexcept {
+    return class_id < prefab_names.size() ? prefab_names[class_id] : std::span<const std::string_view>{};
+}
+
+std::string_view class_name_key(std::uint8_t class_id) noexcept {
+    return class_id < class_names.size() ? class_names[class_id] : std::string_view{};
+}
+
+std::string_view class_description_key(std::uint8_t class_id) noexcept {
+    return class_id < class_descriptions.size() ? class_descriptions[class_id] : std::string_view{};
+}
+
+std::string_view tool_name_key(std::uint16_t tool) noexcept { return tool_name_key_for(tool); }
+
+std::string_view tool_description_key(std::uint16_t tool) noexcept { return tool_description_key_for(tool); }
 
 } // namespace battlespades::world

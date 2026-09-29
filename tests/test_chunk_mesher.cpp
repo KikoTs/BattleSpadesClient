@@ -177,10 +177,13 @@ int main(int argc, char** argv) {
 
         // Original vxl.pyd light smoothing uses current + occupied tangent neighbours,
         // then sub_100051C0 multiplies RGB. It never fills gl_Vertex.w from these bytes.
+        // The light byte itself is retail's recomputed diagonal sun shadow
+        // (sub_10004470): 127 minus 18, 16, ... for solid cells at
+        // (x, y-k, z-k), k = 1..9. The file/set_voxel light byte is ignored.
         {
             auto lights = empty_world();
-            expect(lights.set_voxel(100,100,100,{128,64,32,127}), "light fixture");
-            expect(lights.set_voxel(101,100,100,{128,64,32,63}), "light neighbour");
+            expect(lights.set_voxel(100,100,100,{128,64,32,0}), "light fixture");
+            expect(lights.set_voxel(101,100,100,{128,64,32,0}), "light neighbour");
             const auto check_corner = [&](float expected) {
                 const auto mesh = mesher.mesh(lights,interior);
                 const auto corner = std::ranges::find_if(mesh.vertices, [](const auto& v) {
@@ -190,9 +193,86 @@ int main(int argc, char** argv) {
                 expect(std::abs(corner->retail_baked_light-expected)<0.000001F &&
                        corner->directional_influence==0, "baked light must not bypass directional shading");
             };
-            check_corner(48.0F/127.0F); // (64 + 32) / (127 * 2).
-            expect(lights.set_voxel(100,100,100,{128,64,32,0}), "zero light fixture");
-            check_corner(16.0F/127.0F); // Current zero still contributes to the divisor.
+            check_corner(1.0F); // Unshadowed: the stored zero light byte is not used.
+            expect(lights.set_voxel(100,99,99,{10,10,10,255}), "first diagonal occluder");
+            check_corner((109.0F + 127.0F) / 254.0F); // 127 - 18 averaged with 127.
+            expect(lights.set_voxel(100,98,98,{10,10,10,255}), "second diagonal occluder");
+            check_corner((93.0F + 127.0F) / 254.0F); // 127 - 18 - 16.
+        }
+
+        // Retail static-light vertex kernel (vxl.pyd 0x10022360, P3-13): the
+        // strongest light's att = 1 - d^2/r^2 from its voxel centre, times
+        // max(0, N.L) against the true face normal, baked into colour2 RGB,
+        // with directional_influence = att (0 where N.L <= 0).
+        {
+            auto lit = empty_world();
+            expect(lit.set_voxel(100U, 100U, 100U, stone), "kernel fixture");
+            battlespades::world::StaticLightField field;
+            expect(field.add({{100U, 100U, 98U}, {255U, 0U, 0U, 255U}, 5.0F}), "kernel light");
+            ChunkMesherConfig retail_config;
+            retail_config.static_lights = &field;
+            retail_config.retail_static_light_kernel = true;
+            const auto mesh = ChunkMesher{retail_config}.mesh(lit, interior);
+            const auto find = [&](std::uint8_t face) {
+                return std::ranges::find_if(mesh.vertices, [&](const auto& v) {
+                    return v.face == face && v.x == 100.0F && v.y == 100.0F && v.z == 100.0F;
+                });
+            };
+            const auto top = find(4U);
+            expect(top != mesh.vertices.end(), "kernel top corner must be emitted");
+            // d = (0.5, 0.5, -1.5): att = 1 - 2.75/25 = 0.89; N.L = 1.5/sqrt(2.75).
+            const auto red = static_cast<int>(top->static_light & 0xFFU);
+            expect(std::abs(red - 205) <= 1 && ((top->static_light >> 8U) & 0xFFFFU) == 0U,
+                   "top-face kernel light must be rgb * att * N.L");
+            expect(std::abs(static_cast<int>(top->directional_influence) - 227) <= 1,
+                   "w must carry att at a lit vertex");
+            const auto bottom = find(5U);
+            expect(bottom == mesh.vertices.end() ||
+                       ((bottom->static_light & 0x00FFFFFFU) == 0U &&
+                        bottom->directional_influence == 0U),
+                   "a face turned away from the light gets neither light nor w");
+            // The light sits +0.5 east of the corner, so the -x face is unlit.
+            const auto west = find(0U);
+            expect(west != mesh.vertices.end() && (west->static_light & 0x00FFFFFFU) == 0U &&
+                       west->directional_influence == 0U,
+                   "the -x face turned away from the light stays unlit");
+            // sub_1000C5F0 decodes the kernel's N as the TRUE face normal (map_vert's
+            // x/y swap does not apply here): a light due west lights the -x face.
+            battlespades::world::StaticLightField west_field;
+            expect(west_field.add({{98U, 100U, 100U}, {255U, 0U, 0U, 255U}, 5.0F}), "west light");
+            retail_config.static_lights = &west_field;
+            const auto west_mesh = ChunkMesher{retail_config}.mesh(lit, interior);
+            const auto west_lit = std::ranges::find_if(west_mesh.vertices, [](const auto& v) {
+                return v.face == 0U && v.x == 100.0F && v.y == 100.0F && v.z == 100.0F;
+            });
+            // d = (-1.5, 0.5, 0.5): att = 1 - 2.75/25 = 0.89; N.L = 1.5/sqrt(2.75).
+            expect(west_lit != west_mesh.vertices.end() &&
+                       std::abs(static_cast<int>(west_lit->static_light & 0xFFU) - 205) <= 1 &&
+                       std::abs(static_cast<int>(west_lit->directional_influence) - 227) <= 1,
+                   "the -x face facing a west light must use the true normal");
+            const auto plain = ChunkMesher{}.mesh(lit, interior);
+            expect(std::ranges::all_of(plain.vertices, [](const auto& v) {
+                       return v.directional_influence == 0U;
+                   }),
+                   "without the kernel no vertex bypasses directional light");
+        }
+
+        // The finaliser's z=239 bed is stored as colour zero, but retail reads
+        // it back as the ground-colour row with light byte 253 (full light).
+        // Decoding it as light 0 painted every water surface near-black.
+        {
+            const auto bed_mesh = mesher.mesh(empty_world(), interior);
+            const auto bed = std::ranges::find_if(bed_mesh.vertices, [](const auto& v) {
+                return v.face == 4U && v.z == 239.0F;
+            });
+            expect(bed != bed_mesh.vertices.end(), "the bed must expose its top face");
+            const auto water = ChunkMesherConfig{}.bed_water_color;
+            expect(bed->retail_baked_light == 1.0F,
+                   "the water bed must be fully lit, as retail light byte 253");
+            expect((bed->abgr & 0x00FFFFFFU) ==
+                       ((static_cast<std::uint32_t>(water.blue) << 16U) |
+                        (static_cast<std::uint32_t>(water.green) << 8U) | water.red),
+                   "the water bed must carry the configured ground/water colour");
         }
 
         // Two adjacent voxels share one interior face pair: ten exposed faces.

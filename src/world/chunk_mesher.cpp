@@ -224,58 +224,136 @@ constexpr std::array<std::uint8_t, 4U> retail_noise_corner{{0U, 1U, 3U, 2U}};
                      static_cast<std::uint32_t>(z));
 }
 
-[[nodiscard]] std::array<std::uint8_t, 6U> retail_ao_codes(
-    const VxlMap& map, std::int64_t x, std::int64_t y, std::int64_t z) noexcept {
+/**
+ * One retail record face's AO atlas code. Evaluated only for faces that are
+ * actually emitted: computing all six for every visible voxel spent 48 map
+ * probes per voxel where one or two faces are typically exposed.
+ */
+[[nodiscard]] std::uint8_t retail_ao_code(const VxlMap& map, std::int64_t x, std::int64_t y,
+                                          std::int64_t z, std::uint8_t retail_face) noexcept {
     const auto s = [&](std::int64_t dx, std::int64_t dy, std::int64_t dz) {
         return retail_solid(map, x + dx, y + dy, z + dz);
     };
-    return {{
-        retail_pattern(s(-1, 0, -1), s(0, 1, -1), s(1, 0, -1), s(0, -1, -1),
-                       s(-1, -1, -1), s(-1, 1, -1), s(1, 1, -1), s(1, -1, -1)),
-        retail_pattern(s(0, -1, 1), s(1, 0, 1), s(0, 1, 1), s(-1, 0, 1),
-                       s(-1, -1, 1), s(1, -1, 1), s(1, 1, 1), s(-1, 1, 1)),
-        retail_pattern(s(0, 1, 1), s(1, 1, 0), s(0, 1, -1), s(-1, 1, 0),
-                       s(-1, 1, 1), s(1, 1, 1), s(1, 1, -1), s(-1, 1, -1)),
-        retail_pattern(s(-1, -1, 0), s(0, -1, -1), s(1, -1, 0), s(0, -1, 1),
-                       s(-1, -1, 1), s(-1, -1, -1), s(1, -1, -1), s(1, -1, 1)),
-        retail_pattern(s(1, -1, 0), s(1, 0, -1), s(1, 1, 0), s(1, 0, 1),
-                       s(1, -1, 1), s(1, -1, -1), s(1, 1, -1), s(1, 1, 1)),
-        retail_pattern(s(-1, 0, 1), s(-1, 1, 0), s(-1, 0, -1), s(-1, -1, 0),
-                       s(-1, -1, 1), s(-1, 1, 1), s(-1, 1, -1), s(-1, -1, -1)),
-    }};
+    switch (retail_face) {
+    case 0U:
+        return retail_pattern(s(-1, 0, -1), s(0, 1, -1), s(1, 0, -1), s(0, -1, -1),
+                              s(-1, -1, -1), s(-1, 1, -1), s(1, 1, -1), s(1, -1, -1));
+    case 1U:
+        return retail_pattern(s(0, -1, 1), s(1, 0, 1), s(0, 1, 1), s(-1, 0, 1),
+                              s(-1, -1, 1), s(1, -1, 1), s(1, 1, 1), s(-1, 1, 1));
+    case 2U:
+        return retail_pattern(s(0, 1, 1), s(1, 1, 0), s(0, 1, -1), s(-1, 1, 0),
+                              s(-1, 1, 1), s(1, 1, 1), s(1, 1, -1), s(-1, 1, -1));
+    case 3U:
+        return retail_pattern(s(-1, -1, 0), s(0, -1, -1), s(1, -1, 0), s(0, -1, 1),
+                              s(-1, -1, 1), s(-1, -1, -1), s(1, -1, -1), s(1, -1, 1));
+    case 4U:
+        return retail_pattern(s(1, -1, 0), s(1, 0, -1), s(1, 1, 0), s(1, 0, 1),
+                              s(1, -1, 1), s(1, -1, -1), s(1, 1, -1), s(1, 1, 1));
+    default:
+        return retail_pattern(s(-1, 0, 1), s(-1, 1, 0), s(-1, 0, -1), s(-1, -1, 0),
+                              s(-1, -1, 1), s(-1, 1, 1), s(-1, 1, -1), s(-1, -1, -1));
+    }
 }
 
-[[nodiscard]] std::array<std::uint8_t, 6U> retail_edge_codes(
-    const VxlMap& map, std::int64_t x, std::int64_t y, std::int64_t z) noexcept {
+[[nodiscard]] std::uint8_t retail_edge_code(const VxlMap& map, std::int64_t x, std::int64_t y,
+                                            std::int64_t z, std::uint8_t retail_face) noexcept {
     const auto empty = [&](std::int64_t dx, std::int64_t dy, std::int64_t dz) {
         return !retail_solid(map, x + dx, y + dy, z + dz);
     };
-    const bool above_empty = empty(0, 0, -1);
-    return {{
-        retail_pattern(empty(-1, 0, 0), empty(0, 1, 0), empty(1, 0, 0),
-                       empty(0, -1, 0), empty(-1, -1, 0), empty(-1, 1, 0),
-                       empty(1, 1, 0), empty(1, -1, 0)),
-        14U,
-        static_cast<std::uint8_t>(above_empty ? 30U : 14U),
-        static_cast<std::uint8_t>(above_empty ? 45U : 14U),
-        static_cast<std::uint8_t>(above_empty ? 45U : 14U),
-        static_cast<std::uint8_t>(above_empty ? 30U : 14U),
-    }};
+    switch (retail_face) {
+    case 0U:
+        return retail_pattern(empty(-1, 0, 0), empty(0, 1, 0), empty(1, 0, 0),
+                              empty(0, -1, 0), empty(-1, -1, 0), empty(-1, 1, 0),
+                              empty(1, 1, 0), empty(1, -1, 0));
+    case 1U:
+        return 14U;
+    case 2U:
+    case 5U:
+        return static_cast<std::uint8_t>(empty(0, 0, -1) ? 30U : 14U);
+    default:
+        return static_cast<std::uint8_t>(empty(0, 0, -1) ? 45U : 14U);
+    }
 }
 
 /**
- * Reconstructs the RGB multiplier from the VXL light byte at one face corner.
+ * The retail per-voxel light byte, vxl.pyd sub_10004470.
+ *
+ * The retail loader never keeps the file's light byte: the finaliser pass
+ * sub_100232D0 (and every set_point) overwrites it with this diagonal sun
+ * shadow. Starting from 127 it walks nine cells up the (y-1, z-1) diagonal
+ * and subtracts 18, 16, ..., 2 for each solid cell. That is what darkens
+ * overhangs, canopies and interiors in the original; keeping the file's
+ * uniform 127 lit every indoor face at full strength.
+ */
+[[nodiscard]] std::uint32_t retail_sun_light(const VxlMap& map, std::int64_t x, std::int64_t y,
+                                             std::int64_t z) noexcept {
+    std::uint32_t light = 127U;
+    std::uint32_t step = 18U;
+    for (std::int64_t k = 1; k <= 9; ++k, step -= 2U) {
+        // sub_10004470 stops before stepping past z = 0 or y < 0.
+        if (z - (k - 1) == 0 || y - (k - 1) < 0) {
+            break;
+        }
+        if (retail_solid(map, x, y - k, z - k)) {
+            light -= step;
+        }
+    }
+    return light;
+}
+
+/**
+ * Reconstructs the RGB multiplier from the retail light byte at one face corner.
  *
  * vxl.pyd sub_10030B60 averages the current voxel and the three occupied
- * neighbours sharing that corner on the face's solid side. The stored byte is
- * divided by 127 and saturated before averaging. VxlMap exposes the same value
- * as `2 * byte - 1`, so `(alpha + 1) / 254` is the exact inverse conversion.
+ * neighbours sharing that corner on the face's solid side. Each light byte
+ * (retail_sun_light) is divided by 127 and saturated before averaging; empty
+ * cells read 0 and are skipped.
  *
  * sub_100051C0 truncates base RGB * this value into three vertex colour bytes.
  * gl_Vertex.w stays zero unless a placed flare explicitly changes it.
  */
+/**
+ * Per-chunk memo of retail_sun_light over the chunk plus a one-voxel border.
+ *
+ * Every face corner averages up to four cells and each cell walks nine
+ * diagonal probes, so without it a single cell's light was recomputed for
+ * each of the (up to 24) corners that touch it. Filled lazily: only cells a
+ * visible face actually samples are ever evaluated.
+ */
+class SunLightCache final {
+public:
+    SunLightCache(std::uint32_t begin_x, std::uint32_t begin_y, std::uint32_t edge)
+        : origin_x_{static_cast<std::int64_t>(begin_x) - 1},
+          origin_y_{static_cast<std::int64_t>(begin_y) - 1},
+          span_{static_cast<std::int64_t>(edge) + 2},
+          values_(static_cast<std::size_t>(span_ * span_) * VxlMap::height, unknown) {}
+
+    [[nodiscard]] std::uint32_t get(const VxlMap& map, std::int64_t x, std::int64_t y,
+                                    std::int64_t z) noexcept {
+        const auto local_x = x - origin_x_;
+        const auto local_y = y - origin_y_;
+        if (local_x < 0 || local_y < 0 || local_x >= span_ || local_y >= span_ || z < 0 ||
+            z >= static_cast<std::int64_t>(VxlMap::height)) {
+            return retail_sun_light(map, x, y, z);
+        }
+        auto& value = values_[static_cast<std::size_t>((z * span_ + local_y) * span_ + local_x)];
+        if (value == unknown) {
+            value = static_cast<std::uint8_t>(retail_sun_light(map, x, y, z));
+        }
+        return value;
+    }
+
+private:
+    static constexpr std::uint8_t unknown{0xFFU};
+    std::int64_t origin_x_;
+    std::int64_t origin_y_;
+    std::int64_t span_;
+    std::vector<std::uint8_t> values_;
+};
+
 [[nodiscard]] float retail_baked_light(
-    const VxlMap& map, std::uint32_t x, std::uint32_t y, std::uint32_t z,
+    const VxlMap& map, SunLightCache& sun, std::uint32_t x, std::uint32_t y, std::uint32_t z,
     const FaceGeometry& geometry, std::array<std::int32_t, 2U> uv) noexcept {
     const auto sample = [&](std::int32_t du, std::int32_t dv) -> std::optional<float> {
         const auto sample_x = static_cast<std::int64_t>(x) + geometry.tangent_u[0U] * du +
@@ -287,15 +365,9 @@ constexpr std::array<std::uint8_t, 4U> retail_noise_corner{{0U, 1U, 3U, 2U}};
         if (!retail_solid(map, sample_x, sample_y, sample_z)) {
             return std::nullopt;
         }
-        const auto color = map.color(static_cast<std::uint32_t>(sample_x),
-                                     static_cast<std::uint32_t>(sample_y),
-                                     static_cast<std::uint32_t>(sample_z));
-        if (!color.has_value() || color->alpha == 0U) {
-            if (du == 0 && dv == 0) return 0.0F;
-            return std::nullopt;
-        }
-        return std::min(1.0F,
-                        (static_cast<float>(color->alpha) + 1.0F) / 254.0F);
+        // Includes the z=239 bed, whose stored colour word is zero but whose
+        // retail light is computed like any other voxel (open water: 127).
+        return static_cast<float>(sun.get(map, sample_x, sample_y, sample_z)) / 127.0F;
     };
 
     float total{};
@@ -400,6 +472,7 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
 
     const auto begin_x = key.x * config_.chunk_edge;
     const auto begin_y = key.y * config_.chunk_edge;
+    SunLightCache sun_light{begin_x, begin_y, config_.chunk_edge};
     for (std::uint32_t z{}; z < VxlMap::height; ++z) {
         for (auto y = begin_y; y < begin_y + config_.chunk_edge; ++y) {
             for (auto x = begin_x; x < begin_x + config_.chunk_edge; ++x) {
@@ -426,33 +499,34 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                 // Alpha is baked light, not opacity. A dark authored block
                 // keeps its RGB; only the synthetic empty water bed uses the fallback.
                 auto base = stored.has_value() && !empty_bed ? *stored : config_.bed_water_color;
+                // Retail damage darkening (shared.common.dim per hit) is already
+                // baked into the stored VXL colour by VxlMap::add_damage and
+                // BlockManagerState(38), so the mesher draws it verbatim.
+                // Emissive fixtures are classified from the UNDAMAGED colour on
+                // purpose: a damaged neon tube should keep glowing, and dimmed
+                // channels would fall outside every swatch tolerance.
+                const auto damaged = palette_is_empty(config_.emissive)
+                                         ? std::nullopt
+                                         : map.damaged_block(x, y, z);
                 const auto appearance =
                     palette_is_empty(config_.emissive)
                         ? std::nullopt
                         : emissive_appearance_at(
                               config_.emissive, map, x, y, z,
-                              stored.value_or(config_.bed_water_color));
+                              damaged.has_value()
+                                  ? damaged->original_color
+                                  : stored.value_or(config_.bed_water_color));
                 if (appearance.has_value()) {
                     // Only the rendered fixture is tinted; canonical VXL color
                     // and protocol replication remain byte-for-byte untouched.
                     base = appearance->surface;
                 }
-                if (map.damage_fraction(x, y, z) > 0.0F) {
-                    // Retail keeps a damaged block in the map and presents a
-                    // visibly darker version until Damage(37) reaches block
-                    // health. Clear each low bit before halving so integer
-                    // channels match the original renderer deterministically.
-                    base.red = static_cast<std::uint8_t>((base.red & 0xFEU) >> 1U);
-                    base.green = static_cast<std::uint8_t>((base.green & 0xFEU) >> 1U);
-                    base.blue = static_cast<std::uint8_t>((base.blue & 0xFEU) >> 1U);
-                }
-                // Classified from the UNDAMAGED colour on purpose: a damaged
-                // neon tube should keep glowing, and the halved channels above
-                // would fall outside every swatch tolerance.
                 const std::uint8_t emission =
                     appearance.has_value() ? appearance->intensity : 0U;
-                const auto ao_codes = retail_ao_codes(map, x, y, z);
-                const auto edge_codes = retail_edge_codes(map, x, y, z);
+                // add_static_light sets the voxel's colour-entry flag (+4);
+                // the mesher then writes that voxel's normal codes inverted.
+                const bool light_source = config_.static_lights != nullptr &&
+                                          config_.static_lights->has_light_at(x, y, z);
                 for (std::uint8_t face{}; face < face_table.size(); ++face) {
                     if ((visible_faces & (1U << face)) == 0U) {
                         continue;
@@ -468,22 +542,68 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                     }
 
                     const auto base_vertex = static_cast<std::uint32_t>(result.vertices.size());
+                    const auto retail_face = retail_face_index[face];
+                    const auto ao_code = retail_ao_code(map, x, y, z, retail_face);
+                    const auto edge_code = retail_edge_code(map, x, y, z, retail_face);
                     for (std::size_t corner{}; corner < 4U; ++corner) {
                         const auto& offset = geometry.corners[corner];
-                        const auto retail_face = retail_face_index[face];
                         const auto retail_corner = retail_corner_index[face][corner];
-                        const auto ao_uv = retail_atlas_uv(ao_codes[retail_face], retail_corner);
-                        const auto edge_uv =
-                            retail_atlas_uv(edge_codes[retail_face], retail_corner);
+                        const auto ao_uv = retail_atlas_uv(ao_code, retail_corner);
+                        const auto edge_uv = retail_atlas_uv(edge_code, retail_corner);
                         const auto baked_light = retail_baked_light(
-                            map, x, y, z, geometry, geometry.corner_uv[corner]);
+                            map, sun_light, x, y, z, geometry, geometry.corner_uv[corner]);
                         // Sample placed lights at the vertex, one voxel out
                         // along the face normal. Sampling at the surface itself
                         // would read the lit block's own centre and make every
                         // face of a lamp uniformly bright; stepping into the air
                         // the face looks at gives real directional falloff.
                         std::uint32_t static_light{};
-                        if (config_.static_lights != nullptr &&
+                        std::uint8_t directional_influence{};
+                        if (config_.retail_static_light_kernel &&
+                            config_.static_lights != nullptr &&
+                            !config_.static_lights->empty()) {
+                            // vxl.pyd 0x10022360 + 0x100147D0 at the vertex
+                            // itself (a voxel corner), in retail GL space
+                            // (x, -z, y). N is the vertex normal code decoded
+                            // by sub_1000C5F0 as x=(c>>6), y=(c>>4), z=(c>>2).
+                            // Under THAT decoder sub_10030B60's codes are the
+                            // true face normals (+y face -> 88 = GL +z = +y,
+                            // +x face -> 148 = GL +x), unlike map_vert's
+                            // swapped reading (fs_world). A light-source
+                            // voxel's codes are inverted (record +4 flag).
+                            const auto vx = static_cast<float>(x + offset[0U]);
+                            const auto vy = static_cast<float>(y + offset[1U]);
+                            const auto vz = static_cast<float>(z + offset[2U]);
+                            if (const auto light = config_.static_lights->strongest(vx, vy, vz);
+                                light.has_value()) {
+                                const float dx = light->position[0U] - vx;
+                                const float dy = light->position[1U] - vy;
+                                const float dz = light->position[2U] - vz;
+                                const float length = std::sqrt(dx * dx + dy * dy + dz * dz);
+                                const float sign = light_source ? -1.0F : 1.0F;
+                                // GL L = (dx, -dz, dy); GL N = (nx, -nz, ny).
+                                const float ndl =
+                                    length > 0.0F
+                                        ? std::max(0.0F,
+                                                   sign *
+                                                       (static_cast<float>(geometry.normal[0U]) * dx +
+                                                        static_cast<float>(geometry.normal[2U]) * dz +
+                                                        static_cast<float>(geometry.normal[1U]) * dy) /
+                                                       length)
+                                        : 0.0F;
+                                const auto quantise = [](float value) {
+                                    return static_cast<std::uint32_t>(
+                                        std::clamp(std::lround(value * 255.0F), 0L, 255L));
+                                };
+                                const float strength = light->attenuation * ndl;
+                                static_light =
+                                    (quantise(std::min(1.0F, light->rgb[2U] * strength)) << 16U) |
+                                    (quantise(std::min(1.0F, light->rgb[1U] * strength)) << 8U) |
+                                    quantise(std::min(1.0F, light->rgb[0U] * strength));
+                                directional_influence = static_cast<std::uint8_t>(
+                                    ndl > 0.0F ? quantise(light->attenuation) : 0U);
+                            }
+                        } else if (config_.static_lights != nullptr &&
                             !config_.static_lights->empty()) {
                             const auto arriving = config_.static_lights->sample(
                                 static_cast<float>(x + offset[0U]) +
@@ -514,7 +634,9 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                         // Color2 alpha is a material tag. Models/effects leave
                         // it zero, so only canonical terrain enters the retail
                         // AO-atlas branch of fs_world.
-                        static_light |= 0xFF000000U;
+                        // 0xC0 still reads as terrain (> 0.5) and marks a
+                        // light-source voxel whose retail normals invert.
+                        static_light |= light_source ? 0xC0000000U : 0xFF000000U;
                         const ChunkVertex vertex{
                             static_cast<float>(x + offset[0U]),
                             static_cast<float>(y + offset[1U]),
@@ -523,7 +645,7 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                             face,
                             occlusion[corner],
                             retail_noise_corner[retail_corner],
-                            0U,
+                            directional_influence,
                             static_light,
                             ao_uv.u,
                             ao_uv.v,
@@ -624,6 +746,17 @@ void ChunkTracker::mark_voxel(std::uint32_t x, std::uint32_t y) {
     }
     if (high_x && high_y) {
         mark_chunk(chunk_x + 1U, chunk_y + 1U);
+    }
+    // Retail sun light (retail_sun_light) lets a voxel shade cells up to nine
+    // rows further along +y, and corner averaging reaches one more.
+    if (local_y + 10U >= chunk_edge_ && chunk_y + 1U < chunks_) {
+        mark_chunk(chunk_x, chunk_y + 1U);
+        if (low_x) {
+            mark_chunk(chunk_x - 1U, chunk_y + 1U);
+        }
+        if (high_x) {
+            mark_chunk(chunk_x + 1U, chunk_y + 1U);
+        }
     }
 }
 

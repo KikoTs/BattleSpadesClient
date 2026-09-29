@@ -273,11 +273,85 @@ void rocket_and_grenade_blasts_match_retail_compositions() {
                glow_batch->count == 8U,
            "GlowBlockParticles must use retail's alpha-blended heat LUT path");
     particles.clear();
-    impact.source_tool = 17U;
+    // ExplodeOnImpactEntity's only subclass is the GLGrenade (tool 55).
+    impact.source_tool = 55U;
     impact.radius = 3.0F;
     emit_explosion(particles, impact);
     expect(particles.live_count() == 14U,
            "ExplodeOnImpactEntity must emit four glow blocks plus ten particles");
+    particles.clear();
+    // Grenade.update (gameScene 0x100AE790) passes 8, like Rocket.delete.
+    impact.source_tool = 11U;
+    emit_explosion(particles, impact);
+    expect(particles.live_count() == 18U,
+           "a hand grenade must emit eight glow blocks plus ten particles");
+    particles.build_draw_list({0.0F, 0.0F, 0.0F}, 0.0F);
+    // Grenade.update's debris call is (10, 1.3, 5.0): authored size 5 is a
+    // 0.5 half-extent, half the Rocket.delete chunk, with the default 2 s life.
+    const auto grenade_debris = std::ranges::count_if(
+        particles.instances(), [](const auto& particle) {
+            return std::abs(particle.size - 0.5F) < 0.001F;
+        });
+    expect(grenade_debris == 10,
+           "hand-grenade debris must use Grenade.update's authored size 5.0");
+    particles.clear();
+    // LandmineEntity/DynamiteEntity/Drill/C4 on_delete: (10, 1.5, 5.0).
+    impact.source_tool = 21U;
+    emit_explosion(particles, impact);
+    expect(particles.live_count() == 18U,
+           "dynamite must emit eight glow blocks plus ten particles");
+    particles.clear();
+    // BombPickup.explode: create(12) plus (15, 1.3, 10.0).
+    impact.source_tool = 25U;
+    emit_explosion(particles, impact);
+    expect(particles.live_count() == 27U,
+           "the bomb must emit twelve glow blocks plus fifteen particles");
+}
+
+void glow_trail_children_grow_like_the_spawn_point() {
+    // GLOW_SMOKE_TRAIL_SPAWN_POINT: decay_rate -1 (size doubles over the one
+    // second life), 60 fps, and sub_10033C00's forward flag is rand() != 0.
+    ParticleSystem particles;
+    TerrainImpactEvent impact{
+        TerrainImpactKind::explosion, {40U, 40U, 60U},
+        VxlColor{0U, 0U, 0U, 255U}, {0, 0, -1}, true, 4.0F, 12U};
+    impact.position = {std::array<float, 3U>{40.2F, 40.7F, 60.1F}};
+    emit_explosion(particles, impact);
+    particles.tick_unbounded(1.0 / 60.0);
+    particles.build_draw_list({}, 0.0F);
+    std::vector<float> initial;
+    for (const auto& batch : particles.batches()) {
+        if (batch.color_mode != ParticleColorMode::smoke_lut) {
+            continue;
+        }
+        for (std::uint32_t offset{}; offset < batch.count; ++offset) {
+            initial.push_back(particles.instances()[batch.first + offset].size);
+        }
+    }
+    expect(initial.size() == 8U, "one child per glow parent after the first update");
+    for (int step{}; step < 30; ++step) {
+        particles.tick_unbounded(1.0 / 60.0);
+    }
+    particles.build_draw_list({}, 0.0F);
+    float largest_initial{};
+    for (const float size : initial) {
+        largest_initial = std::max(largest_initial, size);
+    }
+    int grown{};
+    for (const auto& batch : particles.batches()) {
+        if (batch.color_mode != ParticleColorMode::smoke_lut) {
+            continue;
+        }
+        for (std::uint32_t offset{}; offset < batch.count; ++offset) {
+            const auto& instance = particles.instances()[batch.first + offset];
+            if (instance.life01 > 0.45F && instance.size > 0.30F * 1.45F &&
+                instance.size <= 0.9003F * 2.0F) {
+                ++grown;
+            }
+        }
+    }
+    expect(grown >= 8 && largest_initial <= 0.9003F,
+           "glow smoke-trail children must grow (decay -1), never shrink");
 }
 
 void rocket_glow_emits_the_native_child_smoke_trails() {
@@ -345,8 +419,8 @@ void rocket_smoke_uses_native_growth_and_fade() {
     particles.build_draw_list({}, 0.0F);
     expect(particles.instances().size() == 1U &&
                std::abs(particles.instances().front().size - initial_size * 1.5F) < 0.001F &&
-               std::abs(particles.instances().front().rgba[3U] - 0.5F) < 0.001F,
-           "decay=-1 must grow rocket smoke while native remaining-life alpha fades it");
+               std::abs(particles.instances().front().rgba[3U] - 1.0F) < 0.001F,
+           "decay=-1 must grow rocket smoke; draw.pyd never fades a tinted particle's gl_Color");
 }
 
 void corpse_and_grave_have_distinct_retail_bursts() {
@@ -420,12 +494,85 @@ void block_gadgets_have_their_recovered_directional_feedback() {
            "Block Sucker must pull eight coloured chunks toward its barrel");
 }
 
+void retail_lut_smoke_and_rings_follow_constants() {
+    ParticleSystem particles;
+    emit_lut_smoke(particles, {5.0F, 5.0F, 50.0F}, block_fire_smoke, 7U);
+    expect(particles.live_count() == 1U, "create_fire_smoke emits exactly one puff");
+    particles.build_draw_list({}, 0.0F);
+    expect(particles.batches().size() == 1U &&
+               particles.batches().front().atlas == ParticleAtlas::smoke_trail &&
+               particles.instances().front().size >= 0.4F - 1e-4F &&
+               particles.instances().front().size <= 0.8F + 1e-4F,
+           "block-fire smoke is a LUT SmokeTrail puff of retail size 4..8");
+    const float z_before = particles.instances().front().position[2U];
+    const float x_before = particles.instances().front().position[0U];
+    const float y_before = particles.instances().front().position[1U];
+    particles.tick_unbounded(0.5);
+    particles.build_draw_list({}, 0.0F);
+    expect(particles.instances().front().position[2U] <= z_before,
+           "fire smoke must rise (toward -z) or hover, never sink");
+    expect(block_fire_smoke.per_axis_speed &&
+               particles.instances().front().position[0U] <= x_before &&
+               particles.instances().front().position[1U] <= y_before &&
+               (particles.instances().front().position[0U] < x_before ||
+                particles.instances().front().position[1U] < y_before),
+           "create_fire_smoke draws uniform(0, 0.1) on every axis (stored negated)");
+
+    ParticleSystem rings;
+    emit_smoke_ring(rings, {10.0F, 10.0F, 40.0F}, true, 11U);
+    expect(rings.live_count() == 6U, "create_snowke_ring emits six puffs");
+    {
+        ParticleSystem snow;
+        emit_snowke_ring(snow, {10.2F, 10.7F, 40.5F}, VxlColor{200U, 10U, 20U, 255U}, 3U);
+        snow.build_draw_list({}, 0.0F);
+        // a = 0: floor(pos) + (sin 0 + 0.5, cos 0 + 0.5, +1) = (10.5, 11.5, 41).
+        const auto head = std::ranges::find_if(snow.instances(), [](const auto& instance) {
+            return std::abs(instance.position[0U] - 10.5F) < 0.01F &&
+                   std::abs(instance.position[1U] - 11.5F) < 0.01F &&
+                   std::abs(instance.position[2U] - 41.0F) < 0.01F;
+        });
+        expect(snow.live_count() == 6U && head != snow.instances().end() &&
+                   head->size >= 0.4F && head->size <= 0.7F &&
+                   std::abs(head->rgba[0U] - 200.0F / 255.0F) < 0.01F,
+               "the snowke ring uses retail's +0.5/+1 layout, size 4..7 and the caller colour");
+    }
+    rings.build_draw_list({}, 0.0F);
+    expect(std::ranges::all_of(rings.batches(),
+                               [](const auto& batch) {
+                                   return batch.atlas == ParticleAtlas::snowke_trail;
+                               }),
+           "the snowke ring must use the SnowkeTrail atlas");
+
+    // create_smoke_ring(position, radius): x += sin(a)*r, y += cos(a)*r,
+    // static puffs at rotation 180 in the map colour of each ring point.
+    auto ground = empty_world();
+    expect(ground.set_voxel(10U, 12U, 40U, dirt), "ring colour fixture");
+    ParticleSystem smoke;
+    emit_smoke_ring(smoke, {10.5F, 10.5F, 40.5F}, false, 5U, 2.0F, &ground);
+    smoke.build_draw_list({}, 0.0F);
+    const auto first = std::ranges::find_if(smoke.instances(), [](const auto& instance) {
+        return std::abs(instance.position[0U] - 10.5F) < 0.01F &&
+               std::abs(instance.position[1U] - 12.5F) < 0.01F;
+    });
+    expect(smoke.live_count() == 8U && first != smoke.instances().end() &&
+               std::abs(first->rotation_radians - 3.14159265F) < 0.001F,
+           "the ring honours the caller radius with retail's fixed 180-degree puffs");
+    smoke.tick_unbounded(0.5);
+    smoke.build_draw_list({}, 0.0F);
+    const auto moved = std::ranges::any_of(smoke.instances(), [](const auto& instance) {
+        const float dx = instance.position[0U] - 10.5F;
+        const float dy = instance.position[1U] - 10.5F;
+        return std::abs(std::sqrt(dx * dx + dy * dy) - 2.0F) > 0.01F;
+    });
+    expect(!moved, "velocity=None: ring puffs do not drift outward");
+}
+
 void tilted_structure_bursts_at_its_visible_transform() {
     ParticleSystem particles;
     const FallingComponent component{{{1U, 0U, 0U}, dirt}};
-    emit_structure_burst(particles, component, {10.0F, 10.0F, 10.0F},
-                         {0.5F, 0.5F, 0.5F}, {0.0F, 90.0F, 0.0F},
-                         0xC011A95EU, 0.9F);
+    emit_falling_blocks_breakup(particles, component, {10.0F, 10.0F, 10.0F},
+                                {0.5F, 0.5F, 0.5F}, {0.0F, 90.0F, 0.0F}, {},
+                                0xC011A95EU);
     particles.build_draw_list({0.0F, 0.0F, 0.0F}, 0.0F);
     expect(std::ranges::any_of(particles.instances(), [](const auto& instance) {
                return std::abs(instance.position[0U] - 10.0F) < 0.01F &&
@@ -435,43 +582,28 @@ void tilted_structure_bursts_at_its_visible_transform() {
            "collapse debris must originate from the tilted mesh, not its old upright cells");
 }
 
-void structure_burst_emits_one_shrinking_image_per_block() {
-    auto map = empty_world();
+void falling_blocks_breakup_samples_every_mod_th_voxel_into_five() {
     ParticleSystem particles;
     FallingComponent component;
     for (std::uint32_t x{}; x < 64U; ++x) {
         component.push_back({{x, 10U, 40U}, dirt});
     }
-    emit_structure_burst(particles, component, {32.0F, 10.0F, 40.0F},
-                         {32.0F, 10.0F, 40.0F}, {},
-                         0xB10C5U, 0.9F);
+    // int(5 + 64/8000*10) = 5: voxels 0, 5, ..., 60 -> 13 x 5 particles.
+    emit_falling_blocks_breakup(particles, component, {32.0F, 10.0F, 40.0F},
+                                {32.0F, 10.0F, 40.0F}, {}, {0.0F, 0.0F, -0.2F},
+                                0xB10C5U);
+    expect(particles.live_count() == 65U,
+           "FallingBlocks breakup emits five particles for every mod-th voxel");
     particles.build_draw_list({}, 0.0F);
-    const auto initial_batch = std::ranges::find_if(
-        particles.batches(), [](const auto& batch) {
-            return batch.atlas == ParticleAtlas::tumbling_cube &&
-                   batch.blend == ParticleBlend::alpha;
-        });
-    expect(initial_batch != particles.batches().end() &&
-               initial_batch->count ==
-                   static_cast<std::uint32_t>(component.size()),
-           "every collapsed voxel must create one tumbling block image");
-
-    for (int step{}; step < 5; ++step) {
-        particles.tick(0.09, map);
+    for (const auto& image : particles.instances()) {
+        expect(std::abs(image.size - 0.5F) < 0.001F,
+               "authored size 5.0 renders at the native 0.1 scale");
     }
-    particles.build_draw_list({}, 0.0F);
-    const auto halfway_batch = std::ranges::find_if(
-        particles.batches(), [](const auto& batch) {
-            return batch.atlas == ParticleAtlas::tumbling_cube &&
-                   batch.blend == ParticleBlend::alpha;
-        });
-    expect(halfway_batch != particles.batches().end(),
-           "block images must survive halfway through their animation");
-    for (std::uint32_t offset{}; offset < halfway_batch->count; ++offset) {
-        const auto& image = particles.instances()[halfway_batch->first + offset];
-        expect(image.size < 0.6F && image.size > 0.4F,
-               "block images must smoothly shrink toward zero");
-    }
+    expect(falling_blocks_particle_mod(0U) == 5U && falling_blocks_particle_mod(799U) == 5U &&
+               falling_blocks_particle_mod(800U) == 6U &&
+               falling_blocks_particle_mod(8'000U) == 15U &&
+               falling_blocks_particle_mod(16'000U) == 25U,
+           "mod = int(5 + size / 8000 * 10), unclamped like retail");
 }
 
 void shoot_response_blood_matches_retail_composition() {
@@ -492,20 +624,21 @@ void shoot_response_blood_matches_retail_composition() {
 void server_confirmed_entity_hit_is_visible() {
     ParticleSystem particles;
     emit_entity_hit(particles, {18.5F, 21.25F, 44.0F}, 0x168U);
-    expect(particles.live_count() == 9U,
-           "one HitEntity packet must emit six sparks and three solid chips");
+    expect(particles.live_count() == 5U,
+           "one HitEntity packet must emit retail Entity.hit's five particles");
     particles.build_draw_list({0.0F, 0.0F, 0.0F}, 0.0F);
-    expect(particles.instances().size() == 9U,
+    expect(particles.instances().size() == 5U,
            "every server-confirmed entity-hit particle must reach the renderer");
-    expect(std::ranges::any_of(
-               particles.batches(), [](const auto& batch) {
-                   return batch.blend == ParticleBlend::additive;
-               }) &&
-               std::ranges::any_of(
-                   particles.batches(), [](const auto& batch) {
-                       return batch.blend == ParticleBlend::alpha;
-                   }),
-           "entity hits must contain both luminous sparks and physical chips");
+    for (const auto& particle : particles.instances()) {
+        expect(std::abs(particle.rgba[0U] - 127.0F / 255.0F) < 0.002F &&
+                   std::abs(particle.rgba[1U] - 127.0F / 255.0F) < 0.002F &&
+                   std::abs(particle.rgba[2U] - 127.0F / 255.0F) < 0.002F,
+               "entity-hit debris must use retail's grey (127,127,127)");
+    }
+    expect(std::ranges::all_of(
+               particles.batches(),
+               [](const auto& batch) { return batch.blend == ParticleBlend::alpha; }),
+           "entity hits are solid debris cubes, not additive sparks");
 }
 
 void crate_pickup_matches_retail_twinkle_burst() {
@@ -523,6 +656,22 @@ void crate_pickup_matches_retail_twinkle_burst() {
                return std::abs(particle.size - 0.40F) < 0.001F;
            }),
            "crate twinkles must start at retail particle size four");
+}
+
+void diamond_pickup_matches_retail_twinkle_burst() {
+    ParticleSystem particles;
+    emit_diamond_pickup(particles, {12.5F, 18.0F, 42.25F}, 0xD1A0U);
+    expect(particles.live_count() == 50U,
+           "a collected diamond must emit DIAMOND_PICKUP_FX_NOOF (50) particles");
+    particles.build_draw_list({}, 0.0F);
+    expect(particles.batches().size() == 1U &&
+               particles.batches().front().atlas == ParticleAtlas::pickup_twinkle &&
+               particles.batches().front().blend == ParticleBlend::additive,
+           "diamond particles must use the additive 4x4 twinkle atlas");
+    expect(std::ranges::all_of(particles.instances(), [](const auto& particle) {
+               return std::abs(particle.size - 0.50F) < 0.001F;
+           }),
+           "diamond twinkles must start at retail particle size five");
 }
 
 void structure_burst_scales_with_component_size() {
@@ -579,6 +728,29 @@ void gravity_exempt_particles_do_not_fall() {
     expect(particles.instances().size() == 1U, "smoke must survive one second");
     expect(std::abs(particles.instances().front().position[2U] - 100.0F) < 0.001F,
            "gravity-exempt particles must not accumulate downward velocity");
+}
+
+void particle_gravity_follows_state_data_gravity() {
+    // ParticleEffectManager.set_particles_gravity(world.get_gravity()):
+    // LunarBase's 26/64 StateData gravity must slow every falling particle.
+    auto map = empty_world();
+    const auto drop = [&](float gravity) {
+        ParticleSystem particles;
+        particles.set_gravity(gravity);
+        ParticleSpawn chunk = debris_spawn();
+        chunk.gravity_scale = 1.0F;
+        chunk.lifetime = 4.0F;
+        particles.emit(chunk);
+        for (int step{}; step < 30; ++step) {
+            particles.tick(1.0 / 60.0, map);
+        }
+        particles.build_draw_list({0.0F, 0.0F, 0.0F}, 0.0F);
+        return particles.instances().front().position[2U] - 100.0F;
+    };
+    const float full = drop(1.0F);
+    const float lunar = drop(26.0F / 64.0F);
+    expect(full > 0.1F && std::abs(lunar / full - 26.0F / 64.0F) < 1.0e-3F,
+           "particle gravity must scale with the StateData world gravity");
 }
 
 void collision_bounces_debris_on_the_crossed_axis() {
@@ -738,19 +910,23 @@ int main() {
         digging_break_uses_the_same_retail_composition();
         rocket_and_grenade_blasts_match_retail_compositions();
         rocket_glow_emits_the_native_child_smoke_trails();
+        glow_trail_children_grow_like_the_spawn_point();
         rocket_smoke_uses_native_growth_and_fade();
         corpse_and_grave_have_distinct_retail_bursts();
         observer_shot_has_a_compact_muzzle_burst();
         block_gadgets_have_their_recovered_directional_feedback();
+        retail_lut_smoke_and_rings_follow_constants();
         tilted_structure_bursts_at_its_visible_transform();
-        structure_burst_emits_one_shrinking_image_per_block();
+        falling_blocks_breakup_samples_every_mod_th_voxel_into_five();
         shoot_response_blood_matches_retail_composition();
         server_confirmed_entity_hit_is_visible();
         crate_pickup_matches_retail_twinkle_burst();
+        diamond_pickup_matches_retail_twinkle_burst();
         structure_burst_scales_with_component_size();
         quality_scale_changes_capacity_without_thinning_authored_bursts();
         lifetimes_retire_and_dt_is_clamped();
         gravity_exempt_particles_do_not_fall();
+        particle_gravity_follows_state_data_gravity();
         collision_bounces_debris_on_the_crossed_axis();
         batches_group_by_atlas_and_blend();
         blended_particles_sort_back_to_front();

@@ -843,6 +843,14 @@ public:
         output->metrics.ascender_pixels = static_cast<std::int32_t>(ascender);
         output->metrics.descender_pixels = static_cast<std::int32_t>(descender);
         output->metrics.line_height_pixels = static_cast<std::int32_t>(line_height);
+        // FTSize::Height (aoslib.font.pyd 0x10001A70): scalable faces use the
+        // global box scaled by y_ppem; bitmap faces fall back to metrics.height.
+        output->metrics.retail_char_height_pixels =
+            FT_IS_SCALABLE(face) && face->units_per_EM != 0U
+                ? static_cast<double>(face->size->metrics.y_ppem) /
+                      static_cast<double>(face->units_per_EM) *
+                      static_cast<double>(face->bbox.yMax - face->bbox.yMin)
+                : static_cast<double>(face->size->metrics.height) / 64.0;
         output->metrics.ink_left_pixels = static_cast<std::int32_t>(minimum_x);
         output->metrics.ink_top_pixels = static_cast<std::int32_t>(minimum_y);
         output->metrics.ink_width_pixels = output->bitmap.width;

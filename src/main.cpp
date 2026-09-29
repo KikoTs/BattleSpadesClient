@@ -221,6 +221,7 @@ int run_client(int argc, char* argv[]) {
         frontend_config.tutorial_debug_cosmetic = options.tutorial_debug_cosmetic;
         frontend_config.tutorial_debug_aim = options.tutorial_debug_aim;
         frontend_config.startup_endpoint = options.startup_endpoint;
+        frontend_config.startup_steam_lobby = options.startup_steam_lobby;
         frontend_config.steam_only = options.steam_only;
         frontend_config.debug_vfx = options.debug_vfx;
         frontend_config.debug_vfx_age = options.debug_vfx_age;

@@ -387,6 +387,18 @@ void minimap_and_team_mode_records_are_framed_exactly() {
     expect(territory.base_index == 2U && territory.action == 5U && territory.controlled_by == 2U &&
                territory.attacked_by == 3U && territory.capture_amount == 50.0F,
            "TerritoryBaseState must preserve action, teams, and fixed capture");
+
+    // TC_DETAIL_NOT_REQUIRED actions (3 entering, 4 leaving, 6 contended,
+    // 7 uncontended) are the short base_index + action form.
+    for (const auto* hex : {"6a0203", "6a0204", "6a0206", "6a0207"}) {
+        decoded = decode_runtime_packet(bytes(hex));
+        expect(static_cast<bool>(decoded), decoded.error.c_str());
+        const auto& short_form = std::get<TerritoryBaseStatePacket>(*decoded.packet);
+        expect(short_form.base_index == 2U && short_form.capture_amount == 0.5F,
+               "TerritoryBaseState short form must decode base and action only");
+    }
+    expect(!decode_runtime_packet(bytes("6a0206020300")),
+           "the short TerritoryBaseState form must reject trailing bytes");
 }
 
 void chat_vote_and_end_map_records_are_framed_exactly() {
@@ -462,6 +474,13 @@ void chat_vote_and_end_map_records_are_framed_exactly() {
     expect(static_cast<bool>(decoded) &&
                std::get<ForceShowScoresPacket>(*decoded.packet).forced,
            "ForceShowScores must retain the authoritative forced-open flag");
+    decoded = decode_runtime_packet(bytes("12004040800008"));
+    expect(static_cast<bool>(decoded) &&
+               std::get<PoiFocusPacket>(*decoded.packet).target ==
+                   std::array<float, 3U>{256.0F, -1.0F, 32.0F},
+           "POIFocus(18) must decode three fixed16 target coordinates");
+    expect(!decode_runtime_packet(bytes("1200404080")),
+           "a truncated POIFocus(18) must be rejected");
     decoded = decode_runtime_packet(bytes("49068001"));
     expect(static_cast<bool>(decoded), decoded.error.c_str());
     const auto& result_message =

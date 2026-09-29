@@ -42,8 +42,14 @@ void timeout_reverts_once_and_restart_is_fresh() {
     ResolutionConfirmationModel model;
     expect(!model.tick(std::chrono::seconds{14}).has_value(),
            "confirmation must remain active before timeout");
-    expect(model.seconds_remaining() == 1U, "countdown must use a ceiling display");
-    expect(model.tick(std::chrono::seconds{1}) == ResolutionConfirmationAction::revert,
+    expect(model.seconds_remaining() == 1U, "one whole second remains after fourteen");
+    expect(!model.tick(std::chrono::milliseconds{500}).has_value(),
+           "half a second before timeout the confirmation is still active");
+    expect(model.seconds_remaining() == 0U,
+           "the countdown truncates like retail int(remaining), ending on 0");
+    expect(!model.tick(std::chrono::milliseconds{499}).has_value(),
+           "the confirmation stays active until the full timeout");
+    expect(model.tick(std::chrono::milliseconds{1}) == ResolutionConfirmationAction::revert,
            "timeout must fail safe to revert");
     expect(!model.tick(std::chrono::seconds{1}).has_value(),
            "timeout action must be emitted at most once");

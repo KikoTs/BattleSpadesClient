@@ -234,6 +234,29 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             options.startup_endpoint = std::string{arguments[index]};
             continue;
         }
+        // A lobby invite accepted while the game is closed launches it with
+        // "+connect_lobby <lobby id>"; the frontend reads the lobby's connect
+        // value once Steam is attached.
+        if (argument == "+connect_lobby" || argument == "--connect-lobby") {
+            if (++index >= arguments.size()) {
+                return failure(std::string{argument} + " requires a Steam lobby id");
+            }
+            const auto lobby = parse_positive_integer(arguments[index]);
+            if (!lobby.has_value()) {
+                return failure(std::string{argument} + " requires a Steam lobby id");
+            }
+            options.startup_steam_lobby = *lobby;
+            continue;
+        }
+        // Steam appends a friend's rich presence "connect" value verbatim to
+        // the command line. Builds before 2026-09-28 published a bare
+        // "steam:<id>" there, so a Join on such a friend arrives as a lone
+        // token rather than behind +connect; refusing it closed the game.
+        if (argument.starts_with("steam:") && argument.size() > 6U &&
+            parse_positive_integer(argument.substr(6U)).has_value()) {
+            options.startup_endpoint = std::string{argument};
+            continue;
+        }
 #if AOS_ENABLE_DEVELOPER_TOOLS
         if (argument == "--debug-vfx") {
             if (++index >= arguments.size()) {
@@ -377,6 +400,7 @@ std::string_view command_line_usage() noexcept {
            "                      steam:STEAMID to join a player-hosted match\n"
            "                      (+connect is the same switch, which is how\n"
            "                      Steam launches a friend who clicks Join)\n"
+           "  +connect_lobby ID   Join the match behind a Steam lobby invite\n"
            "  --steam-only        Host a Local Match over Steam alone, with no\n"
            "                      AoSPlay relay lobby (testing the Steam path)\n"
            "  --version           Print build version and profile\n"

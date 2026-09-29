@@ -35,7 +35,9 @@ constexpr std::array<SkydomeRow, 27U> skydome_table{{
     {"AncientEgypt", "Egypt.txt", SkydomeConfidence::inferred},
     {"ArcticBase", "ArcticBase.txt", SkydomeConfidence::observed},
     {"Atlantis", "Atlantis.txt", SkydomeConfidence::observed},
-    {"BlockNess", "Classic_B.txt", SkydomeConfidence::inferred},
+    // The same dome the server's StateData/packet 51 names for BlockNess
+    // (BS map_metadata STOCK_MAP_SKYBOXES); Classic_B is its identical twin.
+    {"BlockNess", "User_Grassland.txt", SkydomeConfidence::inferred},
     {"BranCastle", "BranCastle.txt", SkydomeConfidence::observed},
     // Volcanic cone, three layered ranges and three trailing fireballs are the
     // Invasion dome exactly; mesh/Classic has only a sphere and two cloud layers.

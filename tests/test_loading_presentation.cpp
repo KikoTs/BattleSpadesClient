@@ -6,6 +6,8 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 namespace {
 using namespace battlespades::frontend;
@@ -38,8 +40,11 @@ void tabs_and_art_stay_in_the_loading_frame() {
                     bounds.x + bounds.width <= loading_layout::content.x + loading_layout::content.width,
                     "tabs must fit the content frame instead of spilling left");
                 const auto* label = find_text(draw, std::array{"MAP", "MODE", "SCORES"}[index]);
-                expect(label && label->destination == bounds,
-                       "tab labels and native hit targets must share the exact bounds");
+                expect(label && label->destination.x == bounds.x - 5.5 &&
+                           label->destination.y == bounds.y - 3.5 &&
+                           label->destination.width == bounds.width &&
+                           label->destination.height == bounds.height,
+                       "tab labels sit at retail's measured offset from the hit target");
             }
             for (const auto& command : draw.commands()) {
                 if (const auto* image = std::get_if<SpriteDrawCommand>(&command);
@@ -63,12 +68,28 @@ void mode_captions_and_scores_are_visible_and_interactive() {
     auto draw = MatchLoadingPresentation{}.build(model.snapshot());
     for (const auto key : {"ZOM_INFOGRAPHIC_TEXT1", "ZOM_INFOGRAPHIC_TEXT2", "ZOM_INFOGRAPHIC_TEXT3"}) {
         const auto* caption = find_text(draw, key);
-        expect(caption && caption->maximum_lines == 2U &&
+        expect(caption && caption->layout == TextLayout::retail_wrapped_lines &&
+            caption->requested_font_size_pixels == 20.0 &&
+            caption->destination.width == 177.0 && caption->destination.height == 35.0 &&
             caption->destination.y + caption->destination.height < 439.0,
-            "all three localized captions must be on their in-frame infographic plates");
+            "captions must use retail's 180x35 shrink-to-fit Spades 20 layout on their plates");
     }
-    expect(!find_text(draw, "ZOMBIE_MODE_TITLE"),
-           "mode illustration should match the reference without an extra overlapping title");
+    // loadingMenu.draw_infographic_tab: mode_text (the upper-cased mode title)
+    // over the illustration, with drop shadows and an outline under the fill.
+    std::size_t title_layers{};
+    bool outlined{};
+    for (const auto& command : draw.commands()) {
+        if (const auto* text = std::get_if<TextDrawCommand>(&command);
+            text && text->localization_key == "ZOMBIE_MODE_TITLE") {
+            ++title_layers;
+            outlined = outlined || text->retail_outline_stroke;
+            expect(text->transform == TextTransform::uppercase &&
+                       text->requested_font_size_pixels == 38.0,
+                   "mode title must be upper-cased Spades 38");
+        }
+    }
+    expect(title_layers == 4U && outlined,
+           "mode title must draw two shadows, an outline and the fill");
     expect(model.select_tab(2U), "Scores tab should exist");
     draw = MatchLoadingPresentation{}.build(model.snapshot());
     expect(find_text(draw, "MODE_SPECIFIC_SCORE_TYPES") && find_text(draw, "GENERIC_SCORE_TYPES") &&
@@ -150,6 +171,105 @@ void every_stock_mode_resolves_its_own_reference_content() {
     model.begin("Training", "TUTORIAL");
     expect(model.snapshot().tabs.size() == 1U, "Training should retain its single Map tab");
 }
+
+const SpriteDrawCommand* find_sprite(const DrawList& list, std::string_view asset) {
+    for (const auto& command : list.commands()) {
+        if (const auto* sprite = std::get_if<SpriteDrawCommand>(&command);
+            sprite && sprite->asset_id == asset) return sprite;
+    }
+    return nullptr;
+}
+
+void status_lines_are_localised_with_the_map_name() {
+    const auto localize = [](std::string_view key) -> std::string {
+        if (key == "CHECKING_MAP") return "Karte {0} wird gepruft";
+        if (key == "RECEIVING_SERVER_PACKS") return "Connected, receiving server packs...";
+        if (key == "ERROR_TIMEOUT") return "Zeitlimit";
+        return std::string{key};
+    };
+    MatchLoadingModel model;
+    model.begin("Hiesville", "TDM_TITLE");
+    model.receiving_packs();
+    expect(loading_status_text(model.snapshot(), localize) ==
+               "LITERAL|Connected, receiving server packs...",
+           "RECEIVING_SERVER_PACKS must come from the catalogue");
+    model.initial_info("Hiesville", "TDM_TITLE", false, "");
+    const auto checking = loading_status_text(model.snapshot(), localize);
+    expect(checking == "LITERAL|Karte Hiesville wird gepruft",
+           "map stages must fill {0} with the map name in the active language");
+    model.set_status("Starting local server...");
+    expect(loading_status_text(model.snapshot(), localize) == "Starting local server...",
+           "host stages the caller worded are drawn verbatim");
+    model.begin("Hiesville", "TDM_TITLE");
+    model.tick(30.5);
+    expect(model.snapshot().state == MatchLoadingState::timed_out &&
+               loading_status_text(model.snapshot(), localize) == "LITERAL|Zeitlimit",
+           "the timeout reads ERROR_TIMEOUT");
+}
+
+void map_tab_draws_preview_tagline_and_custom_rules() {
+    MatchLoadingModel model;
+    model.begin("Trenches", "TDM_TITLE");
+    model.initial_info("Trenches", "TDM_TITLE", false, "");
+    model.set_custom_game_rules({{"RULE_ENABLE_BLOCKS", "OFF"},
+                                 {"RULE_TDM_SCORE_TARGET", "100"},
+                                 {"RULE_ONE_HIT_KILL", "ON"}});
+    const auto snapshot = model.snapshot();
+    expect(snapshot.map_tagline_key == "Trenches_TagLine", "MAP_NAME_TAGLINES selects a tagline");
+    expect(snapshot.map_preview_asset.find("Trenches.png") != std::string::npos,
+           "the MAP tab reuses the browser's map preview");
+    expect(snapshot.custom_rules.size() == 5U && snapshot.custom_rules[0].category &&
+               snapshot.custom_rules[0].label_key == "GENERAL" &&
+               snapshot.custom_rules[1].label_key == "RULE_ENABLE_BLOCKS" &&
+               snapshot.custom_rules[1].value == "LITERAL|OFF" &&
+               snapshot.custom_rules[3].category &&
+               snapshot.custom_rules[3].label_key == "TDM_TITLE" &&
+               !snapshot.custom_rules[3].uppercase,
+           "rules group under sorted categories, mode buckets by their title");
+    const auto draw = MatchLoadingPresentation{}.build(snapshot);
+    const auto* frame = find_sprite(draw, "png/ui/game_loading/minimap_bg.png");
+    expect(frame && frame->destination.width == 258.0 && frame->destination.x == 459.0,
+           "loading_map_frame is 258x258 at the retail position");
+    const auto* preview = find_sprite(draw, snapshot.map_preview_asset);
+    expect(preview && preview->destination.width == 238.0, "the preview is drawn at 238x238");
+    const auto* tagline = find_text(draw, "Trenches_TagLine");
+    expect(tagline && tagline->requested_font_size_pixels == 20.0, "the tagline is Spades 20");
+    const auto* title = find_text(draw, "Trenches");
+    expect(title && title->requested_font_size_pixels == 38.0,
+           "a tagline switches the title to the smaller font");
+    expect(find_text(draw, "CUSTOM_GAME_RULES") != nullptr, "the rules panel has its header");
+
+    model.set_custom_game_rules({});
+    expect(model.snapshot().custom_rules.empty(), "no rules means no panel");
+    model.begin("Training", "TUTORIAL_MODE_TITLE");
+    model.initial_info("Training", "TUTORIAL_MODE_TITLE", false, "");
+    model.set_custom_game_rules({{"RULE_ENABLE_BLOCKS", "OFF"}});
+    expect(model.snapshot().custom_rules.empty(), "the tutorial never lists rules");
+    const auto tutorial = MatchLoadingPresentation{}.build(model.snapshot());
+    expect(find_text(tutorial, "TUTORIAL_MODE_TITLE") != nullptr,
+           "Training's title is TUTORIAL_MODE_TITLE");
+}
+
+void tabs_keep_cycling_until_start_and_input_stops_them() {
+    MatchLoadingModel model;
+    model.begin("London", "TDM_TITLE");
+    model.initial_info("London", "TDM_TITLE", false, "");
+    battlespades::assets::PreloadSnapshot assets;
+    assets.state = battlespades::assets::PreloadBatchState::ready;
+    assets.progress = 1.0;
+    model.set_preload_snapshot(assets);
+    expect(model.snapshot().start_enabled, "precondition: the map is ready");
+    const auto before = model.snapshot().selected_tab;
+    model.tick(3.1);
+    expect(model.snapshot().selected_tab != before, "tabs keep cycling once the map is ready");
+    model.tick(60.0);
+    expect(model.snapshot().state == MatchLoadingState::ready,
+           "a ready loader never times out while waiting for START");
+    model.interrupt_tab_cycle();
+    const auto held = model.snapshot().selected_tab;
+    model.tick(9.0);
+    expect(model.snapshot().selected_tab == held, "any input stops the cycle");
+}
 } // namespace
 
 int main() {
@@ -179,7 +299,10 @@ int main() {
         mode_captions_and_scores_are_visible_and_interactive();
         authoritative_captions_and_hosting_status_do_not_fake_readiness();
         every_stock_mode_resolves_its_own_reference_content();
-        std::cout << "6/6 tests passed\n";
+        status_lines_are_localised_with_the_map_name();
+        map_tab_draws_preview_tagline_and_custom_rules();
+        tabs_keep_cycling_until_start_and_input_stops_them();
+        std::cout << "9/9 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

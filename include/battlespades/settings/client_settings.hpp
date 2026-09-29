@@ -28,6 +28,11 @@ struct MainSettings final {
     bool show_skins{true};
     bool show_other_skins{true};
     bool weapon_motion{true};
+    /**
+     * Native-only jetpack/parachute key hints. Retail shows just the status
+     * icons, so this is off by default (retail parity decision D4).
+     */
+    bool ability_hints{false};
     /** Playback endpoint for the next launch; empty follows the system default. */
     std::string audio_device;
 
@@ -186,6 +191,28 @@ struct GraphicsSettings final {
     QualityLevel texture_quality{QualityLevel::medium};
     QualityLevel model_quality{QualityLevel::high};
     bool vsync{false};
+    /**
+     * Native-only (settings.toml `fullscreen_mode`). Borderless covers the
+     * desktop at its current mode so alt-tab is instant and never minimises
+     * the game; `exclusive` keeps the retail display-mode switch.
+     */
+    bool borderless_fullscreen{true};
+    /**
+     * Native-only (settings.toml `render_interpolation`). Extra render-only
+     * frames between the fixed 60 Hz ticks on high-refresh displays, with the
+     * camera interpolated between the last two ticks. The simulation, input
+     * and ClientData cadence are unchanged; `false` restores the retail
+     * one-frame-per-tick presentation.
+     */
+    bool render_interpolation{true};
+    /**
+     * Native-only (settings.toml `hud_scale`). Retail draws the in-game HUD
+     * in raw window pixels, so it shrinks on 4K/Retina displays. 1.0 keeps
+     * that retail behaviour; larger values magnify every HUD widget about
+     * the window as if the window were that many times smaller (layout
+     * proportions unchanged); 0 picks max(1, floor(height / 1080)).
+     */
+    double hud_scale{1.0};
 
     [[nodiscard]] constexpr bool compatibility_shader() const noexcept {
         return shader_quality == ShaderQuality::compatibility;
@@ -344,5 +371,20 @@ struct SettingsValidationResult final {
 /** Human-readable persistence representation, for example `keyboard:w`. */
 [[nodiscard]] std::string binding_to_string(InputBinding binding);
 [[nodiscard]] std::optional<InputBinding> binding_from_string(std::string_view value) noexcept;
+
+/**
+ * Retail gui.translate_key() identifier for a keyboard scancode: the pyglet
+ * symbol name with the leading '_' / 'NUM_' removed and KEY_TRANSLATIONS
+ * applied (LCTRL -> CTRL, LSHIFT -> SHIFT, PAGEUP -> PAGE_UP, ...). The
+ * caller resolves it through strings.get_by_id, which leaves ids missing from
+ * the string table (letters, F-keys) unchanged. Empty for unknown codes.
+ */
+[[nodiscard]] std::string_view retail_key_name_id(std::uint32_t scancode) noexcept;
+
+/**
+ * Controls-menu value id for one binding: retail_key_name_id for keys,
+ * LMB/MMB/RMB for mouse buttons and NONE ("None") when unbound.
+ */
+[[nodiscard]] std::string retail_binding_name_id(InputBinding binding);
 
 } // namespace battlespades::settings

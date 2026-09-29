@@ -32,6 +32,28 @@ int main() {
         }
         expect(roster.players().size() == 3U,
                "all tutorial players must be represented by packet-created state");
+        {
+            // The allocation-free view must see exactly the same players in
+            // the same order as the copying players() accessor.
+            const auto copied = roster.players();
+            const auto view = roster.present_players();
+            expect(view.size() == copied.size() && !view.empty(),
+                   "present_players must count the same occupied slots");
+            std::size_t index{};
+            for (const auto& player : view) {
+                expect(index < copied.size() && player.player_id == copied[index].player_id &&
+                           player.name == copied[index].name,
+                       "present_players must iterate in player-id order without copies");
+                ++index;
+            }
+            expect(index == copied.size(), "present_players must visit every player once");
+            expect(std::ranges::none_of(view,
+                                        [](const auto& player) { return player.name.empty(); }),
+                   "present_players must be a standard range");
+            battlespades::network::Protocol168Roster empty;
+            expect(empty.present_players().empty() && empty.present_players().size() == 0U,
+                   "an empty roster view has no players");
+        }
 
         auto localized_demo = fixtures.front();
         localized_demo.player_id = 105U;
@@ -82,6 +104,10 @@ int main() {
                        fixtures.front().player_id, true, false, false) &&
                    roster.player(rival_id)->dominating_local_player &&
                    roster.player(rival_id)->dominated_by_local_player &&
+                   !roster.apply_kill_relationships(
+                       rival_id, 250U, fixtures.front().player_id, false, false, false) &&
+                   roster.player(rival_id)->dominating_local_player &&
+                   roster.player(rival_id)->dominated_by_local_player &&
                    roster.apply_kill_relationships(
                        rival_id, rival_id, fixtures.front().player_id,
                        false, false, true) &&
@@ -106,6 +132,11 @@ int main() {
                    roster.player(100U)->input_flags == 0x91U &&
                    roster.player(100U)->health == 73,
                "WorldUpdate must retain remote tool, animation, and health state");
+        world_row.tool_id = 0xFFU;
+        expect(roster.update_world_state(world_row) &&
+                   roster.player(100U)->tool_id == 18U,
+               "a tool id outside the retail range (0xFF) keeps the held tool");
+        world_row.tool_id = 18U;
         expect(roster.update_health(100U, 41) &&
                    roster.player(100U)->health == 41 &&
                    !roster.player(100U)->dead &&
@@ -187,43 +218,70 @@ int main() {
                    velocity_only->velocity_delta.x == 0.0,
                "retail position tolerance must also suppress velocity-only correction");
 
+        // Retail Character.apply_interpolations: peers snap to the newest row
+        // and keep simulating with their replicated buttons (extrapolation),
+        // which is the view the server's lag compensation rewinds to.
         battlespades::network::RemoteMotionInterpolator remote_motion;
-        remote_motion.reset({{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.0, 0.0, 0.0}});
-        remote_motion.push({{3.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {3.0, 0.0, 0.0}},
-                           1.0 / 30.0);
+        remote_motion.reset({{100.0, 100.0, 100.0}, {1.0, 0.0, 0.0}, {0.0, 0.0, 0.0}});
+        battlespades::network::RemoteMotionSample runner;
+        runner.position = {103.0, 100.0, 100.0};
+        runner.orientation = {0.0, 1.0, 0.0};
+        runner.velocity = {0.3, 0.0, 0.0};
+        remote_motion.push(runner, 1.0 / 30.0);
+        expect(remote_motion.sample().position.x == 103.0 &&
+                   remote_motion.sample().orientation.y == 1.0,
+               "a new peer row must snap immediately, never trail by an interpolation window");
         remote_motion.tick(1.0 / 60.0);
-        expect(remote_motion.sample().position.x == 1.5,
-               "30 Hz peer snapshots must interpolate across two render ticks");
-        remote_motion.tick(1.0 / 60.0);
-        expect(remote_motion.sample().position.x == 3.0,
-               "remote interpolation must land exactly on the authority");
-        remote_motion.push({{20.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {}},
-                           1.0 / 30.0);
-        expect(remote_motion.sample().position.x == 20.0,
+        battlespades::world::PlayerMovementState expected_body;
+        expected_body.position = runner.position;
+        expected_body.velocity = runner.velocity;
+        expected_body.orientation = runner.orientation;
+        static_cast<void>(battlespades::world::step_player(
+            expected_body, {}, nullptr, 1.0 / 60.0,
+            battlespades::world::movement_config_for_class(0U)));
+        expect(remote_motion.sample().position.x > 103.0 &&
+                   remote_motion.sample().position.x == expected_body.position.x &&
+                   remote_motion.sample().position.z == expected_body.position.z,
+               "between rows the peer must be extrapolated by the native mover");
+        remote_motion.push({{120.0, 100.0, 100.0}, {1.0, 0.0, 0.0}, {}}, 1.0 / 30.0);
+        expect(remote_motion.sample().position.x == 120.0,
                "large semantic teleports must never smear through terrain");
 
-        // A peer turning from +179 to -179 degrees must cross the two-degree
-        // seam, not spin through zero or normalize an almost-zero vector.
-        constexpr double seam = std::numbers::pi / 180.0;
-        remote_motion.reset(
-            {{0.0, 0.0, 0.0},
-             {std::cos(179.0 * seam), std::sin(179.0 * seam), 0.0},
-             {}});
-        remote_motion.push(
-            {{0.0, 0.0, 0.0},
-             {std::cos(-179.0 * seam), std::sin(-179.0 * seam), 0.0},
-             {}},
-            1.0 / 30.0);
-        remote_motion.tick(1.0 / 60.0);
-        const auto seam_orientation = remote_motion.sample().orientation;
-        expect(seam_orientation.x < -0.999 &&
-                   std::abs(seam_orientation.y) < 0.002 &&
-                   std::abs(std::hypot(seam_orientation.x,
-                                       seam_orientation.y,
-                                       seam_orientation.z) -
-                            1.0) <
-                       1.0e-9,
-               "remote yaw must interpolate over the wrapped shortest arc");
+        // Replicated buttons drive the extrapolation exactly like retail.
+        {
+            battlespades::network::RemoteMotionInterpolator walker;
+            battlespades::network::RemoteMotionSample forward;
+            forward.position = {100.0, 100.0, 100.0};
+            forward.orientation = {1.0, 0.0, 0.0};
+            forward.input_flags = 0x01U;
+            walker.reset(forward);
+            walker.tick(1.0 / 60.0);
+            expect(walker.sample().velocity.x > 0.0,
+                   "a held forward button must accelerate the extrapolated peer");
+            battlespades::network::RemoteMotionSample dead = forward;
+            dead.dead = true;
+            dead.position = {5.0, 5.0, 5.0};
+            walker.push(dead, 1.0 / 30.0);
+            walker.tick(1.0 / 60.0);
+            expect(walker.sample().position.x == 5.0,
+                   "a dead peer holds its authoritative corpse position");
+        }
+
+        // The extrapolation input is built from the authoritative replica.
+        {
+            battlespades::network::RemotePlayerReplica replica;
+            replica.class_id = 2U;
+            replica.input_flags = 0x11U;
+            replica.action_flags = 0x14U;
+            replica.state_flags = 0x01U;
+            replica.loadout = {17U, 2U, 67U, 72U};
+            const auto sample = battlespades::network::remote_motion_sample(replica, 1.25);
+            expect(sample.jetpack == 2U && sample.jetpack_active && sample.parachute &&
+                       sample.parachute_active && sample.input_flags == 0x11U &&
+                       sample.class_id == 2U && sample.movement_speed_scale == 1.25 &&
+                       !sample.hover,
+                   "remote extrapolation must mirror the replicated pack, canopy and buttons");
+        }
 
         // Local prediction always collides enemies, filters allies when the
         // InitialInfo flag is clear, and uses crouched/wading body heights.

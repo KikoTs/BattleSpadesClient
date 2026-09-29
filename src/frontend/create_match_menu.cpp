@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <iterator>
@@ -386,6 +387,11 @@ constexpr std::array<std::string_view, 9U> setting_keys{
     return std::find(list.begin(), list.end(), value) != list.end();
 }
 
+[[nodiscard]] bool has_mode(const std::vector<std::string>& modes_list,
+                            std::string_view mode) noexcept {
+    return std::find(modes_list.begin(), modes_list.end(), mode) != modes_list.end();
+}
+
 template <typename Range, typename Value>
 [[nodiscard]] std::size_t index_of(const Range& range, const Value& value) noexcept {
     const auto found = std::find(range.begin(), range.end(), value);
@@ -459,8 +465,9 @@ CreateMatchMenuModel::CreateMatchMenuModel(CreateMatchConfiguration initial)
         mode = mode_by_id(9U);
         configuration_.retail_playlist_id = mode->retail_playlist_id;
     }
-    if (!contains(mode->maps, configuration_.map_name)) {
-        configuration_.map_name = std::string{*std::min_element(mode->maps.begin(), mode->maps.end())};
+    // A fresh model has no custom catalog; set_custom_maps() re-admits one.
+    if (configuration_.custom_map || !contains(mode->maps, configuration_.map_name)) {
+        select_stock_map(*mode);
     }
     if (std::find(player_counts.begin(), player_counts.end(), configuration_.max_players) ==
         player_counts.end()) {
@@ -504,6 +511,10 @@ CreateMatchMenuModel::CreateMatchMenuModel(CreateMatchConfiguration initial)
     retail_defaults_.bot_difficulty = "mixed";
     retail_defaults_.server_port = 27015U;
     retail_defaults_.map_name = "AncientEgypt";
+    retail_defaults_.custom_map = false;
+    retail_defaults_.subscribed_map = false;
+    retail_defaults_.map_title.clear();
+    retail_defaults_.map_author.clear();
     retail_defaults_.rule_overrides.clear();
     for (const auto& category : std::array<std::string_view, 14U>{
              "tdm", "zom", "vip", "ctf", "cctf", "mh", "tc", "dia", "dem", "oc",
@@ -511,6 +522,75 @@ CreateMatchMenuModel::CreateMatchMenuModel(CreateMatchConfiguration initial)
         expanded_categories_.emplace(std::string{category}, true);
     }
     repair_focus();
+}
+
+std::string create_match_custom_map_key(const CreateMatchCustomMap& map) {
+    return std::string{map.subscribed ? "SUBSCRIBED_MAPS/" : "SAVED_MAPS/"} + map.stem;
+}
+
+void CreateMatchMenuModel::set_custom_maps(std::vector<CreateMatchCustomMap> maps) {
+    constexpr std::size_t maximum_custom_maps{4'096U};
+    if (maps.size() > maximum_custom_maps) maps.resize(maximum_custom_maps);
+    std::erase_if(maps, [](const CreateMatchCustomMap& map) {
+        return map.stem.empty() || map.stem.size() > 64U ||
+               map.stem.find_first_of("/\\:. ") != std::string::npos;
+    });
+    for (auto& map : maps) {
+        if (map.title.empty()) map.title = map.stem;
+        for (auto& mode : map.mode_keys) {
+            std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char value) {
+                return static_cast<char>(std::tolower(value));
+            });
+        }
+    }
+    // Retail sorts neither list; title order keeps the rows stable.
+    std::stable_sort(maps.begin(), maps.end(), [](const auto& left, const auto& right) {
+        return left.title < right.title;
+    });
+    custom_maps_ = std::move(maps);
+    if (configuration_.custom_map && !custom_map_valid(selected_mode())) {
+        select_stock_map(selected_mode());
+        emit_configuration_changed();
+    }
+    clamp_scroll();
+    repair_focus(false);
+}
+
+std::span<const CreateMatchCustomMap> CreateMatchMenuModel::custom_maps() const noexcept {
+    return custom_maps_;
+}
+
+const CreateMatchCustomMap* CreateMatchMenuModel::listed_custom_map(
+    std::string_view row_key) const {
+    // mapsPanel: A2450[game_modes[0]] in get_available_game_modes(map); Classic
+    // CTF shares MODE_CTF, so a CTF-valid map also hosts cctf.
+    auto mode_key = std::string{selected_mode().mode_key};
+    if (mode_key == "cctf") mode_key = "ctf";
+    const auto found = std::find_if(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
+        return create_match_custom_map_key(map) == row_key;
+    });
+    if (found == custom_maps_.end() || !has_mode(found->mode_keys, mode_key)) return nullptr;
+    return &*found;
+}
+
+bool CreateMatchMenuModel::custom_map_valid(const CreateMatchModeDefinition& mode) const {
+    if (!configuration_.custom_map) return false;
+    auto mode_key = std::string{mode.mode_key};
+    if (mode_key == "cctf") mode_key = "ctf";
+    return std::any_of(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
+        return map.stem == configuration_.map_name &&
+               map.subscribed == configuration_.subscribed_map && has_mode(map.mode_keys, mode_key);
+    });
+}
+
+void CreateMatchMenuModel::select_stock_map(const CreateMatchModeDefinition& mode) {
+    configuration_.custom_map = false;
+    configuration_.subscribed_map = false;
+    configuration_.map_title.clear();
+    configuration_.map_author.clear();
+    if (!contains(mode.maps, configuration_.map_name)) {
+        configuration_.map_name = std::string{*std::min_element(mode.maps.begin(), mode.maps.end())};
+    }
 }
 
 CreateMatchPage CreateMatchMenuModel::page() const noexcept { return page_; }
@@ -528,8 +608,26 @@ void CreateMatchMenuModel::apply_authoritative_configuration(
     // The lobby pump can deliver the same snapshot every frame. It must not
     // turn a background refresh into keyboard navigation after a wheel/drag.
     if(configuration==configuration_)return;
+    // Lobby metadata carries only the file stem; re-admit it when it names a
+    // listed custom map so an owner's SAVED/SUBSCRIBED choice survives echo.
+    const auto incoming_map = configuration.map_name;
+    const auto keep_custom = !configuration.custom_map && configuration_.custom_map &&
+                             incoming_map == configuration_.map_name;
+    auto custom = configuration_;
     CreateMatchMenuModel normalized{std::move(configuration)};
     configuration_ = normalized.configuration_;
+    if (keep_custom) {
+        const auto previous_map = configuration_.map_name;
+        configuration_.map_name = custom.map_name;
+        configuration_.custom_map = true;
+        configuration_.subscribed_map = custom.subscribed_map;
+        configuration_.map_title = custom.map_title;
+        configuration_.map_author = custom.map_author;
+        if (!custom_map_valid(selected_mode())) {
+            configuration_.map_name = previous_map;
+            select_stock_map(selected_mode());
+        }
+    }
     retail_defaults_ = normalized.retail_defaults_;
     clamp_scroll();
     repair_focus(false);
@@ -706,12 +804,29 @@ std::vector<std::string> CreateMatchMenuModel::expanded_row_keys() const {
     }
     if (page_ == CreateMatchPage::choose_map) {
         std::vector<std::string> output;
+        // Retail packs order: SAVED_MAPS, SUBSCRIBED_MAPS, then the stock
+        // pack; an empty custom category is not shown at all.
+        for (const auto subscribed : {false, true}) {
+            std::vector<std::string> rows;
+            for (const auto& map : custom_maps_) {
+                if (map.subscribed != subscribed) continue;
+                auto key = create_match_custom_map_key(map);
+                if (listed_custom_map(key) != nullptr) rows.push_back(std::move(key));
+            }
+            if (rows.empty()) continue;
+            const std::string category{subscribed ? "SUBSCRIBED_MAPS" : "SAVED_MAPS"};
+            output.push_back(category);
+            const auto state = expanded_categories_.find(category);
+            if (state == expanded_categories_.end() || state->second) {
+                for (auto& row : rows) output.push_back(std::move(row));
+            }
+        }
         output.emplace_back(selected_mode().family == CreateMatchModeFamily::classic
                                 ? "A2362"
                             : selected_mode().family == CreateMatchModeFamily::mafia
                                 ? "MAFIA_PACK"
                                 : "STANDARD");
-        const auto expanded = expanded_categories_.find(output.front());
+        const auto expanded = expanded_categories_.find(output.back());
         if (expanded == expanded_categories_.end() || expanded->second) {
             for (const auto map : selected_mode().maps) output.emplace_back(map);
         }
@@ -801,8 +916,9 @@ void CreateMatchMenuModel::select_mode(const CreateMatchModeDefinition& mode) {
     const auto old_mode = selected_mode();
     const auto old_default_length = old_mode.default_match_minutes;
     configuration_.retail_playlist_id = mode.retail_playlist_id;
-    if (!contains(mode.maps, configuration_.map_name)) {
-        configuration_.map_name = std::string{*std::min_element(mode.maps.begin(), mode.maps.end())};
+    if (configuration_.custom_map ? !custom_map_valid(mode)
+                                  : !contains(mode.maps, configuration_.map_name)) {
+        select_stock_map(mode);
     }
     if (configuration_.match_minutes == old_default_length) {
         configuration_.match_minutes = mode.default_match_minutes;
@@ -944,14 +1060,33 @@ bool CreateMatchMenuModel::activate_row(std::string_view key) {
                                 : selected_mode().family == CreateMatchModeFamily::mafia
                                     ? std::string_view{"MAFIA_PACK"}
                                     : std::string_view{"STANDARD"};
-        if (key == family_key) {
+        if (key == family_key || key == "SAVED_MAPS" || key == "SUBSCRIBED_MAPS") {
             const auto expanded = expanded_categories_.find(key);
             return set_category_expanded(key,
                                          expanded == expanded_categories_.end() || !expanded->second);
         }
         if (!host_authority_) return false;
+        if (const auto* custom = listed_custom_map(key); custom != nullptr) {
+            // mapsPanel.on_row_selected: Custom_UGC_Map + its author, and the
+            // saved/subscribed file becomes hosted_ugc_map_filename.
+            if (!configuration_.custom_map || configuration_.map_name != custom->stem ||
+                configuration_.subscribed_map != custom->subscribed) {
+                configuration_.custom_map = true;
+                configuration_.subscribed_map = custom->subscribed;
+                configuration_.map_name = custom->stem;
+                configuration_.map_title = custom->title;
+                configuration_.map_author = custom->author;
+                emit_configuration_changed();
+            }
+            effects_.push_back(CreateMatchSoundEffect{CreateMatchSound::confirm});
+            return true;
+        }
         if (!contains(selected_mode().maps, key)) return false;
-        if (configuration_.map_name != key) {
+        if (configuration_.custom_map || configuration_.map_name != key) {
+            configuration_.custom_map = false;
+            configuration_.subscribed_map = false;
+            configuration_.map_title.clear();
+            configuration_.map_author.clear();
             configuration_.map_name = std::string{key};
             emit_configuration_changed();
         }
@@ -1075,7 +1210,8 @@ bool CreateMatchMenuModel::set_rule_value(std::string_view key, std::string_view
 bool CreateMatchMenuModel::set_category_expanded(std::string_view category_key, bool expanded) {
     const auto known = expanded_categories_.find(category_key);
     const auto is_map_category = category_key == "STANDARD" || category_key == "A2362" ||
-                                 category_key == "MAFIA_PACK";
+                                 category_key == "MAFIA_PACK" || category_key == "SAVED_MAPS" ||
+                                 category_key == "SUBSCRIBED_MAPS";
     if (known == expanded_categories_.end() && !is_map_category) return false;
     expanded_categories_.insert_or_assign(std::string{category_key}, expanded);
     clamp_scroll();
@@ -1399,7 +1535,9 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
                 row.value_text = to_string(configuration_.server_port);
             } else if (key == "MAP_ROTATION_FILENAME") {
                 row.label_key = "MAP";
-                row.value_text = configuration_.map_name;
+                row.value_text = configuration_.custom_map && !configuration_.map_title.empty()
+                                     ? configuration_.map_title
+                                     : configuration_.map_name;
             } else if (key == "GAME_RULES") {
                 row.value_text = configuration_.rule_overrides.empty() ? "DEFAULT" : "DEFINED";
             }
@@ -1412,15 +1550,23 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
             row.selected = mode != modes.end() &&
                            mode->retail_playlist_id == configuration_.retail_playlist_id;
         } else if (page_ == CreateMatchPage::choose_map) {
-            const auto category = key == "STANDARD" || key == "A2362" || key == "MAFIA_PACK";
+            const auto category = key == "STANDARD" || key == "A2362" || key == "MAFIA_PACK" ||
+                                  key == "SAVED_MAPS" || key == "SUBSCRIBED_MAPS";
             row.kind = category ? CreateMatchRowKind::category
                                 : CreateMatchRowKind::selectable_item;
             if (category) {
                 row.enabled = true;
                 const auto state = expanded_categories_.find(key);
                 row.expanded = state == expanded_categories_.end() || state->second;
+            } else if (const auto* custom = listed_custom_map(key); custom != nullptr) {
+                // OwnableItemBase(custom_map=True, author=...): title + author.
+                row.label_key = custom->title;
+                row.value_text = custom->author;
+                row.selected = configuration_.custom_map &&
+                               configuration_.subscribed_map == custom->subscribed &&
+                               configuration_.map_name == custom->stem;
             } else {
-                row.selected = configuration_.map_name == key;
+                row.selected = !configuration_.custom_map && configuration_.map_name == key;
             }
         } else {
             const auto definition = std::find_if(rules().begin(), rules().end(), [&](const auto& item) {

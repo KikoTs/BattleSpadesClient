@@ -136,6 +136,78 @@ int main() {
                    engineer.state(8U)->jetpack_id == 68U,
                "engineer death must retain JetpackEngineer rather than a generic pack");
 
+        // Character.set_team: color = team * 0.5, never the full team colour.
+        {
+            namespace w = battlespades::world;
+            const auto half = w::retail_character_color({44U, 117U, 179U, 255U});
+            expect(half.red == 22U && half.green == 59U && half.blue == 90U && half.alpha == 255U,
+                   "characters must use the team colour at half intensity");
+            const auto flash = w::retail_spawn_flash_color(half);
+            expect(flash.red == 44U && flash.green == 118U && flash.blue == 180U,
+                   "SPAWN_COLOR_MULTIPLIER must restore the full team colour");
+
+            // spawn_color_blink_timer: bright every frame until the timer runs
+            // out; that one frame is plain and re-arms with remaining / 3.
+            w::RetailSpawnBlink blink;
+            w::retail_spawn_blink_reset(blink);
+            expect(w::retail_spawn_blink_draw(blink, 3.0),
+                   "a fresh spawn draws the doubled team colour");
+            std::size_t plain_frames{};
+            std::vector<double> plain_times;
+            double remaining{3.0};
+            constexpr double dt{1.0 / 60.0};
+            for (int frame{}; frame < 180; ++frame) {
+                w::retail_spawn_blink_update(blink, dt);
+                remaining -= dt;
+                if (!w::retail_spawn_blink_draw(blink, remaining)) {
+                    ++plain_frames;
+                    plain_times.push_back(3.0 - remaining);
+                }
+            }
+            expect(plain_frames >= 4U && plain_frames < 60U,
+                   "the plain-colour blink is a single frame per interval");
+            expect(plain_times.size() >= 3U &&
+                       plain_times[2U] - plain_times[1U] < plain_times[1U] - plain_times[0U],
+                   "the blink interval shrinks as protection runs out");
+            expect(!w::retail_spawn_blink_draw(blink, 0.0),
+                   "an unprotected character never flashes");
+
+            // Character.draw 2020/2052 tool colour paths.
+            expect(w::retail_tool_color_path(5U, false) == w::RetailToolColorPath::block_color &&
+                       w::retail_tool_color_path(23U, false) ==
+                           w::RetailToolColorPath::block_color &&
+                       w::retail_tool_color_path(43U, false) ==
+                           w::RetailToolColorPath::block_color &&
+                       w::retail_tool_color_path(64U, false) ==
+                           w::RetailToolColorPath::block_color &&
+                       w::retail_tool_color_path(42U, false) == w::RetailToolColorPath::none,
+                   "use_color tools take the holder's block colour; UGCPrefabTool resets it");
+            expect(w::retail_tool_color_path(30U, false) ==
+                           w::RetailToolColorPath::other_team_color &&
+                       w::retail_tool_color_path(24U, true) == w::RetailToolColorPath::team_color,
+                   "intel uses the other team's colour; team tools the holder's");
+            expect(w::retail_tool_flashes_with_spawn_protection(24U) &&
+                       !w::retail_tool_flashes_with_spawn_protection(5U),
+                   "only ZombieHandTool flashes with spawn protection");
+
+            // set_crouch intel placements (pyx 812-849).
+            const auto stand = w::retail_back_intel_attachment(false, std::nullopt);
+            const auto stand66 = w::retail_back_intel_attachment(false, std::uint8_t{66U});
+            const auto stand68 = w::retail_back_intel_attachment(false, std::uint8_t{68U});
+            const auto crouch = w::retail_back_intel_attachment(true, std::uint8_t{65U});
+            const auto crouch67 = w::retail_back_intel_attachment(true, std::uint8_t{67U});
+            expect(near(stand.y, -0.38) && near(stand.z, 0.9) && near(stand.size, 0.1) &&
+                       stand.z_offset == 6,
+                   "standing intel without a pack");
+            expect(near(stand66.y, -1.1) && near(stand68.y, -1.0) && near(stand68.z, 0.9),
+                   "standing intel behind a pack");
+            expect(near(crouch.y, -0.65) && near(crouch.z, 0.5) && near(crouch67.y, -1.15) &&
+                       near(crouch67.z, 1.0),
+                   "crouched intel with and without a pack");
+            constexpr auto corpse = w::retail_classic_corpse_attachment();
+            static_assert(corpse.z_offset == 6 && corpse.z == 2.0 && corpse.size == 0.05);
+        }
+
         std::cout << "jetpack death presentation tests passed\n";
         return 0;
     } catch (const std::exception& error) {

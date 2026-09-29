@@ -378,7 +378,7 @@ template <typename Value, typename Parser>
             return true;
         }
         if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
-            key == "show_other_skins" || key == "weapon_motion") {
+            key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints") {
             if (!state.remember(line, key)) {
                 return false;
             }
@@ -394,6 +394,8 @@ template <typename Value, typename Parser>
                 state.candidate.main.show_other_skins = *parsed;
             } else if (key == "weapon_motion") {
                 state.candidate.main.weapon_motion = *parsed;
+            } else if (key == "ability_hints") {
+                state.candidate.main.ability_hints = *parsed;
             } else {
                 state.candidate.main.invert_mouse = *parsed;
             }
@@ -413,6 +415,40 @@ template <typename Value, typename Parser>
                 return state.fail(line, "vsync must be true or false");
             }
             state.candidate.graphics.vsync = *parsed;
+            return true;
+        }
+        if (key == "render_interpolation") {
+            if (!state.remember(line, key)) {
+                return false;
+            }
+            const auto parsed = parse_bool(value);
+            if (!parsed.has_value()) {
+                return state.fail(line, "render_interpolation must be true or false");
+            }
+            state.candidate.graphics.render_interpolation = *parsed;
+            return true;
+        }
+        if (key == "hud_scale") {
+            if (!state.remember(line, key)) {
+                return false;
+            }
+            const auto parsed = parse_double(value);
+            if (!parsed.has_value() || !std::isfinite(*parsed) ||
+                !(*parsed == 0.0 || (*parsed >= 1.0 && *parsed <= 4.0))) {
+                return state.fail(line, "hud_scale must be 0 (auto) or between 1.0 and 4.0");
+            }
+            state.candidate.graphics.hud_scale = *parsed;
+            return true;
+        }
+        if (key == "fullscreen_mode") {
+            if (!state.remember(line, key)) {
+                return false;
+            }
+            const auto parsed = parse_string(value);
+            if (!parsed.has_value() || (*parsed != "borderless" && *parsed != "exclusive")) {
+                return state.fail(line, "fullscreen_mode must be \"borderless\" or \"exclusive\"");
+            }
+            state.candidate.graphics.borderless_fullscreen = *parsed == "borderless";
             return true;
         }
         if (!state.remember(line, key)) {
@@ -530,7 +566,8 @@ template <typename Value, typename Parser>
            << "invert_mouse = " << (settings.main.invert_mouse ? "true" : "false") << "\n"
            << "show_skins = " << (settings.main.show_skins ? "true" : "false") << "\n"
            << "show_other_skins = " << (settings.main.show_other_skins ? "true" : "false") << "\n"
-           << "weapon_motion = " << (settings.main.weapon_motion ? "true" : "false") << "\n\n"
+           << "weapon_motion = " << (settings.main.weapon_motion ? "true" : "false") << "\n"
+           << "ability_hints = " << (settings.main.ability_hints ? "true" : "false") << "\n\n"
            << "[graphics]\n"
            << "resolution = \"" << settings.graphics.resolution.width << 'x'
            << settings.graphics.resolution.height << "\"\n"
@@ -542,7 +579,16 @@ template <typename Value, typename Parser>
            << "\"\n"
            << "texture_quality = \"" << quality_name(settings.graphics.texture_quality) << "\"\n"
            << "model_quality = \"" << quality_name(settings.graphics.model_quality) << "\"\n"
-           << "vsync = " << (settings.graphics.vsync ? "true" : "false") << "\n\n"
+           << "vsync = " << (settings.graphics.vsync ? "true" : "false") << "\n"
+           << "# Native: \"borderless\" (desktop fullscreen) or \"exclusive\" (retail mode switch).\n"
+           << "fullscreen_mode = \""
+           << (settings.graphics.borderless_fullscreen ? "borderless" : "exclusive") << "\"\n"
+           << "# Native: render-only frames between 60 Hz ticks on high-refresh displays.\n"
+           << "render_interpolation = "
+           << (settings.graphics.render_interpolation ? "true" : "false") << "\n"
+           << "# Native: in-game HUD magnification for high-DPI displays; 1.0 = retail\n"
+           << "# raw pixels, 0 = auto (floor(height / 1080)).\n"
+           << "hud_scale = " << decimal(settings.graphics.hud_scale) << "\n\n"
            << "[controls]\n"
            << "mouse_sensitivity = " << decimal(settings.controls.mouse_sensitivity) << "\n\n"
            << "[controls.bindings]\n"
@@ -609,6 +655,11 @@ SettingsLoadResult TomlSettingsStore::load() const {
         return result;
     }
     if (!exists) {
+        // Product decision D1 (RETAIL_PARITY_GAPS_2026-09-27): a new install
+        // starts on the Retail look -- the audited Legacy lighting equations
+        // with server fog -- and Medium is one toggle away. Existing files
+        // keep whatever tier the player saved.
+        result.settings.graphics.shader_quality = ShaderQuality::compatibility;
         result.success = true;
         return result;
     }

@@ -15,6 +15,12 @@
 
 namespace battlespades::render {
 
+/**
+ * Swap-chain queue depth passed to bgfx::Init::resolution.maxFrameLatency.
+ * bgfx's default of 3 added 2-3 frames of VSync latency (audit 2026-09-29).
+ */
+inline constexpr std::uint8_t bgfx_max_frame_latency{1U};
+
 /** Opaque native handles supplied by the platform/window adapter. */
 struct NativeWindow final {
     void* display{};
@@ -283,6 +289,21 @@ public:
 
     /** Submits the frame and advances bgfx even when the draw list is empty. */
     [[nodiscard]] bool end_frame();
+
+    /** One completed backbuffer capture: top-left-origin RGBA8 pixels. */
+    struct BackbufferCapture final {
+        std::uint32_t width{};
+        std::uint32_t height{};
+        std::vector<std::uint8_t> rgba;
+    };
+
+    /**
+     * Asks bgfx for a copy of the presented backbuffer (the screenshot key).
+     * The pixels arrive a frame or two later through take_backbuffer_capture.
+     */
+    [[nodiscard]] bool request_backbuffer_capture();
+    /** The finished capture, if one has arrived since the last call. */
+    [[nodiscard]] std::optional<BackbufferCapture> take_backbuffer_capture();
 
 private:
     struct Impl;

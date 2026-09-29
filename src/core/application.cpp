@@ -70,6 +70,45 @@ RunResult Application::run() {
             ++tick_index;
             elapsed += config_.fixed_delta;
 
+            if (config_.pace_to_wall_clock && !stop_requested && pacing.present) {
+                // Optional render-only frames for high-refresh displays. They
+                // never poll input or advance simulation, and scheduling keeps
+                // slack before the next tick so the 60 Hz cadence is intact.
+                auto period = std::chrono::nanoseconds::zero();
+                for (const auto& module : modules_) {
+                    const auto requested = module->intermediate_frame_period();
+                    if (requested > std::chrono::nanoseconds::zero() &&
+                        (period == std::chrono::nanoseconds::zero() || requested < period)) {
+                        period = requested;
+                    }
+                }
+                if (period > std::chrono::nanoseconds::zero()) {
+                    const auto tick_time = pacing.next_tick - config_.fixed_delta;
+                    auto previous_frame = FixedStepPacer::Clock::now();
+                    while (!stop_requested) {
+                        const auto slot = next_intermediate_frame(
+                            previous_frame, FixedStepPacer::Clock::now(), pacing.next_tick, period);
+                        if (!slot.has_value()) {
+                            break;
+                        }
+                        std::this_thread::sleep_until(slot->at);
+                        const auto woke = FixedStepPacer::Clock::now();
+                        if (woke + period / 4 >= pacing.next_tick) {
+                            // A coarse OS timer overslept; the tick has priority.
+                            break;
+                        }
+                        const double alpha =
+                            intermediate_frame_alpha(tick_time, woke, config_.fixed_delta);
+                        for (auto& module : modules_) {
+                            if (module->present_intermediate(alpha) == TickDecision::stop) {
+                                stop_requested = true;
+                                break;
+                            }
+                        }
+                        previous_frame = slot->at;
+                    }
+                }
+            }
             if (config_.pace_to_wall_clock && !stop_requested) {
                 std::this_thread::sleep_until(pacing.next_tick);
             }

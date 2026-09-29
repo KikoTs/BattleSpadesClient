@@ -461,38 +461,152 @@ bool constrain_player_to_bounds(PlayerMovementState& state,
         return std::isfinite(value.x) && std::isfinite(value.y) &&
                std::isfinite(value.z);
     };
-    if (!finite(state.position) || !finite(state.velocity) ||
+    if (!finite(state.position) ||
         !finite(bounds.minimum) || !finite(bounds.maximum) ||
         bounds.minimum.x > bounds.maximum.x ||
         bounds.minimum.y > bounds.maximum.y ||
         bounds.minimum.z > bounds.maximum.z) {
         return false;
     }
-    const auto constrain_axis = [](double& position,
-                                   double& velocity,
-                                   double minimum,
-                                   double maximum) {
-        if (position < minimum) {
-            position = minimum;
-            if (velocity < 0.0)
-                velocity = 0.0;
-        } else if (position > maximum) {
-            position = maximum;
-            if (velocity > 0.0)
-                velocity = 0.0;
-        }
+    // world.pyx: `min(max(p, lo), hi)` written back into the float32 vector.
+    const auto clamp_axis = [](double position, double minimum, double maximum) {
+        return f32(std::min(std::max(position, minimum), maximum));
     };
-    constrain_axis(state.position.x, state.velocity.x,
-                   bounds.minimum.x, bounds.maximum.x);
-    constrain_axis(state.position.y, state.velocity.y,
-                   bounds.minimum.y, bounds.maximum.y);
-    constrain_axis(state.position.z, state.velocity.z,
-                   bounds.minimum.z, bounds.maximum.z);
+    state.position.x = clamp_axis(state.position.x, bounds.minimum.x, bounds.maximum.x);
+    state.position.y = clamp_axis(state.position.y, bounds.minimum.y, bounds.maximum.y);
+    state.position.z = clamp_axis(state.position.z, bounds.minimum.z, bounds.maximum.z);
     return true;
 }
 
+namespace {
+
+// aoslib/vxl.pyx `get_z(x, y, start)`: the first solid voxel at or below
+// `start`, with the column top for start <= 0 and z=239 for out-of-map or
+// empty columns.
+[[nodiscard]] int retail_get_z(const VxlMap& map, int x, int y, int first) noexcept {
+    constexpr int bottom = static_cast<int>(map_height) - 1;
+    if (x < 0 || x >= static_cast<int>(map_edge) || y < 0 || y >= static_cast<int>(map_edge)) {
+        return bottom;
+    }
+    const auto solid_at = [&map, x, y](int z) {
+        return map.solid(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
+                         static_cast<std::uint32_t>(z));
+    };
+    int top = static_cast<int>(map_height);
+    for (int z = 0; z <= bottom; ++z) {
+        if (solid_at(z)) {
+            top = z;
+            break;
+        }
+    }
+    if (top >= static_cast<int>(map_height)) return bottom;
+    if (first <= 0) return top;
+    if (first >= static_cast<int>(map_height)) return bottom;
+    for (int z = first; z <= bottom; ++z) {
+        if (solid_at(z)) return z;
+    }
+    return top;
+}
+
+} // namespace
+
+std::optional<double> parachute_ground_clearance(
+    const VxlMap* map, const PlayerMovementState& state, bool crouch_input) noexcept {
+    if (map == nullptr) return std::nullopt;
+    const double feet = state.position.z +
+                        (crouch_input && !state.wade ? crouching_contact_offset
+                                                     : standing_contact_offset);
+    const int start = std::max(0, static_cast<int>(std::floor(feet)));
+    std::optional<double> best;
+    constexpr std::array<std::array<double, 2U>, 5U> probes{{
+        {0.0, 0.0},
+        {-player_radius, -player_radius},
+        {player_radius, -player_radius},
+        {-player_radius, player_radius},
+        {player_radius, player_radius},
+    }};
+    for (const auto& [dx, dy] : probes) {
+        const int ground = retail_get_z(*map,
+                                        static_cast<int>(std::floor(state.position.x + dx)),
+                                        static_cast<int>(std::floor(state.position.y + dy)),
+                                        start);
+        const double clearance = static_cast<double>(ground) - feet;
+        best = best.has_value() ? std::min(*best, clearance) : clearance;
+    }
+    return best;
+}
+
+void advance_parachute_rules(PlayerMovementState& state, bool pressed, bool can_hold,
+                             bool crouch_input, const VxlMap* map, double dt) noexcept {
+    const bool on_ground = !state.airborne || state.wade;
+    if (on_ground) state.parachute_used_this_fall = false;
+    if (on_ground || !can_hold) {
+        state.parachute_pending = false;
+        state.parachute_active = false;
+        return;
+    }
+    if (state.parachute_active) {
+        ++state.parachute_open_frames;
+        if (parachute_max_open_seconds > 0.0 &&
+            static_cast<double>(state.parachute_open_frames) * dt >= parachute_max_open_seconds) {
+            state.parachute_active = false;  // timeout
+        } else if (state.velocity.z < -parachute_max_rise_velocity) {
+            state.parachute_active = false;  // lifted
+        }
+        return;
+    }
+    if (pressed && !state.parachute_used_this_fall) state.parachute_pending = true;
+    // An ascending press stays armed for this fall; it opens only while
+    // descending and high enough, so it can neither boost a jump nor float a hop.
+    if (state.parachute_pending && state.velocity.z >= 0.0) {
+        const auto clearance = parachute_ground_clearance(map, state, crouch_input);
+        if (!clearance.has_value() || *clearance >= parachute_min_deploy_clearance) {
+            state.parachute_active = true;
+            state.parachute_open_frames = 0U;
+            state.parachute_used_this_fall = true;
+            state.parachute_pending = false;
+        }
+    }
+}
+
+void settle_parachute_after_move(PlayerMovementState& state) noexcept {
+    if (state.airborne && !state.wade) return;
+    state.parachute_active = false;
+    state.parachute_pending = false;
+    state.parachute_used_this_fall = false;
+}
+
+int parachute_landing_damage(double pre_move_vz, bool canopy_physics, double dt,
+                             double world_gravity, const MovementClassConfig& movement_class,
+                             double landed_z) noexcept {
+    const double gravity = std::isfinite(world_gravity) ? world_gravity : default_world_gravity;
+    if (!(dt > 0.0) || !std::isfinite(dt)) dt = 1.0 / 60.0;
+    if (gravity <= 0.0) return 0;
+    const double factor = canopy_physics ? 0.05000000074505806 : 1.0;
+    const double landing_speed = (pre_move_vz + dt * gravity * factor) / (1.0 + dt);
+    if (!(landing_speed > 0.0)) return 0;
+    double velocity{};
+    double distance{};
+    for (int frame = 0; frame < 1800; ++frame) {
+        velocity = (velocity + dt * gravity) / (1.0 + dt);
+        if (velocity >= landing_speed) break;
+        distance += velocity * dt * physics_scale;
+    }
+    const double fall = distance * gravity;
+    const double minimum = movement_class.falling_damage_min_distance;
+    const double maximum = movement_class.falling_damage_max_distance;
+    const double span = maximum - minimum;
+    double ratio = span > 0.0 ? (fall - minimum) / span : (fall >= maximum ? 1.0 : 0.0);
+    ratio = std::clamp(ratio, 0.0, 1.0);
+    auto damage = static_cast<int>(movement_class.falling_damage_max_damage * ratio);
+    if (landed_z > 237.0) {
+        damage = static_cast<int>(damage * movement_class.fall_on_water_damage_multiplier);
+    }
+    return damage;
+}
+
 MovementClassConfig movement_config_for_class(
-    std::uint8_t class_id, double movement_speed_scale) noexcept {
+    std::uint8_t class_id, double movement_speed_scale, bool fall_on_water_damage) noexcept {
     auto result = class_id < class_movement_profiles.size()
                       ? class_movement_profiles[class_id]
                       : class_movement_profiles[0U];
@@ -502,6 +616,7 @@ MovementClassConfig movement_config_for_class(
     result.accel_multiplier *= movement_speed_scale;
     result.sprint_multiplier *= movement_speed_scale;
     result.crouch_sneak_multiplier *= movement_speed_scale;
+    if (!fall_on_water_damage) result.fall_on_water_damage_multiplier = 0.0;
     return result;
 }
 
@@ -565,7 +680,8 @@ MovementStepResult step_player(PlayerMovementState& state, const PlayerInputStat
                                const VxlMap* map, double dt,
                                const MovementClassConfig& movement_class,
                                std::span<const PlayerCollisionBody> collision_bodies,
-                               double world_gravity) {
+                               double world_gravity,
+                               const PlayerMovementBounds* lock_box) {
     dt = f32(dt);
     const double gravity = f32(std::isfinite(world_gravity) && world_gravity > 0.0 &&
                                    world_gravity <= 8.0 ? world_gravity : default_world_gravity);
@@ -658,6 +774,9 @@ MovementStepResult step_player(PlayerMovementState& state, const PlayerInputStat
     const double fall_delta = f32(state.position.z - move_start_z);
     if (fall_delta > 0.0) state.fall_distance = f32(f32(state.fall_distance) + fall_delta);
     else if (fall_delta < -0.1) state.fall_distance = 0.0;
+    // world.pyx lock_box (LockToZone, packet 108): position only, right after
+    // the fall bookkeeping and before the climb timer and z=238 clamp.
+    if (lock_box != nullptr) static_cast<void>(constrain_player_to_bounds(state, *lock_box));
     if (moved.climbed) state.climb_timer = static_cast<double>(0.1F);
     state.climb_timer = std::max(0.0, f32(f32(state.climb_timer) - dt));
     state.airborne = moved.airborne;

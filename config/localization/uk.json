@@ -46,6 +46,12 @@
     "FRIENDS + LOBBY": "Друзі + Лобі",
     "SHOW_SKINS": "Показувати скіни",
     "SHOW_OTHER_SKINS": "Показувати скіни інших гравців",
-    "WEAPON_MOTION": "Рух зброї"
+    "WEAPON_MOTION": "Рух зброї",
+    "ABILITY_HINTS": "Підказки вмінь",
+    "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашут розкрито",
+    "ABILITY_HINT_PARACHUTE_PENDING": "Парашут розкриється під час зниження",
+    "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: розкрити парашут у повітрі",
+    "ABILITY_HINT_JETPACK": "{0}: тяга",
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; відпустіть і приземліться для перезарядки"
   }
 }

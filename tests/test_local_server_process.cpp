@@ -226,6 +226,53 @@ void native_status_rejects_foreign_partial_and_oversized_snapshots() {
     fs::remove_all(root);
 }
 
+void hosts_an_authored_map_from_a_private_maps_directory() {
+    namespace fs = std::filesystem;
+    using namespace battlespades::platform;
+    LocalServerLaunchConfig config;
+    config.mode = "tdm";
+    config.map_name = "Custommap_2";
+    const auto stock = build_local_server_toml(config, 27015U);
+    expect(!stock.empty() && stock.find("[world]") == std::string::npos &&
+               stock.find("maps_path") == std::string::npos,
+           "stock maps must keep the bundle's own map catalog");
+    config.maps_path = fs::path{"C:/sessions/abc/maps"};
+    const auto custom = build_local_server_toml(config, 27015U);
+    expect(custom.find("[world]\nmaps_path = \"C:/sessions/abc/maps\"") != std::string::npos &&
+               custom.find("default_map = \"Custommap_2\"") != std::string::npos &&
+               custom.find("map_rotation = [\"Custommap_2\"]") != std::string::npos,
+           "an authored map must be served from the session maps directory");
+    config.program = LocalServerProgram::map_creator;
+    expect(build_local_server_toml(config, 27015U).empty(),
+           "the map catalog redirect is exclusive to Create Match hosting");
+
+    const auto root = fs::temp_directory_path() / ("custom-map-" + std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(root);
+    try {
+        std::vector<fs::path> files;
+        for (const auto extension : {".vxl", ".txt", ".ugc"}) {
+            files.push_back(root / (std::string{"Custommap_2"} + extension));
+            std::ofstream{files.back()} << "data";
+        }
+        expect(validate_custom_map_files("Custommap_2", files).empty(),
+               "a complete .vxl/.txt/.ugc triplet must be accepted");
+        expect(!validate_custom_map_files("Other", files).empty(),
+               "files named for another map must be rejected");
+        expect(!validate_custom_map_files("../Custommap_2", files).empty(),
+               "a path-like map name must be rejected");
+        auto missing = files;
+        missing.pop_back();
+        expect(!validate_custom_map_files("Custommap_2", missing).empty(),
+               "a map without its .ugc sidecar must be rejected");
+        auto duplicate = files;
+        duplicate.push_back(files.front());
+        expect(!validate_custom_map_files("Custommap_2", duplicate).empty(),
+               "duplicate file types must be rejected");
+    } catch (...) { fs::remove_all(root); throw; }
+    fs::remove_all(root);
+}
+
 void rejects_untrusted_mode_and_rule_names() {
     battlespades::platform::LocalServerLaunchConfig config;
     config.mode = "../server";
@@ -464,12 +511,18 @@ exit 0
 int main(int argc, char** argv) {
     if (argc == 4 && std::string_view{argv[1]} == "--config" &&
         std::string_view{argv[3]} == "--control-stdin") return fixture_child(argv[2]);
+    // These tests exercise process ownership, not public reachability. A
+    // loopback probe keeps Windows Firewall from prompting for every new
+    // build directory's copy of this executable.
+    battlespades::platform::set_local_server_port_probe(
+        battlespades::platform::LocalServerPortProbe::loopback_only);
     try {
         move_assignment_stops_replaced_child_and_moved_from_owner_restarts(std::filesystem::absolute(argv[0]));
         native_status_rejects_foreign_partial_and_oversized_snapshots();
         discovers_the_newest_executable_in_complete_release_layouts();
         serializes_one_disposable_match_without_public_services();
         rejects_untrusted_mode_and_rule_names();
+        hosts_an_authored_map_from_a_private_maps_directory();
         serializes_the_isolated_map_creator_program();
         enables_public_identity_only_for_a_complete_relay_contract();
 #if !defined(_WIN32)

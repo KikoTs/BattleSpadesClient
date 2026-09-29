@@ -20,16 +20,8 @@ namespace {
     return static_cast<float>(mix(seed) & 0xFFFFU) / 65535.0F;
 }
 
-[[nodiscard]] float random_signed(std::uint32_t seed) noexcept {
-    return random_unit(seed) * 2.0F - 1.0F;
-}
-
 [[nodiscard]] std::uint32_t cell_seed(const VoxelCell& cell) noexcept {
     return mix(cell.x ^ (cell.y << 9U) ^ (cell.z << 18U));
-}
-
-[[nodiscard]] constexpr bool is_rocket_tool(std::uint8_t tool) noexcept {
-    return tool == 12U || tool == 13U || tool == 46U;
 }
 
 [[nodiscard]] std::array<float, 3U> face_offset_position(
@@ -150,35 +142,26 @@ void emit_player_blood(ParticleSystem& particles,
 void emit_entity_hit(ParticleSystem& particles,
                      std::array<float, 3U> position,
                      std::uint32_t seed) {
-    ParticleSpawn sparks;
-    sparks.position = position;
-    sparks.color = VxlColor{255U, 211U, 104U, 255U};
-    sparks.explode_velocity = 0.07F;
-    sparks.size_begin = 0.16F;
-    sparks.size_end = 0.03F;
-    sparks.alpha_begin = 1.0F;
-    sparks.alpha_end = 0.0F;
-    sparks.rotation_speed = 480.0F;
-    sparks.lifetime = 0.28F;
-    sparks.gravity_scale = 0.35F;
-    sparks.atlas = ParticleAtlas::glow_cube;
-    sparks.blend = ParticleBlend::additive;
-    sparks.loop = false;
-    sparks.collide = false;
-    particles.emit_burst(sparks, 6U, seed);
-
-    ParticleSpawn chip = sparks;
-    chip.color = VxlColor{116U, 116U, 110U, 255U};
-    chip.explode_velocity = 0.035F;
-    chip.size_begin = 0.22F;
-    chip.size_end = 0.10F;
-    chip.alpha_end = 1.0F;
-    chip.lifetime = 0.55F;
+    // Retail Entity.hit (scenes/main/entity.py:76-79):
+    // create_particle_effect(None, pos, None, (127,127,127), 5, 0.25,
+    // size=2.0) -- the blood composition in neutral grey. Native particle
+    // size is the authored size times 0.1.
+    ParticleSpawn chip;
+    chip.position = position;
+    chip.color = VxlColor{127U, 127U, 127U, 255U};
+    chip.explode_velocity = 0.25F;
+    chip.size_begin = 0.20F;
+    chip.size_end = 0.0F;
+    chip.alpha_begin = 1.0F;
+    chip.alpha_end = 0.0F;
+    chip.rotation_degrees = 180.0F;
+    chip.rotation_speed = 0.0F;
+    chip.lifetime = 2.0F;
     chip.gravity_scale = 1.0F;
     chip.atlas = ParticleAtlas::tumbling_cube;
     chip.blend = ParticleBlend::alpha;
     chip.collide = true;
-    particles.emit_burst(chip, 3U, seed ^ 0xA05B168U);
+    particles.emit_burst(chip, 5U, seed);
 }
 
 void emit_crate_pickup(ParticleSystem& particles,
@@ -214,6 +197,37 @@ void emit_crate_pickup(ParticleSystem& particles,
     particles.emit_burst(twinkle, 25U, seed);
 }
 
+void emit_diamond_pickup(ParticleSystem& particles,
+                         std::array<float, 3U> position,
+                         std::uint32_t seed) {
+    // DiamondPickup.on_delete (gameScene diamond.py:30-40) with the
+    // DIAMOND_PICKUP_FX_* constants: 50, vertical .08, explosion .07, size 5,
+    // rotation speed 180, lifetime 2, 4x4 at 30 fps, additive, no
+    // gravity/collision. Same particle_pickup_twinkle atlas as Crate.delete.
+    ParticleSpawn twinkle;
+    twinkle.position = position;
+    twinkle.velocity = {0.0F, 0.0F, -0.08F};
+    twinkle.explode_velocity = 0.07F;
+    twinkle.color = VxlColor{255U, 255U, 255U, 255U};
+    twinkle.size_begin = 0.50F;
+    twinkle.size_end = 0.0F;
+    twinkle.alpha_begin = 1.0F;
+    twinkle.alpha_end = 0.0F;
+    twinkle.rotation_degrees = 0.0F;
+    twinkle.rotation_speed = 180.0F;
+    twinkle.lifetime = 2.0F;
+    twinkle.gravity_scale = 0.0F;
+    twinkle.atlas = ParticleAtlas::pickup_twinkle;
+    twinkle.blend = ParticleBlend::additive;
+    twinkle.frames_x = 4U;
+    twinkle.frames_y = 4U;
+    twinkle.start_frame = 0U;
+    twinkle.framerate = 30U;
+    twinkle.loop = false;
+    twinkle.collide = false;
+    particles.emit_burst(twinkle, 50U, seed);
+}
+
 void emit_block_placement(ParticleSystem& particles,
                           PrefabPlacementCell cell,
                           VxlColor color,
@@ -229,8 +243,8 @@ void emit_block_placement(ParticleSystem& particles,
         static_cast<std::uint8_t>((static_cast<std::uint16_t>(color.blue) + 176U) / 2U),
         180U};
     puff.explode_velocity = 0.035F;
-    puff.size_begin = 0.22F;
-    puff.size_end = 0.48F;
+    puff.size_begin = 0.11F;
+    puff.size_end = 0.24F;
     puff.alpha_begin = 0.50F;
     puff.alpha_end = 0.0F;
     puff.lifetime = 0.42F;
@@ -275,8 +289,8 @@ void emit_jetpack_death_thruster(ParticleSystem& particles,
                       0.12F - corpse_velocity[2U] * 0.015F};
     flame.color = VxlColor{255U, 185U, 62U, 255U};
     flame.explode_velocity = 0.035F;
-    flame.size_begin = 0.28F;
-    flame.size_end = 0.08F;
+    flame.size_begin = 0.14F;
+    flame.size_end = 0.04F;
     flame.alpha_begin = 1.0F;
     flame.alpha_end = 0.0F;
     flame.lifetime = 0.24F;
@@ -293,8 +307,8 @@ void emit_jetpack_death_thruster(ParticleSystem& particles,
                       0.08F - corpse_velocity[2U] * 0.02F};
     smoke.color = VxlColor{155U, 150U, 140U, 190U};
     smoke.explode_velocity = 0.02F;
-    smoke.size_begin = 0.22F;
-    smoke.size_end = 0.85F;
+    smoke.size_begin = 0.11F;
+    smoke.size_end = 0.425F;
     smoke.alpha_begin = 0.65F;
     smoke.lifetime = 0.75F;
     smoke.atlas = ParticleAtlas::smoke_trail;
@@ -339,17 +353,74 @@ void emit_jetpack_flight_exhaust(ParticleSystem& particles,
     particles.emit_burst(smoke, 2U, seed);
 }
 
+namespace {
+
+/**
+ * One retail explosion recipe: the GlowBlockParticles.create count plus the
+ * create_particle_effect(None, pos, None, colour, count, explode_velocity,
+ * size, ...) debris call made by the same delete/update handler.
+ */
+struct ExplosionRecipe final {
+    std::uint32_t glow_count;
+    std::uint32_t debris_count;
+    float debris_explode_velocity;
+    /** Authored size; draw.pyd renders it *0.1 as a quad half-extent. */
+    float debris_authored_size;
+    float debris_lifetime;
+};
+
+[[nodiscard]] constexpr ExplosionRecipe explosion_recipe(std::uint8_t tool) noexcept {
+    switch (tool) {
+    // Grenade.update (gameScene 0x100AE790): glow_block_particles.create(8,
+    // pos) then create_particle_effect(None, pos, None, colour, 10, 1.3,
+    // 5.0) -- every later argument is the default, so lifetime is 2.0.
+    // GRENADE_TOOL, CLASSIC_GRENADE_TOOL, ANTIPERSONNEL_GRENADE_TOOL.
+    case 11U:
+    case 31U:
+    case 32U:
+        return {8U, 10U, 1.3F, 5.0F, 2.0F};
+    // LandmineEntity.on_delete 0x100A8E00, DynamiteEntity.on_delete
+    // 0x100AC230, Drill.delete 0x100C5C30, C4Entity.on_delete 0x100EBA90:
+    // create(8) + (10, 1.5, 5.0), default lifetime 2.0.
+    case 14U:
+    case 20U:
+    case 21U:
+    case 47U:
+    case 59U:
+        return {8U, 10U, 1.5F, 5.0F, 2.0F};
+    // BombPickup.explode 0x100D4980: create(12) + (15, 1.3, 10.0).
+    case 25U:
+        return {12U, 15U, 1.3F, 10.0F, 2.0F};
+    // ExplodeOnImpactEntity.on_delete (explodeOnImpactEntity.py:69-72), whose
+    // one subclass is the GLGrenade: create(4) + the Rocket debris call.
+    case 55U:
+        return {4U, 10U, 1.0F, 10.0F, 1.0F};
+    // Rocket.delete 0x100B5F60 / Rocket2.delete 0x100BC150 (rocket.py:83-86):
+    // create(8) + (10, 1.0, 10.0, 180, 0, True, 1.0, 1.0, 0, 8, 8, random,
+    // 1, 30, True). Also the fallback for unrecovered sources.
+    default:
+        return {8U, 10U, 1.0F, 10.0F, 1.0F};
+    }
+}
+
+} // namespace
+
 void emit_explosion(ParticleSystem& particles, const TerrainImpactEvent& impact) {
     const auto origin = terrain_impact_position(impact);
     const auto seed = cell_seed(impact.cell);
-    // Rocket.delete creates eight glow blocks; ExplodeOnImpactEntity creates
-    // four. The flight trail already exists on the projectile and must not be
-    // fabricated again as six impact smoke fingers.
+    const auto recipe = explosion_recipe(impact.source_tool);
+    // The flight trail already exists on the projectile and must not be
+    // fabricated again as impact smoke fingers.
     ParticleSpawn glow;
     glow.position = origin;
     glow.color = VxlColor{255U, 255U, 255U, 255U};
-    // GlowBlockParticles.create forwards explode_velocity=1 and size=10 to
-    // the same native particle constructor as the terrain-colour cubes.
+    // GlowBlockParticles.create (gameScene 0x10067230) builds a 22-tuple for
+    // create_particle_effect_with_lut: particle_glow_block, particle_lut_image,
+    // pos, None, (255,255,255), n, explode_velocity 1.0, size 10.0, rotation
+    // 180, rotation speed 0, collision True, decay 1.0, lifetime 1.0, start
+    // frame 0 (random), 8x8, randint(0,1), loop 1, 30 fps, gravity True,
+    // ALPHA_BLEND_MODE_BLEND, GLOW_SMOKE_TRAIL_SPAWN_POINT. It is the same for
+    // every caller; only n changes.
     glow.explode_velocity = 1.0F;
     glow.size_begin = 1.0F;
     glow.size_end = 0.0F;
@@ -359,31 +430,25 @@ void emit_explosion(ParticleSystem& particles, const TerrainImpactEvent& impact)
     glow.alpha_end = 1.0F;
     glow.rotation_degrees = 180.0F;
     glow.lifetime = 1.0F;
+    // gravity True: the parents arc under the StateData world gravity (the
+    // native particle gravity global is set from world.get_gravity()).
+    glow.gravity_scale = 1.0F;
     glow.atlas = ParticleAtlas::glow_cube;
-    // gameScene.pyd GlowBlockParticles.create calls the LUT variant with
-    // particle_glow_block + particle_lut_image. draw.pyd feeds remaining
-    // lifetime into the LUT's y coordinate; this is the retail yellow/orange
-    // fire cloud, not an authored orange tint or additive glow.
     glow.color_mode = ParticleColorMode::glow_lut;
     glow.blend = ParticleBlend::alpha;
     // GlowBlockParticles chooses one direction for the complete emission.
     glow.forward_animate = (mix(seed + 19U) & 1U) != 0U;
     glow.collide = true;
-    // Recovered gameScene.pyd passes GLOW_SMOKE_TRAIL_SPAWN_POINT as the
-    // final create_particle_effect_with_lut argument. draw.pyd invokes that
-    // child emitter once after every parent update; these are the radial
-    // yellow/white plumes visible around a retail rocket impact.
+    // draw.pyd invokes the spawn-point child emitter once after every parent
+    // update; these are the fluffy fire plumes along each arc.
     glow.child_emitter = ParticleChildEmitter::glow_smoke_trail;
-    const std::uint32_t glow_count = is_rocket_tool(impact.source_tool) ? 8U : 4U;
-    particles.emit_burst(glow, glow_count, seed + 19U);
+    particles.emit_burst(glow, recipe.glow_count, seed + 19U);
 
-    // create_particle_effect(None, pos, None, map_colour, 10, 1.0, 10.0,
-    // 180, 0, True, 1.0, 1.0, 0, 8, 8, random, 1, 30, True)
     ParticleSpawn debris;
     debris.position = origin;
     debris.color = impact.color;
-    debris.explode_velocity = 1.0F;
-    debris.size_begin = 1.0F;
+    debris.explode_velocity = recipe.debris_explode_velocity;
+    debris.size_begin = recipe.debris_authored_size * 0.1F;
     debris.size_end = 0.0F;
     debris.alpha_begin = 1.0F;
     // particle_frag multiplies the atlas by a constant gl_Color. Remaining
@@ -391,12 +456,13 @@ void emit_explosion(ParticleSystem& particles, const TerrainImpactEvent& impact)
     debris.alpha_end = 1.0F;
     debris.rotation_degrees = 180.0F;
     debris.rotation_speed = 0.0F;
-    debris.lifetime = 1.0F;
+    debris.lifetime = recipe.debris_lifetime;
+    debris.gravity_scale = 1.0F;
     debris.atlas = ParticleAtlas::tumbling_cube;
     debris.blend = ParticleBlend::alpha;
     debris.forward_animate = (mix(seed + 89U) & 1U) != 0U;
     debris.collide = true;
-    particles.emit_burst(debris, 10U, seed + 89U);
+    particles.emit_burst(debris, recipe.debris_count, seed + 89U);
 }
 
 void emit_corpse_explosion(ParticleSystem& particles,
@@ -491,7 +557,7 @@ void emit_grave_explosion(ParticleSystem& particles,
     chunks.color = impact.color;
     chunks.explode_velocity = 0.085F;
     chunks.velocity = {0.0F, 0.0F, -0.055F};
-    chunks.size_begin = 0.34F;
+    chunks.size_begin = 0.17F;
     chunks.size_end = 0.0F;
     chunks.alpha_begin = 1.0F;
     chunks.alpha_end = 0.0F;
@@ -505,7 +571,7 @@ void emit_grave_explosion(ParticleSystem& particles,
     ParticleSpawn dark_chunks = chunks;
     dark_chunks.color = VxlColor{48U, 43U, 40U, 255U};
     dark_chunks.explode_velocity = 0.105F;
-    dark_chunks.size_begin = 0.26F;
+    dark_chunks.size_begin = 0.13F;
     dark_chunks.lifetime = 0.95F;
     particles.emit_burst(dark_chunks, 10U, seed + 41U);
 }
@@ -533,8 +599,8 @@ void emit_weapon_muzzle(ParticleSystem& particles,
                       direction[2U] * 0.018F};
     flash.color = VxlColor{255U, 228U, 150U, 255U};
     flash.explode_velocity = 0.012F;
-    flash.size_begin = 0.34F;
-    flash.size_end = 0.03F;
+    flash.size_begin = 0.17F;
+    flash.size_end = 0.015F;
     flash.alpha_begin = 1.0F;
     flash.alpha_end = 0.0F;
     flash.lifetime = 0.075F;
@@ -552,8 +618,8 @@ void emit_weapon_muzzle(ParticleSystem& particles,
     ParticleSpawn smoke = flash;
     smoke.color = VxlColor{92U, 88U, 82U, 255U};
     smoke.explode_velocity = 0.006F;
-    smoke.size_begin = 0.18F;
-    smoke.size_end = 0.62F;
+    smoke.size_begin = 0.09F;
+    smoke.size_end = 0.31F;
     smoke.alpha_begin = 0.34F;
     smoke.lifetime = 0.28F;
     smoke.atlas = ParticleAtlas::smoke_trail;
@@ -565,56 +631,50 @@ void emit_weapon_muzzle(ParticleSystem& particles,
     particles.emit(smoke);
 }
 
-void emit_structure_burst(ParticleSystem& particles,
-                          std::span<const FallingVoxel> component,
-                          std::array<float, 3U> presented_position,
-                          std::array<float, 3U> source_pivot,
-                          std::array<float, 3U> rotation_degrees,
-                          std::uint32_t seed,
-                          float lifetime) {
+void emit_falling_blocks_breakup(ParticleSystem& particles,
+                                 std::span<const FallingVoxel> component,
+                                 std::array<float, 3U> presented_position,
+                                 std::array<float, 3U> source_pivot,
+                                 std::array<float, 3U> rotation_degrees,
+                                 std::array<float, 3U> body_velocity,
+                                 std::uint32_t seed) {
     if (component.empty()) {
         return;
     }
-    const std::size_t emitted =
-        std::min<std::size_t>(component.size(), falling_particle_maximum);
-    const float bounded_lifetime = std::clamp(lifetime, 0.25F, 1.2F);
-    for (std::size_t index{}; index < emitted; ++index) {
+    const auto mod = std::max<std::size_t>(1U, falling_blocks_particle_mod(component.size()));
+    for (std::size_t index{}; index < component.size(); index += mod) {
         const auto& voxel = component[index];
-        const auto particle_seed =
-            mix(seed ^ static_cast<std::uint32_t>(index * 0x9E3779B9U));
+        // The spawn_debris composition with the FallingBlocks arguments:
+        // count 5, explode_velocity 0.125, authored size 5.0 (native * 0.1),
+        // default lifetime 2, rotation 180, gravity, collision.
         ParticleSpawn chip;
         chip.position = transformed_voxel_center(
             voxel, presented_position, source_pivot, rotation_degrees);
         chip.color = voxel.color;
-        // emit() does not apply explode_velocity (only emit_burst() does), so
-        // write the kick explicitly. This fixes the old vertical-only burst
-        // and makes every block visibly jump away from its source position.
-        chip.velocity = {
-            random_signed(particle_seed) * 0.085F,
-            random_signed(particle_seed + 1U) * 0.085F,
-            -0.10F - random_unit(particle_seed + 2U) * 0.12F};
-        // The retail tumbling-block atlas is the inexpensive "block image".
-        // Start at voxel scale, then shrink and fade continuously to nothing.
-        chip.size_begin = 1.0F;
+        chip.velocity = {-body_velocity[0U], -body_velocity[1U], -body_velocity[2U]};
+        chip.explode_velocity = 0.125F;
+        chip.size_begin = 0.5F;
         chip.size_end = 0.0F;
         chip.alpha_begin = 1.0F;
         chip.alpha_end = 0.0F;
-        chip.rotation_degrees = random_unit(particle_seed + 3U) * 360.0F;
-        chip.rotation_speed = 240.0F + random_unit(particle_seed + 4U) * 300.0F;
-        chip.lifetime = bounded_lifetime;
+        chip.rotation_degrees = 180.0F;
+        chip.rotation_speed = 0.0F;
+        chip.lifetime = 2.0F;
+        chip.gravity_scale = 1.0F;
         chip.atlas = ParticleAtlas::tumbling_cube;
         chip.blend = ParticleBlend::alpha;
         chip.collide = true;
-        particles.emit(chip);
+        particles.emit_burst(chip, 5U,
+                             mix(seed ^ static_cast<std::uint32_t>(index * 0x9E3779B9U)));
     }
 }
 
 void emit_projectile_trail(ParticleSystem& particles,
                            std::array<float, 3U> position,
                            std::array<float, 3U> velocity, std::uint32_t seed) {
-    // The caller supplies the rendered exhaust point, not the packet anchor.
-    // This keeps the first puff physically joined to the rotated rocket while
-    // older puffs form the trail. It grows as it ages and never collides.
+    // The caller supplies Rocket.update's anchor: the rocket position plus
+    // 0.5 z (not the rendered exhaust). It grows as it ages and never
+    // collides.
     const float length = std::sqrt(velocity[0U] * velocity[0U] +
                                    velocity[1U] * velocity[1U] +
                                    velocity[2U] * velocity[2U]);
@@ -642,7 +702,13 @@ void emit_projectile_trail(ParticleSystem& particles,
     // decay_rate=-1 gives size(t)=base*.1*(1+age/lifetime).
     puff.size_end = puff.size_begin * 2.0F;
     puff.alpha_begin = 1.0F;
-    puff.alpha_end = 0.0F;
+    // draw.pyd never fades a tinted particle: sub_1000BDD0 stores the RGBA
+    // once (this[6..9]) and sub_10033D70 only reads it, so particle_frag's
+    // gl_Color alpha stays 255 for the whole 2.5 s. The puff thins out only
+    // through the SmokeTrail atlas (60 fps from frame 1, non-looping). The
+    // old remaining-life fade made the RPG back-blast a small lumpy puff
+    // instead of retail's one big soft cloud.
+    puff.alpha_end = 1.0F;
     puff.rotation_degrees = 160.0F + random_unit(seed) * 40.0F;
     puff.rotation_speed = 0.0F;
     puff.lifetime = 2.5F;
@@ -677,7 +743,8 @@ void emit_block_cannon_trail(ParticleSystem& particles,
     puff.rotation_speed = 27.0F;
     puff.lifetime = 0.5F;
     puff.gravity_scale = 0.0F;
-    puff.atlas = ParticleAtlas::smoke_trail;
+    // Snow uses retail's particle_snowke_trail sheet, not the smoke sheet.
+    puff.atlas = ParticleAtlas::snowke_trail;
     puff.blend = ParticleBlend::premultiplied;
     puff.framerate = 60U;
     puff.loop = false;
@@ -702,8 +769,8 @@ void emit_block_sucker_debris(ParticleSystem& particles,
                       (barrel_position[2U] - source[2U]) / travel_ticks};
     chunk.color = impact.color;
     chunk.explode_velocity = 0.012F;
-    chunk.size_begin = 0.18F;
-    chunk.size_end = 0.08F;
+    chunk.size_begin = 0.09F;
+    chunk.size_end = 0.04F;
     chunk.alpha_begin = 1.0F;
     chunk.alpha_end = 0.18F;
     chunk.rotation_speed = 660.0F;
@@ -715,6 +782,164 @@ void emit_block_sucker_debris(ParticleSystem& particles,
     chunk.loop = true;
     chunk.collide = false;
     particles.emit_burst(chunk, 8U, seed);
+}
+
+void emit_lut_smoke(ParticleSystem& particles,
+                    std::array<float, 3U> position,
+                    const LutSmokeParameters& parameters,
+                    std::uint32_t seed) {
+    const float size =
+        (parameters.min_size + random_unit(seed) * (parameters.max_size - parameters.min_size)) *
+        0.1F;
+    const float speed =
+        parameters.min_speed +
+        random_unit(seed ^ 0x5EEDU) * (parameters.max_speed - parameters.min_speed);
+    ParticleSpawn puff;
+    puff.position = position;
+    // draw.pyd stores random_direction*explode_velocity - supplied_velocity;
+    // retail supplies (0,0,+speed), so the stored puff drifts toward -z (up).
+    puff.velocity = {0.0F, 0.0F, -speed};
+    if (parameters.per_axis_speed) {
+        const auto axis_speed = [&](std::uint32_t salt) {
+            return parameters.min_speed +
+                   random_unit(seed ^ salt) * (parameters.max_speed - parameters.min_speed);
+        };
+        puff.velocity = {-axis_speed(0x0A15U), -axis_speed(0x0B15U), -speed};
+    }
+    puff.color = VxlColor{255U, 255U, 255U, 255U};
+    puff.size_begin = size;
+    // decay_rate -1: size(t) = base * (1 + age/lifetime).
+    puff.size_end = size * 2.0F;
+    puff.alpha_begin = 1.0F;
+    puff.alpha_end = 0.0F;
+    puff.rotation_degrees = 160.0F + random_unit(seed ^ 0xA11CEU) * 40.0F;
+    puff.rotation_speed = 0.0F;
+    puff.lifetime = parameters.lifetime;
+    puff.gravity_scale = 0.0F;
+    puff.atlas = ParticleAtlas::smoke_trail;
+    puff.blend = ParticleBlend::alpha;
+    puff.color_mode = ParticleColorMode::smoke_lut;
+    puff.frames_x = 8U;
+    puff.frames_y = 8U;
+    puff.start_frame = 1U;
+    puff.framerate = 30U;
+    puff.forward_animate = true;
+    puff.loop = false;
+    puff.collide = false;
+    particles.emit(puff);
+}
+
+void emit_smoke_ring(ParticleSystem& particles,
+                     std::array<float, 3U> position,
+                     bool snowke,
+                     std::uint32_t seed,
+                     float radius,
+                     const VxlMap* map) {
+    if (snowke) {
+        emit_snowke_ring(particles, position, VxlColor{255U, 255U, 255U, 255U}, seed, radius);
+        return;
+    }
+    constexpr std::uint32_t ring_count{8U};  // SMOKE_RING_NOOF
+    constexpr float ring_lifetime{1.0F};     // SMOKE_RING_LIFETIME
+    constexpr float particle_min{3.0F};      // SMOKE_RING_PARTICLE_SIZE_MIN
+    constexpr float particle_max{10.0F};     // SMOKE_RING_PARTICLE_SIZE_MAX
+    for (std::uint32_t index{}; index < ring_count; ++index) {
+        const auto particle_seed = mix(seed ^ (index * 0x9E3779B9U));
+        // create_smoke_ring (gameScene 0x10189350): a = i * 2pi / NOOF,
+        // x += sin(a) * radius, y += cos(a) * radius.
+        const float angle = (static_cast<float>(index) / static_cast<float>(ring_count)) *
+                            6.28318530717958647692F;
+        const float size =
+            (particle_min + random_unit(particle_seed) * (particle_max - particle_min)) * 0.1F;
+        ParticleSpawn puff;
+        puff.position = {position[0U] + std::sin(angle) * radius,
+                         position[1U] + std::cos(angle) * radius, position[2U]};
+        // colour = map.get_point(x, y, z): the voxel under that ring point.
+        puff.color = VxlColor{255U, 255U, 255U, 255U};
+        if (map != nullptr) {
+            const auto cell_x = std::floor(puff.position[0U]);
+            const auto cell_y = std::floor(puff.position[1U]);
+            const auto cell_z = std::floor(puff.position[2U]);
+            if (cell_x >= 0.0F && cell_y >= 0.0F && cell_z >= 0.0F) {
+                if (const auto color = map->color(static_cast<std::uint32_t>(cell_x),
+                                                  static_cast<std::uint32_t>(cell_y),
+                                                  static_cast<std::uint32_t>(cell_z));
+                    color.has_value()) {
+                    puff.color = VxlColor{color->red, color->green, color->blue, 255U};
+                }
+            }
+        }
+        // numparticles 1, velocity None, initial_rotation 180,
+        // rotation_speed 0, decay_rate -1 (size doubles over the life),
+        // start_frame 1, 8x8 frames, forward, no loop, framerate 60, no
+        // collision and no gravity.
+        puff.velocity = {};
+        puff.size_begin = size;
+        puff.size_end = size * 2.0F;
+        puff.alpha_begin = 1.0F;
+        puff.alpha_end = 0.0F;
+        puff.rotation_degrees = 180.0F;
+        puff.rotation_speed = 0.0F;
+        puff.lifetime = ring_lifetime;
+        puff.gravity_scale = 0.0F;
+        puff.atlas = snowke ? ParticleAtlas::snowke_trail : ParticleAtlas::smoke_trail;
+        puff.blend = ParticleBlend::alpha;
+        puff.color_mode = snowke ? ParticleColorMode::tinted : ParticleColorMode::smoke_lut;
+        puff.frames_x = 8U;
+        puff.frames_y = 8U;
+        puff.start_frame = 1U;
+        puff.framerate = 60U;
+        puff.forward_animate = true;
+        puff.loop = false;
+        puff.collide = false;
+        particles.emit(puff);
+    }
+}
+
+void emit_snowke_ring(ParticleSystem& particles,
+                      std::array<float, 3U> position,
+                      VxlColor color,
+                      std::uint32_t seed,
+                      float radius) {
+    // GameScene.create_snowke_ring (gameScene 0x102415D0): six points at 60
+    // degree steps around the caller's cell, pos + (sin(a)*r + 0.5,
+    // cos(a)*r + 0.5, +1.0), size uniform(4, 7), in the caller's colour.
+    constexpr std::uint32_t ring_count{6U};
+    constexpr float particle_min{4.0F};
+    constexpr float particle_max{7.0F};
+    const std::array<float, 3U> cell{std::floor(position[0U]), std::floor(position[1U]),
+                                     std::floor(position[2U])};
+    for (std::uint32_t index{}; index < ring_count; ++index) {
+        const auto particle_seed = mix(seed ^ (index * 0x9E3779B9U));
+        const float angle = (static_cast<float>(index) / static_cast<float>(ring_count)) *
+                            6.28318530717958647692F;
+        const float size =
+            (particle_min + random_unit(particle_seed) * (particle_max - particle_min)) * 0.1F;
+        ParticleSpawn puff;
+        puff.position = {cell[0U] + std::sin(angle) * radius + 0.5F,
+                         cell[1U] + std::cos(angle) * radius + 0.5F, cell[2U] + 1.0F};
+        puff.color = VxlColor{color.red, color.green, color.blue, 255U};
+        puff.velocity = {};
+        puff.size_begin = size;
+        puff.size_end = size * 2.0F;
+        puff.alpha_begin = 1.0F;
+        puff.alpha_end = 1.0F;
+        puff.rotation_degrees = 180.0F;
+        puff.rotation_speed = 0.0F;
+        puff.lifetime = 1.0F;
+        puff.gravity_scale = 0.0F;
+        puff.atlas = ParticleAtlas::snowke_trail;
+        puff.blend = ParticleBlend::alpha;
+        puff.color_mode = ParticleColorMode::tinted;
+        puff.frames_x = 8U;
+        puff.frames_y = 8U;
+        puff.start_frame = 1U;
+        puff.framerate = 60U;
+        puff.forward_animate = true;
+        puff.loop = false;
+        puff.collide = false;
+        particles.emit(puff);
+    }
 }
 
 } // namespace battlespades::world

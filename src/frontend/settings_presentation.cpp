@@ -46,6 +46,7 @@ constexpr ColorRgba8 control_grey{83U, 83U, 83U, 255U};
 constexpr ColorRgba8 slider_line_grey{117U, 117U, 117U, 255U};
 constexpr ColorRgba8 selected_gold{215U, 189U, 83U, 255U};
 constexpr ColorRgba8 idle_toggle{46U, 46U, 46U, 255U};
+constexpr ColorRgba8 hovered_toggle{130U, 117U, 64U, 255U};
 constexpr ColorRgba8 disabled_tint{86U, 86U, 86U, 255U};
 constexpr ColorRgba8 tooltip_error{242U, 53U, 53U, 255U};
 constexpr ColorRgba8 scrollbar_rail{73U, 63U, 7U, 255U};
@@ -244,20 +245,27 @@ void append_text_button(ui::DrawList& list,
                                     ? 2.0 * button.height / loaded_slice_height
                                     : 0.0;
     const auto large = button.height - 8.0 > 30.0;
-    list.push(text(state.label_key,
-                   settings_presentation_assets::title_font,
-                   DrawRect{button.x + 10.0,
-                            button.y + 4.0 + pressed_offset,
-                            button.width - 20.0,
-                            button.height - 8.0},
-                   large ? 36.0 : 18.0,
-                   display_text,
-                   HorizontalTextAlignment::center,
-                   VerticalTextAlignment::retail_center,
-                   TextTransform::uppercase,
-                   TextFit::shrink_to_fit,
-                   large ? 2U : 1U,
-                   intensity));
+    // TextButton: the text box is width - 2 * TEXT_BACKGROUND_SPACING (14)
+    // by height - 2 * UI_CONTROL_SPACING (4), and set_text shrinks the face
+    // with get_resized_font_and_formatted_text_to_fit_boundaries (the 41 px
+    // in-game CANCEL/DONE end at 27 px, not the 36 px face).
+    auto label = text(state.label_key,
+                      settings_presentation_assets::title_font,
+                      DrawRect{button.x + 14.0,
+                               button.y + 4.0 + pressed_offset,
+                               button.width - 28.0,
+                               button.height - 8.0},
+                      large ? 36.0 : 18.0,
+                      display_text,
+                      HorizontalTextAlignment::center,
+                      VerticalTextAlignment::retail_center,
+                      TextTransform::uppercase,
+                      TextFit::shrink_to_fit,
+                      0U,
+                      intensity);
+    label.layout = ui::TextLayout::retail_wrapped_lines;
+    label.line_spacing_pixels = 2.0;
+    list.push(std::move(label));
 }
 
 void append_square_button(ui::DrawList& list,
@@ -434,7 +442,7 @@ void append_toggle(ui::DrawList& list,
         append_solid(list,
                      DrawRect{inner_x, inner_y, inner_width, image_size},
                      selected ? (disabled(row.visual_state) ? control_grey : selected_gold)
-                              : idle_toggle,
+                              : (row.unselected_half_hovered ? hovered_toggle : idle_toggle),
                      intensity);
     }
     const auto selected_box_x = row.checked ? control.x + control.width - box_width : control.x;
@@ -584,7 +592,9 @@ void append_key_binding(ui::DrawList& list,
                    row.visual_state == SettingsPresentationVisualState::pressed ? cream : black,
                    HorizontalTextAlignment::center,
                     VerticalTextAlignment::retail_center,
-                   TextTransform::uppercase,
+                   // KeyControl.draw prints translate_key() text verbatim
+                   // ("Left", "MWheel", "press key", "None").
+                   TextTransform::preserve,
                    TextFit::shrink_to_fit,
                    1U,
                    intensity));
@@ -902,7 +912,10 @@ void append_tabs(ui::DrawList& list, SettingsPresentationTab selected) {
                        TextTransform::uppercase,
                        TextFit::shrink_to_fit,
                        1U,
-                       active ? std::uint16_t{1'000U} : std::uint16_t{700U}));
+                       // Inactive tabs are full-strength MENU_FONT_COLOR cream
+                       // (244,236,187) in retail, in and out of game; the
+                       // 70% dimming read as a greyed-out GRAPHICS tab.
+                       std::uint16_t{1'000U}));
     }
 }
 

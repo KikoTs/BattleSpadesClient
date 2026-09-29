@@ -60,6 +60,8 @@ struct TutorialAttackEvents final {
     bool block_placed{};
     int blocks_collapsed{};
     int targets_destroyed{};
+    /** The shot that emptied the magazine dropped the sight (retail zoom_out cue). */
+    bool zoom_dropped{};
 };
 
 enum class TutorialProjectileBehavior : std::uint8_t {
@@ -80,6 +82,15 @@ enum class TutorialProjectileBehavior : std::uint8_t {
     drill,
 };
 
+/** A bouncing grenade struck terrain (GRENADE_BOUNCE_SOUND source). */
+struct ProjectileBounceEvent final {
+    std::uint64_t projectile_id{};
+    std::uint8_t tool_id{};
+    Vec3 position{};
+    /** Largest |velocity| component (blocks/s) before the 0.36 restitution. */
+    double impact_speed{};
+};
+
 /** One locally simulated projectile emitted by the all-weapons test loadout. */
 struct TutorialProjectile final {
     std::uint64_t id{};
@@ -91,6 +102,12 @@ struct TutorialProjectile final {
     double presentation_age{};
     /** Autonomous launchers have no first-person weapon muzzle. */
     bool autonomous_source{};
+    /**
+     * Tool whose explosion bank the blast plays; 0 means `tool_id`. Rocket.delete
+     * picks turr_rocketexplode (tool 20) for a turret rocket although entity 21
+     * otherwise maps to the RPG (tool 12).
+     */
+    std::uint8_t explosion_sound_tool{};
     double remaining{};
     /**
      * Seconds for which retail's contact-only ``drill_loop`` remains live.
@@ -142,6 +159,11 @@ struct DeployableTarget final {
 };
 
 struct TutorialSessionConfig final {
+    /**
+     * InitialInfo.block_wallet_multiplier (RULE_CHARACTER_BLOCK_WALLETS):
+     * scales the class's initial and maximum block wallet.
+     */
+    double block_wallet_multiplier{1.0};
     /** Retail Controls slider value; 0.1 is the recovered default. */
     double mouse_sensitivity{0.1};
     bool invert_mouse{false};
@@ -160,6 +182,8 @@ struct TutorialSessionConfig final {
     std::uint8_t initial_class_id{1U};
     /** RULE_CHARACTER_SPEED recovered from InitialInfo's class multiplier. */
     double movement_speed_scale{1.0};
+    /** InitialInfo RULE_ENABLE_FALL_ON_WATER_DAMAGE (off zeroes the water multiplier). */
+    bool fall_on_water_damage{true};
     std::vector<std::uint8_t> initial_loadout;
     std::vector<std::string> initial_prefabs;
     std::vector<std::uint8_t> initial_ugc_tools;
@@ -211,6 +235,13 @@ public:
     void apply_look_delta(double delta_x, double delta_y) noexcept;
 
     /**
+     * Replaces the look angles outright (retail degrees: yaw 0 faces -x,
+     * positive pitch looks down). Used by the POIFocus(18) LookAtController
+     * lock; the pitch is clamped exactly like mouse look.
+     */
+    void set_look_angles(double yaw_degrees, double pitch_degrees) noexcept;
+
+    /**
      * Applies confirmed Settings input preferences to the already-live world.
      *
      * The session owns a copy of its launch configuration, so changing the
@@ -228,6 +259,8 @@ public:
     void set_primary_held(bool held) noexcept;
     /** Right mouse: recovered iron sights, or a real secondary-tool action. */
     void set_secondary_held(bool held) noexcept;
+    /** Right mouse currently held (PaintbrushTool's spray loop owner). */
+    [[nodiscard]] bool secondary_held() const noexcept { return secondary_held_; }
     /** Weapon-custom input (retail default E; middle mouse is a test alias). */
     void trigger_weapon_custom() noexcept;
     void set_weapon_custom_held(bool held) noexcept;
@@ -240,6 +273,10 @@ public:
     [[nodiscard]] double jetpack_fuel() const noexcept { return jetpack_prediction_.fuel; }
     /** Apply the local player's current TeamInfiniteBlocks authority bit. */
     void set_infinite_blocks(bool enabled) noexcept { infinite_blocks_ = enabled; }
+    /** InitialInfo.can_shoot_holding_intel: Classic CTF keeps the gun. */
+    void set_can_shoot_holding_intel(bool enabled) noexcept {
+        can_shoot_holding_intel_ = enabled;
+    }
     [[nodiscard]] bool infinite_blocks() const noexcept { return infinite_blocks_; }
     /** Apply BLOCK_GRANTING_DAMAGES (notably Block Sucker damage type 42). */
     void grant_blocks(std::uint16_t amount = 1U) noexcept;
@@ -270,6 +307,8 @@ public:
     [[nodiscard]] std::vector<FallingComponent> take_falling_components();
     /** Block-hit particles/sounds captured independently of destruction. */
     [[nodiscard]] std::vector<TerrainImpactEvent> take_terrain_impacts();
+    /** Bouncing-grenade terrain contacts since the last call (audio only). */
+    [[nodiscard]] std::vector<ProjectileBounceEvent> take_projectile_bounces();
 
     [[nodiscard]] int pistol_clip() const noexcept;
     [[nodiscard]] int pistol_stock() const noexcept;
@@ -305,6 +344,11 @@ public:
     [[nodiscard]] bool weapon_trigger_live() const noexcept;
     /** Retail hides non-melee first-person tools for the whole sprint. */
     [[nodiscard]] bool weapon_view_model_visible() const noexcept;
+    /**
+     * Map Creator ScreenshotHud: retail flies a camera with the player's input
+     * disabled, so no first-person tool is drawn while the preview is framed.
+     */
+    void set_view_model_suppressed(bool suppressed) noexcept { view_model_suppressed_ = suppressed; }
     /** Mounted gun deployment; it switches the weapon's whole sound shape. */
     [[nodiscard]] bool machine_gun_deployed() const noexcept;
     /**
@@ -438,9 +482,11 @@ public:
      *
      * authoritative destruction edge. Other entity types retain the ordinary
      * silent despawn
-     * contract.
+     * contract. `explosion_sound_tool` overrides the blast's sound bank (a
+     * turret-owned entity 21 explodes with turr_rocketexplode, tool 20).
      */
-    bool destroy_server_entity(std::uint64_t id);
+    bool destroy_server_entity(std::uint64_t id,
+                               std::optional<std::uint8_t> explosion_sound_tool = std::nullopt);
     void clear_entities() noexcept;
     [[nodiscard]] std::span<const LocalEntity> entities() const noexcept;
     [[nodiscard]] std::vector<EntityEvent> take_entity_events();
@@ -498,6 +544,13 @@ public:
      */
     [[nodiscard]] std::optional<std::array<std::int16_t, 3U>>
     placement_cell(double range = 10.0) const noexcept;
+    /**
+     * UGCTool ghost cell: can_place_object(..., can_place_vertical=False)
+     * (gameScene 0x101270b0) accepts only the TOP face of the pointed solid,
+     * so Game Data markers can never hang on walls or ceilings.
+     */
+    [[nodiscard]] std::optional<std::array<std::int16_t, 3U>>
+    ugc_marker_cell(double range = 10.0) const noexcept;
     /** Color of the solid voxel under the crosshair for retail's eyedropper. */
     [[nodiscard]] std::optional<VxlColor> looked_at_block_color(double range = 10.0) const noexcept;
     /**
@@ -520,6 +573,15 @@ public:
     void tick();
 
     [[nodiscard]] const VxlMap& map() const noexcept;
+
+    /**
+     * Installs the server's ground colour table (InitialInfo / packet 118)
+     * on the shared map. Presentation only: it colours implicit interior
+     * voxels and never changes solidity.
+     */
+    void set_ground_colors(std::span<const std::array<std::uint8_t, 4U>> rows) noexcept {
+        map_->set_ground_colors(rows);
+    }
 
     /**
      * Point lights placed by flare blocks, baked into terrain at mesh time.
@@ -569,6 +631,8 @@ public:
     [[nodiscard]] bool network_authoritative() const noexcept;
     /** Exact ClientData input bytes for the current fixed-tick held state. */
     [[nodiscard]] std::uint8_t movement_flags() const noexcept;
+    /** action_held OR the latched value the last tick simulated. */
+    [[nodiscard]] bool sent_held(TutorialAction action) const noexcept;
     [[nodiscard]] std::uint8_t action_flags() const noexcept;
     /**
      * Start a new authoritative movement generation for spawn/respawn.
@@ -614,6 +678,12 @@ public:
      * inverse visual offset so ordinary network corrections never teleport.
      */
     void apply_authoritative_delta(Vec3 position_delta, Vec3 velocity_delta) noexcept;
+    /**
+     * ExplosionDamageManager.handle_damage's push on the local character,
+     * predicted on receipt of a stock Damage(37) blast (world/retail_blast.hpp).
+     * Returns the impulse applied, if any.
+     */
+    std::optional<Vec3> apply_blast_push(std::uint8_t damage_type, Vec3 explosion) noexcept;
     /** Replace the complete local inventory with the server-normalized transaction. */
     [[nodiscard]] bool
     apply_server_selection(std::uint8_t class_id,
@@ -644,6 +714,42 @@ public:
 private:
     /** Flare-block point lights, baked into terrain vertex colours. */
     StaticLightField static_lights_;
+
+    /**
+     * Authoritative type-13 FlareBlockEntity rows.
+     *
+     * Retail `FlareBlockEntity.post_initialize` is terrain, not a model: it
+     * calls `add_user_block(x,y,z,RGB,5)` and `add_static_point_light(x,y,z,
+     * RGB,FLAREBLOCK_LIGHT_RADIUS)`. Kept outside `entities_` so hundreds of
+     * map flare markers (524 on 20thCenturyTown) never consume renderer part
+     * slots, and so DestroyEntity can take the voxel and the light back.
+     */
+    struct ServerFlare final {
+        std::uint64_t id{};
+        std::array<std::uint32_t, 3U> cell{};
+        bool lit{true};
+    };
+    std::vector<ServerFlare> server_flares_;
+    /** Re-mesh every chunk column a static light can reach. */
+    void mark_light_dirty(const StaticLight& light);
+    /** Install one networked FlareBlockEntity (voxel + static light). */
+    bool apply_server_flare(const LocalEntity& entity);
+    /** Drop a flare light whose voxel the terrain replica has destroyed. */
+    void refresh_server_flares();
+    /**
+     * BlockFire (28) and BlockGoo (31) static point lights.
+     *
+     * Retail registers add_static_point_light(BLOCKFIRE_LIGHT_RADIUS) and
+     * re-colours it with update_static_light_colour as calculate_colour
+     * ramps. Baked like flares, so every shader tier (Retail included) sees
+     * the glow. Re-coloured four times per second to bound re-meshing.
+     */
+    struct PatchLight final {
+        std::array<std::uint32_t, 3U> cell{};
+        double clock{};
+    };
+    std::unordered_map<std::uint64_t, PatchLight> patch_lights_;
+    void refresh_patch_lights();
 
     void handle_stage_entered();
     void update_combat();
@@ -740,6 +846,16 @@ private:
     PlayerInventory sandbox_inventory_{};
     bool debug_full_loadout_{};
     std::array<bool, static_cast<std::size_t>(TutorialAction::count)> held_{};
+    /**
+     * Key-down edges latched until the next fixed tick consumes them. A tap
+     * whose press and release land in the same event poll (a stalled frame,
+     * a sub-16 ms tap) still reaches one simulated tick and one ClientData,
+     * as retail's latched key requests do (an 80 ms airborne SPACE tap
+     * deploys the parachute).
+     */
+    std::array<bool, static_cast<std::size_t>(TutorialAction::count)> press_latch_{};
+    /** held_ OR press_latch_ as sampled by the most recent tick. */
+    std::array<bool, static_cast<std::size_t>(TutorialAction::count)> tick_held_{};
     std::vector<PlayerCollisionBody> player_collision_bodies_;
     std::optional<PlayerMovementBounds> server_movement_bounds_{};
     bool jump_requested_{};
@@ -751,6 +867,10 @@ private:
     PlayerInputState last_simulated_input_{};
     bool last_simulated_jetpack_active_{};
     bool parachute_deploy_last_held_{};
+    /** Airborne SPACE edge: retail's parachute trigger (P1-19). */
+    bool parachute_jump_last_held_{};
+    /** Presentation only: this fall used a canopy (landing-damage cue). */
+    bool parachute_fall_touched_{};
     bool last_simulated_parachute_active_{};
     bool last_simulated_parachute_pressed_{};
     JetpackPredictionState jetpack_prediction_{};
@@ -782,10 +902,15 @@ private:
 
     bool primary_held_{};
     bool primary_edge_{};
+    /** Primary press latched until a tick consumes it (see press_latch_). */
+    bool primary_press_latch_{};
+    /** primary_held_ OR primary_press_latch_ as sampled by the last tick. */
+    bool primary_tick_held_{};
     bool secondary_held_{};
     bool custom_edge_{};
     bool custom_held_{};
     bool zoomed_{};
+    bool empty_magazine_unzoom_pending_{};
     std::optional<std::uint8_t> reload_aim_tool_;
     /** Ramped sight state; 0 is hip fire. Advanced on the fixed tick only. */
     double zoom_level_{};
@@ -802,7 +927,9 @@ private:
     int pistol_stock_{};
     int blocks_remaining_{};
     bool infinite_blocks_{};
+    bool can_shoot_holding_intel_{};
     int blocks_built_{};
+    bool view_model_suppressed_{};
     VxlColor block_color_{110U, 110U, 110U, 255U};
     std::array<bool, 5U> target_down_{};
     bool shooting_gate_reported_{};
@@ -817,6 +944,7 @@ private:
     std::bitset<dirty_chunk_columns * dirty_chunk_rows> dirty_chunk_membership_;
     std::vector<FallingComponent> falling_components_;
     std::vector<TerrainImpactEvent> terrain_impacts_;
+    std::vector<ProjectileBounceEvent> projectile_bounces_;
     std::vector<WeaponAction> weapon_actions_;
     std::vector<TutorialProjectile> projectiles_;
     std::uint64_t next_projectile_id_{1U};

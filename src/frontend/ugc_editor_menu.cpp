@@ -1,6 +1,9 @@
 #include "battlespades/frontend/ugc_editor_menu.hpp"
 
+#include "battlespades/frontend/ugc_project_repository.hpp"
+
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstddef>
 #include <iterator>
@@ -26,6 +29,24 @@ constexpr std::array<std::string_view, 9U> maps{
     "MarshTemplate",
     "SnowyBaseplate",
     "WaterBaseplate",
+};
+
+// strings.<Baseplate> ids naming each TEMPLATES row (english.py:1940-1948).
+constexpr std::array<std::string_view, 9U> template_title_keys{
+    "DesertBaseplate",
+    "LunarBaseplate",
+    "MountainBaseplate",
+    "GrasslandBaseplate",
+    "TempleBaseplate",
+    "UrbanBaseplate",
+    "MarshBaseplate",
+    "SnowyBaseplate",
+    "WaterBaseplate",
+};
+
+constexpr std::array<std::string_view, 9U> english_template_titles{
+    "Desert", "Lunar", "Mountain", "Grassland", "Temple",
+    "Urban", "Marsh", "Snowy", "Water",
 };
 
 constexpr std::array<std::string_view, 9U> modes{
@@ -98,6 +119,37 @@ template <typename Range, typename Value>
 [[nodiscard]] constexpr std::uint8_t default_prefab_for_map(std::size_t index) noexcept {
     constexpr std::array<std::uint8_t, 9U> defaults{1U, 0U, 3U, 2U, 4U, 5U, 1U, 1U, 1U};
     return index < defaults.size() ? defaults[index] : 1U;
+}
+
+[[nodiscard]] bool printable_ascii(std::string_view value) noexcept {
+    return std::ranges::none_of(value, [](unsigned char character) {
+        return character < 32U || character > 126U;
+    });
+}
+
+/** Project file stems are launcher slugs: [A-Za-z0-9_-]{1,64}. */
+[[nodiscard]] bool safe_project_stem(std::string_view value) noexcept {
+    return !value.empty() && value.size() <= 64U &&
+           std::ranges::all_of(value, [](unsigned char character) {
+               return std::isalnum(character) != 0 || character == '_' || character == '-';
+           });
+}
+
+[[nodiscard]] std::string bounded_title(std::string_view value, std::size_t limit) {
+    std::string output;
+    for (const auto character : value) {
+        if (output.size() >= limit) break;
+        const auto byte = static_cast<unsigned char>(character);
+        output.push_back(byte >= 32U && byte <= 126U ? character : '?');
+    }
+    return output;
+}
+
+[[nodiscard]] bool equal_ignoring_case(std::string_view left, std::string_view right) noexcept {
+    return left.size() == right.size() &&
+           std::ranges::equal(left, right, [](unsigned char a, unsigned char b) {
+               return std::tolower(a) == std::tolower(b);
+           });
 }
 
 } // namespace
@@ -512,6 +564,9 @@ UgcEditorLobbyModel::UgcEditorLobbyModel()
                                 UgcEditorSettingId::map_title,
                                 "UGC_MAP_TITLE"},
       } {
+    for (std::size_t index{}; index < template_titles_.size(); ++index) {
+        template_titles_[index] = std::string{english_template_titles[index]};
+    }
     rebuild_focus();
 }
 
@@ -529,7 +584,99 @@ void UgcEditorLobbyModel::set_host_authority(bool host) noexcept {
     rebuild_focus();
 }
 
+void UgcEditorLobbyModel::set_saved_projects(std::vector<UgcEditorSavedProject> projects,
+                                             std::vector<std::string> taken_stems) {
+    constexpr std::size_t maximum_saved_projects{4'096U};
+    std::vector<UgcEditorSavedProject> accepted;
+    for (auto& project : projects) {
+        if (accepted.size() >= maximum_saved_projects) break;
+        const auto baseplate = ugc_editor_map_for_baseplate(project.baseplate);
+        if (baseplate.empty() || !safe_project_stem(project.stem)) continue;
+        project.baseplate = std::string{baseplate};
+        project.title = bounded_title(project.title.empty() ? project.stem : project.title,
+                                      maximum_title_code_units);
+        if (project.prefab_set.has_value() && *project.prefab_set >= prefab_labels.size()) {
+            project.prefab_set.reset();
+        }
+        accepted.push_back(std::move(project));
+    }
+    saved_projects_ = std::move(accepted);
+    taken_stems_ = std::move(taken_stems);
+    if (title_editing_) return;
+    if (configuration_.saved_project) {
+        const auto found = std::ranges::find(saved_projects_, configuration_.project_stem,
+                                             &UgcEditorSavedProject::stem);
+        if (found != saved_projects_.end()) {
+            select_saved_project(static_cast<std::size_t>(found - saved_projects_.begin()));
+        } else {
+            select_template(0U);
+        }
+        return;
+    }
+    // A template keeps its prefab choice; only its identity is re-derived.
+    const auto prefab = configuration_.prefab_set;
+    const auto title = configuration_.map_title;
+    const bool customized = title_customized_;
+    select_template(index_or_zero(maps, std::string_view{configuration_.map_name}));
+    configuration_.prefab_set = prefab;
+    if (customized) {
+        configuration_.map_title = title;
+        title_customized_ = true;
+    }
+}
+
+void UgcEditorLobbyModel::set_template_titles(std::span<const std::string> titles) {
+    for (std::size_t index{}; index < template_titles_.size(); ++index) {
+        const bool usable = index < titles.size() && !titles[index].empty() &&
+                            printable_ascii(titles[index]) &&
+                            titles[index].size() + 3U <= maximum_title_code_units;
+        template_titles_[index] =
+            usable ? titles[index] : std::string{english_template_titles[index]};
+    }
+    if (!configuration_.saved_project && !title_customized_ && !title_editing_) {
+        const auto prefab = configuration_.prefab_set;
+        select_template(index_or_zero(maps, std::string_view{configuration_.map_name}));
+        configuration_.prefab_set = prefab;
+    }
+}
+
+std::span<const UgcEditorSavedProject> UgcEditorLobbyModel::saved_projects() const noexcept {
+    return saved_projects_;
+}
+
+void UgcEditorLobbyModel::select_template(std::size_t index) {
+    index = std::min(index, maps.size() - 1U);
+    configuration_.map_name = maps[index];
+    configuration_.prefab_set = default_prefab_for_map(index);
+    configuration_.saved_project = false;
+    std::vector<std::string> titles;
+    std::vector<std::string> stems{taken_stems_};
+    titles.reserve(saved_projects_.size());
+    for (const auto& project : saved_projects_) {
+        titles.push_back(project.title);
+        stems.push_back(project.stem);
+    }
+    configuration_.map_title =
+        bounded_title(generate_ugc_map_title(template_titles_[index], titles),
+                      maximum_title_code_units);
+    configuration_.project_stem = generate_ugc_map_filename(stems);
+    title_customized_ = false;
+}
+
+void UgcEditorLobbyModel::select_saved_project(std::size_t index) {
+    if (index >= saved_projects_.size()) return;
+    const auto& project = saved_projects_[index];
+    const auto baseplate = index_or_zero(maps, std::string_view{project.baseplate});
+    configuration_.map_name = maps[baseplate];
+    configuration_.prefab_set = project.prefab_set.value_or(default_prefab_for_map(baseplate));
+    configuration_.map_title = project.title;
+    configuration_.project_stem = project.stem;
+    configuration_.saved_project = true;
+    title_customized_ = false;
+}
+
 bool UgcEditorLobbyModel::apply_configuration(const UgcEditorConfiguration& configuration) {
+    if (!safe_project_stem(configuration.project_stem)) return false;
     if (std::ranges::find(maps, configuration.map_name) == maps.end() ||
         std::ranges::find(modes, configuration.ugc_mode) == modes.end() ||
         std::ranges::find(maximum_players, configuration.maximum_players) == maximum_players.end() ||
@@ -569,6 +716,11 @@ std::string UgcEditorLobbyModel::value_text(UgcEditorSettingId setting) const {
     case UgcEditorSettingId::maximum_players:
         return std::to_string(configuration_.maximum_players);
     case UgcEditorSettingId::map:
+        if (configuration_.saved_project) {
+            const auto found = std::ranges::find(saved_projects_, configuration_.project_stem,
+                                                 &UgcEditorSavedProject::stem);
+            return found != saved_projects_.end() ? found->title : configuration_.project_stem;
+        }
         return configuration_.map_name;
     case UgcEditorSettingId::prefab_set:
         return std::string{prefab_labels[std::min<std::size_t>(configuration_.prefab_set,
@@ -604,10 +756,23 @@ bool UgcEditorLobbyModel::cycle(UgcEditorSettingId setting, int direction) noexc
         return true;
     }
     case UgcEditorSettingId::map: {
-        const auto current = index_or_zero(maps, std::string_view{configuration_.map_name});
-        const auto next = wrapped(current, maps.size(), direction);
-        configuration_.map_name = maps[next];
-        configuration_.prefab_set = default_prefab_for_map(next);
+        // Retail row order: SAVED_MAPS first, then the nine TEMPLATES.
+        const auto saved = saved_projects_.size();
+        std::size_t current =
+            saved + index_or_zero(maps, std::string_view{configuration_.map_name});
+        if (configuration_.saved_project) {
+            const auto found = std::ranges::find(saved_projects_, configuration_.project_stem,
+                                                 &UgcEditorSavedProject::stem);
+            if (found != saved_projects_.end()) {
+                current = static_cast<std::size_t>(found - saved_projects_.begin());
+            }
+        }
+        const auto next = wrapped(current, saved + maps.size(), direction);
+        if (next < saved) {
+            select_saved_project(next);
+        } else {
+            select_template(next - saved);
+        }
         return true;
     }
     case UgcEditorSettingId::prefab_set:
@@ -667,6 +832,7 @@ bool UgcEditorLobbyModel::commit_title_edit() noexcept {
     if (configuration_.map_title.empty()) {
         configuration_.map_title = title_before_edit_;
     }
+    title_customized_ = title_customized_ || configuration_.map_title != title_before_edit_;
     title_before_edit_.clear();
     title_editing_ = false;
     return true;
@@ -861,6 +1027,22 @@ void UgcEditorLobbyModel::rebuild_focus() noexcept {
 
 std::span<const std::string_view> ugc_editor_maps() noexcept {
     return maps;
+}
+
+std::span<const std::string_view> ugc_editor_template_title_keys() noexcept {
+    return template_title_keys;
+}
+
+std::string_view ugc_editor_map_for_baseplate(std::string_view baseplate) noexcept {
+    for (std::size_t index{}; index < maps.size(); ++index) {
+        // template_title_keys spell the server's canonical stems
+        // (TempleBaseplate, MarshBaseplate); maps keep the playlist names.
+        if (equal_ignoring_case(baseplate, maps[index]) ||
+            equal_ignoring_case(baseplate, template_title_keys[index])) {
+            return maps[index];
+        }
+    }
+    return {};
 }
 
 std::span<const std::string_view> ugc_editor_modes() noexcept {

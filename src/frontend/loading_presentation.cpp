@@ -1,5 +1,6 @@
 #include "battlespades/frontend/loading_presentation.hpp"
 #include "battlespades/frontend/menu_status.hpp"
+#include "battlespades/frontend/settings_menu.hpp"
 
 #include <algorithm>
 #include <array>
@@ -112,17 +113,6 @@ void append_text_button(ui::DrawList& list, DrawRect bounds, std::string_view la
     const auto intensity = enabled ? std::uint16_t{1'000U} : std::uint16_t{700U};
     // Recovered cap width: 60/97 of the button height plus one pixel.
     const double cap = 60.0 / 97.0 * bounds.height + 1.0;
-    if (enabled && glow_on) {
-        const double glow_width = bounds.width * 1.2;
-        const double glow_height = bounds.height * 1.75;
-        list.push(sprite("png/ui/common_elements/buttons/button_large_glow.png",
-                         {bounds.x + bounds.width * 0.5 - glow_width * 0.5,
-                          bounds.y + bounds.height * 0.5 - glow_height * 0.5,
-                          glow_width, glow_height},
-                         DrawSpace::design_pixels,
-                         TextureAnchor::center,
-                         0.6));
-    }
     list.push(sprite(std::string{base} + "left.png",
                      {bounds.x, bounds.y, cap, bounds.height},
                      DrawSpace::design_pixels,
@@ -141,6 +131,21 @@ void append_text_button(ui::DrawList& list, DrawRect bounds, std::string_view la
                      TextureAnchor::top_left,
                      0.6,
                      ColorModulation{white, intensity, 1'000U}));
+    if (enabled && glow_on) {
+        // The glow washes OVER the button art (retail's rivets fade while it
+        // is lit) and its bright ring lands on the button edges: the ring
+        // peaks sit 10.6% / 30.8% into the 400x130 texture, so the texture
+        // spans 1.25x the width and 2.6x the height (measured in retail).
+        const double glow_width = bounds.width * 1.25;
+        const double glow_height = bounds.height * 2.6;
+        list.push(sprite("png/ui/common_elements/buttons/button_large_glow.png",
+                         {bounds.x + bounds.width * 0.5 - glow_width * 0.5,
+                          bounds.y + bounds.height * 0.5 - glow_height * 0.5,
+                          glow_width, glow_height},
+                         DrawSpace::design_pixels,
+                         TextureAnchor::center,
+                         0.6));
+    }
     list.push(text(label,
                    bounds,
                    36.0,
@@ -150,44 +155,75 @@ void append_text_button(ui::DrawList& list, DrawRect bounds, std::string_view la
                    TextTransform::uppercase));
 }
 
-/** Retail status wording with map-name formatting; empty once ready. */
-[[nodiscard]] std::string retail_status(const MatchLoadingSnapshot& snapshot) {
+void append_custom_rules(ui::DrawList& list, const MatchLoadingSnapshot& snapshot) {
+    using namespace loading_layout;
+    if (snapshot.custom_rules.empty()) return;
+    // ExpandableListPanel with a header: black 150 alpha box, the
+    // CUSTOM_GAME_RULES heading, then category rows (dark green) and rule rows
+    // in two columns of 240 and 60 px. It grows with its rows up to 200 px.
+    const auto rows = std::min<std::size_t>(
+        snapshot.custom_rules.size(),
+        static_cast<std::size_t>(custom_rules.height / custom_rule_row_height) - 1U);
+    const auto height = custom_rule_row_height * static_cast<double>(rows + 1U);
+    list.push(sprite("png/high/white.png", {custom_rules.x, custom_rules.y, custom_rules.width, height},
+        DrawSpace::design_pixels, TextureAnchor::top_left, 1.0, color({0U, 0U, 0U, 150U})));
+    list.push(text("CUSTOM_GAME_RULES",
+        {custom_rules.x, custom_rules.y, custom_rules.width, custom_rule_row_height}, 14.0,
+        HorizontalTextAlignment::center, cream, "fonts/Edo.ttf", TextTransform::uppercase));
+    for (std::size_t index{}; index < rows; ++index) {
+        const auto& row = snapshot.custom_rules[index];
+        const DrawRect bounds{custom_rules.x,
+            custom_rules.y + custom_rule_row_height * static_cast<double>(index + 1U),
+            custom_rules.width, custom_rule_row_height};
+        if (row.category) {
+            list.push(sprite("png/high/white.png", bounds, DrawSpace::design_pixels,
+                TextureAnchor::top_left, 1.0, color({59U, 68U, 25U, 255U})));
+            list.push(text(row.label_key, {bounds.x + 8.0, bounds.y, bounds.width - 16.0, bounds.height},
+                12.0, HorizontalTextAlignment::left, cream, "fonts/Edo.ttf",
+                row.uppercase ? TextTransform::uppercase : TextTransform::preserve));
+            continue;
+        }
+        list.push(sprite("png/high/white.png", bounds, DrawSpace::design_pixels,
+            TextureAnchor::top_left, 1.0, color(index % 2U == 0U
+                ? ColorRgba8{87U, 83U, 74U, 150U} : ColorRgba8{54U, 51U, 44U, 150U})));
+        list.push(text(row.label_key, {bounds.x + 4.0, bounds.y, 236.0, bounds.height}, 11.0));
+        list.push(text(row.value, {bounds.x + 244.0, bounds.y, 56.0, bounds.height}, 11.0));
+    }
+}
+
+} // namespace
+
+std::string loading_status_text(const MatchLoadingSnapshot& snapshot,
+                                const std::function<std::string(std::string_view)>& localize) {
     const auto& key = snapshot.status_key;
-    const auto& map = snapshot.map_name;
     if (snapshot.start_enabled || key == "MAP_READY") {
         return {};
     }
-    if (key == "CONNECTING_TO_SERVER") {
-        return "Connecting to server...";
+    // english.py: CONNECTING_TO_SERVER, RECEIVING_SERVER_PACKS ("Connected,
+    // receiving server packs..."), the five map stages with the map name as
+    // {0}, and ERROR_TIMEOUT when nothing arrived for 30 seconds.
+    constexpr std::array<std::string_view, 9U> catalogue{
+        "CONNECTING_TO_SERVER", "RECEIVING_SERVER_PACKS", "CHECKING_MAP", "LOADING_MAP",
+        "RECEIVING_MAP", "SYNCING_MAP", "INITIALISING_MAP", "ERROR_TIMEOUT",
+        "ASSET_PRELOAD_FAILED"};
+    if (std::ranges::find(catalogue, std::string_view{key}) == catalogue.end()) {
+        // A host stage or server reason the caller already worded.
+        return key == "LOAD_FAILED" ? std::string{"SERVER_CONNECTION_FAILED"} : key;
     }
-    if (key == "RECEIVING_SERVER_PACKS") {
-        return "Receiving server packs...";
+    if (!localize) return key;
+    auto value = localize(key);
+    if (const auto slot = value.find("{0}"); slot != std::string::npos) {
+        value.replace(slot, 3U, snapshot.map_name);
     }
-    if (key == "CHECKING_MAP") {
-        return "Checking map " + map + "...";
-    }
-    if (key == "LOADING_MAP") {
-        return "Loading map " + map + "...";
-    }
-    if (key == "RECEIVING_MAP") {
-        return "Receiving map " + map + "...";
-    }
-    if (key == "SYNCING_MAP") {
-        return "Syncing map " + map + "...";
-    }
-    if (key == "INITIALISING_MAP") {
-        return "Initializing map " + map + "...";
-    }
-    if (key == "ERROR_TIMEOUT") return "The server stopped responding. Go back to retry.";
-    if (key == "LOAD_FAILED" || key == "ASSET_PRELOAD_FAILED")
-        return "Unable to load this match. Go back to retry.";
-    return std::string{key};
+    return std::string{literal_text_prefix} + value;
 }
+
+namespace {
 
 void append_scores(ui::DrawList& list, const MatchLoadingSnapshot& snapshot) {
     using namespace loading_layout;
-    list.push(sprite("png/high/white.png", content, DrawSpace::design_pixels,
-        TextureAnchor::top_left, 1.0, color({0U, 0U, 0U, 125U})));
+    // No dimming box: retail shows the map art at full brightness around
+    // and above the rows (a black 125-alpha box halved it).
     const auto count = snapshot.score_rows.size();
     const auto maximum = count > MatchLoadingModel::visible_score_rows
         ? count - MatchLoadingModel::visible_score_rows : 0U;
@@ -199,7 +235,10 @@ void append_scores(ui::DrawList& list, const MatchLoadingSnapshot& snapshot) {
             score_rows.y + static_cast<double>(index - first) * score_row_height,
             score_rows.width, score_row_height};
         if (row.section) {
-            constexpr double cap{8.0};
+            // CategoryListItem.draw_background: red_header_left/right keep
+            // their full 40 px source width (the torn brush ends), only the
+            // centre stretches.
+            constexpr double cap{40.0};
             list.push(sprite("png/ui/common_elements/header/red_header_left.png",
                 {bounds.x, bounds.y, cap, bounds.height}));
             list.push(sprite("png/ui/common_elements/header/red_header_center.png",
@@ -314,14 +353,19 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
     }
     ui::DrawList list;
     list.reserve(40U);
-    // Retail draws ugc_splash (1280x960 @0.6 = 768x576) on the letterboxed
-    // 800x600 canvas underneath every menu, centered.
-    list.push(sprite(loading_screen_assets::splash,
-                     {16.0, 12.0, 768.0, 576.0},
-                     DrawSpace::design_pixels,
-                     TextureAnchor::top_left,
-                     0.6,
-                     color(white, context.background_opacity_per_mille)));
+    // MenuScene.draw blits its background splash scaled over the whole window
+    // (calculate_scale_on_window_resize), never letterboxed, with
+    // background_alpha. Once the map is shown that alpha falls to zero and
+    // the live world drawn beneath shows through.
+    if (context.background_opacity_per_mille > 0U) {
+        list.push(sprite(loading_screen_assets::splash,
+                         cover(context.window),
+                         DrawSpace::window_pixels,
+                         TextureAnchor::top_left,
+                         1.0,
+                         color(white, context.background_opacity_per_mille),
+                         SpriteSizing::cover));
+    }
     // ui_frame_large 1172x921 @0.64 centered at (400,300).
     list.push(sprite(loading_screen_assets::match_frame,
                      {24.96, 5.28, 750.08, 589.44},
@@ -336,7 +380,7 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
                      0.64));
     // Title: Spades 46 centered on x=400 with the baseline near TO 60.
     list.push(text("LOADING",
-                   {200.0, 14.0, 400.0, 52.0},
+                   {202.0, 20.0, 400.0, 52.0},
                    46.0,
                    HorizontalTextAlignment::center,
                    cream,
@@ -371,15 +415,47 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
                          color(),
                          SpriteSizing::stretch,
                          TextureFilter::linear));
+        // get_resized_font_and_formatted_text_to_fit_boundaries(text, 180, 35,
+        // map_tagline_font (Spades 20), 2) wraps and shrinks one pixel at a
+        // time until the lines fit 35 px, so stock captions end up on one
+        // smaller line. draw_text_lines then centres them in the retail boxes
+        // (105,193,177,40), (315,186,177,39), (536,187,177,47) bottom-origin.
+        // destination.y is the first baseline: box centre plus half a line.
         constexpr std::array<DrawRect, 3U> captions{{
-            {110.0, 373.0, 168.0, 34.0}, {320.0, 380.0, 168.0, 34.0},
-            {538.0, 374.0, 168.0, 38.0}}};
+            {105.0, 392.0, 177.0, 35.0}, {315.0, 399.5, 177.0, 35.0},
+            {536.0, 394.5, 177.0, 35.0}}};
         for (std::size_t index{}; index < captions.size(); ++index) {
-            auto caption = text(snapshot.infographic_captions[index], captions[index], 16.0,
+            auto caption = text(snapshot.infographic_captions[index], captions[index], 20.0,
                 HorizontalTextAlignment::center, white, "fonts/Spades.ttf", TextTransform::uppercase);
-            caption.layout = ui::TextLayout::bounded_wrapped_lines;
-            caption.maximum_lines = 2U;
+            caption.vertical_alignment = VerticalTextAlignment::baseline;
+            caption.fit = TextFit::retail_width_scale;
+            caption.line_spacing_pixels = 2.0;
+            caption.maximum_lines = 0U;
+            caption.layout = ui::TextLayout::retail_wrapped_lines;
             list.push(std::move(caption));
+        }
+        if (!snapshot.mode_title_key.empty()) {
+            // mode_text: Label(x=240, y=436, 320x50, centred, Spades 38,
+            // white) drawn with black drop shadows at 2 and 3 px, then
+            // draw_stroked(True, 2, black): outline under the white fill.
+            // Measured against retail: the glyphs sit 9 px lower than a
+            // retail_center of the (240, 436) bottom-origin label box.
+            const DrawRect title{240.0, 148.0, 320.0, 50.0};
+            const auto mode_title = [&](DrawRect bounds, ColorRgba8 tint, bool outline) {
+                auto command = text(snapshot.mode_title_key, bounds, 38.0,
+                    HorizontalTextAlignment::center, tint, "fonts/Spades.ttf",
+                    TextTransform::uppercase);
+                command.fit = TextFit::retail_width_scale;
+                command.retail_outline_stroke = outline;
+                return command;
+            };
+            constexpr ColorRgba8 black{0U, 0U, 0U, 255U};
+            list.push(mode_title({title.x + 2.0, title.y + 2.0, title.width, title.height},
+                                 black, false));
+            list.push(mode_title({title.x + 3.0, title.y + 3.0, title.width, title.height},
+                                 black, false));
+            list.push(mode_title(title, black, true));
+            list.push(mode_title(title, white, false));
         }
     }
     if (snapshot.tabs[snapshot.selected_tab] == LoadingTab::scores) append_scores(list, snapshot);
@@ -394,8 +470,10 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
                          bounds,
                          DrawSpace::design_pixels,
                          TextureAnchor::center));
+        // Retail's tab labels sit 5.5 px left of and 3.5 px above the
+        // frame centre (measured on every loader tab against retail).
         list.push(text(tab_key(snapshot.tabs[index]),
-                       bounds,
+                       {bounds.x - 5.5, bounds.y - 3.5, bounds.width, bounds.height},
                        16.0,
                        HorizontalTextAlignment::center,
                        selected ? gold : cream,
@@ -404,33 +482,88 @@ ui::DrawList MatchLoadingPresentation::build(const MatchLoadingSnapshot& snapsho
 
     if (snapshot.tabs[snapshot.selected_tab] == LoadingTab::map) {
         // Training displays the recovered TUTORIAL_MODE_TITLE, white Spades
-        // 48, top-left aligned inside box {83,163,360,60}.
-        const std::string_view display_title =
-            snapshot.map_name == "Training" ? std::string_view{"Tutorial"}
-                                            : std::string_view{snapshot.map_name};
-        list.push(ui::TextDrawCommand{
-            std::string{display_title},
-            "fonts/Spades.ttf",
-            {83.0, 163.0, 360.0, 60.0},
-            DrawSpace::design_pixels,
-            48.0,
-            1.0,
-            1U,
-            HorizontalTextAlignment::left,
-            VerticalTextAlignment::top,
-            TextTransform::preserve,
-            TextFit::shrink_to_fit,
-            color(white)});
+        // 48 (38 when a tagline follows), top-left aligned in {83,163,360,60}.
+        const auto display_title = snapshot.map_name == "Training"
+                                       ? std::string{"TUTORIAL_MODE_TITLE"}
+                                       : snapshot.map_name;
+        // draw_text_with_alignment_and_size_validation(..., 'left', 'top',
+        // shadowed=True, stroked=True, shadow_offset=3, stroke_size=2): a
+        // black drop shadow 3 px down-right, a black outline, the white fill.
+        const auto map_title = [&](DrawRect bounds, ColorRgba8 tint, bool outline) {
+            ui::TextDrawCommand command{
+                display_title,
+                "fonts/Spades.ttf",
+                bounds,
+                DrawSpace::design_pixels,
+                snapshot.map_tagline_key.empty() ? 48.0 : 38.0,
+                1.0,
+                1U,
+                HorizontalTextAlignment::left,
+                VerticalTextAlignment::top,
+                TextTransform::preserve,
+                TextFit::shrink_to_fit,
+                color(tint)};
+            command.retail_outline_stroke = outline;
+            return command;
+        };
+        constexpr ColorRgba8 title_shadow{0U, 0U, 0U, 255U};
+        list.push(map_title({86.0, 166.0, 360.0, 60.0}, title_shadow, false));
+        list.push(map_title({83.0, 163.0, 360.0, 60.0}, title_shadow, true));
+        list.push(map_title({83.0, 163.0, 360.0, 60.0}, white, false));
+        if (!snapshot.map_tagline_key.empty()) {
+            // map_tagline_text: small_title_aldo_font (Spades 20) at (83,372).
+            list.push(ui::TextDrawCommand{
+                snapshot.map_tagline_key,
+                "fonts/Spades.ttf",
+                {83.0, 198.0, 320.0, 30.0},
+                DrawSpace::design_pixels,
+                20.0,
+                1.0,
+                1U,
+                HorizontalTextAlignment::left,
+                VerticalTextAlignment::top,
+                TextTransform::preserve,
+                TextFit::shrink_to_fit,
+                color(white)});
+        }
+        if (!snapshot.map_preview_asset.empty()) {
+            // draw_map_tab: loading_map_frame at 258x258, the preview at 238.
+            list.push(sprite("png/ui/game_loading/minimap_bg.png", loading_layout::map_preview_frame,
+                             DrawSpace::design_pixels, TextureAnchor::top_left, 0.64));
+            auto preview = sprite(snapshot.map_preview_asset, loading_layout::map_preview,
+                                  DrawSpace::design_pixels, TextureAnchor::top_left, 0.64);
+            // images.load rotates every stock map_previews texture 90 degrees
+            // clockwise (tex_coords[3:] + tex_coords[:3]); a Map Creator png
+            // (create_ugc_preview_image) is drawn as authored.
+            if (snapshot.map_preview_asset.find("game_loading/map_previews/") !=
+                std::string::npos) {
+                preview.rotation_degrees = 90.0;
+            }
+            list.push(std::move(preview));
+        }
+        append_custom_rules(list, snapshot);
     }
-    append_menu_status(list, {220.0, 541.0, 516.0, 33.0}, {}, retail_status(snapshot),
+    append_menu_status(list, {220.0, 541.0, 516.0, 33.0}, {},
+        loading_status_text(snapshot, context.localize),
         snapshot.state == MatchLoadingState::failed || snapshot.state == MatchLoadingState::timed_out
             ? ColorRgba8{220U, 112U, 81U, 255U} : gold);
-    // Retail large navbar BACK affordance, bottom-left strip.
+    // Retail create_large_navbar(): back_icon arrow plus the yellow BACK
+    // label, the same affordance SelectTeam/SelectClass draw.
+    // NavigationBar.draw_item (not hovered): glColor 0.7 on the icon, the
+    // label in MENU_FONT_COLOR2*0.7, navigation_font = Spades 24, the icon at
+    // x+PAD/2 and the label PAD/2 after it (NavigationBar(54,27,695,32)).
+    list.push(sprite("png/ui/common_elements/nav_bar/back_icon.png",
+                     {56.5, 543.0, 26.0, 26.0}, DrawSpace::design_pixels,
+                     TextureAnchor::top_left, 0.64,
+                     // The arrow takes the label's glColor (MENU_FONT_COLOR2
+                     // * 0.7): retail measures (149,115,16) = back_icon
+                     // (235,204,77) * (162,145,55) / 255.
+                     ColorModulation{{232U, 207U, 78U, 255U}, 700U, 1'000U}));
     list.push(text("BACK",
-                   loading_layout::back,
-                   20.0,
+                   {84.0, 540.0, 110.0, 34.0},
+                   24.0,
                    HorizontalTextAlignment::left,
-                   cream,
+                   {162U, 145U, 55U, 255U},
                    "fonts/Spades.ttf",
                    TextTransform::uppercase));
     append_text_button(list, loading_layout::start, "START", snapshot.start_enabled,

@@ -5,6 +5,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -229,17 +231,40 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
     const auto beach_z_modifiable = reader.u8();
     const auto enable_minimap_height_icons = reader.u8();
     const auto enable_fall_on_water_damage = reader.u8();
-    static_cast<void>(beach_z_modifiable);
-    static_cast<void>(enable_fall_on_water_damage);
+    // GameScene.on_connect: max_modifiable_z = 238 if beach_z_modifiable
+    // else 237 (the BattleSpades server always sends 1).
+    info.beach_z_modifiable = beach_z_modifiable.value_or(1U) != 0U;
+    // block_wallet_multiplier (SelectClass block counts) then
+    // block_health_multiplier, both 1/64 fixed16; the latter scales every
+    // retail get_initial_health. Then the disabled tool / class byte lists.
+    std::int16_t block_wallet_raw{};
+    std::int16_t block_health_raw{};
+    const auto read_counted = [&reader](std::vector<std::uint8_t>& output) {
+        const auto count = reader.u8();
+        if (!count.has_value() || reader.remaining() < *count) return false;
+        output.clear();
+        output.reserve(*count);
+        for (std::size_t index{}; index < *count; ++index) {
+            const auto value = reader.u8();
+            if (!value.has_value()) return false;
+            output.push_back(*value);
+        }
+        return true;
+    };
     if (!texture_skin.has_value() || !beach_z_modifiable.has_value() ||
         !enable_minimap_height_icons.has_value() ||
-        !enable_fall_on_water_damage.has_value() || !reader.skip(2U + 2U) ||
-        !skip_counted_bytes(reader) || !skip_counted_bytes(reader)) {
+        !enable_fall_on_water_damage.has_value() ||
+        !read_required(reader, block_wallet_raw) ||
+        !read_required(reader, block_health_raw) ||
+        !read_counted(info.disabled_tools) || !read_counted(info.disabled_classes)) {
         error = "malformed InitialInfo rule collections";
         return std::nullopt;
     }
     info.enable_minimap_height_icons =
         *enable_minimap_height_icons != 0U;
+    info.enable_fall_on_water_damage = *enable_fall_on_water_damage != 0U;
+    info.block_wallet_multiplier = from_fixed(block_wallet_raw);
+    info.block_health_multiplier = from_fixed(block_health_raw);
     info.texture_skin = std::move(*texture_skin);
     const auto multiplier_count = reader.u8();
     if (!multiplier_count.has_value() ||
@@ -698,6 +723,81 @@ steam_ticket_packet(std::span<const std::byte> ticket, bool flight_profile) {
     return std::move(writer).take();
 }
 
+/** End offset of the VXL column starting at `position`, tracking its max z. */
+[[nodiscard]] std::optional<std::size_t>
+vxl_column_end(std::span<const std::byte> bytes, std::size_t position,
+               std::uint32_t& maximum_z) noexcept {
+    for (;;) {
+        if (bytes.size() < position || bytes.size() - position < 4U) return std::nullopt;
+        const auto words = std::to_integer<std::uint8_t>(bytes[position]);
+        const auto top_start = std::to_integer<std::uint8_t>(bytes[position + 1U]);
+        const auto top_end = std::to_integer<std::uint8_t>(bytes[position + 2U]);
+        maximum_z = std::max({maximum_z, static_cast<std::uint32_t>(top_start),
+                              static_cast<std::uint32_t>(top_end),
+                              std::to_integer<std::uint32_t>(bytes[position + 3U])});
+        if (words == 0U) {
+            const std::size_t top_words =
+                top_end >= top_start ? static_cast<std::size_t>(top_end - top_start + 1U) : 0U;
+            const auto advance = 4U * (1U + top_words);
+            if (advance > bytes.size() - position) return std::nullopt;
+            return position + advance;
+        }
+        const auto advance = static_cast<std::size_t>(words) * 4U;
+        if (advance > bytes.size() - position) return std::nullopt;
+        position += advance;
+    }
+}
+
+struct VxlColumns final {
+    std::vector<std::pair<std::size_t, std::size_t>> slices;
+    std::uint32_t maximum_z{};
+};
+
+/** Split a raw VXL into its columns; exactly 512x512 or nothing. */
+[[nodiscard]] std::optional<VxlColumns> split_full_vxl(std::span<const std::byte> raw) {
+    constexpr std::size_t columns = std::size_t{world::VxlMap::width} * world::VxlMap::depth;
+    VxlColumns result;
+    result.slices.reserve(columns);
+    std::size_t position{};
+    while (position < raw.size()) {
+        if (result.slices.size() == columns) return std::nullopt;
+        const auto end = vxl_column_end(raw, position, result.maximum_z);
+        if (!end.has_value()) return std::nullopt;
+        result.slices.emplace_back(position, *end);
+        position = *end;
+    }
+    if (result.slices.size() != columns) return std::nullopt;
+    return result;
+}
+
+/**
+ * GameClient.attempt_local_map_open(filename): the raw local stock map, only
+ * when its records share the wire's coordinates (a full 512x512, 240-high
+ * map needs no z normalisation). Anything else answers CRC 0.
+ */
+[[nodiscard]] std::optional<std::vector<std::byte>>
+read_local_stock_map(const std::filesystem::path& directory, std::string_view filename) {
+    if (directory.empty() || filename.empty() || filename.size() > 64U) return std::nullopt;
+    std::string stem{filename};
+    if (stem.size() > 4U && stem.ends_with(".vxl")) stem.resize(stem.size() - 4U);
+    if (stem.empty() || !std::ranges::all_of(stem, [](unsigned char character) {
+            return std::isalnum(character) != 0 || character == '_' || character == '-';
+        })) {
+        return std::nullopt;
+    }
+    std::ifstream input{directory / (stem + ".vxl"), std::ios::binary};
+    if (!input) return std::nullopt;
+    std::vector<char> raw{std::istreambuf_iterator<char>{input}, {}};
+    if (raw.empty() || raw.size() > maximum_inflated_map_bytes) return std::nullopt;
+    std::vector<std::byte> bytes(raw.size());
+    std::memcpy(bytes.data(), raw.data(), raw.size());
+    const auto columns = split_full_vxl(bytes);
+    if (!columns.has_value() || columns->maximum_z < world::VxlMap::height - 1U) {
+        return std::nullopt;
+    }
+    return bytes;
+}
+
 [[nodiscard]] std::vector<std::byte> validation_packet(std::uint32_t crc) {
     Writer writer;
     writer.u8(60U);
@@ -846,6 +946,67 @@ std::vector<std::byte> encode_protocol168_new_player_connection(
     return new_player_packet(config);
 }
 
+std::uint32_t protocol168_map_crc32(std::span<const std::byte> bytes) noexcept {
+    auto crc = crc32(0L, Z_NULL, 0U);
+    std::size_t offset{};
+    while (offset < bytes.size()) {
+        const auto count = static_cast<uInt>(
+            std::min<std::size_t>(bytes.size() - offset, std::numeric_limits<uInt>::max()));
+        crc = crc32(crc, reinterpret_cast<const Bytef*>(bytes.data() + offset), count);
+        offset += count;
+    }
+    return static_cast<std::uint32_t>(crc);
+}
+
+std::optional<world::VxlMap>
+protocol168_apply_map_records(std::span<const std::byte> base_raw,
+                              std::span<const std::byte> records,
+                              std::string& error) {
+    const auto base = split_full_vxl(base_raw);
+    if (!base.has_value()) {
+        error = "local map base is not a 512x512 VXL";
+        return std::nullopt;
+    }
+    constexpr std::size_t columns = std::size_t{world::VxlMap::width} * world::VxlMap::depth;
+    std::vector<std::optional<std::pair<std::size_t, std::size_t>>> overrides(columns);
+    Reader reader{records};
+    std::size_t position{};
+    while (!reader.done()) {
+        const auto x = reader.integer<std::uint32_t>();
+        const auto y = reader.integer<std::uint32_t>();
+        if (!x.has_value() || !y.has_value() || *x >= world::VxlMap::width ||
+            *y >= world::VxlMap::depth) {
+            error = "MapSync column record has an invalid coordinate";
+            return std::nullopt;
+        }
+        position += 8U;
+        std::uint32_t ignored_z{};
+        const auto end = vxl_column_end(records, position, ignored_z);
+        if (!end.has_value()) {
+            error = "truncated MapSync column record";
+            return std::nullopt;
+        }
+        overrides[std::size_t{*y} * world::VxlMap::width + *x] =
+            std::pair{position, *end};
+        for (std::size_t skip = position; skip < *end; ++skip) static_cast<void>(reader.u8());
+        position = *end;
+    }
+    std::vector<std::byte> raw;
+    raw.reserve(base_raw.size() + records.size());
+    for (std::size_t column{}; column < columns; ++column) {
+        const auto source = overrides[column].has_value() ? records : base_raw;
+        const auto [begin, end] = overrides[column].value_or(base->slices[column]);
+        raw.insert(raw.end(), source.begin() + static_cast<std::ptrdiff_t>(begin),
+                   source.begin() + static_cast<std::ptrdiff_t>(end));
+    }
+    auto loaded = world::VxlMap::load(raw);
+    if (!loaded) {
+        error = "MapSync overlay produced an invalid VXL: " + loaded.error;
+        return std::nullopt;
+    }
+    return std::move(*loaded.map);
+}
+
 Protocol168Session::Protocol168Session(Protocol168SessionConfig config)
     : config_{std::move(config)} {
     if (config_.player_name.empty() || config_.player_name.size() > 31U ||
@@ -903,8 +1064,25 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         }
         initial_info_ = std::move(info);
         phase_ = Protocol168SessionPhase::awaiting_map_validation;
+        // GameClient.packet_received (network.pyd 0x1000d900) opens the local
+        // map on InitialInfo and send_map_validation replies crc32(file), or
+        // 0 when it is missing. UGC worlds never have a stock local file.
+        sent_map_crc_ = config_.local_map_crc;
+        local_map_raw_.clear();
+        if (!config_.local_map_directory.empty()) {
+            sent_map_crc_ = 0U;
+            if (!initial_info_->map_is_ugc()) {
+                if (auto raw = read_local_stock_map(config_.local_map_directory,
+                                                    initial_info_->filename);
+                    raw.has_value()) {
+                    sent_map_crc_ = protocol168_map_crc32(*raw);
+                    local_map_raw_ = std::move(*raw);
+                }
+            }
+        }
+        loading_.initial_info = true;
         result.outbound_datagrams.push_back(encode_protocol168_client_datagram(
-            validation_packet(config_.local_map_crc), config_.steam_ticket));
+            validation_packet(sent_map_crc_), config_.steam_ticket));
         phase_ = Protocol168SessionPhase::awaiting_map_start;
         result.accepted = true;
         return result;
@@ -918,6 +1096,8 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         }
         ugc_source_stream_.clear();
         receiving_ugc_source_ = true;
+        loading_.receiving_map_data = true;
+        loading_.map_data_percent = 0U;
         result.accepted = true;
         return result;
     }
@@ -955,6 +1135,7 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
             ugc_source_stream_.push_back(
                 static_cast<std::byte>(*reader.u8()));
         }
+        loading_.map_data_percent = std::max(loading_.map_data_percent, *percent);
         result.accepted = true;
         return result;
     }
@@ -994,6 +1175,11 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
                 "malformed or out-of-phase MapDataValidation", result, true));
             return result;
         }
+        // The server's own file CRC (never an echo of ours): on a match the
+        // local stock map becomes the world base (BS connection.send_map_data).
+        Reader validation{packet.subspan(1U)};
+        server_map_crc_ = validation.integer<std::uint32_t>();
+        loading_.map_validated = true;
         result.accepted = true;
         return result;
     }
@@ -1006,6 +1192,8 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         }
         map_stream_.clear();
         phase_ = Protocol168SessionPhase::receiving_map;
+        loading_.sync_started = true;
+        loading_.sync_percent = 0U;
         result.accepted = true;
         return result;
     }
@@ -1028,6 +1216,9 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         while (!reader.done()) {
             map_stream_.push_back(static_cast<std::byte>(*reader.u8()));
         }
+        // percent_complete = int(index / total * 100) + 1, so up to 101.
+        loading_.sync_percent = std::max<std::uint8_t>(
+            loading_.sync_percent, std::min<std::uint8_t>(*percent, 100U));
         result.accepted = true;
         return result;
     }
@@ -1038,17 +1229,33 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
             return result;
         }
         std::string error;
-        auto records = inflate_map(map_stream_, error);
+        const bool local_base = !local_map_raw_.empty() && sent_map_crc_ != 0U &&
+                                server_map_crc_.has_value() &&
+                                *server_map_crc_ == sent_map_crc_;
+        // A CRC match lets the server send only its dirty columns, which may
+        // be none at all (an empty stream).
+        std::optional<std::vector<std::byte>> records;
+        if (local_base && map_stream_.empty()) {
+            records.emplace();
+        } else {
+            records = inflate_map(map_stream_, error);
+        }
         if (!records.has_value()) {
             static_cast<void>(note_malformed(std::move(error), result, true));
             return result;
         }
-        auto map = decode_full_map_records(*records, error);
+        auto map = local_base
+                       ? protocol168_apply_map_records(local_map_raw_, *records, error)
+                       : decode_full_map_records(*records, error);
         if (!map.has_value()) {
             static_cast<void>(note_malformed(std::move(error), result, true));
             return result;
         }
         map_ = std::move(map);
+        local_map_raw_.clear();
+        local_map_raw_.shrink_to_fit();
+        loading_.sync_finished = true;
+        loading_.local_map_base = local_base;
         phase_ = Protocol168SessionPhase::awaiting_state;
         result.accepted = true;
         return result;
@@ -1238,5 +1445,11 @@ Protocol168Session::take_deferred_runtime_packets() {
 std::uint32_t Protocol168Session::next_client_loop_count() const noexcept {
     return client_loop_count_;
 }
+
+Protocol168LoadingProgress Protocol168Session::loading_progress() const noexcept {
+    return loading_;
+}
+
+std::uint32_t Protocol168Session::sent_map_crc() const noexcept { return sent_map_crc_; }
 
 } // namespace battlespades::network

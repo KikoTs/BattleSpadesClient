@@ -43,6 +43,17 @@ enum class TerrainImpactKind : std::uint8_t {
      * must never create an ordnance flash, debris shell, or dynamic light.
      */
     block_cannon,
+    /**
+     * Damage(37) type 25: BlockManager.handle_blockfire_damage. A single
+     * burning block losing health every 0.4 s -- silent, and never an
+     * explosion (the fire's look is its BlockFireEntity patch and smoke).
+     */
+    burn,
+    /**
+     * Damage(37) type 43: handle_chemical_bomb_damage. Goo dissolving its
+     * block; on_single_block_damaged spawns the chemical debris.
+     */
+    dissolve,
 };
 
 /** A committed terrain hit, consumed by the client-only feedback simulation. */
@@ -161,15 +172,28 @@ enum class FallingSoundTier : std::uint8_t {
                : FallingSoundTier::small;
 }
 
+/** FALLING_BLOCKS_PARTICLE_MOD_MIN/MAX and FALLING_BLOCKS_MAX_SIZE. */
+inline constexpr std::size_t falling_blocks_particle_mod_min{5U};
+inline constexpr std::size_t falling_blocks_particle_mod_max{15U};
+inline constexpr std::size_t falling_blocks_max_size{8'000U};
+
+/** Breakup sampling: every int(5 + size / 8000 * 10)-th voxel emits particles. */
+[[nodiscard]] std::size_t falling_blocks_particle_mod(std::size_t block_count) noexcept;
+
 /**
- * Presentation duration for a detached component.
- *
- * The three audible weights anchor at 0.5/0.9/1.2 seconds. Smoothstep between
- * the 15- and 80-block retail thresholds avoids a one-block size change
- * producing a visible timing pop; very large components ease toward 1.2 s at
- * the renderer's hard 2,048-voxel cap.
+ * One world.pyd FallingBlocks physics step (sub_10007DC0): v.z += gravity*dt,
+ * pos += v * dt * 32, then the solid-grid probe at floor(pos) (z=239 probes
+ * 238, z >= 240 always hits, outside x/y never does). On a hit the previous
+ * position is restored, the velocity axis whose cell changed is reflected and
+ * the whole velocity halved; returns true.
  */
-[[nodiscard]] float falling_animation_duration(std::size_t block_count) noexcept;
+[[nodiscard]] bool retail_falling_blocks_step(const VxlMap& map,
+                                              std::array<float, 3U>& position,
+                                              std::array<float, 3U>& velocity, float dt,
+                                              float gravity) noexcept;
+
+/** world.pyd sub_100027F0 random unit axis from an MSVCRT rand() stream. */
+[[nodiscard]] std::array<float, 3U> retail_random_unit_axis(std::uint32_t& state) noexcept;
 
 /** Returns the authored retail sound group for a split or landing event. */
 [[nodiscard]] std::string_view falling_sound_group(TerrainSoundKind kind,
@@ -208,23 +232,40 @@ struct TerrainEffectInstance final {
 
 /** One renderer-neutral voxel used by block-line placement ghosting. */
 [[nodiscard]] ChunkMesh placement_preview_cube(VxlColor color);
+/** The classic-mode ghost: draw_cube(..., textured_wireframe=True) as edge bars. */
+[[nodiscard]] ChunkMesh placement_preview_wire_cube(VxlColor color);
+
+/**
+ * Whether a shot with this tool casts the enhanced-tier muzzle light: every
+ * gun with a retail muzzleflash_default draw, plus the rocket/grenade
+ * launchers.
+ */
+[[nodiscard]] bool weapon_flash_casts_light(std::uint8_t tool_id) noexcept;
+/** The tier gate on top: never in the Retail tier (retail has no shot light). */
+[[nodiscard]] bool muzzle_light_enabled(bool retail_look, std::uint8_t tool_id) noexcept;
 
 /**
  * Bounded client-only presentation of terrain hits and disconnected structures.
  *
  * Collision has already been removed atomically by the authoritative VXL map.
- * This class therefore cannot affect movement or networking: it animates the
- * captured colors as a collisionless body, matching retail's ability to phase
- * through remaining terrain, and replaces it after a size-weighted window with
- * one shrinking image per captured voxel. All methods run on the fixed-rate
- * gameplay thread and perform no file I/O.
+ * This class therefore cannot affect movement or networking. A detached
+ * structure is retail FallingBlocks: it falls under the map gravity, tumbles
+ * about a random axis at 50 deg/s, probes the live map at its bounding-box
+ * centre and breaks into particles at its first contact. All methods run on
+ * the fixed-rate gameplay thread and perform no file I/O.
  */
 class TerrainEffectSimulation final {
 public:
     static constexpr std::size_t maximum_instances{40U};
-    /** Hard visual cap requested for one detached structure. */
-    static constexpr std::size_t maximum_falling_voxels{2'048U};
     static constexpr std::size_t maximum_dynamic_lights{16U};
+    /**
+     * Not retail: a body that can never land (zero/negative gravity) is
+     * retired after this long instead of living forever.
+     */
+    static constexpr float falling_structure_safety_seconds{60.0F};
+
+    /** StateData world gravity (1.0 default; LunarBase 0.4). */
+    void set_gravity(float gravity) noexcept { gravity_ = gravity; }
 
     /**
      * Attaches the particle sink that renders the high-fidelity bursts.
@@ -305,6 +346,7 @@ private:
     std::vector<TerrainSoundEvent> sound_events_;
     std::uint64_t next_id_{1U};
     ParticleSystem* particles_{};
+    float gravity_{1.0F};
     std::optional<Kv6Model> grave_model_;
 };
 

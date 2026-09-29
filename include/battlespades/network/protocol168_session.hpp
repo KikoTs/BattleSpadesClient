@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
@@ -54,7 +55,39 @@ struct Protocol168SessionConfig final {
     std::vector<std::byte> steam_ticket;
     /** Explicit extension support; never inferred from a player identity. */
     bool negotiate_flight_profile{};
+    /**
+     * Directory holding the stock `<filename>.vxl` maps. When set, InitialInfo
+     * answers MapDataValidation with crc32 of the local file, as retail
+     * `send_map_validation` (network.pyd 0x10013f90) does, and a CRC match
+     * applies the MapSync records onto that file instead of requiring a
+     * complete snapshot. UGC maps always send 0. Empty keeps local_map_crc.
+     */
+    std::filesystem::path local_map_directory;
 };
+
+/**
+ * Retail loadingMenu milestones, published while the handshake runs:
+ * CHECKING_MAP (InitialInfo), LOADING_MAP (MapDataValidation), RECEIVING_MAP
+ * (MapDataStart, UGC source), SYNCING_MAP (MapSyncStart), INITIALISING_MAP
+ * (MapSyncEnd). Percentages are the packets' percent_complete (0..100).
+ */
+struct Protocol168LoadingProgress final {
+    bool initial_info{};
+    bool map_validated{};
+    bool receiving_map_data{};
+    std::uint8_t map_data_percent{};
+    bool sync_started{};
+    std::uint8_t sync_percent{};
+    bool sync_finished{};
+    /** MapDataValidation matched the local file and it became the world base. */
+    bool local_map_base{};
+
+    friend bool operator==(const Protocol168LoadingProgress&,
+                           const Protocol168LoadingProgress&) = default;
+};
+
+/** crc32 of raw bytes, identical to zlib.crc32 / retail send_map_validation. */
+[[nodiscard]] std::uint32_t protocol168_map_crc32(std::span<const std::byte> bytes) noexcept;
 
 struct Protocol168InitialInfo final {
     std::string server_name;
@@ -97,6 +130,18 @@ struct Protocol168InitialInfo final {
     /** InitialInfo rule gating both retail sniper LaserAttachment variants. */
     bool enable_sniper_beam{};
     bool enable_spectator{};
+    /** RULE_ENABLE_FALL_ON_WATER_DAMAGE; off zeroes the mover's water multiplier. */
+    bool enable_fall_on_water_damage{true};
+    /** InitialInfo beach_z_modifiable: max_modifiable_z 238, else 237. */
+    bool beach_z_modifiable{true};
+    /** RULE_BLOCK_HEALTH (fixed16): BlockManager health_multiplier. */
+    float block_health_multiplier{1.0F};
+    /** RULE_BLOCK_WALLET (fixed16): SelectClass "Blocks: a / b" scale. */
+    float block_wallet_multiplier{1.0F};
+    /** manager.disabled_tools: SelectClass hides these rows/constructs. */
+    std::vector<std::uint8_t> disabled_tools;
+    /** manager.disabled_classes: removed from the team class lists. */
+    std::vector<std::uint8_t> disabled_classes;
     std::vector<float> movement_speed_multipliers;
     /** Initial UGC terrain palette rows in retail RGB/Z-threshold order. */
     std::vector<std::array<std::uint8_t, 4U>> ground_colors;
@@ -216,7 +261,8 @@ encode_protocol168_new_player_connection(
 /**
  * Strict Protocol 168 join state machine shared by the future match scene and
  * the live integration smoke. It uses the caller's real Steam ticket when one
- * is available, otherwise the explicit offline path, and forces full MapSync.
+ * is available, otherwise the explicit offline path. MapSync is applied onto
+ * the local stock map when its CRC matched, else it must be a full snapshot.
  * Interactive sessions publish the map/state at the
  * SelectTeam boundary; diagnostic sessions may continue through packet 15 and
  * first ClientData automatically.
@@ -263,6 +309,10 @@ public:
     take_deferred_runtime_packets();
     /** Next label after the handshake's mandatory first ClientData frame. */
     [[nodiscard]] std::uint32_t next_client_loop_count() const noexcept;
+    /** Loader milestones reached so far. */
+    [[nodiscard]] Protocol168LoadingProgress loading_progress() const noexcept;
+    /** CRC sent in MapDataValidation (0 forces a complete snapshot). */
+    [[nodiscard]] std::uint32_t sent_map_crc() const noexcept;
 
 private:
     [[nodiscard]] Protocol168IngestResult
@@ -290,6 +340,21 @@ private:
     std::size_t unknown_packets_{};
     std::size_t malformed_packets_{};
     std::uint32_t client_loop_count_{};
+    Protocol168LoadingProgress loading_{};
+    /** Raw local `<filename>.vxl` answering MapDataValidation, if eligible. */
+    std::vector<std::byte> local_map_raw_;
+    std::uint32_t sent_map_crc_{};
+    std::optional<std::uint32_t> server_map_crc_;
 };
+
+/**
+ * Apply MapSync (x, y, column spans) records onto a raw 512x512 VXL, in any
+ * order, and load the result. This is the CRC-match path: the records replace
+ * only the columns they name (a full snapshot simply replaces all of them).
+ */
+[[nodiscard]] std::optional<world::VxlMap>
+protocol168_apply_map_records(std::span<const std::byte> base_raw,
+                              std::span<const std::byte> records,
+                              std::string& error);
 
 } // namespace battlespades::network

@@ -53,6 +53,9 @@ void packet_icons_and_visibility_are_bounded() {
     expect(!objective_packet_billboard_asset("../settings").has_value() &&
                !objective_packet_billboard_asset("base_icon.png").has_value(),
            "packet-41 strings must never become arbitrary texture paths");
+    expect(objective_packet_billboard_asset("marker_radar_station_16") ==
+               "png/ui/marker_radar_station_16.png",
+           "retail loads any bare packet-41 name from png/ui without a whitelist");
     expect(objective_visible_to_team(0U, 2U) &&
                objective_visible_to_team(1U, 3U) &&
                objective_visible_to_team(3U, 0U) &&
@@ -68,8 +71,8 @@ void projection_draws_world_icons_and_directional_pointers() {
         75.0, 1600U, 900U);
     expect(ahead.has_value() && !ahead->pointer &&
                std::abs(ahead->x_pixels - 800.0) < 1.0e-9 &&
-               std::abs(ahead->y_pixels - 450.0) < 1.0e-9,
-           "an objective in the camera cone must draw its world icon");
+               ahead->y_pixels < 450.0,
+           "an objective in the camera cone must draw its world icon (lifted s / initial_scale)");
 
     const auto right = project_objective_indicator(
         {10.0, 10.0, 20.0}, {10.0, 0.0, 20.0}, 0.0, 0.0,
@@ -83,6 +86,44 @@ void projection_draws_world_icons_and_directional_pointers() {
         75.0, 1600U, 900U);
     expect(behind.has_value() && behind->pointer,
            "an objective behind the player must remain discoverable");
+    // MinimapBillboard.render: clamp_point_to_cone(pi/6). An off-cone
+    // objective sits on the 30 degree cone, not at the screen edge.
+    {
+        const double focal = 450.0 / std::tan(75.0 * std::acos(-1.0) / 360.0);
+        const double cone = focal * std::tan(std::acos(-1.0) / 6.0);
+        // Billboard.set_variables(z - s / initial_scale): a FULLSIZE zone has
+        // scale 1.0 and initial_scale 2.5, so s = 0.05 at 10 blocks.
+        const double lift = 0.02 * focal / (0.25 * std::cos(std::acos(-1.0) / 6.0));
+        expect(std::abs(std::hypot(right->x_pixels - 800.0,
+                                   right->y_pixels + lift - 450.0) - cone) < 1.0e-6,
+               "an off-cone objective must clamp onto the retail 30 degree cone");
+    }
+    const auto near_icon = project_objective_indicator(
+        {10.0, 10.0, 20.0}, {0.0, 10.0, 20.0}, 0.0, 0.0, 75.0, 1600U, 900U);
+    const auto far_icon = project_objective_indicator(
+        {10.0, 10.0, 20.0}, {-190.0, 10.0, 20.0}, 0.0, 0.0, 75.0, 1600U, 900U);
+    expect(near_icon && far_icon && far_icon->size_pixels < near_icon->size_pixels &&
+               std::abs(far_icon->size_pixels / near_icon->size_pixels - 0.02 / 0.05) < 1.0e-9,
+           "billboard scale: initial_scale (2.5) within 20 blocks, 0.6 beyond 100, min_scale 0.02");
+    {
+        // 2 * (0.02 * 1.0 * 2.5) / 0.25 focal lengths, lifted (s / 2.5) / 0.25.
+        const double focal = 450.0 / std::tan(75.0 * std::acos(-1.0) / 360.0);
+        expect(near_icon && std::abs(near_icon->size_pixels - 0.4 * focal) < 1.0e-6 &&
+                   std::abs(near_icon->y_pixels - (450.0 - 0.08 * focal)) < 1.0e-6,
+               "the recovered 0.25-block billboard quad sets the on-screen size and lift");
+        // Minimap.add_billboard: default scale 1.8 = initial_scale.
+        const auto packet_icon = project_objective_indicator(
+            {10.0, 10.0, 20.0}, {0.0, 10.0, 20.0}, 0.0, 0.0, 75.0, 1600U, 900U, 1.8, 1.8);
+        expect(packet_icon &&
+                   std::abs(packet_icon->size_pixels - 2.0 * 0.02 * 1.8 * 1.8 / 0.25 * focal) < 1.0e-6,
+               "packet billboards use MinimapBillboard's default scale 1.8");
+        // Pre-round-7 native drew a FULLSIZE zone with scale 2.5: 2.5x too large.
+        const auto oversized = project_objective_indicator(
+            {10.0, 10.0, 20.0}, {0.0, 10.0, 20.0}, 0.0, 0.0, 75.0, 1600U, 900U, 2.5, 2.5);
+        expect(oversized && near_icon &&
+                   std::abs(oversized->size_pixels / near_icon->size_pixels - 2.5) < 1.0e-9,
+               "zone billboards must not keep the construction scale once FULLSIZE");
+    }
     expect(!project_objective_indicator(
                 {10.0, 10.0, 20.0}, {0.0, 10.0, 20.0}, 0.0, 0.0,
                 0.0, 1600U, 900U)

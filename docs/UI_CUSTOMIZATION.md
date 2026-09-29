@@ -32,13 +32,13 @@ Start directly on a screen fixture with:
 BattleSpadesClient.exe --debug-ui leaderboard --ui-editor
 ```
 
-For other screens, launch normally, navigate to the screen, and press **F11**.
+For other screens, launch normally, navigate to the screen, and press **Ctrl+Shift+F11** (plain F11 is the retail screenshot key).
 
 Editor controls:
 
 | Input | Action |
 |---|---|
-| F11 | Open or close the editor |
+| Ctrl+Shift+F11 | Open or close the editor |
 | Click | Select the topmost UI element under the cursor |
 | Drag | Move the selected element |
 | Drag the gold lower-right handle | Resize the selected element |

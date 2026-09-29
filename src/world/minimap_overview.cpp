@@ -18,10 +18,20 @@ void write_column(const VxlMap& map, std::span<std::uint8_t> pixels,
     const auto destination =
         (static_cast<std::size_t>(y) * VxlMap::width + x) * channels;
     const auto surface = map.surface_z(x, y);
-    const auto color =
+    auto color =
         surface == no_surface || surface >= VxlMap::height
             ? std::optional<VxlColor>{}
             : map.color(x, y, surface);
+    // Open water is the z=239 collision bed. The VXL finaliser gives every
+    // bed cell one map-wide colour, the ground table's last row (stock
+    // (40,54,64) slate blue); the loader stores 0 there, so without this the
+    // retail slate-blue sea and rivers drew black.
+    if (surface == VxlMap::height - 1U && map.has_ground_color_table()) {
+        const auto rgb = map.ground_table_rgb(surface);
+        color = VxlColor{static_cast<std::uint8_t>(rgb >> 16U),
+                         static_cast<std::uint8_t>(rgb >> 8U),
+                         static_cast<std::uint8_t>(rgb), 255U};
+    }
     // The native generator writes RGB from get_color and uploads RGBA. Its
     // alpha initialization is outside the recovered loop; the resulting map
     // texture is opaque in retail, so make that invariant explicit.

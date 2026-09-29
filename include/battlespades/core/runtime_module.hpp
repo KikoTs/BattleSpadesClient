@@ -37,6 +37,25 @@ public:
     [[nodiscard]] virtual bool start() = 0;
     [[nodiscard]] virtual TickDecision tick(const TickContext& context) = 0;
     virtual void stop() noexcept = 0;
+
+    /**
+     * Period of optional render-only frames between fixed ticks, or zero for
+     * none (the default: exactly one presentation per tick, retail pacing).
+     * Queried once per paced tick, after every module ticked.
+     */
+    [[nodiscard]] virtual std::chrono::nanoseconds intermediate_frame_period() const noexcept {
+        return std::chrono::nanoseconds::zero();
+    }
+
+    /**
+     * Presents one render-only frame `alpha` (0 <= alpha < 1) of the way from
+     * the last tick to the next. Implementations must not poll input, advance
+     * simulation or touch the network: the fixed-step cadence is unchanged.
+     */
+    [[nodiscard]] virtual TickDecision present_intermediate(double alpha) {
+        static_cast<void>(alpha);
+        return TickDecision::continue_running;
+    }
 };
 
 } // namespace battlespades::core

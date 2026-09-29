@@ -163,7 +163,7 @@ void every_tier_has_a_name() {
     for (const auto tier : tiers) {
         expect(!quality_profile_name(tier).empty(), "every tier must be nameable in the UI");
     }
-    expect(quality_profile_name(ShaderQuality::compatibility) == "LEGACY",
+    expect(quality_profile_name(ShaderQuality::compatibility) == "RETAIL",
            "the compatibility tier is presented as Legacy");
     expect(quality_profile_name(ShaderQuality::ultra) == "ULTRA", "ultra must be named");
 }

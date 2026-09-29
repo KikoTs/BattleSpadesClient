@@ -1,3 +1,4 @@
+#include "battlespades/world/flight_profile.hpp"
 #include "battlespades/world/player_movement.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
@@ -9,6 +10,25 @@
 #include <vector>
 
 namespace {
+
+// P3-16: the prediction reads retail JETPACK_PROPERTIES (BS/shared/constants.py).
+using battlespades::world::jetpack_properties;
+static_assert(jetpack_properties(1U).start_delay == 0.25 &&
+              jetpack_properties(1U).activation_cost == 10.0 &&
+              jetpack_properties(1U).flying_consumption == 75.0 &&
+              jetpack_properties(1U).refill_delay_due_damage == 2.0);
+static_assert(jetpack_properties(2U).refill_rate == 9.0 &&
+              jetpack_properties(2U).flying_consumption == 17.0 &&
+              jetpack_properties(2U).refill_delay_due_damage == 2.0);
+static_assert(jetpack_properties(3U).refill_rate == 3.0 &&
+              jetpack_properties(3U).refill_delay_due_damage == 0.5);
+static_assert(jetpack_properties(4U).start_delay == 0.1 &&
+              jetpack_properties(4U).activation_cost == 0.0 &&
+              jetpack_properties(4U).refill_delay_due_damage == 0.1);
+static_assert(jetpack_properties(9U).max_fuel == 0.0);
+// P0-07: the retail-calibrated boundary frames the server pins for BSCF owners.
+static_assert(battlespades::world::jetpack_activation_defer_frames == 2U &&
+              battlespades::world::jetpack_exhaustion_tail_frames == 3U);
 
 using battlespades::world::apply_crouch_request;
 using battlespades::world::constrain_player_to_bounds;
@@ -555,16 +575,135 @@ int main() {
                        state, PlayerMovementBounds{{10.0, 10.0, 10.0},
                                                    {20.0, 20.0, 20.0}}),
                    "valid server movement bounds must be accepted");
+            // world.pyx lock_box clamps position only; velocity is untouched.
             expect(state.position.x == 10.0 && state.position.y == 20.0 &&
-                       state.position.z == 12.0 && state.velocity.x == 0.0 &&
-                       state.velocity.y == 0.0 && state.velocity.z == -4.0,
-                   "only outward boundary motion must be cancelled");
+                       state.position.z == 12.0 && state.velocity.x == -2.0 &&
+                       state.velocity.y == 3.0 && state.velocity.z == -4.0,
+                   "lock_box must clamp position only and keep wall-ward velocity");
             const auto retained = state;
             expect(!constrain_player_to_bounds(
                        state, PlayerMovementBounds{{20.0, 10.0, 10.0},
                                                    {10.0, 20.0, 20.0}}) &&
                        state.position.x == retained.position.x,
                    "malformed bounds must fail closed without mutating state");
+        }
+
+        // lock_box runs inside the native update, after the move: the frame
+        // that walks into the wall still moves, then clamps, velocity intact.
+        {
+            const auto map = platform_world();
+            PlayerMovementState free_walk;
+            free_walk.position = {103.5, 103.5, 197.75};
+            free_walk.orientation = {1.0, 0.0, 0.0};
+            for (int frame{}; frame < 30; ++frame) {
+                static_cast<void>(step_player(free_walk, {}, &map, fixed_dt));
+            }
+            auto locked = free_walk;
+            PlayerInputState forward;
+            forward.forward = true;
+            const PlayerMovementBounds box{{0.0, 0.0, 0.0}, {103.5, 512.0, 240.0}};
+            static_cast<void>(step_player(free_walk, forward, &map, fixed_dt));
+            static_cast<void>(step_player(locked, forward, &map, fixed_dt,
+                                          {}, {}, 1.0, &box));
+            expect(free_walk.position.x > 103.5 && locked.position.x == 103.5 &&
+                       locked.velocity.x == free_walk.velocity.x &&
+                       locked.velocity.x > 0.0,
+                   "in-step lock_box must clamp the moved position and keep the velocity");
+        }
+
+        // Parachute rules mirror BS/server/player.py _update_parachute.
+        {
+            using battlespades::world::advance_parachute_rules;
+            using battlespades::world::parachute_ground_clearance;
+            using battlespades::world::settle_parachute_after_move;
+            const auto map = platform_world();
+            PlayerMovementState body;
+            body.position = {103.5, 103.5, 190.0};
+            body.airborne = true;
+            body.parachute = true;
+            const auto clearance = parachute_ground_clearance(&map, body, false);
+            expect(clearance.has_value() && std::fabs(*clearance - (200.0 - 192.25)) < 1e-9,
+                   "clearance is measured from the standing feet to the platform");
+            const auto crouched = parachute_ground_clearance(&map, body, true);
+            expect(crouched.has_value() && std::fabs(*crouched - (200.0 - 191.35)) < 1e-9,
+                   "a crouch button uses the 1.35 contact offset");
+            auto outside = body;
+            outside.position = {-4.0, -4.0, 100.0};
+            const auto edge = parachute_ground_clearance(&map, outside, false);
+            expect(edge.has_value() && std::fabs(*edge - (239.0 - 102.25)) < 1e-9,
+                   "out-of-map columns answer z=239 like get_z");
+            expect(!parachute_ground_clearance(nullptr, body, false).has_value(),
+                   "no map means no clearance veto");
+
+            // Ascending press stays armed and opens only while descending.
+            body.velocity.z = -0.2;
+            advance_parachute_rules(body, true, true, false, &map, fixed_dt);
+            expect(!body.parachute_active && body.parachute_pending,
+                   "an ascending press must arm, not open");
+            body.velocity.z = 0.01;
+            advance_parachute_rules(body, false, true, false, &map, fixed_dt);
+            expect(body.parachute_active && body.parachute_used_this_fall &&
+                       !body.parachute_pending && body.parachute_open_frames == 0U,
+                   "the armed press must open on descent with enough clearance");
+
+            // Lifted canopies spill, and the fall's one deploy is spent.
+            body.velocity.z = -0.06;
+            advance_parachute_rules(body, false, true, false, &map, fixed_dt);
+            expect(!body.parachute_active, "rising faster than 0.05 must close the canopy");
+            body.velocity.z = 0.1;
+            advance_parachute_rules(body, true, true, false, &map, fixed_dt);
+            expect(!body.parachute_active && !body.parachute_pending,
+                   "one deploy per fall");
+
+            // Landing re-arms; a low hop (< 6 blocks) never opens.
+            body.airborne = false;
+            settle_parachute_after_move(body);
+            expect(!body.parachute_used_this_fall, "landing re-arms the deploy");
+            auto hop = body;
+            hop.airborne = true;
+            hop.position.z = 195.0;
+            hop.velocity.z = 0.05;
+            advance_parachute_rules(hop, true, true, false, &map, fixed_dt);
+            expect(!hop.parachute_active && hop.parachute_pending,
+                   "a press near the ground stays armed but refuses to open");
+
+            // 30 s timeout (1800 frames at 60 Hz).
+            auto timed = body;
+            timed.airborne = true;
+            timed.velocity.z = 0.05;
+            advance_parachute_rules(timed, true, true, false, &map, fixed_dt);
+            expect(timed.parachute_active, "timeout fixture must open");
+            for (int frame{1}; frame < 1800; ++frame) {
+                advance_parachute_rules(timed, false, true, false, &map, fixed_dt);
+            }
+            expect(timed.parachute_active && timed.parachute_open_frames == 1799U,
+                   "the canopy stays open for 1799 frames");
+            advance_parachute_rules(timed, false, true, false, &map, fixed_dt);
+            expect(!timed.parachute_active, "the 1800th open frame collapses the canopy");
+
+            // Any jetpack forbids a canopy (can_hold false).
+            auto packed = body;
+            packed.airborne = true;
+            packed.velocity.z = 0.1;
+            advance_parachute_rules(packed, true, false, false, &map, fixed_dt);
+            expect(!packed.parachute_active && !packed.parachute_pending,
+                   "a jetpack holder cannot hold a canopy");
+        }
+
+        // Late-canopy landing damage and RULE_ENABLE_FALL_ON_WATER_DAMAGE.
+        {
+            using battlespades::world::parachute_landing_damage;
+            const auto soldier = movement_config_for_class(0U);
+            expect(parachute_landing_damage(0.05, true, fixed_dt, 1.0, soldier, 200.0) == 0,
+                   "terminal canopy descent lands softly");
+            const int late = parachute_landing_damage(1.0, false, fixed_dt, 1.0, soldier, 200.0);
+            expect(late > 0, "a canopy opened just before impact still charges the fall");
+            const auto dry_rule = movement_config_for_class(0U, 1.0, false);
+            expect(dry_rule.fall_on_water_damage_multiplier == 0.0 &&
+                       soldier.fall_on_water_damage_multiplier == 0.5,
+                   "the disabled water rule zeroes the mover's water multiplier");
+            expect(parachute_landing_damage(1.0, false, fixed_dt, 1.0, dry_rule, 238.0) == 0,
+                   "no water landing damage with the rule off");
         }
 
         std::cout << "player movement: retail step/collision parity checks passed\n";

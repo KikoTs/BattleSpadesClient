@@ -21,6 +21,11 @@ void main()
         // vxl.pyd sub_100051C0 writes truncated RGB bytes BEFORE interpolation.
         // The VXL light byte is baked illumination, not gl_Vertex.w's flare bypass.
         v_color0.rgb = floor(a_color0.rgb * 255.0 * a_texcoord1 + 0.0001) / 255.0;
+        // vxl.pyd 0x10022360: the strongest static light's rgb*att*N.L is
+        // added to that baked colour, saturated and truncated again. The
+        // mesher's retail kernel writes exactly that term into color2.rgb
+        // (zero where no light reaches); w = att rides in color1.w.
+        v_color0.rgb = floor(min(v_color0.rgb + a_color2.rgb, vec3(1.0, 1.0, 1.0)) * 255.0 + 0.0001) / 255.0;
     }
 
     // Detached voxel components, projectiles and the viewmodel all live in

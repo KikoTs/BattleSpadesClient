@@ -228,7 +228,7 @@ void GameplayDebugLab::trigger_vfx() {
     case DebugVfxKind::grenade:
         impact.kind = TerrainImpactKind::explosion;
         impact.radius = 3.0F;
-        impact.source_tool = 17U;
+        impact.source_tool = 11U; // GRENADE
         emit_explosion(vfx_particles_, impact);
         status_ = "GRENADE IMPACT REPLAYED";
         break;

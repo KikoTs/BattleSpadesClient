@@ -2,8 +2,13 @@
 
 #include "battlespades/world/player_movement.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
+
+namespace battlespades::world {
+class VxlMap;
+}
 
 namespace battlespades::frontend {
 
@@ -16,11 +21,19 @@ namespace battlespades::frontend {
  */
 enum class DeathCameraMode : std::uint8_t {
     inactive,
-    /** Orbiting the authoritative grave (entity type 11). */
+    /**
+     * Retail DeathController (camera id 5): a fixed eye at the death position
+     * turning to face a repeat killer, optionally flying toward them.
+     */
+    killer_view,
+    /**
+     * Retail ChaseController (camera id 1) on the local player's own body:
+     * mouse orbit around the corpse/grave, pulled in front of walls.
+     */
     grave,
-    /** Following one living replicated player. */
+    /** ChaseController following one living replicated player. */
     chase,
-    /** Spectator fallback while no legal chase target exists. */
+    /** Spectator FlyController while no legal chase target exists. */
     spectator_free,
 };
 
@@ -31,6 +44,19 @@ struct DeathCameraTarget final {
     world::Vec3 orientation{-1.0, 0.0, 0.0};
 };
 
+/**
+ * DeathController.set_killer_info(kill_type, killer_id, killer_position,
+ * killer.running_local_player_kills). `streak` is how many times in a row this
+ * killer has killed the local player; it resets when the local player kills
+ * them.
+ */
+struct DeathKillerInfo final {
+    std::uint8_t player_id{};
+    world::Vec3 position{};
+    std::uint8_t kill_type{};
+    std::uint32_t streak{};
+};
+
 /** Renderer-neutral result in the client's canonical z-down world basis. */
 struct DeathCameraPose final {
     world::Vec3 eye{};
@@ -38,28 +64,56 @@ struct DeathCameraPose final {
     double pitch_degrees{};
 };
 
+/** Held FlyController inputs (flyController.py update). */
+enum class FlyCameraKey : std::uint8_t { forward, backward, left, right, jump, crouch };
+
+/** DEATHCAM_VALID_TYPES = [0..6, 21..24]. */
+[[nodiscard]] bool deathcam_valid_kill_type(std::uint8_t kill_type) noexcept;
+
 /**
- * Retail-compatible death/spectator transition controller.
+ * ChaseController.validate_position (gameScene.pyd 0x10031d10): the eye sits
+ * up to five blocks behind `focus` along `-forward`, pulled in to the first
+ * solid cell (cell centre distance minus sqrt(3)/2 minus 0.5, never below 0)
+ * and scaled back inside the map bounds (512, 512, 238).
+ */
+[[nodiscard]] world::Vec3 chase_camera_eye(const world::VxlMap* map, world::Vec3 focus,
+                                           double yaw_degrees, double pitch_degrees) noexcept;
+
+/**
+ * Retail-compatible death/spectator camera.
  *
- * Recovered invariants:
- * - death begins in camera id 5 (DEATH_CAMERA);
- * - chase becomes available after 1.5 seconds;
- * - any click, or eight accumulated mouse counts, selects chase;
- * - an available chase target is forced after five seconds.
+ * Recovered from gameScene.pyd DeathController (activate 0x1003e250, update
+ * 0x1003f270, set_killer_view 0x10040ca0, switch_to_chase_cam 0x10040850),
+ * ChaseController (update 0x10031430, validate_position 0x10031d10,
+ * on_mouse_press 0x100310a0, chase_next_player 0x100346b0), FlyController
+ * (update 0x10037670) and character.pyd Character.update_dead 0x100462d0:
  *
- * Every death opens on the local player's grave for at least 1.5 seconds.
- * The killer is used to choose which side of the grave the camera starts on,
- * but the grave remains the focus; this prevents a server with deathcam
- * disabled from skipping the tombstone presentation entirely. After the
- * hold, disabled deathcam advances automatically while enabled deathcam keeps
- * the recovered mouse/click and five-second transitions. All methods run on
- * the fixed gameplay thread.
+ * - update_dead activates DEATH when manager.enable_deathcam, else CHASE, on
+ *   the local player, with `locked = not never_respawn`;
+ * - DeathController switches straight to chase unless the killer is known,
+ *   the kill type is valid and the killer's streak is >= 2; otherwise it keeps
+ *   the death eye, faces the killer (angle lerp 10) and, from a streak of 3
+ *   with the killer more than 7 blocks away, flies toward them after 0.25 s,
+ *   stopping 5 short (position lerp 20);
+ * - chase becomes available at 1.5 s (a click, or more than 100 counts of
+ *   accumulated dx+dy, switches), and is forced at 5 s;
+ * - chase follows the local player's own body. LMB/RMB cycle living teammates
+ *   only when not locked (never_respawn: the dead VIP camera), everyone for a
+ *   spectator.
+ *
+ * All methods run on the fixed gameplay thread.
  */
 class DeathCameraController final {
 public:
-    void begin_death(world::Vec3 fallback_anchor, double yaw_degrees,
-                     std::optional<DeathCameraTarget> killer,
-                     bool deathcam_enabled) noexcept;
+    void begin_death(world::Vec3 death_eye, double yaw_degrees, double pitch_degrees,
+                     std::optional<DeathKillerInfo> killer, bool deathcam_enabled,
+                     bool never_respawn = false) noexcept;
+    /** A KillAction that arrives after the SetHp-driven death began. */
+    void set_killer_info(std::optional<DeathKillerInfo> killer) noexcept;
+    /** A later KillAction carried NEVER_RESPAWN_TIME: unlock teammate cycling. */
+    void set_never_respawn(bool never_respawn) noexcept;
+    /** The killer's live interpolated position, or nullopt once they are gone. */
+    void set_killer_position(std::optional<world::Vec3> position) noexcept;
     void enter_spectator(world::Vec3 fallback_anchor, double yaw_degrees,
                          std::optional<DeathCameraTarget> target) noexcept;
     void end_life() noexcept;
@@ -68,35 +122,63 @@ public:
     void bind_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
     void update_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
 
-    /** Replace a stale/dead chase target with the current replicated sample. */
+    /**
+     * Follow a living replicated player, or nullopt to fall back to the
+     * local player's own body (spectators: the free fly camera).
+     */
     void set_chase_target(std::optional<DeathCameraTarget> target) noexcept;
+    /** DeathController.on_mouse_press: switch once chase is available. */
     void request_chase() noexcept;
     void tick(double dt) noexcept;
     void on_mouse_move(double delta_x, double delta_y,
                        double degrees_per_count = 0.1) noexcept;
     void on_mouse_press() noexcept;
+    void set_fly_key(FlyCameraKey key, bool held) noexcept;
+    /** Terrain for the chase camera's wall pull-in; nullptr disables it. */
+    void set_terrain(const world::VxlMap* map) noexcept;
 
     [[nodiscard]] bool active() const noexcept;
     [[nodiscard]] DeathCameraMode mode() const noexcept;
     [[nodiscard]] bool chase_available() const noexcept;
+    /** ChaseController.on_mouse_press cycles only when not locked. */
+    [[nodiscard]] bool can_cycle_targets() const noexcept;
+    [[nodiscard]] bool spectating() const noexcept;
     [[nodiscard]] std::optional<std::uint8_t> chase_player_id() const noexcept;
+    [[nodiscard]] std::optional<std::uint8_t> killer_player_id() const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> grave_entity_id() const noexcept;
     [[nodiscard]] DeathCameraPose pose() const noexcept;
 
 private:
-    void switch_to_chase_if_possible() noexcept;
-    void seed_orbit_from_target(const DeathCameraTarget& target) noexcept;
+    void activate_death_controller() noexcept;
+    void set_killer_view(world::Vec3 killer_position) noexcept;
+    void switch_to_chase() noexcept;
+    void tick_fly(double dt) noexcept;
+    [[nodiscard]] world::Vec3 own_body_focus() const noexcept;
 
     DeathCameraMode mode_{DeathCameraMode::inactive};
     world::Vec3 fallback_anchor_{};
     world::Vec3 grave_position_{};
     std::optional<std::uint64_t> grave_entity_id_;
     std::optional<DeathCameraTarget> chase_target_;
+    std::optional<DeathKillerInfo> killer_;
+    bool killer_present_{};
+    world::Vec3 working_position_{};
+    world::Vec3 target_position_{};
+    bool zoom_possible_{};
+    double target_yaw_{};
+    double target_pitch_{};
     double elapsed_{};
-    double orbit_yaw_{};
-    double orbit_pitch_{15.0};
+    bool chase_available_{};
+    double yaw_{};
+    double pitch_{};
     double mouse_movement_{};
     bool deathcam_enabled_{true};
+    bool locked_{true};
+    bool spectator_{};
+    world::Vec3 fly_position_{};
+    double fly_speed_{};
+    std::array<bool, 6U> fly_keys_{};
+    const world::VxlMap* terrain_{};
 };
 
 } // namespace battlespades::frontend

@@ -102,3 +102,14 @@ retail recovery/specification evidence:
 
 Historical measurements remain useful research. Their old artifact paths,
 session constraints and test results are not current operating instructions.
+
+## License
+
+Copyright (c) 2026 Kiril Tsanov. BattleSpadesClient is licensed under the
+[GNU Affero General Public License v3.0 or later](LICENSE)
+(`AGPL-3.0-or-later`), with an additional permission to combine it with the
+Steamworks SDK. See [`LICENSING.md`](LICENSING.md) for a short summary and
+trademark notes. Third-party libraries, fonts and community cosmetics keep their
+own terms ([`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)); several
+cosmetics are non-commercial. Retail Ace of Spades content is never
+distributed.

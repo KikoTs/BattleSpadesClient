@@ -332,6 +332,7 @@ constexpr std::array<ParticleAtlasDefinition, world::particle_atlas_count> parti
     {"SmokeTrail_anim_8x8.png", 8.0F, 8.0F},
     {"PickUp_Twinkle_anim_4x4.png", 4.0F, 4.0F},
     {nullptr, 1.0F, 1.0F},
+    {"SnowkeTrail_anim_8x8.png", 8.0F, 8.0F},
 }};
 
 /**
@@ -428,6 +429,11 @@ struct WorldRenderer::Impl final {
     bgfx::UniformHandle indirect_params_uniform = BGFX_INVALID_HANDLE;
     /** Which way the hemispheric ambient calls "up", in the normal's own space. */
     bgfx::UniformHandle up_axis_uniform = BGFX_INVALID_HANDLE;
+    /** rgb: additive map light for the current model draw (enhanced tiers). */
+    bgfx::UniformHandle model_light_uniform = BGFX_INVALID_HANDLE;
+    /** Non-owning; sampled per model draw on enhanced tiers. */
+    const world::StaticLightField* model_placed_lights{};
+    const world::EmissiveVolume* model_cast_lights{};
     bgfx::UniformHandle emissive_volume_sampler = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle emissive_volume_texture = BGFX_INVALID_HANDLE;
     bool emissive_volume_resident{};
@@ -503,6 +509,7 @@ struct WorldRenderer::Impl final {
     bgfx::UniformHandle skydome_uv_time = BGFX_INVALID_HANDLE;
     std::array<std::uint8_t, 3U> fog_bytes{default_fog_color};
     std::array<std::uint8_t, 3U> retail_fog_bytes{default_fog_color};
+    std::optional<std::array<std::uint8_t, 3U>> retail_sea_color{};
     std::array<float, 4U> fog_color{default_fog_color[0U] / 255.0F,
                                     default_fog_color[1U] / 255.0F,
                                     default_fog_color[2U] / 255.0F,
@@ -522,9 +529,13 @@ struct WorldRenderer::Impl final {
         bgfx::VertexBufferHandle vertices{bgfx::kInvalidHandle};
         bgfx::IndexBufferHandle indices{bgfx::kInvalidHandle};
         bool resident{};
+        /** Model-space bounding sphere; a negative radius disables culling. */
+        std::array<float, 3U> bound_centre{};
+        float bound_radius{-1.0F};
     };
     std::array<ModelSlot, WorldRenderer::view_model_slot_count> view_model_slots{};
     std::array<ModelSlot, WorldRenderer::world_model_slot_count> world_model_slots{};
+    bool model_culling{true};
 
     bgfx::ProgramHandle particle_program = BGFX_INVALID_HANDLE;
     bgfx::VertexLayout particle_layout{};
@@ -722,7 +733,8 @@ struct WorldRenderer::Impl final {
     [[nodiscard]] bgfx::TextureHandle load_particle_texture(
         const std::filesystem::path& path,
         std::string& error,
-        std::uint64_t sampler_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP) {
+        std::uint64_t sampler_flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        bool bottom_row_first = false) {
         const auto bytes = read_binary(path);
         if (bytes.empty() || bytes.size() > std::numeric_limits<std::uint32_t>::max()) {
             error = "unable to read particle atlas: " + path.string();
@@ -740,6 +752,16 @@ struct WorldRenderer::Impl final {
                 bimg::imageFree(image);
             error = "unsupported particle atlas: " + path.string();
             return BGFX_INVALID_HANDLE;
+        }
+        if (bottom_row_first) {
+            // Upload the image's bottom row as texture row 0 (v = 0), the
+            // memory layout the retail GL client gave its TGA atlases.
+            const auto stride = static_cast<std::size_t>(image->m_width) * 4U;
+            auto* rows = static_cast<std::uint8_t*>(image->m_data);
+            for (std::uint32_t row{}; row < image->m_height / 2U; ++row) {
+                std::swap_ranges(rows + row * stride, rows + (row + 1U) * stride,
+                                 rows + (image->m_height - row - 1U) * stride);
+            }
         }
         const auto* memory = bgfx::copy(image->m_data, image->m_size);
         const auto texture = bgfx::createTexture2D(static_cast<std::uint16_t>(image->m_width),
@@ -897,8 +919,13 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
         ao_path /= "ao_cube512.tga";
         std::string error;
         // Retail sub_10014A30 uses GL_LINEAR and CLAMP_TO_EDGE for both axes.
+        // Its TGA rows reach GL bottom row first, so atlas v = 0 is the
+        // image's bottom edge. Uploading top-down mirrored every AO cell
+        // vertically: measured against the retail client's own AO channel,
+        // the mirrored atlas turned smooth corner darkening into a per-block
+        // checkerboard of half-dark faces.
         impl_->retail_ao_texture = impl_->load_particle_texture(
-            ao_path, error, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+            ao_path, error, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, true);
         if (!bgfx::isValid(impl_->retail_ao_texture)) {
             return impl_->fail(std::move(error));
         }
@@ -930,7 +957,8 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
     impl_->emissive_volume_sampler =
         bgfx::createUniform("s_emissiveVolume", bgfx::UniformType::Sampler);
     impl_->up_axis_uniform = bgfx::createUniform("u_upAxis", bgfx::UniformType::Vec4);
-    if (!bgfx::isValid(impl_->shadow_matrix_uniform) ||
+    impl_->model_light_uniform = bgfx::createUniform("u_modelLight", bgfx::UniformType::Vec4);
+    if (!bgfx::isValid(impl_->model_light_uniform) || !bgfx::isValid(impl_->shadow_matrix_uniform) ||
         !bgfx::isValid(impl_->shadow_params_uniform) || !bgfx::isValid(impl_->shadow_sampler) ||
         !bgfx::isValid(impl_->skylight_sampler) || !bgfx::isValid(impl_->skylight_params_uniform) ||
         !bgfx::isValid(impl_->up_axis_uniform) || !bgfx::isValid(impl_->emissive_params_uniform)) {
@@ -961,13 +989,16 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
         .add(bgfx::Attrib::TexCoord0, 2U, bgfx::AttribType::Float)
         .end();
 
-    // One shared unit quad; every particle is an instance of it. Corner
-    // offsets are in [-0.5, 0.5] so vs_particle can scale by size directly.
+    // One shared quad; every particle is an instance of it. Retail draw.pyd
+    // sub_10001730 builds each corner as (corner - 0.5) * 2.0 * size, i.e.
+    // `size` is a HALF-extent and a particle is 2*size wide. The previous
+    // [-0.5, 0.5] corners drew every retail-sized particle at half width
+    // (quarter area): small explosion cubes and thin smoke trails.
     static constexpr std::array<ParticleQuadVertex, 4U> quad{{
-        {-0.5F, -0.5F, 0.0F, 1.0F},
-        {0.5F, -0.5F, 1.0F, 1.0F},
-        {0.5F, 0.5F, 1.0F, 0.0F},
-        {-0.5F, 0.5F, 0.0F, 0.0F},
+        {-1.0F, -1.0F, 0.0F, 1.0F},
+        {1.0F, -1.0F, 1.0F, 1.0F},
+        {1.0F, 1.0F, 1.0F, 0.0F},
+        {-1.0F, 1.0F, 0.0F, 0.0F},
     }};
     static constexpr std::array<std::uint16_t, 6U> quad_indices{0U, 1U, 2U, 0U, 2U, 3U};
     impl_->particle_quad =
@@ -1129,6 +1160,7 @@ void WorldRenderer::shutdown() noexcept {
                           &impl_->emissive_params_uniform,
                           &impl_->indirect_params_uniform,
                           &impl_->up_axis_uniform,
+                          &impl_->model_light_uniform,
                           &impl_->emissive_volume_sampler}) {
         if (bgfx::isValid(*uniform)) {
             bgfx::destroy(*uniform);
@@ -1382,12 +1414,32 @@ void WorldRenderer::set_retail_fog_color(std::array<std::uint8_t, 3U> color) noe
     impl_->retail_fog_bytes = color;
 }
 
+std::array<std::uint8_t, 3U> retail_sea_color_for(const world::VxlMap& map,
+                                                   world::VxlColor bed_water_color) noexcept {
+    auto bed = map.color(0U, 0U, world::VxlMap::height - 1U).value_or(bed_water_color);
+    if (bed.red == 0U && bed.green == 0U && bed.blue == 0U && bed.alpha == 0U) {
+        bed = bed_water_color;
+    }
+    return {bed.red, bed.green, bed.blue};
+}
+
+void WorldRenderer::set_retail_sea_color(
+    std::optional<std::array<std::uint8_t, 3U>> color) noexcept {
+    impl_->retail_sea_color = color;
+}
+
 void WorldRenderer::set_retail_lighting(const RetailTerrainLighting& lighting) noexcept {
     impl_->retail_lighting = lighting;
 }
 
 const RetailTerrainLighting& WorldRenderer::retail_lighting() const noexcept {
     return impl_->retail_lighting;
+}
+
+void WorldRenderer::set_model_culling(bool enabled) noexcept {
+    if (impl_ != nullptr) {
+        impl_->model_culling = enabled;
+    }
 }
 
 void WorldRenderer::set_quality_profile(const QualityProfile& profile) noexcept {
@@ -1400,6 +1452,12 @@ void WorldRenderer::set_atmosphere(const world::MapAtmosphere& atmosphere) noexc
 
 void WorldRenderer::set_viewmodel_skylight(float skylight) noexcept {
     impl_->viewmodel_skylight = std::clamp(skylight, 0.0F, 1.0F);
+}
+
+void WorldRenderer::set_model_light_sources(const world::StaticLightField* placed,
+                                            const world::EmissiveVolume* cast) noexcept {
+    impl_->model_placed_lights = placed;
+    impl_->model_cast_lights = cast;
 }
 
 void WorldRenderer::set_emissive_volume(std::span<const std::uint8_t> cells,
@@ -1554,6 +1612,11 @@ void WorldRenderer::clear_view_model() noexcept {
     }
 }
 
+bool WorldRenderer::view_model_mesh_resident(std::uint32_t slot) const noexcept {
+    return impl_ != nullptr && impl_->initialized && slot < view_model_slot_count &&
+           impl_->view_model_slots[slot].resident;
+}
+
 bool WorldRenderer::set_world_model_mesh(std::uint32_t slot, const world::ChunkMesh& mesh) {
     if (!impl_->initialized) {
         return impl_->fail("world-model upload before initialization");
@@ -1565,6 +1628,25 @@ bool WorldRenderer::set_world_model_mesh(std::uint32_t slot, const world::ChunkM
     Impl::ModelSlot replacement;
     if (!impl_->create_model_slot(mesh, replacement)) {
         return impl_->fail("bgfx could not create world-model buffers");
+    }
+    // Model-space bounding sphere, from the vertices themselves (not every
+    // producer fills ChunkMesh::minimum/maximum), for main-pass culling.
+    if (!mesh.vertices.empty()) {
+        std::array<float, 3U> low{mesh.vertices.front().x, mesh.vertices.front().y,
+                                  mesh.vertices.front().z};
+        auto high = low;
+        for (const auto& vertex : mesh.vertices) {
+            low = {std::min(low[0U], vertex.x), std::min(low[1U], vertex.y),
+                   std::min(low[2U], vertex.z)};
+            high = {std::max(high[0U], vertex.x), std::max(high[1U], vertex.y),
+                    std::max(high[2U], vertex.z)};
+        }
+        replacement.bound_centre = {(low[0U] + high[0U]) * 0.5F, (low[1U] + high[1U]) * 0.5F,
+                                    (low[2U] + high[2U]) * 0.5F};
+        const float ex = high[0U] - low[0U];
+        const float ey = high[1U] - low[1U];
+        const float ez = high[2U] - low[2U];
+        replacement.bound_radius = 0.5F * std::sqrt(ex * ex + ey * ey + ez * ez);
     }
     auto& target = impl_->world_model_slots[slot];
     impl_->release_model_slot(target);
@@ -1663,7 +1745,13 @@ bool WorldRenderer::submit(const WorldCamera& camera,
 
     if (!impl_->skydome_slots.empty()) {
         std::array<float, 16U> sky_transform{};
-        bx::mtxTranslate(sky_transform.data(), eye.x, eye.y, eye.z);
+        // GameScene.draw passes the camera as SkyDome.draw(x, -z, y) and the
+        // dome is translated to (x, y - 35, z) in GL (gameScene.pyd
+        // 0x101AB5F8: PyInt_FromLong(0x23)), i.e. 35 blocks BELOW the eye
+        // before each layer's own authored translation. The Retail tier keeps
+        // that offset; the horizon mountains otherwise sit ~10 px too high.
+        const float sky_drop = impl_->profile.enhanced_lighting ? 0.0F : 35.0F;
+        bx::mtxTranslate(sky_transform.data(), eye.x, eye.y, eye.z + sky_drop);
         const auto elapsed_seconds =
             std::chrono::duration<float>(std::chrono::steady_clock::now() - impl_->skydome_clock)
                 .count();
@@ -2052,12 +2140,44 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const auto viewmodel_retail_light1 = retail_to_view(retail.back_light_direction);
     static constexpr std::array<float, 4U> viewmodel_retail_eye{0.0F, -1.0F, 0.0F, 0.0F};
 
+    // ---- Map light on models (enhanced tiers) --------------------------------
+    // Terrain receives placed flare/fire light through the mesher's per-vertex
+    // bake and emissive spill through the volume probe. KV6 models have no
+    // bake, and the view model is drawn in view space where the probe reads
+    // an unrelated cell, so the hands and player models stayed dark under a
+    // lamp that lit the room around them. Sample both sources on the CPU with
+    // terrain's own gains. Retail keeps model_frag's packet-45-only lighting.
+    static constexpr std::array<float, 4U> no_model_light{};
+    const float model_placed_gain = emissive_params[1U];
+    const float model_cast_gain = indirect_params[0U];
+    const bool model_light_enabled =
+        enhanced && (model_placed_gain > 0.0F || model_cast_gain > 0.0F) &&
+        (impl_->model_placed_lights != nullptr || impl_->model_cast_lights != nullptr);
+    const auto model_light_at = [&](std::array<float, 3U> position, bool include_cast) {
+        std::array<float, 4U> result{};
+        if (!model_light_enabled) {
+            return result;
+        }
+        const auto sample = world::sample_model_light(impl_->model_placed_lights,
+                                                      impl_->model_cast_lights, position);
+        const auto rgb = world::model_light_rgb(sample, model_placed_gain,
+                                                include_cast ? model_cast_gain : 0.0F);
+        result = {rgb[0U], rgb[1U], rgb[2U], 0.0F};
+        return result;
+    };
+    // The view model sits at the eye; it cannot probe the volume in-shader.
+    const auto viewmodel_model_light =
+        model_light_at({eye.x, eye.y, eye.z}, true);
+
     const auto push_atmosphere = [&] {
         bgfx::setUniform(impl_->sun_direction_uniform, sun_direction.data());
         bgfx::setUniform(impl_->sun_color_uniform, sun_color.data());
         // Fail closed: every terrain, world-model and shadow submit gets world
         // up whether or not its call site remembers to.
         bgfx::setUniform(impl_->up_axis_uniform, world_up.data());
+        // Terrain carries its own placed light in the vertex bake; only model
+        // draws override this after push_atmosphere.
+        bgfx::setUniform(impl_->model_light_uniform, no_model_light.data());
         bgfx::setUniform(impl_->sky_ambient_uniform, sky_ambient.data());
         bgfx::setUniform(impl_->ground_ambient_uniform, ground_ambient.data());
         bgfx::setUniform(impl_->fog_horizon_uniform, fog_horizon.data());
@@ -2134,7 +2254,56 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         ++impl_->stats.chunks_submitted;
     }
 
-    // Retail's HealthCrate is the only entity that opts into spot_shadow.tga.
+    // vxl.pyd draw_sea (sub_10030xxx builds it next to the map): one GL quad
+    // from -1000 to 1000 at GL y -239.1, i.e. canonical z 239.6 once the
+    // retail half-voxel GL offset is removed, so the bed's own top faces hide
+    // it everywhere inside the map. Records are {pos, normal code 100..103,
+    // bed colour, AO cell (0.375|0.475, 0.625)}; sea_frag samples the grain
+    // at noise*2000 with GL_REPEAT and fogs per fragment (see fs_world.sc).
+    if (!enhanced && impl_->retail_sea_color.has_value() &&
+        bgfx::getAvailTransientVertexBuffer(4U, impl_->layout) >= 4U &&
+        bgfx::getAvailTransientIndexBuffer(6U) >= 6U) {
+        const auto& sea = *impl_->retail_sea_color;
+        const std::uint32_t abgr = 0xFF000000U | (static_cast<std::uint32_t>(sea[2U]) << 16U) |
+                                   (static_cast<std::uint32_t>(sea[1U]) << 8U) | sea[0U];
+        constexpr float low = -999.5F;
+        constexpr float high = 1000.5F;
+        constexpr float level = 239.6F;
+        const auto vertex = [&](float x, float y, std::uint8_t noise, float ao_u) {
+            return world::ChunkVertex{x, y, level, abgr, 4U, 0U, noise, 0U, 0xFF000000U,
+                                      ao_u, 0.625F, ao_u, 0.625F, 1.0F};
+        };
+        // Emission order and noise corners of the retail record; vertex 1
+        // really carries u = 0.475 in the shipped client.
+        const std::array<world::ChunkVertex, 4U> quad{
+            vertex(low, low, 0U, 0.375F), vertex(low, high, 1U, 0.475F),
+            vertex(high, high, 3U, 0.375F), vertex(high, low, 2U, 0.375F)};
+        static constexpr std::array<std::uint16_t, 6U> quad_indices{0U, 1U, 2U, 0U, 2U, 3U};
+        bgfx::TransientVertexBuffer vertices{};
+        bgfx::TransientIndexBuffer index_buffer{};
+        bgfx::allocTransientVertexBuffer(&vertices, 4U, impl_->layout);
+        bgfx::allocTransientIndexBuffer(&index_buffer, 6U);
+        std::memcpy(vertices.data, quad.data(), sizeof(quad));
+        std::memcpy(index_buffer.data, quad_indices.data(), sizeof(quad_indices));
+        static constexpr std::array<float, 4U> sea_mode{1.0F, 0.0F, 0.0F, 1.0F};
+        bgfx::setTransform(identity.data());
+        bgfx::setVertexBuffer(0U, &vertices);
+        bgfx::setIndexBuffer(&index_buffer);
+        bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
+        bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
+        bgfx::setUniform(impl_->light_uniform, terrain_light.data());
+        bgfx::setUniform(impl_->model_opacity_uniform, sea_mode.data());
+        push_atmosphere();
+        // draw_sea binds the atlas with GL_REPEAT (the map pass uses CLAMP).
+        bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture,
+                         BGFX_SAMPLER_NONE);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
+                       BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA);
+        bgfx::submit(world_view_id, impl_->program);
+    }
+
+    // Retail spot_shadow.tga decals: every live character (local player
+    // included) plus entities with needs_shadow, e.g. the HealthCrate.
     // Draw the soft contact decal after terrain establishes depth and before
     // opaque entities, so the crate itself covers the shadow while the decal
     // cannot appear through a nearer wall.
@@ -2200,6 +2369,34 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             if (!slot.resident) {
                 continue;
             }
+            // Cheap sphere cull: entirely behind the eye plane or entirely
+            // past the fog end (where fog paints it out completely). With 32
+            // players x ~15 parts every culled part saves a submit and its
+            // ~20 uniform uploads.
+            if (impl_->model_culling && slot.bound_radius >= 0.0F) {
+                const auto& m = draw.transform;
+                const auto& c = slot.bound_centre;
+                const float wx = c[0U] * m[0U] + c[1U] * m[4U] + c[2U] * m[8U] + m[12U];
+                const float wy = c[0U] * m[1U] + c[1U] * m[5U] + c[2U] * m[9U] + m[13U];
+                const float wz = c[0U] * m[2U] + c[1U] * m[6U] + c[2U] * m[10U] + m[14U];
+                const auto row_length = [&](std::size_t row) {
+                    return std::sqrt(m[row * 4U] * m[row * 4U] + m[row * 4U + 1U] * m[row * 4U + 1U] +
+                                     m[row * 4U + 2U] * m[row * 4U + 2U]);
+                };
+                const float radius =
+                    slot.bound_radius *
+                        std::max({row_length(0U), row_length(1U), row_length(2U)}) +
+                    0.5F;
+                const float dx = wx - eye.x;
+                const float dy = wy - eye.y;
+                const float dz = wz - eye.z;
+                const float ahead = dx * forward.x + dy * forward.y + dz * forward.z;
+                const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (std::isfinite(distance) &&
+                    (ahead < -radius || (fog_limit > 0.0F && distance - radius > fog_limit))) {
+                    continue;
+                }
+            }
             bgfx::setTransform(draw.transform.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
             bgfx::setIndexBuffer(slot.indices);
@@ -2213,6 +2410,12 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 0.0F};
             bgfx::setUniform(impl_->model_opacity_uniform, model_opacity.data());
             push_atmosphere();
+            // The part origin is its world position (row-vector translation).
+            // World-space models probe the emissive volume in the shader, so
+            // only the placed light is added here.
+            const auto placed_model_light = model_light_at(
+                {draw.transform[12U], draw.transform[13U], draw.transform[14U]}, false);
+            bgfx::setUniform(impl_->model_light_uniform, placed_model_light.data());
             const auto state = pass == 1U
                                    ? (BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA)
                                    : translucent
@@ -2508,9 +2711,19 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             }
             bgfx::InstanceDataBuffer instance_buffer{};
             bgfx::allocInstanceDataBuffer(&instance_buffer, batch.count, instance_stride);
-            std::memcpy(instance_buffer.data,
-                        particles.data() + batch.first,
-                        static_cast<std::size_t>(batch.count) * instance_stride);
+            // draw.pyd sub_10015770 places every particle billboard at
+            // GL y = -(z - 0.5 - size): the quad is lifted by its own
+            // half-extent, so its bottom edge (not its centre) sits on the
+            // simulated point. Map z grows downwards, hence z - size. Debris
+            // bouncing on the ground rests on it instead of being half buried.
+            for (std::uint32_t offset{}; offset < batch.count; ++offset) {
+                world::ParticleInstance lifted =
+                    particles[static_cast<std::size_t>(batch.first) + offset];
+                lifted.position[2U] -= lifted.size;
+                std::memcpy(instance_buffer.data +
+                                static_cast<std::size_t>(offset) * instance_stride,
+                            &lifted, sizeof(lifted));
+            }
 
             const auto& definition = particle_atlases[atlas_index];
             const std::array<float, 4U> grid{1.0F / definition.frames_x,
@@ -2597,7 +2810,12 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setIndexBuffer(slot.indices);
             bgfx::setUniform(impl_->camera_uniform, viewmodel_camera.data());
             bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
-            bgfx::setUniform(impl_->light_uniform, viewmodel_light.data());
+            // Lighting mode 0 is fs_world's unlit branch (lit = albedo):
+            // retail binds PASSTHROUGH_SHADER around Weapon.draw_muzzle.
+            const std::array<float, 4U> unlit_light{0.0F, viewmodel_light[1U],
+                                                    viewmodel_light[2U], viewmodel_light[3U]};
+            bgfx::setUniform(impl_->light_uniform,
+                             draw.unlit ? unlit_light.data() : viewmodel_light.data());
             bgfx::setUniform(impl_->model_opacity_uniform, opaque_model.data());
             push_atmosphere();
             // These MUST follow push_atmosphere: bgfx takes the last value set
@@ -2611,11 +2829,21 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setUniform(impl_->up_axis_uniform, viewmodel_up.data());
             bgfx::setUniform(impl_->shadow_params_uniform, viewmodel_shadow_params.data());
             bgfx::setUniform(impl_->indirect_params_uniform, viewmodel_indirect.data());
+            bgfx::setUniform(impl_->model_light_uniform,
+                             draw.unlit ? no_model_light.data() : viewmodel_model_light.data());
             bgfx::setUniform(impl_->point_light_position_radius_uniform,
                              viewmodel_point_light_position_radius.data(),
                              static_cast<std::uint16_t>(maximum_dynamic_lights));
+            // Retail keeps GL_CULL_FACE enabled for model display lists
+            // (laserAttachment.py toggles it off and back on). The flash must
+            // honour it: Sniper/Sniper2 keep a (0,0,0) zoomed offset, which
+            // puts the eye inside the flash KV6 where every face is a back
+            // face. Unculled, that one aimed shot painted the whole scope.
+            // KV6 winding matches the terrain's CW-culled chunks, so outside
+            // views are byte-identical with and without the cull.
             bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
-                           BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA);
+                           BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
+                           (draw.unlit ? BGFX_STATE_CULL_CW : 0U));
             bgfx::submit(view_model_view_id, impl_->program);
         }
     }

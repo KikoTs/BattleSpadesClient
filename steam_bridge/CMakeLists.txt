@@ -8,6 +8,9 @@ endif()
 
 add_executable(BattleSpadesSteamBridge32 steam_bridge_main.cpp)
 target_compile_features(BattleSpadesSteamBridge32 PRIVATE cxx_std_20)
+# Shares the header-only Steam registration diagnosis with the client.
+target_include_directories(
+    BattleSpadesSteamBridge32 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 target_compile_definitions(
     BattleSpadesSteamBridge32
     PRIVATE

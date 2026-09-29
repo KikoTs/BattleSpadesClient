@@ -30,25 +30,16 @@ void retail_distance_is_a_hard_sphere() {
            "map-wide distant sounds must never leak through OpenAL clamping");
 }
 
-void weapon_reports_survive_full_cover_without_leaking_map_audio() {
-    expect(profiled_spatial_transmission(SpatialSoundProfile::ordinary, 0.18F) ==
-               0.35F,
-           "ordinary terrain audio must retain an audible covered-path floor");
-    expect(profiled_spatial_transmission(SpatialSoundProfile::weapon_report, 0.18F) ==
-               0.70F,
-           "a weapon report behind full cover must remain audible");
-    expect(profiled_spatial_transmission(SpatialSoundProfile::weapon_report, 0.0F) ==
-               0.0F,
-           "an explicitly rejected sound path must remain silent");
-    expect(spatial_rolloff(SpatialSoundProfile::weapon_report) <
-               spatial_rolloff(SpatialSoundProfile::ordinary),
-           "weapon reports must carry farther inside retail's hard range");
-    expect(local_weapon_report_gain() < 1.0F,
-           "a head-relative local gun must leave headroom for damage and movement cues");
-    expect(remote_weapon_report_gain() > 1.0F,
-           "a positional observer gun must compensate before distance attenuation");
-    expect(remote_weapon_report_gain() > local_weapon_report_gain(),
-           "local and remote firearm paths must not collapse to the same flat mix");
+void weapon_reports_use_retail_tool_volume_and_falloff() {
+    // Tool.play_sound plays every shot, loop and tail at 0.5 for the shooter
+    // and for observers alike; observers get DEFAULT_ATTENUATION 0.15.
+    expect(local_weapon_report_gain() == 0.5F,
+           "the local report must use Tool.play_sound volume 0.5");
+    expect(remote_weapon_report_gain() == 0.5F,
+           "observer reports must use Tool.play_sound volume 0.5");
+    expect(spatial_rolloff(SpatialSoundProfile::weapon_report) == 0.15F &&
+               spatial_rolloff(SpatialSoundProfile::ordinary) == 0.15F,
+           "every world cue uses retail DEFAULT_ATTENUATION 0.15");
 }
 
 void every_mapped_server_sound_exists() {
@@ -81,7 +72,7 @@ void every_mapped_server_sound_exists() {
 int main() {
     try {
         retail_distance_is_a_hard_sphere();
-        weapon_reports_survive_full_cover_without_leaking_map_audio();
+        weapon_reports_use_retail_tool_volume_and_falloff();
         every_mapped_server_sound_exists();
         std::cout << "server audio catalog tests passed\n";
         return 0;

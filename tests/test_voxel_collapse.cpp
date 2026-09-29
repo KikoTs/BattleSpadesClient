@@ -100,10 +100,15 @@ void damage_state_darkens_mesh_and_clears_on_removal() {
     expect(map.set_voxel(100U, 100U, 100U, stone), "damage fixture must place");
     const ChunkMesher mesher;
     const auto clean = mesher.mesh(map, ChunkKey{6U, 6U});
-    expect(map.set_damage_fraction(100U, 100U, 100U, 0.4F),
+    // Retail BlockManager.add_damage: 2 of a map voxel's 5 health, and the
+    // stored colour is dimmed by shared.common.dim(value, 2).
+    expect(map.add_damage(100U, 100U, 100U, 2.0F) ==
+               battlespades::world::BlockDamageOutcome::damaged,
            "sublethal damage must change presentation state");
-    expect(map.damage_fraction(100U, 100U, 100U) == 0.4F,
-           "damage fraction must round-trip");
+    expect(map.damaged_block(100U, 100U, 100U).has_value() &&
+               map.damaged_block(100U, 100U, 100U)->health == 3.0F &&
+               map.damage_fraction(100U, 100U, 100U) > 0.0F,
+           "damage state must round-trip");
     const auto damaged = mesher.mesh(map, ChunkKey{6U, 6U});
     expect(clean.vertices.size() == damaged.vertices.size(),
            "damage must not remove terrain geometry");

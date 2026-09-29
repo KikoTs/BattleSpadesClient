@@ -65,6 +65,19 @@ unavailable.
 | VSync | `graphics.vsync` | boolean; `false` | live preview |
 | Compatibility Shader | `graphics.shader_quality` | toggles `"compatibility"` | applied on the next frame |
 
+Two native display options have no retail row and are edited in `settings.toml`
+only (the Graphics tab's Defaults button leaves them alone):
+
+| `settings.toml` key | Values and default | Runtime behavior |
+|---|---|---|
+| `graphics.fullscreen_mode` | `"borderless"` or `"exclusive"`; `"borderless"` | how `main.fullscreen` covers the display. Borderless keeps the desktop mode (instant alt-tab, never minimised by SDL) and renders at the desktop size; exclusive is the retail display-mode switch at `graphics.resolution` |
+| `graphics.render_interpolation` | boolean; `true` | on displays above 75 Hz, extra render-only frames between the fixed 60 Hz ticks with the camera eye interpolated between the last two ticks (one tick of positional presentation delay; look angles stay current). Simulation, input and ClientData cadence are unchanged. `false` restores retail's one frame per tick |
+| `graphics.hud_scale` | number; `1.0` | in-game HUD, chat and vote ballot magnification for 4K/Retina. `1.0` is retail's raw window-pixel HUD; `1.0`-`4.0` lays the retail HUD out in a window that many times smaller and magnifies it back, so proportions and anchors are unchanged; `0` = auto, `max(1, floor(height / 1080))`. Menus already scale with the 800x600 canvas and are not affected |
+
+Minimising or alt-tabbing out never pauses a match: simulation, ClientData,
+ClockSync and the connection watchdog keep running and only rendering stops.
+With VSync on, bgfx queues at most one frame (`maxFrameLatency = 1`).
+
 `Shader Quality` and `Compatibility Shader` are two recovered retail rows that
 edit the same field, and they divide it cleanly: the toggle owns the
 `"compatibility"` value (the Legacy tier) and the slider owns the four enhanced
@@ -101,7 +114,7 @@ during device creation, edit the executable-adjacent file back to:
 graphics_api = "auto"
 ```
 
-The F3 gameplay diagnostics show the concrete API selected by bgfx. Developers
+The Ctrl+Shift+F3 gameplay diagnostics show the concrete API selected by bgfx. Developers
 can list the backends compiled into a build with
 `aos_graphics_backend_probe`.
 

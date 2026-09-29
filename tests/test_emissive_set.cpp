@@ -2,6 +2,7 @@
 #include "battlespades/world/emissive_volume.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
@@ -199,6 +200,62 @@ void emissive_light_leaves_the_fixture_without_crossing_a_wall() {
     const auto pink = neon_volume.sample(104.5F, 100.5F, 100.5F);
     expect(pink[0U] > 0.10F && pink[2U] > pink[1U] * 3.0F,
            "Chicago heart must cast visible magenta light into nearby air");
+}
+
+/**
+ * Models (hands, player KV6s) sample the same map light terrain receives:
+ * placed flare light near a lamp, emissive spill near a fixture, nothing in a
+ * dark tunnel, and nothing at all under the Retail tier's zero gains.
+ */
+void models_sample_the_map_light_terrain_receives() {
+    auto world = empty_world();
+    expect(world.set_voxel(100U, 100U, 100U, rgb(0xFAU, 0xFFU, 0x50U)),
+           "Chicago lamp fixture must place");
+    EmissiveVolume volume;
+    volume.build(world, emissive_palette_for("CityOfChicago"), {});
+
+    StaticLightField placed;
+    StaticLight flare;
+    flare.cell = {300U, 300U, 200U};
+    flare.color = rgb(255U, 200U, 100U);
+    flare.radius = StaticLightField::flare_block_radius;
+    expect(placed.add(flare), "flare light must register");
+
+    // Under the lamp: the placed light arrives, with its colour.
+    const auto lit = sample_model_light(&placed, &volume, {300.5F, 300.5F, 198.5F});
+    expect(lit.placed[0U] > 0.2F && lit.placed[0U] > lit.placed[2U],
+           "a model next to a flare must receive its warm light");
+    // Beside the emissive fixture: the filtered spill arrives.
+    const auto spill = sample_model_light(&placed, &volume, {104.5F, 100.5F, 100.5F});
+    expect(spill.cast[0U] > 0.02F && spill.cast[1U] > 0.02F,
+           "a model beside an emissive fixture must receive its spill");
+    expect(spill.placed[0U] == 0.0F, "the flare must not reach a model 200 blocks away");
+    // Filtering matches the nearest sample at a cell centre.
+    const auto centre = volume.sample(102.0F, 102.0F, 102.0F);
+    const auto filtered = volume.sample_filtered(102.0F, 102.0F, 102.0F);
+    expect(std::abs(centre[0U] - filtered[0U]) < 1.0e-4F,
+           "trilinear sampling must equal the cell value at its centre");
+    // A dark tunnel far from both sources receives nothing.
+    const auto dark = sample_model_light(&placed, &volume, {20.5F, 400.5F, 230.5F});
+    expect(dark.placed == std::array<float, 3U>{} && dark.cast[0U] < 1.0e-4F,
+           "a model in a dark tunnel must stay dark");
+    // Null sources are allowed while a map is still loading.
+    const auto none = sample_model_light(nullptr, nullptr, {300.5F, 300.5F, 198.5F});
+    expect(none.placed == std::array<float, 3U>{} && none.cast == std::array<float, 3U>{},
+           "missing light sources must contribute nothing");
+
+    // The renderer's gains: enhanced adds both, Retail (gains 0) adds nothing,
+    // and world-space models (cast gain 0) leave the spill to the shader probe.
+    const ModelLightSample both{{0.5F, 0.25F, 0.0F}, {0.1F, 0.2F, 0.3F}};
+    const auto enhanced = model_light_rgb(both, 1.6F, 2.2F);
+    expect(std::abs(enhanced[0U] - (0.8F + 0.22F)) < 1.0e-5F &&
+               std::abs(enhanced[2U] - 0.66F) < 1.0e-5F,
+           "enhanced model light must apply terrain's placed and cast gains");
+    expect(model_light_rgb(both, 0.0F, 0.0F) == std::array<float, 3U>{},
+           "the Retail tier must add no map light to models");
+    const auto world_model = model_light_rgb(both, 1.6F, 0.0F);
+    expect(std::abs(world_model[1U] - 0.4F) < 1.0e-5F,
+           "world-space models must take only the placed light on the CPU");
 }
 
 void chicago_white_lamps_require_the_recovered_post_shape() {
@@ -570,6 +627,7 @@ int main() {
         tokyo_neon_is_classified_as_emissive();
         authored_palettes_light_their_own_fixtures();
         emissive_light_leaves_the_fixture_without_crossing_a_wall();
+        models_sample_the_map_light_terrain_receives();
         chicago_white_lamps_require_the_recovered_post_shape();
         london_fixtures_use_shape_and_height_without_lighting_the_road();
         palettes_do_not_claim_another_maps_fixtures();

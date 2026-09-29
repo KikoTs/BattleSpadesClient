@@ -79,11 +79,54 @@ int main() {
     try {
         const auto map = spawn_platform_world();
 
+        // Networked FlareBlockEntity (type 13): retail post_initialize adds a
+        // user block in the packet colour and a static point light (radius 5).
+        // DestroyEntity takes both back; neither consumes renderer entities.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            auto flare_map = std::make_shared<VxlMap>(*map);
+            TutorialWorldSession session{flare_map, live};
+            LocalEntity flare;
+            flare.id = 61'000U;
+            flare.type = 13U;
+            flare.position = {120.0, 70.0, 232.0};
+            flare.face = 4U;
+            flare.color = {255U, 255U, 82U};
+            flare.has_color = true;
+            expect(session.apply_server_entity(flare), "server flare must be accepted");
+            expect(session.entities().empty(), "a flare is terrain, not a model entity");
+            const auto placed = flare_map->color(120U, 70U, 232U);
+            expect(placed.has_value() && placed->red == 255U && placed->green == 255U &&
+                       placed->blue == 82U,
+                   "flare voxel must take the packet colour");
+            expect(session.static_lights().lights().size() == 1U &&
+                       session.static_lights().lights().front().radius == 5.0F,
+                   "flare must register one radius-5 static light");
+            auto second = flare;
+            second.id = 61'001U;
+            second.position = {125.5, 72.5, 233.5};
+            second.color = {250U, 250U, 200U};
+            expect(session.apply_server_entity(second) &&
+                       flare_map->color(125U, 72U, 233U)->blue == 200U,
+                   "a flare over an existing marker voxel overwrites its colour");
+            expect(session.destroy_server_entity(61'000U) && !flare_map->solid(120U, 70U, 232U) &&
+                       session.static_lights().lights().size() == 1U,
+                   "DestroyEntity removes the flare voxel and its light");
+            expect(flare_map->clear_voxel(125U, 72U, 233U), "terrain edit fixture");
+            session.tick();
+            expect(session.static_lights().empty(),
+                   "a flare whose voxel the terrain replica destroyed loses its light");
+        }
+
         // The negotiated local profile is checked against the actual Python
-        // ClientData -> authority -> WorldUpdate flight trace (60 Hz).
+        // ClientData -> authority -> WorldUpdate flight trace (60 Hz), taken
+        // with a BSCF owner (tests/test_flight_authority_flow.py FlightFlow):
+        // pack 66 burns out before frame 360, so it pins the retail
+        // three-frame exhaustion tail (P0-07; it was 147.83/7.95 at tail 1).
         struct FlightSample { unsigned pack; double fuel60, x60, z60, fuel360, x360, z360; };
         constexpr std::array<FlightSample, 3U> balanced_samples{{
-            {66U, 68.5, 104.657447815, 95.357139587, 0.0, 147.831756592, 7.952461720},
+            {66U, 68.5, 104.657447815, 95.357139587, 0.0, 148.026870728, 5.272015095},
             {67U, 83.55, 104.657447815, 105.753852844, 38.55, 161.107452393, 110.102577209},
             {68U, 84.625, 103.110809326, 104.530723572, 47.125, 117.272407532, 80.106422424},
         }};
@@ -262,6 +305,73 @@ int main() {
                    "deploy key without equipped parachute must remain ordinary gravity");
         }
 
+        // P1-19: an airborne SPACE press deploys exactly like the stock client.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.75};
+            live.initial_airborne = true;
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 72U};
+            TutorialWorldSession session{map, live};
+            session.tick();
+            session.set_action_held(TutorialAction::jump, true);
+            session.tick();
+            session.tick();
+            expect(session.player().parachute_active,
+                   "an airborne SPACE press must deploy the canopy like retail");
+            for (int frame{}; frame < 10; ++frame) session.tick();
+            expect(session.player().parachute_active,
+                   "held SPACE is not a second press and must not toggle the canopy");
+        }
+
+        // P0-08: a ground jump plus a mid-air SPACE press never floats a hop;
+        // the server refuses canopies below six blocks of clearance.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {140.5, 76.5, 230.75};
+            live.initial_airborne = false;
+            live.initial_class_id = 0U;
+            live.initial_loadout = {6U, 9U, 72U};
+            auto plain = live;
+            plain.initial_loadout = {6U, 9U, 3U};
+            TutorialWorldSession chute{map, live}, ordinary{map, plain};
+            const auto both = [&](bool jump) {
+                chute.set_action_held(TutorialAction::jump, jump);
+                ordinary.set_action_held(TutorialAction::jump, jump);
+                chute.tick();
+                ordinary.tick();
+                expect(!chute.player().parachute_active &&
+                           chute.player().position.z == ordinary.player().position.z,
+                       "a low hop must never open a local canopy");
+            };
+            for (int frame{}; frame < 10; ++frame) both(false);
+            both(true);
+            both(true);
+            both(false);
+            for (int frame{}; frame < 12; ++frame) both(frame % 3 == 0);
+            for (int frame{}; frame < 60; ++frame) both(false);
+        }
+
+        // P0-08: any jetpack forbids a canopy, whichever key asks for it.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            live.initial_position = {130.0, 70.0, 190.75};
+            live.initial_airborne = true;
+            live.initial_class_id = 2U;
+            live.initial_loadout = {17U, 2U, 66U, 72U};
+            TutorialWorldSession session{map, live};
+            session.tick();
+            session.set_action_held(TutorialAction::hover, true);
+            session.set_action_held(TutorialAction::jump, true);
+            for (int frame{}; frame < 5; ++frame) session.tick();
+            expect(session.player().parachute && session.player().jetpack == 1U &&
+                       !session.player().parachute_active,
+                   "a jetpack holder can never hold a canopy");
+        }
+
         // Spawn parity: recovered tutorial spawn and -x facing.
         {
             TutorialWorldSession session{map};
@@ -410,6 +520,9 @@ int main() {
             TutorialWorldSession session{map};
             expect(session.lessons().stage() == battlespades::world::TutorialLessonStage::intro,
                    "sessions must start in the INTRO lesson");
+            // MOVEMENT_LOADOUT=(): nothing is held until SHOOTING grants the pistol.
+            expect(session.unlocked_tools().empty() && !session.selected_tool_id().has_value(),
+                   "the movement lessons must start empty-handed");
             bool entered{};
             for (int tick{}; tick < 200; ++tick) {
                 session.tick();
@@ -481,6 +594,31 @@ int main() {
                    "network-authoritative attacks must never mutate local terrain");
             expect(session.lessons().stage() == battlespades::world::TutorialLessonStage::intro,
                    "live matches must not advance Tutorial lesson gates");
+            {
+                // A tap whose press and release land in one event poll still
+                // reaches exactly one tick and one ClientData (retail latches
+                // key requests; an 80 ms airborne SPACE tap opens the chute).
+                session.set_action_held(TutorialAction::forward, false);
+                session.set_action_held(TutorialAction::jump, false);
+                session.set_action_held(TutorialAction::hover, false);
+                session.set_primary_held(false);
+                session.tick();
+                expect((session.movement_flags() & 0x10U) == 0U &&
+                           (session.action_flags() & 0x01U) == 0U,
+                       "released keys must not be sent");
+                session.set_action_held(TutorialAction::jump, true);
+                session.set_action_held(TutorialAction::jump, false);
+                session.set_primary_held(true);
+                session.set_primary_held(false);
+                session.tick();
+                expect((session.movement_flags() & 0x10U) != 0U &&
+                           (session.action_flags() & 0x01U) != 0U,
+                       "a sub-tick tap must be latched into the next tick and its ClientData");
+                session.tick();
+                expect((session.movement_flags() & 0x10U) == 0U &&
+                           (session.action_flags() & 0x01U) == 0U,
+                       "a consumed tap must not repeat on the following tick");
+            }
 
             const auto eye_before = session.eye_position();
             session.apply_authoritative_delta({0.5, 0.0, 0.0}, {0.25, 0.0, 0.0});
@@ -685,7 +823,8 @@ int main() {
             session.tick(); // Prime the same L-1 held-input phase as the server.
             session.apply_server_jetpack_fuel(drain * live.fixed_dt * 2.5, 99);
             session.apply_server_movement_state(0x04U, 0U, 0xFFU, 99);
-            for (int frame = 100; frame < 105; ++frame) {
+            // 2.5 frames of fuel, then the retail three-frame exhaustion tail.
+            for (int frame = 100; frame < 108; ++frame) {
                 session.tick();
                 session.record_network_prediction(frame);
             }
@@ -1951,11 +2090,15 @@ int main() {
             session.apply_look_delta(0.0, -449.0);
             const auto solid_before = session.map().solid_voxels();
             const auto fire_once = [&session]() {
+                // Stock pistol recoil (-0.05) kicks the view up; re-aim so
+                // every round strikes the same platform block.
+                session.apply_look_delta(0.0, 1e6);
+                session.apply_look_delta(0.0, -449.0);
                 session.set_primary_held(true);
                 session.tick();
                 session.set_primary_held(false);
                 for (int tick{}; tick < 30; ++tick) {
-                    session.tick(); // let the 0.3 s interval lapse
+                    session.tick(); // let the stock 0.4 s interval lapse
                 }
             };
             fire_once();
@@ -2257,6 +2400,34 @@ int main() {
             expect(std::abs((*burst->position)[0U] - 130.25F) < 0.001F && burst->color.red == 55U &&
                        burst->color.green == 125U && burst->color.blue == 215U,
                    "grave burst must preserve its exact position and packet colour");
+        }
+
+        // Rocket.delete: a turret-owned entity 21 explodes with the
+        // turr_rocketexplode bank (tool 20), an RPG rocket with tool 12.
+        for (const bool turret : {true, false}) {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            TutorialWorldSession session{spawn_platform_world(), live};
+            LocalEntity rocket;
+            rocket.id = 61'003U;
+            rocket.type = 21U;
+            rocket.position = {130.0, 70.0, 228.0};
+            rocket.velocity = {40.0, 0.0, 0.0};
+            expect(session.apply_server_entity(rocket),
+                   "CreateEntity must install a server rocket");
+            const auto sound_tool =
+                turret ? std::optional<std::uint8_t>{std::uint8_t{20U}} : std::nullopt;
+            expect(session.destroy_server_entity(61'003U, sound_tool),
+                   "DestroyEntity must remove the server rocket");
+            const auto impacts = session.take_terrain_impacts();
+            const std::uint8_t expected = turret ? 20U : 12U;
+            expect(std::ranges::any_of(impacts,
+                                       [expected](const auto& impact) {
+                                           return impact.kind == battlespades::world::
+                                                                     TerrainImpactKind::explosion &&
+                                                  impact.source_tool == expected;
+                                       }),
+                   "turret rockets must use the turret explosion bank, RPG rockets the RPG bank");
         }
 
         // The server owns Block Cannon placement but its projectile deletion

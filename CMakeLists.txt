@@ -321,7 +321,20 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     endif()
 endif()
 
+# AGPL-3.0-or-later: every package carries the license, its summary (with the
+# Steamworks section 7 permission) and the third-party notices. They go beside
+# the executable because the macOS bundle is built from bin/ alone.
+install(
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+        "${CMAKE_CURRENT_SOURCE_DIR}/LICENSING.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT Runtime
+)
+
 set(CPACK_PACKAGE_NAME "BattleSpadesClient")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_VENDOR "BattleSpades")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Portable native BattleSpades client")

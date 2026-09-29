@@ -1,6 +1,7 @@
 #include "battlespades/frontend/settings_menu.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -85,8 +86,8 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 9U,
-           "Main must expose the existing rows and local skin/movement preferences");
+    expect(view.rows.size() == 10U,
+           "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
         SettingsRowId::master_volume,
@@ -97,7 +98,13 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::show_skins,
         SettingsRowId::show_other_skins,
         SettingsRowId::weapon_motion,
+        SettingsRowId::ability_hints,
     };
+    expect(view.rows.size() >= expected.size() &&
+               !row(view, SettingsRowId::ability_hints).value_text.empty(),
+           "the non-retail ability hints option must exist");
+    expect(!SettingsSession{}.draft().main.ability_hints,
+           "non-retail ability hints must default to off (decision D4)");
     for (std::size_t index{}; index < expected.size(); ++index) {
         expect(view.rows[index].id == expected[index], "Main row order changed");
         if(index<6U)expect(view.rows[index].visible, "existing Main rows must remain visible");
@@ -230,8 +237,8 @@ void every_renderer_tier_is_reachable_and_legacy_stays_deliberate() {
         const auto view = menu.presentation();
         expect(!row(view, SettingsRowId::shader_quality).enabled,
                "the tier row must grey out while the toggle owns the field");
-        expect(row(view, SettingsRowId::shader_quality).value_text == "LEGACY",
-               "a disabled tier row must read LEGACY, not a stale tier");
+        expect(row(view, SettingsRowId::shader_quality).value_text == "RETAIL",
+               "a disabled tier row must read RETAIL, not a stale tier");
         expect(row(view, SettingsRowId::compatibility_shader).enabled,
                "the toggle itself must stay live");
     }
@@ -375,11 +382,11 @@ void controls_inventory_collapse_and_scroll_preserve_order() {
                view.rows.back().id == SettingsRowId::toggle_hud,
            "Controls row order must match the shipped Python 2 retail ordering");
     expect(row(view, SettingsRowId::fire_use).value_text == "LMB" &&
-               row(view, SettingsRowId::cycle_next_weapon).value_text == "MOUSE WHEEL" &&
+               row(view, SettingsRowId::cycle_next_weapon).value_text == "MOUSE_WHEEL" &&
                row(view, SettingsRowId::inventory_slots).value_text == "1-9",
            "non-configurable retail helper rows must remain visible");
-    expect(row(view, SettingsRowId::mouse_sensitivity).value_text == "0.10",
-           "mouse sensitivity must use retail's fixed two-decimal edit-box text");
+    expect(row(view, SettingsRowId::mouse_sensitivity).value_text == "0.1",
+           "mouse sensitivity must use retail's str(round(value, 2)) edit-box text");
 
     expect(menu.set_category_expanded(SettingsRowId::ugc_controls_category, false),
            "Map Creator category must collapse");
@@ -429,7 +436,13 @@ void pointer_hit_testing_tabs_and_slider_drag_edit_the_draft() {
     const Point middle{volume.control_bounds.x + volume.control_bounds.width / 2,
                        volume.control_bounds.y + volume.control_bounds.height / 2};
     menu.pointer_press(middle);
-    const Point quarter{volume.control_bounds.x + volume.control_bounds.width / 4, middle.y};
+    // RangeBarControl maps only the bar between its arrows: x1 = x + 4 +
+    // arrow + 2 and x2 mirrors it, with arrow = height - 8.
+    const auto arrow = volume.control_bounds.height - 8;
+    const auto bar_left = volume.control_bounds.x + 4 + arrow + 2;
+    const auto bar_right =
+        volume.control_bounds.x + volume.control_bounds.width - (4 + arrow + 2);
+    const Point quarter{bar_left + (bar_right - bar_left) / 4, middle.y};
     menu.pointer_drag(quarter);
     menu.pointer_release(quarter);
     expect(session.draft().main.master_volume > 0.24 && session.draft().main.master_volume < 0.26,
@@ -616,6 +629,190 @@ void skin_preferences_are_reachable_live_and_cancelable() {
            "Done must persist mine-only without switching off own skin");
 }
 
+[[nodiscard]] Point control_point(const battlespades::frontend::SettingsRowPresentation& item,
+                                  int x) {
+    return {x, item.control_bounds.y + item.control_bounds.height / 2};
+}
+
+void click(SettingsMenuModel& menu, Point point) {
+    menu.pointer_press(point);
+    menu.pointer_release(point);
+}
+
+[[nodiscard]] bool has_sound(const std::vector<SettingsMenuEffect>& effects,
+                             battlespades::frontend::SettingsMenuSound sound) {
+    return std::ranges::any_of(effects, [sound](const SettingsMenuEffect& effect) {
+        const auto* value = std::get_if<battlespades::frontend::SettingsSoundEffect>(&effect);
+        return value != nullptr && value->sound == sound;
+    });
+}
+
+void range_bar_arrows_step_without_rounding_and_grey_out_at_the_ends() {
+    SettingsSession session;
+    auto main = session.draft().main;
+    main.master_volume = 0.37;
+    session.set_main(main);
+    SettingsMenuModel menu{session};
+    const auto volume = row(menu.presentation(), SettingsRowId::master_volume);
+    const auto left_arrow = control_point(volume, volume.control_bounds.x + 2);
+    const auto right_arrow =
+        control_point(volume, volume.control_bounds.x + volume.control_bounds.width - 2);
+
+    click(menu, left_arrow);
+    expect(std::abs(session.draft().main.master_volume - 0.17) < 1.0e-9,
+           "the left arrow must step 0.2 down without rounding to a fifth");
+    click(menu, left_arrow);
+    expect(session.draft().main.master_volume == 0.0,
+           "a step below 0.01 must snap to silence");
+    click(menu, left_arrow);
+    expect(session.draft().main.master_volume == 0.0, "the left arrow is disabled at zero");
+    click(menu, right_arrow);
+    expect(std::abs(session.draft().main.master_volume - 0.2) < 1.0e-9,
+           "the right arrow must step 0.2 up");
+
+    // Pressing an arrow and releasing elsewhere does nothing (SquareButton).
+    menu.pointer_press(right_arrow);
+    menu.pointer_release(control_point(volume, volume.control_bounds.x + 2));
+    expect(std::abs(session.draft().main.master_volume - 0.2) < 1.0e-9,
+           "an arrow fires only when released over itself");
+
+    const auto arrow = volume.control_bounds.height - 8;
+    const auto bar_left = volume.control_bounds.x + 4 + arrow + 2;
+    const auto bar_right =
+        volume.control_bounds.x + volume.control_bounds.width - (4 + arrow + 2);
+    click(menu, control_point(volume, bar_right));
+    expect(session.draft().main.master_volume == 1.0, "the bar's right end must be full volume");
+    click(menu, control_point(volume, bar_left));
+    expect(session.draft().main.master_volume == 0.0, "the bar's left end must be silence");
+}
+
+void sensitivity_track_maps_and_its_box_takes_typed_values() {
+    SettingsSession session;
+    SettingsMenuModel menu{session};
+    menu.set_active_tab(SettingsTab::controls);
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::mouse_sensitivity)),
+           "sensitivity must be reachable");
+    auto slider = row(menu.presentation(), SettingsRowId::mouse_sensitivity);
+    expect(slider.value_text == "0.1", "the box shows str(round(0.1, 2)), not 0.10");
+
+    // SliderControl: track from x + 8, width w - w/6 - 20.
+    const auto width = static_cast<double>(slider.control_bounds.width);
+    const auto track_x = static_cast<double>(slider.control_bounds.x) + 8.0;
+    const auto track_width = width - width / 6.0 - 20.0;
+    click(menu, control_point(slider, static_cast<int>(std::ceil(track_x + track_width))));
+    expect(session.draft().controls.mouse_sensitivity == 1.0,
+           "the end of the track, not of the control, is 1.0");
+    click(menu, control_point(slider, static_cast<int>(track_x)));
+    expect(session.draft().controls.mouse_sensitivity == 0.0, "the track start is 0.0");
+
+    // The right sixth is the edit box: a click there types instead of sliding.
+    const auto box_x = static_cast<double>(slider.control_bounds.x) + width - 4.0 - width / 6.0;
+    click(menu, control_point(slider, static_cast<int>(box_x + width / 12.0)));
+    expect(menu.text_editing(), "clicking the box must focus it for typing");
+    expect(session.draft().controls.mouse_sensitivity == 0.0, "focusing the box keeps the value");
+    for (int erase{}; erase < 4; ++erase) static_cast<void>(menu.text_erase(false));
+    expect(menu.text_input("0.4x56"), "typed text must reach the box");
+    slider = row(menu.presentation(), SettingsRowId::mouse_sensitivity);
+    expect(slider.text_editing && slider.value_text.find("0.456") != std::string::npos,
+           "only float characters are kept");
+    expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}),
+           "Enter commits the box");
+    expect(!menu.text_editing() && session.draft().controls.mouse_sensitivity == 0.46,
+           "on_return rounds to two decimals");
+    expect(row(menu.presentation(), SettingsRowId::mouse_sensitivity).value_text == "0.46",
+           "the committed value is shown");
+
+    click(menu, control_point(slider, static_cast<int>(box_x + width / 12.0)));
+    static_cast<void>(menu.text_erase(false));
+    static_cast<void>(menu.text_erase(false));
+    static_cast<void>(menu.text_erase(false));
+    static_cast<void>(menu.text_erase(false));
+    static_cast<void>(menu.text_input("7"));
+    click(menu, Point{200, 110});
+    expect(!menu.text_editing() && session.draft().controls.mouse_sensitivity == 1.0,
+           "losing focus commits and clamps to the 0..1 range");
+}
+
+void toggle_rows_set_the_clicked_half() {
+    SettingsSession session;
+    SettingsMenuModel menu{session};
+    auto fullscreen = row(menu.presentation(), SettingsRowId::fullscreen);
+    const auto on_half =
+        control_point(fullscreen, fullscreen.control_bounds.x + fullscreen.control_bounds.width - 5);
+    const auto off_half = control_point(fullscreen, fullscreen.control_bounds.x + 5);
+    const bool initial = session.draft().main.fullscreen;
+    click(menu, initial ? on_half : off_half);
+    expect(session.draft().main.fullscreen == initial,
+           "clicking the selected half must not flip the toggle");
+    click(menu, off_half);
+    expect(!session.draft().main.fullscreen, "clicking OFF selects OFF");
+    click(menu, off_half);
+    expect(!session.draft().main.fullscreen, "clicking OFF again keeps OFF");
+    menu.pointer_move(on_half);
+    fullscreen = row(menu.presentation(), SettingsRowId::fullscreen);
+    expect(fullscreen.unselected_half_hovered, "hovering the unselected half highlights it");
+    click(menu, on_half);
+    expect(session.draft().main.fullscreen, "clicking ON selects ON");
+}
+
+void choice_rows_react_only_to_their_arrows() {
+    SettingsSession session;
+    SettingsMenuModel menu{session};
+    const auto invert = row(menu.presentation(), SettingsRowId::invert_mouse);
+    click(menu, control_point(invert, invert.control_bounds.x + invert.control_bounds.width / 2));
+    expect(!session.draft().main.invert_mouse, "the value text between the arrows is inert");
+    click(menu, control_point(invert, invert.control_bounds.x + 2));
+    expect(!session.draft().main.invert_mouse, "the left arrow at the first option is inert");
+}
+
+void in_game_done_and_menu_key_return_to_the_game_cancel_to_the_escape_menu() {
+    using battlespades::frontend::SettingsMenuSound;
+    SettingsMenuEnvironment environment;
+    environment.context = SettingsMenuContext::in_game;
+    {
+        SettingsSession session;
+        SettingsMenuModel menu{session, environment};
+        menu.activate_done();
+        const auto* close = find_effect<SettingsCloseCommand>(menu.take_effects());
+        expect(close != nullptr && close->committed && close->return_to_game,
+               "save_pressed returns to the game");
+    }
+    {
+        SettingsSession session;
+        SettingsMenuModel menu{session, environment};
+        menu.activate_cancel();
+        const auto effects = menu.take_effects();
+        const auto* close = find_effect<SettingsCloseCommand>(effects);
+        expect(close != nullptr && !close->return_to_game,
+               "back_pressed reopens the Escape menu");
+        expect(!has_sound(effects, SettingsMenuSound::back), "in-game Cancel is silent");
+    }
+    {
+        SettingsSession session;
+        SettingsMenuModel menu{session, environment};
+        expect(menu.handle(InputEvent{InputAction::cancel, InputPhase::pressed}),
+               "the Menu key is consumed");
+        const auto effects = menu.take_effects();
+        const auto* close = find_effect<SettingsCloseCommand>(effects);
+        expect(close != nullptr && close->return_to_game && !close->committed,
+               "the Menu key restores and returns to the game");
+        expect(has_sound(effects, SettingsMenuSound::back) &&
+                   find_effect<SettingsRestoreCommand>(effects) != nullptr,
+               "the Menu key plays menu_backA and restores the config");
+    }
+    {
+        SettingsSession session;
+        SettingsMenuModel menu{session};
+        expect(menu.handle(InputEvent{InputAction::cancel, InputPhase::pressed}),
+               "the frontend Menu key is Cancel");
+        const auto effects = menu.take_effects();
+        const auto* close = find_effect<SettingsCloseCommand>(effects);
+        expect(close != nullptr && !close->return_to_game &&
+                   has_sound(effects, SettingsMenuSound::back),
+               "frontend Cancel plays the back cue and leaves Settings");
+    }
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -651,6 +848,14 @@ int main() {
          favorite_server_is_transient_and_commits_only_on_done},
         {"every_renderer_tier_is_reachable_and_legacy_stays_deliberate",
          every_renderer_tier_is_reachable_and_legacy_stays_deliberate},
+        {"range_bar_arrows_step_without_rounding_and_grey_out_at_the_ends",
+         range_bar_arrows_step_without_rounding_and_grey_out_at_the_ends},
+        {"sensitivity_track_maps_and_its_box_takes_typed_values",
+         sensitivity_track_maps_and_its_box_takes_typed_values},
+        {"toggle_rows_set_the_clicked_half", toggle_rows_set_the_clicked_half},
+        {"choice_rows_react_only_to_their_arrows", choice_rows_react_only_to_their_arrows},
+        {"in_game_done_and_menu_key_return_to_the_game_cancel_to_the_escape_menu",
+         in_game_done_and_menu_key_return_to_the_game_cancel_to_the_escape_menu},
     };
 
     std::size_t failures{};

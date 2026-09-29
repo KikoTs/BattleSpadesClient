@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -110,6 +111,35 @@ void publication_receipt_survives_rescan_and_detects_later_edits() {
         "an invalid receipt must not direct the catalog outside the project");
 }
 
+void sidecar_identity_fields_and_generated_names_match_retail() {
+    TemporaryDirectory temporary;
+    write(temporary.root / "Custommap_1.ugc",
+          R"({"title":"Desert","author":"Kiril","baseplate":"TempleBaseplate","prefab_set":4,"tags":["map","TDM","ctf"]})");
+    write(temporary.root / "Custommap_1.vxl", "vxl");
+    write(temporary.root / "Custommap_2.ugc.publication.json", "{}");
+    const auto scan = scan_ugc_projects(temporary.root);
+    expect(scan.maps.size() == 1U && scan.maps[0].author == "Kiril" &&
+               scan.maps[0].baseplate == "TempleBaseplate" && scan.maps[0].prefab_set == 4U,
+           "the sidecar author/baseplate/prefab_set must reach SAVED_MAPS");
+    expect(scan.maps[0].modes.size() == 2U, "retail tags must match mode ids case-insensitively");
+
+    const auto stems = list_ugc_map_stems(temporary.root);
+    expect(stems.size() == 2U && stems[0] == "Custommap_1" && stems[1] == "Custommap_2",
+           "every stem in the catalog (even a lone receipt) is reserved");
+    // matchSettings.generate_ugc_map_filename: 2 Custommap stems -> try _3.
+    expect(generate_ugc_map_filename(stems) == "Custommap_3",
+           "the next file name starts after the counted Custommap stems");
+    expect(generate_ugc_map_filename({}) == "Custommap_1", "an empty catalog starts at _1");
+    const std::vector<std::string> mixed_case{"Custommap_1", "custommap_2"};
+    expect(generate_ugc_map_filename(mixed_case) == "Custommap_3",
+           "stems compare case-insensitively like the Windows catalog");
+
+    const std::vector<std::string> titles{"Desert", "Desert-1", "Lunar"};
+    expect(generate_ugc_map_title("Water", titles) == "Water", "a free title is kept");
+    expect(generate_ugc_map_title("Desert", titles) == "Desert-2",
+           "generate_ugc_map_title appends the first free -N");
+}
+
 } // namespace
 
 int main() {
@@ -118,7 +148,8 @@ int main() {
         missing_vxl_is_visible_but_not_publishable();
         delete_uses_opaque_filename_and_rejects_traversal();
         publication_receipt_survives_rescan_and_detects_later_edits();
-        std::cout << "4/4 tests passed\n";
+        sidecar_identity_fields_and_generated_names_match_retail();
+        std::cout << "5/5 tests passed\n";
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';

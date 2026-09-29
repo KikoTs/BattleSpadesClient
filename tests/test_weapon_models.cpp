@@ -2,8 +2,11 @@
 #include "battlespades/world/weapon_models.hpp"
 #include "battlespades/world/kv6_model.hpp"
 
+#include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <vector>
 #include <cmath>
 #include <iostream>
 #include <string_view>
@@ -21,6 +24,36 @@ void expect(bool condition, std::string_view message) {
 
 int main() {
     const std::filesystem::path root{AOS_TEST_ASSET_ROOT};
+    // Recolouring a cached untinted set must equal a fresh tinted load, so
+    // remote block-colour tools never touch the disk per palette pick.
+    for (const std::uint8_t tool : {std::uint8_t{5U}, std::uint8_t{22U}, std::uint8_t{23U},
+                                    std::uint8_t{27U}, std::uint8_t{28U}}) {
+        const std::array<float, 3U> tint{0.25F, 0.8F, 0.55F};
+        const auto direct = battlespades::world::load_weapon_models(root, tool, tint);
+        const auto base = battlespades::world::load_weapon_models(root, tool);
+        expect(direct && base, "block-colour tool models must load");
+        const auto recoloured = battlespades::world::tinted_weapon_models(*base.models, tint);
+        const auto same = [](const std::vector<battlespades::world::ChunkMesh>& left,
+                             const std::vector<battlespades::world::ChunkMesh>& right) {
+            if (left.size() != right.size()) {
+                return false;
+            }
+            for (std::size_t part{}; part < left.size(); ++part) {
+                if (left[part].vertices.size() != right[part].vertices.size()) {
+                    return false;
+                }
+                for (std::size_t vertex{}; vertex < left[part].vertices.size(); ++vertex) {
+                    if (left[part].vertices[vertex].abgr != right[part].vertices[vertex].abgr) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        expect(same(direct.models->third_person_parts, recoloured.third_person_parts) &&
+                   same(direct.models->first_person_parts, recoloured.first_person_parts),
+               "tinted_weapon_models must be bit-identical to a tinted load");
+    }
     for (const auto& definition : battlespades::world::weapon_catalog()) {
         const auto loaded = battlespades::world::load_weapon_models(
             root, definition.tool_id);

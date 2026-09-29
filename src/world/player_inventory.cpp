@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <limits>
 #include <vector>
@@ -152,8 +153,17 @@ bool PlayerInventory::spawn_with_selection(
     }
     if (tools.empty()) return false;
     class_id_ = class_id;
-    blocks_ = definition->initial_blocks;
-    maximum_blocks_ = definition->maximum_blocks;
+    {
+        // Player._block_wallet_max/_block_wallet_start on the server:
+        // int(round(value * RULE_CHARACTER_BLOCK_WALLETS)), half-even.
+        const auto scaled = [this](std::uint16_t value) {
+            const double product = static_cast<double>(value) * block_wallet_multiplier_;
+            return static_cast<std::uint16_t>(
+                std::clamp(std::nearbyint(product), 0.0, 65535.0));
+        };
+        maximum_blocks_ = scaled(definition->maximum_blocks);
+        blocks_ = std::min(maximum_blocks_, scaled(definition->initial_blocks));
+    }
     loadout_tools_ = tools;
     prefabs_.assign(requested_prefabs.begin(), requested_prefabs.end());
     ugc_tools_.clear();
@@ -169,6 +179,7 @@ bool PlayerInventory::spawn_with_selection(
         }
     }
     carried_objective_tool_.reset();
+    carried_objective_locked_ = false;
     expose_dormant_tools_ = false;
     auto weapon_tools = tools;
     if (class_id != ugc_builder_class) {
@@ -273,7 +284,14 @@ bool PlayerInventory::select_tool(std::uint8_t tool_id,
 
 bool PlayerInventory::select_slot(std::size_t index,
                                   InventorySelectionOrigin origin) noexcept {
-    if (!toolbar_.select_slot(index, origin)) {
+    // Retail Tool.can_swap only gates the player's own switch keys; loadout
+    // sync and automatic switches are not refused by the held tool.
+    const bool player_switch = origin == InventorySelectionOrigin::direct_slot ||
+                               origin == InventorySelectionOrigin::mouse_wheel;
+    if (player_switch && carried_objective_locked_) {
+        return false;
+    }
+    if (!toolbar_.select_slot(index, origin, !player_switch || !weapons_.swap_locked())) {
         return false;
     }
     const auto selected = toolbar_.selected_tool_id();
@@ -281,7 +299,8 @@ bool PlayerInventory::select_slot(std::size_t index,
 }
 
 bool PlayerInventory::cycle(int direction) noexcept {
-    if (!toolbar_.cycle(direction)) {
+    if (carried_objective_locked_ ||
+        !toolbar_.cycle(direction, !weapons_.swap_locked())) {
         return false;
     }
     const auto selected = toolbar_.selected_tool_id();
@@ -292,15 +311,58 @@ void PlayerInventory::tick(double dt) noexcept {
     weapons_.tick(dt);
     toolbar_.tick(dt);
     refresh_toolbar_ammunition();
+    if (weapons_.take_auto_switch_request()) {
+        auto_switch_from_empty_tool();
+    }
 }
 
-void PlayerInventory::set_carried_pickup(std::uint8_t pickup_id) noexcept {
-    const auto objective = objective_tool_for_pickup(pickup_id);
-    if (carried_objective_tool_ == objective) {
+void PlayerInventory::auto_switch_from_empty_tool() noexcept {
+    // Character.auto_switch_tool (character.pyd 0x10064D00) walks
+    // AMMO_DEPLETED_SWITCH_ORDER = [CLASS_PRIMARY_WEAPONS,
+    // CLASS_SECONDARY_WEAPONS, CLASS_MELEE] over the class's CLASS_ITEMS
+    // (AMMO_DEPLETED_EXCEPTIONS is empty) and selects the first carried item
+    // whose ammo is above zero; with none it stays put.
+    const auto& slots = toolbar_.slots();
+    const auto current = toolbar_.selected_index();
+    const auto* definition = find_class_definition(class_id_);
+    if (slots.empty() || !current.has_value() || definition == nullptr) {
         return;
     }
+    const auto current_tool = slots[*current].tool_id;
+    for (const auto group : {ClassItemGroup::primary, ClassItemGroup::secondary,
+                             ClassItemGroup::melee}) {
+        for (const auto item : definition->item_groups[static_cast<std::size_t>(group)]) {
+            if (item >= selectable_tool_count || item == current_tool) continue;
+            for (std::size_t index{}; index < slots.size(); ++index) {
+                const auto& slot = slots[index];
+                if (slot.kind == InventorySlotKind::loadout && slot.tool_id == item &&
+                    slot.selectable && slot.has_ammo) {
+                    static_cast<void>(select_slot(index, InventorySelectionOrigin::automatic));
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void PlayerInventory::set_carried_pickup(std::uint8_t pickup_id, bool equip) noexcept {
+    const auto objective = objective_tool_for_pickup(pickup_id);
+    const bool lock = objective.has_value() && equip;
+    if (carried_objective_tool_ == objective && carried_objective_locked_ == lock) {
+        return;
+    }
+    const bool changed = carried_objective_tool_ != objective;
     carried_objective_tool_ = objective;
-    rebuild_toolbar(true);
+    carried_objective_locked_ = false;
+    if (changed) {
+        // A dropped objective leaves the selection to set_slots, which falls
+        // back to the first selectable slot (the spawn default).
+        rebuild_toolbar(true);
+    }
+    if (lock) {
+        static_cast<void>(select_tool(*objective, InventorySelectionOrigin::automatic));
+        carried_objective_locked_ = true;
+    }
 }
 
 bool PlayerInventory::spend_blocks(std::uint16_t amount) noexcept {
@@ -309,6 +371,11 @@ bool PlayerInventory::spend_blocks(std::uint16_t amount) noexcept {
     }
     blocks_ = static_cast<std::uint16_t>(blocks_ - amount);
     return true;
+}
+
+void PlayerInventory::set_block_wallet_multiplier(double multiplier) noexcept {
+    block_wallet_multiplier_ =
+        std::isfinite(multiplier) && multiplier >= 0.0 ? multiplier : 1.0;
 }
 
 void PlayerInventory::add_blocks(std::uint16_t amount) noexcept {

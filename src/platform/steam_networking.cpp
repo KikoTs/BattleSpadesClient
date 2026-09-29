@@ -2,6 +2,7 @@
 
 #include "battlespades/core/diagnostics.hpp"
 #include "battlespades/platform/steam_achievements.generated.hpp"
+#include "battlespades/platform/steam_registration_windows.hpp"
 
 #include <steam/steam_api.h>
 
@@ -200,6 +201,16 @@ struct SteamApi final {
     bool(S_CALLTYPE* get_stat_int32)(ISteamUserStats*, const char*, int32*){};
     bool(S_CALLTYPE* indicate_progress)(ISteamUserStats*, const char*, uint32, uint32){};
     bool(S_CALLTYPE* store_stats)(ISteamUserStats*){};
+    // Optional: an older redistributable lacks some, and only the feature
+    // that needs one degrades (see load_optional_steam_api).
+    ISteamUtils*(S_CALLTYPE* steam_utils)(){};
+    bool(S_CALLTYPE* overlay_enabled)(ISteamUtils*){};
+    void(S_CALLTYPE* invite_dialog_connect)(ISteamFriends*, const char*){};
+    void(S_CALLTYPE* invite_dialog_lobby)(ISteamFriends*, uint64){};
+    SteamAPICall_t(S_CALLTYPE* join_lobby)(ISteamMatchmaking*, uint64){};
+    uint64(S_CALLTYPE* lobby_owner)(ISteamMatchmaking*, uint64){};
+    ISteamApps*(S_CALLTYPE* steam_apps)(){};
+    int(S_CALLTYPE* launch_command_line)(ISteamApps*, char*, int){};
 };
 
 [[nodiscard]] void* library_symbol(void* handle, const char* name) noexcept {
@@ -405,6 +416,33 @@ void announce_app_id(const std::string& app_id) noexcept {
         api.handle = nullptr;
         return false;
     }
+    // Join, invite and launch-argument support. A library without them still
+    // carries matches; only these features are unavailable.
+    const std::array optional_bindings{
+        Binding{"SteamAPI_SteamUtils_v010", reinterpret_cast<void**>(&api.steam_utils)},
+        Binding{"SteamAPI_SteamUtils_v011", reinterpret_cast<void**>(&api.steam_utils)},
+        Binding{"SteamAPI_ISteamUtils_IsOverlayEnabled",
+                reinterpret_cast<void**>(&api.overlay_enabled)},
+        Binding{"SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialogConnectString",
+                reinterpret_cast<void**>(&api.invite_dialog_connect)},
+        Binding{"SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialog",
+                reinterpret_cast<void**>(&api.invite_dialog_lobby)},
+        Binding{"SteamAPI_ISteamMatchmaking_JoinLobby",
+                reinterpret_cast<void**>(&api.join_lobby)},
+        Binding{"SteamAPI_ISteamMatchmaking_GetLobbyOwner",
+                reinterpret_cast<void**>(&api.lobby_owner)},
+        Binding{"SteamAPI_SteamApps_v008", reinterpret_cast<void**>(&api.steam_apps)},
+        Binding{"SteamAPI_SteamApps_v009", reinterpret_cast<void**>(&api.steam_apps)},
+        Binding{"SteamAPI_ISteamApps_GetLaunchCommandLine",
+                reinterpret_cast<void**>(&api.launch_command_line)},
+    };
+    for (const auto& binding : optional_bindings) {
+        // Later entries of one target are newer interface versions; keep the
+        // newest the library exports.
+        if (auto* const symbol = library_symbol(api.handle, binding.name); symbol != nullptr) {
+            *binding.target = symbol;
+        }
+    }
     return true;
 }
 
@@ -540,11 +578,83 @@ struct SteamNetworkingRuntime::Impl final {
         return bytes;
     }
 
+    /** Join requests read on the pump thread, collected by the presentation thread. */
+    std::mutex joins_mutex;
+    std::vector<SteamJoinRequest> join_requests;
+
+    void queue_join(SteamJoinRequest request) {
+        const std::scoped_lock lock{joins_mutex};
+        // A player cannot usefully click Join more than a handful of times
+        // between two frames; anything beyond is noise and is dropped.
+        if (join_requests.size() >= 16U) join_requests.erase(join_requests.begin());
+        join_requests.push_back(std::move(request));
+    }
+
+    [[nodiscard]] std::string read_launch_command_line() const {
+        if (api.steam_apps == nullptr || api.launch_command_line == nullptr) return {};
+        auto* const apps = api.steam_apps();
+        if (apps == nullptr) return {};
+        std::array<char, 1'024U> buffer{};
+        const auto length =
+            api.launch_command_line(apps, buffer.data(), static_cast<int>(buffer.size()));
+        if (length <= 0) return {};
+        return std::string{buffer.data(),
+                           std::min(static_cast<std::size_t>(length),
+                                    std::strlen(buffer.data()))};
+    }
+
+    /**
+     * The callbacks that turn a click in Steam into a join.
+     *
+     * With manual dispatch nothing is registered: every callback Steam posts
+     * for this pipe arrives here, and one not handled is freed unread. Before
+     * 2026-09-28 only connection status and call results were handled, so
+     * Join Game on a friend (or accepting an invite) reached a running game
+     * and was silently discarded.
+     */
+    [[nodiscard]] bool dispatch_join_callback(const CallbackMsg_t& message) {
+        if (message.m_pubParam == nullptr) return false;
+        if (message.m_iCallback == GameRichPresenceJoinRequested_t::k_iCallback &&
+            message.m_cubParam >= static_cast<int>(sizeof(GameRichPresenceJoinRequested_t))) {
+            GameRichPresenceJoinRequested_t event{};
+            std::memcpy(&event, message.m_pubParam, sizeof(event));
+            SteamJoinRequest request;
+            request.connect.assign(event.m_rgchConnect,
+                                   strnlen(event.m_rgchConnect, sizeof(event.m_rgchConnect)));
+            request.friend_id = event.m_steamIDFriend.ConvertToUint64();
+            core::diagnostic("steam", "join requested through Steam: " + request.connect);
+            if (!request.connect.empty()) queue_join(std::move(request));
+            return true;
+        }
+        if (message.m_iCallback == GameLobbyJoinRequested_t::k_iCallback &&
+            message.m_cubParam >= static_cast<int>(sizeof(GameLobbyJoinRequested_t))) {
+            GameLobbyJoinRequested_t event{};
+            std::memcpy(&event, message.m_pubParam, sizeof(event));
+            SteamJoinRequest request;
+            request.lobby_id = event.m_steamIDLobby.ConvertToUint64();
+            request.friend_id = event.m_steamIDFriend.ConvertToUint64();
+            core::diagnostic("steam", "lobby join requested through Steam: " +
+                                          std::to_string(request.lobby_id));
+            if (request.lobby_id != 0U) queue_join(std::move(request));
+            return true;
+        }
+        if (message.m_iCallback == NewUrlLaunchParameters_t::k_iCallback) {
+            SteamJoinRequest request;
+            request.connect = read_launch_command_line();
+            core::diagnostic("steam", "relaunched by Steam with: " + request.connect);
+            if (!request.connect.empty()) queue_join(std::move(request));
+            return true;
+        }
+        return false;
+    }
+
     void dispatch_callbacks() {
         api.dispatch_run_frame(pipe);
         CallbackMsg_t message{};
         while (api.dispatch_next(pipe, &message)) {
-            if (message.m_iCallback == SteamNetConnectionStatusChangedCallback_t::k_iCallback &&
+            if (dispatch_join_callback(message)) {
+                // Handled; freed below like every other message.
+            } else if (message.m_iCallback == SteamNetConnectionStatusChangedCallback_t::k_iCallback &&
                 message.m_pubParam != nullptr) {
                 StatusRouter::instance().dispatch(
                     *reinterpret_cast<SteamNetConnectionStatusChangedCallback_t*>(
@@ -644,6 +754,13 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
         message[0] = '\0';
         if (impl->api.init_flat(&message) != k_ESteamAPIInitResult_OK) {
             error = message[0] != '\0' ? message : "Steam is not running";
+#if defined(_WIN32)
+            // Both refusals read "Steam is not running" when Steam's registry
+            // pointer is stale; say which it is.
+            if (const auto diagnosis = diagnose_steam_registration(); !diagnosis.empty()) {
+                error += " (" + diagnosis + ")";
+            }
+#endif
             close_library(impl->api.handle);
             return false;
         }
@@ -707,18 +824,98 @@ bool SteamNetworkingRuntime::tracking_enabled() const noexcept {
 }
 
 bool SteamNetworkingRuntime::publish_presence(const std::string& status,
-                                              const std::string& connect) {
+                                              const std::string& connect,
+                                              const std::string& group) {
     if (impl_ == nullptr || impl_->api.set_rich_presence == nullptr) return false;
     auto* const friends = impl_->api.friends();
     if (friends == nullptr) return false;
     // "status" is what the friends list shows under view game info, and
     // "connect" is the command line Steam hands a friend who clicks Join.
     // Both are free-form, so neither needs anything defined for the app id.
-    const auto published = impl_->api.set_rich_presence(friends, "status", status.c_str()) &&
-                           impl_->api.set_rich_presence(friends, "connect", connect.c_str());
-    core::diagnostic("steam", published ? "presence published: " + status
+    // steam_player_group groups players of one match in the friends list;
+    // an empty value removes the key. (steam_display is not used: it needs
+    // localisation tokens uploaded to the retail app's Steamworks page.)
+    const auto published =
+        impl_->api.set_rich_presence(friends, "status", status.c_str()) &&
+        impl_->api.set_rich_presence(friends, "connect", connect.c_str()) &&
+        impl_->api.set_rich_presence(friends, "steam_player_group",
+                                     group.empty() ? nullptr : group.c_str());
+    core::diagnostic("steam", published ? "presence published: " + status + " (" + connect + ")"
                                         : "presence was refused by Steam");
     return published;
+}
+
+std::vector<SteamJoinRequest> SteamNetworkingRuntime::take_join_requests() {
+    if (impl_ == nullptr) return {};
+    const std::scoped_lock lock{impl_->joins_mutex};
+    return std::exchange(impl_->join_requests, {});
+}
+
+std::string SteamNetworkingRuntime::launch_command_line() const {
+    return impl_ == nullptr ? std::string{} : impl_->read_launch_command_line();
+}
+
+std::string SteamNetworkingRuntime::resolve_lobby_connect(std::uint64_t lobby,
+                                                          std::chrono::seconds timeout) {
+    if (impl_ == nullptr || lobby == 0U || impl_->api.join_lobby == nullptr) return {};
+    auto* const matchmaking = impl_->api.matchmaking();
+    if (matchmaking == nullptr) return {};
+    // Lobby data of a friends-only lobby is only readable by a member, so the
+    // invitee joins, reads where the match is, and leaves: the match itself
+    // runs over the host's relay listen socket, not the lobby.
+    const auto call = impl_->api.join_lobby(matchmaking, lobby);
+    if (call == 0) return {};
+    impl_->await_call(call);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (const auto bytes = impl_->take_call_result(call); bytes.has_value()) {
+            if (bytes->size() < sizeof(LobbyEnter_t)) return {};
+            LobbyEnter_t entered{};
+            std::memcpy(&entered, bytes->data(), sizeof(entered));
+            if (entered.m_EChatRoomEnterResponse != k_EChatRoomEnterResponseSuccess) {
+                core::diagnostic("steam", "Steam refused lobby " + std::to_string(lobby) +
+                                              ", response " +
+                                              std::to_string(entered.m_EChatRoomEnterResponse));
+                return {};
+            }
+            auto connect = lobby_data(lobby, "connect");
+            if (connect.empty() && impl_->api.lobby_owner != nullptr) {
+                const std::uint64_t owner{impl_->api.lobby_owner(matchmaking, lobby)};
+                if (owner != 0U) connect = "+connect steam:" + std::to_string(owner);
+            }
+            leave_lobby(lobby);
+            core::diagnostic("steam", "lobby " + std::to_string(lobby) + " leads to " + connect);
+            return connect;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    core::diagnostic("steam", "Steam did not answer the lobby join in time");
+    return {};
+}
+
+bool SteamNetworkingRuntime::overlay_enabled() const {
+    if (impl_ == nullptr || impl_->api.steam_utils == nullptr ||
+        impl_->api.overlay_enabled == nullptr) {
+        return false;
+    }
+    auto* const utils = impl_->api.steam_utils();
+    return utils != nullptr && impl_->api.overlay_enabled(utils);
+}
+
+bool SteamNetworkingRuntime::open_invite_dialog(const std::string& connect,
+                                                std::uint64_t lobby) {
+    if (impl_ == nullptr || !overlay_enabled()) return false;
+    auto* const friends = impl_->api.friends();
+    if (friends == nullptr) return false;
+    if (!connect.empty() && impl_->api.invite_dialog_connect != nullptr) {
+        impl_->api.invite_dialog_connect(friends, connect.c_str());
+        return true;
+    }
+    if (lobby != 0U && impl_->api.invite_dialog_lobby != nullptr) {
+        impl_->api.invite_dialog_lobby(friends, lobby);
+        return true;
+    }
+    return false;
 }
 
 void SteamNetworkingRuntime::clear_presence() noexcept {

@@ -11,9 +11,14 @@
 // See tests/test_world_vertex_layout.cpp for the same setup.
 
 #include "battlespades/world/chunk_mesh.hpp"
+#include "battlespades/world/class_models.hpp"
+#include "battlespades/world/jetpack_death.hpp"
+#include "battlespades/world/retail_character_pose.hpp"
 #include "battlespades/world/retail_view_model.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_models.hpp"
+#include "battlespades/world/kv6_model.hpp"
+#include "battlespades/world/weapon_zoom.hpp"
 #include "battlespades/world/scripted_weapon.hpp"
 #include "battlespades/frontend/inventory_session.hpp"
 #include "battlespades/frontend/inventory_menu.hpp"
@@ -34,6 +39,7 @@
 #include <fstream>
 #include <iostream>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -48,6 +54,10 @@ using battlespades::world::find_weapon_definition;
 using battlespades::world::load_weapon_models;
 
 bool verbose = false;
+/** Viewmodel near plane (world_renderer.cpp uses 0.01; --near overrides). */
+float view_near_plane = 0.01F;
+/** world_renderer.cpp culls unlit (flash) viewmodel draws CW; --no-cull-flash disables. */
+bool cull_flash = true;
 
 void expect(bool value, const std::string& message) {
     if (!value) {
@@ -179,6 +189,13 @@ struct DiagnosticCallback final : public bgfx::CallbackI {
 struct DrawItem final {
     const ChunkMesh* mesh{};
     Mat4 transform{};
+    /** PASSTHROUGH_SHADER (fs_world lighting mode 0), as the muzzle flash. */
+    bool unlit{};
+    /**
+     * Neither tests nor writes depth: emulates a world-pass draw that the
+     * depth-cleared viewmodel pass is later painted over (the old local flash).
+     */
+    bool underlay{};
 };
 
 /** One rendered frame, RGBA8, row 0 at the top. Alpha 0 means background. */
@@ -272,6 +289,7 @@ struct Frame final {
         {0.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F},
         {1.0F, 1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 1.0F, 0.0F}}};
     constexpr std::array<float, 4U> kClassic{1.0F, 1.0F, 0.0F, 1.0F};
+    constexpr std::array<float, 4U> kUnlit{0.0F, 1.0F, 0.0F, 1.0F};
     constexpr std::array<float, 4U> kFogDisabled{0.0F, 0.0F, 0.0F, 1.0e6F};
     constexpr std::array<float, 4U> kZero{0.0F, 0.0F, 0.0F, 0.0F};
     constexpr std::array<float, 4U> kOpaque{1.0F, 0.0F, 0.0F, 0.0F};
@@ -279,7 +297,7 @@ struct Frame final {
 
     std::array<float, 16U> projection{};
     bx::mtxProj(projection.data(), static_cast<float>(fov_y_degrees),
-                static_cast<float>(width) / static_cast<float>(height), 0.01F, 8.0F,
+                static_cast<float>(width) / static_cast<float>(height), view_near_plane, 8.0F,
                 bgfx::getCaps()->homogeneousDepth, bx::Handedness::Right);
 
     bgfx::setViewFrameBuffer(0U, framebuffer);
@@ -312,7 +330,7 @@ struct Frame final {
         bgfx::setTransform(draw.transform.data());
         bgfx::setVertexBuffer(0U, vertex_buffer);
         bgfx::setIndexBuffer(index_buffer);
-        bgfx::setUniform(light_params, kClassic.data());
+        bgfx::setUniform(light_params, draw.unlit ? kUnlit.data() : kClassic.data());
         bgfx::setUniform(fog_params, kFogDisabled.data());
         bgfx::setUniform(fog_curve, kZero.data());
         bgfx::setUniform(fog_horizon, kZero.data());
@@ -331,8 +349,11 @@ struct Frame final {
         bgfx::setTexture(3U, emissive_sampler, emissive_texture);
         // world_renderer.cpp:1911-1913, minus MSAA so a pixel is either covered
         // or not and the centroid is not smeared by resolve.
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
-                       BGFX_STATE_DEPTH_TEST_LESS);
+        bgfx::setState(draw.underlay
+                           ? (BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A)
+                           : (BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
+                              BGFX_STATE_DEPTH_TEST_LESS |
+                              (draw.unlit && cull_flash ? BGFX_STATE_CULL_CW : 0U)));
         bgfx::submit(0U, program);
     }
 
@@ -750,6 +771,442 @@ void the_aimed_branch_is_reachable() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Held-tool pose capture (--viewmodel TOOL [--class ID] --png DIR)
+//
+// Renders the complete first-person tool + class arms chain and a third-person
+// character holding the tool, composed exactly as native_frontend_module.cpp's
+// sandbox_view_model_draws and remote character draw do, so held-tool
+// regressions (the Medic riot shield) can be inspected without a live window.
+// ---------------------------------------------------------------------------
+
+[[nodiscard]] Mat4 mat_rotate_x(float degrees) {
+    const auto radians = static_cast<float>(degrees * std::numbers::pi / 180.0);
+    const float c = std::cos(radians);
+    const float s = std::sin(radians);
+    auto result = mat_identity();
+    result[5U] = c;
+    result[6U] = s;
+    result[9U] = -s;
+    result[10U] = c;
+    return result;
+}
+
+[[nodiscard]] Mat4 mat_rotate_z(float degrees) {
+    const auto radians = static_cast<float>(degrees * std::numbers::pi / 180.0);
+    const float c = std::cos(radians);
+    const float s = std::sin(radians);
+    auto result = mat_identity();
+    result[0U] = c;
+    result[1U] = s;
+    result[4U] = -s;
+    result[5U] = c;
+    return result;
+}
+
+[[nodiscard]] Mat4 translate(const battlespades::world::ViewModelVector& value) {
+    return mat_translate(static_cast<float>(value.x), static_cast<float>(value.y),
+                         static_cast<float>(value.z));
+}
+
+/** Fixed roll so before/after captures are reproducible. */
+constexpr double capture_flash_roll_degrees{30.0};
+
+/** native_frontend_module.cpp append_local_view_muzzle_flash. */
+[[nodiscard]] Mat4 view_flash_matrix(const battlespades::world::RetailViewMuzzleFlashPose& pose) {
+    Mat4 m = mat_scale(static_cast<float>(pose.model_scale));
+    m = mat_mul(m, mat_rotate_z(static_cast<float>(pose.roll_degrees)));
+    m = mat_mul(m, translate(pose.position));
+    return mat_mul(m, mat_rotate_y(static_cast<float>(pose.yaw_degrees)));
+}
+
+/**
+ * The pre-fix local flash in view space: muzzle_flash_world_transform at
+ * eye + forward * 0.72, size 0.065 * third-person muzzle_flash_scale, mesh
+ * x/y/z along camera right/up/forward, drawn in the world pass underneath the
+ * depth-cleared viewmodel.
+ */
+[[nodiscard]] Mat4 legacy_world_flash_matrix(std::uint8_t tool_id) {
+    namespace world = battlespades::world;
+    const auto attachment = world::retail_third_person_muzzle_attachment(tool_id);
+    const auto scale =
+        0.065F * static_cast<float>(attachment.has_value() ? attachment->scale : 0.5);
+    const auto radians = static_cast<float>(capture_flash_roll_degrees * std::numbers::pi / 180.0);
+    const float c = std::cos(radians) * scale;
+    const float s = std::sin(radians) * scale;
+    return {c, s, 0.0F, 0.0F, -s, c, 0.0F, 0.0F, 0.0F, 0.0F, -scale, 0.0F,
+            0.0F, 0.0F, -0.72F, 1.0F};
+}
+
+/** Row-vector point transform, as native_frontend_module.cpp's mat_transform_point. */
+[[nodiscard]] std::array<float, 3U> transform_point(const Mat4& m, std::array<float, 3U> p) {
+    return {p[0U] * m[0U] + p[1U] * m[4U] + p[2U] * m[8U] + m[12U],
+            p[0U] * m[1U] + p[1U] * m[5U] + p[2U] * m[9U] + m[13U],
+            p[0U] * m[2U] + p[1U] * m[6U] + p[2U] * m[10U] + m[14U]};
+}
+
+/** A view-space point on screen, in the measure() percent convention. */
+[[nodiscard]] std::array<double, 2U> screen_percent(std::array<float, 3U> view, double fov_y,
+                                                    double aspect) {
+    const double tan_half = std::tan(fov_y * 0.5 * std::numbers::pi / 180.0);
+    const double depth = std::max(-static_cast<double>(view[2U]), 1.0e-6);
+    return {static_cast<double>(view[0U]) / (depth * tan_half * aspect) * 50.0,
+            static_cast<double>(view[1U]) / (depth * tan_half) * 50.0};
+}
+
+/**
+ * Enhanced-tier flash (native_frontend_module.cpp append_local_view_muzzle_flash
+ * with an anchor): S(scale)·R_z(roll)·T(tip + lead)·part. Asserts that the
+ * flash lands on the drawn barrel mouth, and reports how far retail's own
+ * root-space offset lands from it for comparison.
+ */
+void capture_anchored_view_muzzle_flash(
+    const std::filesystem::path& backend, const std::filesystem::path& png_directory,
+    const std::string& prefix, std::uint8_t tool_id, const std::vector<DrawItem>& base,
+    std::size_t tool_part_count, const ChunkMesh& flash_mesh,
+    const battlespades::world::RetailViewMuzzleFlashPose& retail_pose) {
+    namespace world = battlespades::world;
+    const auto flash = world::retail_view_muzzle_flash(tool_id);
+    if (!flash.has_value() || tool_part_count == 0U) {
+        return;
+    }
+    // The part whose mouth sits furthest ahead (the minigun's barrel).
+    std::optional<std::size_t> best;
+    std::array<float, 3U> tip{};
+    float best_depth{};
+    for (std::size_t part{}; part < std::min(tool_part_count, base.size()); ++part) {
+        const auto candidate = world::view_model_muzzle_tip(*base[part].mesh);
+        if (!candidate.has_value()) {
+            continue;
+        }
+        const auto view = transform_point(base[part].transform, *candidate);
+        if (!best.has_value() || view[2U] < best_depth) {
+            best = part;
+            tip = *candidate;
+            best_depth = view[2U];
+        }
+    }
+    expect(best.has_value(), "a flashing gun must have a barrel mouth");
+    const auto& part_matrix = base[*best].transform;
+    const auto centre = world::anchored_view_muzzle_flash_centre(tip, flash->scale);
+    Mat4 m = mat_scale(static_cast<float>(flash->scale));
+    m = mat_mul(m, mat_rotate_z(static_cast<float>(capture_flash_roll_degrees)));
+    m = mat_mul(m, mat_translate(centre[0U], centre[1U], centre[2U]));
+    m = mat_mul(m, part_matrix);
+    const DrawItem anchored{&flash_mesh, m, true, false};
+    const auto only = render({anchored}, 1280U, 720U, 75.0, backend);
+    const auto coverage = measure(only, covered);
+    const double aspect = 1280.0 / 720.0;
+    const auto mouth = screen_percent(transform_point(part_matrix, tip), 75.0, aspect);
+    const auto flash_centre = screen_percent(transform_point(part_matrix, centre), 75.0, aspect);
+    const auto retail_only = render({DrawItem{&flash_mesh, view_flash_matrix(retail_pose), true,
+                                              false}},
+                                    1280U, 720U, 75.0, backend);
+    const auto retail = measure(retail_only, covered);
+    const double error = std::hypot(coverage.centroid_x - flash_centre[0U],
+                                    coverage.centroid_y - flash_centre[1U]);
+    const double retail_error =
+        std::hypot(retail.centroid_x - mouth[0U], retail.centroid_y - mouth[1U]);
+    const double anchored_error =
+        std::hypot(coverage.centroid_x - mouth[0U], coverage.centroid_y - mouth[1U]);
+    std::cout << "muzzle tool " << static_cast<int>(tool_id) << " mouth%=(" << mouth[0U] << ","
+              << mouth[1U] << ") anchored centroid%=(" << coverage.centroid_x << ","
+              << coverage.centroid_y << ") dist-to-mouth%=" << anchored_error
+              << " retail centroid%=(" << retail.centroid_x << "," << retail.centroid_y
+              << ") retail dist-to-mouth%=" << retail_error << "\n";
+    expect(coverage.pixels > 0U, "the anchored muzzle flash must be on screen");
+    // The mouth itself must be inside the drawn flash, and the flash's pixel
+    // centroid must sit on the mouth: within 2% of the frame (perspective
+    // weights the flash's near half, so its centroid lands just behind the
+    // anchor, on the barrel mouth, which is the intent).
+    expect(mouth[0U] >= coverage.min_x && mouth[0U] <= coverage.max_x &&
+               mouth[1U] >= coverage.min_y && mouth[1U] <= coverage.max_y,
+           "the anchored muzzle flash must cover the barrel mouth");
+    expect(anchored_error < 2.0, "the anchored muzzle flash centroid must sit on the barrel mouth");
+    static_cast<void>(error);
+    auto draws = base;
+    draws.push_back(anchored);
+    const auto path = png_directory / (prefix + "flash_anchored_hip.png");
+    save_frame(path, render(draws, 1280U, 720U, 75.0, backend), false);
+    std::cout << "wrote " << path.string() << "\n";
+}
+
+/**
+ * --viewmodel flash evidence: the shot frame (seconds_since_primary 0, the
+ * frame Weapon.shot_weapon arms the timer) with the old world-space local
+ * flash and with the recovered Weapon.draw_fps flash, plus the aimed
+ * Character.draw_sight frame for weapons with a sight.
+ */
+template <typename FpsDraws>
+void capture_view_muzzle_flash(const std::filesystem::path& asset_root,
+                               const std::filesystem::path& backend,
+                               const std::filesystem::path& png_directory,
+                               const std::string& prefix, std::uint8_t tool_id,
+                               const ChunkMesh* sight_mesh, const ChunkMesh* pin_mesh,
+                               const FpsDraws& fps_draws, std::size_t tool_part_count) {
+    namespace world = battlespades::world;
+    std::string error;
+    const auto flash_model = battlespades::world::Kv6Model::load_file(
+        asset_root / "kv6" / "muzzleflash_default.kv6", &error);
+    expect(flash_model.has_value(), "muzzleflash_default.kv6 must load: " + error);
+    const auto flash_mesh = flash_model->mesh();
+    const auto report = [&](const char* name, const Frame& frame, const Frame* flash_only) {
+        const auto path = png_directory / (prefix + name + ".png");
+        save_frame(path, frame, false);
+        std::cout << "wrote " << path.string();
+        if (flash_only != nullptr) {
+            const auto c = measure(*flash_only, covered);
+            std::cout << " flash px=" << c.pixels << " centroid%=(" << c.centroid_x << ","
+                      << c.centroid_y << ") x%[" << c.min_x << "," << c.max_x << "] y%["
+                      << c.min_y << "," << c.max_y << "]";
+        }
+        std::cout << '\n';
+    };
+
+    world::WeaponViewModelInput input;
+    input.tool_id = tool_id;
+    input.seconds_since_primary = 0.0;
+    const auto pose = world::evaluate_weapon_view_model(input);
+    const auto base = fps_draws(pose);
+
+    // Before: the old world-space flash under the viewmodel.
+    const DrawItem legacy{&flash_mesh, legacy_world_flash_matrix(tool_id), true, true};
+    {
+        std::vector<DrawItem> draws{legacy};
+        draws.insert(draws.end(), base.begin(), base.end());
+        const auto only = render({legacy}, 1280U, 720U, 75.0, backend);
+        report("flash_before_hip", render(draws, 1280U, 720U, 75.0, backend), &only);
+    }
+    const auto hip = world::evaluate_retail_view_muzzle_flash(tool_id, false, pose.tool_sway,
+                                                              capture_flash_roll_degrees);
+    if (!hip.has_value()) {
+        std::cout << "note: tool " << static_cast<int>(tool_id)
+                  << " has no first-person muzzle flash in retail\n";
+        report("flash_after_hip", render(base, 1280U, 720U, 75.0, backend), nullptr);
+        return;
+    }
+    const DrawItem flash{&flash_mesh, view_flash_matrix(*hip), true, false};
+    {
+        auto draws = base;
+        draws.push_back(flash);
+        const auto only = render({flash}, 1280U, 720U, 75.0, backend);
+        const auto hip_coverage = measure(only, covered);
+        expect(hip_coverage.pixels > 0U, "the hip muzzle flash must be on screen");
+        // The regression: the old local flash sat on the optical axis and
+        // covered up to the whole view. draw_fps puts it at the muzzle,
+        // right of and below the crosshair, and small.
+        expect(hip_coverage.pixels < 1280U * 720U / 20U && hip_coverage.centroid_x > 1.0 &&
+                   hip_coverage.min_x > 0.0,
+               "the hip muzzle flash must sit at the muzzle, not in front of the eye");
+        report("flash_after_hip", render(draws, 1280U, 720U, 75.0, backend), &only);
+    }
+    capture_anchored_view_muzzle_flash(backend, png_directory, prefix, tool_id, base,
+                                       tool_part_count, flash_mesh, *hip);
+    // Character.set_zoom is unreachable for weapons that never aim (the
+    // minigun's RMB spools; can_zoom = False), so they have no aimed frame.
+    if (sight_mesh == nullptr || world::zoom_target_multiplier(tool_id, true) <= 0.0) {
+        return;
+    }
+    const auto sight = evaluate_weapon_sight(tool_id);
+    std::vector<DrawItem> aimed{{sight_mesh, sight_matrix(sight)}};
+    if (sight.has_pin && pin_mesh != nullptr) {
+        aimed.push_back({pin_mesh, pin_matrix(sight)});
+    }
+    // The settled aimed projection (zoom ramp at its target).
+    const double fov = world::zoom_fov_y_degrees(world::zoom_target_multiplier(tool_id, true));
+    {
+        std::vector<DrawItem> draws{legacy};
+        draws.insert(draws.end(), aimed.begin(), aimed.end());
+        const auto only = render({legacy}, 1280U, 720U, fov, backend);
+        report("flash_before_ads", render(draws, 1280U, 720U, fov, backend), &only);
+    }
+    const auto zoomed =
+        world::evaluate_retail_view_muzzle_flash(tool_id, true, {}, capture_flash_roll_degrees);
+    const DrawItem zoomed_flash{&flash_mesh, view_flash_matrix(*zoomed), true, false};
+    auto draws = aimed;
+    draws.push_back(zoomed_flash);
+    const auto only = render({zoomed_flash}, 1280U, 720U, fov, backend);
+    const auto aimed_coverage = measure(only, covered);
+    if (cull_flash) {
+        // An aimed flash may be small or (sniper: eye inside the KV6, every
+        // face culled) absent, but it must never blanket the sight picture.
+        expect(aimed_coverage.pixels < 1280U * 720U / 10U,
+               "the aimed muzzle flash must not cover the view");
+    }
+    report("flash_after_ads", render(draws, 1280U, 720U, fov, backend), &only);
+}
+
+void capture_held_tool(const std::filesystem::path& asset_root,
+                       const std::filesystem::path& backend,
+                       const std::filesystem::path& png_directory, std::uint8_t tool_id,
+                       std::uint8_t class_id) {
+    namespace world = battlespades::world;
+    // Character.draw_fps draws the arms and the view weapon with
+    // set_kv6_default_color(*self.color), where Character.set_team stores
+    // color = team * 0.5 (character.pyd 0x1005F76C / 0x10025F37). The
+    // captured view model must therefore use the half-intensity team colour.
+    const world::VxlColor team = world::retail_character_color({44U, 117U, 179U, 255U});
+    expect(team.red == 22U && team.green == 59U && team.blue == 90U,
+           "first-person arms must use Character.color (team * 0.5)");
+    const auto tool = load_weapon_models(asset_root, tool_id, {1.0F, 1.0F, 1.0F}, team);
+    expect(static_cast<bool>(tool), tool.error);
+    const auto character = world::load_class_models(asset_root, class_id, team);
+    expect(static_cast<bool>(character), character.error);
+    expect(character.models->first_person_arms.size() >= 2U, "class must supply two arm meshes");
+    const auto& upper = character.models->first_person_arms[0U];
+    const auto& lower = character.models->first_person_arms[1U];
+    std::filesystem::create_directories(png_directory);
+    const std::string prefix = "tool" + std::to_string(tool_id) + "_";
+
+    struct FpsCase final {
+        const char* name;
+        double seconds_since_primary;
+        world::ViewModelVector sway;
+    };
+    const std::array<FpsCase, 5U> fps_cases{{
+        {"fps_idle", 1.0e9, {}},
+        {"fps_use_start", 0.0, {}},
+        {"fps_use_0.10s", 0.10, {}},
+        {"fps_use_0.50s", 0.50, {}},
+        {"fps_pullout", 1.0e9, {-0.5, -0.5, 0.0}},
+    }};
+    const auto fps_draws = [&](const world::RetailViewModelPose& pose) {
+        std::vector<DrawItem> draws;
+        for (std::size_t part{}; part < tool.models->first_person_parts.size(); ++part) {
+            const auto& part_pose = part < pose.tool_part_count ? pose.tool_parts[part] : pose.tool;
+            Mat4 m = mat_scale(static_cast<float>(pose.model_scale));
+            m = mat_mul(m, mat_rotate_z(static_cast<float>(part_pose.orientation_degrees.z)));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(part_pose.orientation_degrees.y)));
+            m = mat_mul(m, mat_rotate_x(static_cast<float>(part_pose.orientation_degrees.x)));
+            m = mat_mul(m, translate(part_pose.position));
+            m = mat_mul(m, translate({pose.tool_sway.x + pose.character_offset.x,
+                                      pose.tool_sway.y + pose.character_offset.y,
+                                      pose.tool_sway.z + pose.character_offset.z}));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(pose.character_yaw_degrees)));
+            draws.push_back({&tool.models->first_person_parts[part], m});
+        }
+        const auto arm = [&](const ChunkMesh& mesh, const world::RetailArmPartPose& part) {
+            Mat4 m = mat_scale(static_cast<float>(pose.arm_model_scale));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(part.yaw_degrees)));
+            m = mat_mul(m, translate(part.position));
+            m = mat_mul(m, translate(pose.arms_anchor));
+            m = mat_mul(m, mat_rotate_x(static_cast<float>(pose.arms_orientation_degrees.x *
+                                                           pose.arm_rotation_ratio)));
+            m = mat_mul(m, translate({pose.arms_position.x + pose.character_offset.x,
+                                      pose.arms_position.y + pose.character_offset.y,
+                                      pose.arms_position.z + pose.character_offset.z}));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(pose.character_yaw_degrees)));
+            draws.push_back({&mesh, m});
+        };
+        if (pose.draws_player_arms) {
+            const auto& parts = pose.arm_parts;
+            arm(lower, parts[static_cast<std::size_t>(world::RetailArmPart::left_lower)]);
+            arm(lower, parts[static_cast<std::size_t>(world::RetailArmPart::right_lower)]);
+            arm(upper, parts[static_cast<std::size_t>(world::RetailArmPart::left_upper)]);
+        }
+        return draws;
+    };
+    for (const auto& item : fps_cases) {
+        world::WeaponViewModelInput input;
+        input.tool_id = tool_id;
+        input.seconds_since_primary = item.seconds_since_primary;
+        input.sway_x = item.sway.x;
+        input.sway_y = item.sway.y;
+        input.sway_z = item.sway.z;
+        const auto pose = world::evaluate_weapon_view_model(input);
+        const auto draws = fps_draws(pose);
+        const auto frame = render(draws, 1280U, 720U, 75.0, backend);
+        const auto coverage = measure(frame, covered);
+        if (coverage.pixels == 0U) {
+            // Retail really does park some holds off-screen (AnimPlaceBlock's
+            // first frame, a full pullout): keep capturing the remaining
+            // cases instead of aborting the whole tool.
+            std::cout << "note: " << item.name << " draws nothing on screen\n";
+        }
+        const auto path = png_directory / (prefix + item.name + ".png");
+        save_frame(path, frame, false);
+        std::cout << "wrote " << path.string() << " (" << coverage.pixels << " px)\n";
+    }
+    capture_view_muzzle_flash(asset_root, backend, png_directory, prefix, tool_id,
+                              tool.models->sight.has_value() ? &*tool.models->sight : nullptr,
+                              tool.models->pin.has_value() ? &*tool.models->pin : nullptr,
+                              fps_draws, tool.models->first_person_parts.size());
+
+    struct TpCase final {
+        const char* name;
+        double yaw_degrees;
+        double aim_pitch_degrees;
+        double seconds_since_primary;
+        bool can_display_weapon;
+    };
+    const std::array<TpCase, 7U> tp_cases{{
+        {"tp_side_level", 90.0, 0.0, 1.0e9, true},
+        {"tp_front_level", 160.0, 0.0, 1.0e9, true},
+        {"tp_side_look_up", 90.0, -60.0, 1.0e9, true},
+        {"tp_side_look_down", 90.0, 60.0, 1.0e9, true},
+        {"tp_side_use_0.10s", 90.0, 0.0, 0.10, true},
+        {"tp_side_use_0.50s", 90.0, 0.0, 0.50, true},
+        {"tp_side_hidden_tool", 90.0, 0.0, 1.0e9, false},
+    }};
+    // Retail world (Z down) -> GL eye (Y up, looking down -Z), 3.4 units back.
+    const Mat4 view = mat_mul(mat_rotate_x(90.0F), mat_translate(0.0F, 0.0F, -3.4F));
+    const auto& set = *character.models;
+    for (const auto& item : tp_cases) {
+        const auto pose = world::evaluate_retail_third_person_pose(
+            tool_id, tool.models->third_person_parts.size(), item.seconds_since_primary, 1U,
+            item.aim_pitch_degrees, item.can_display_weapon);
+        const Mat4 root = mat_mul(mat_rotate_z(static_cast<float>(item.yaw_degrees)), view);
+        std::vector<DrawItem> draws;
+        draws.push_back({&set.standing_torso_preview, root});
+        draws.push_back({&set.left_leg_preview, root});
+        draws.push_back({&set.right_leg_preview, root});
+        {
+            auto head = mat_translate(0.0F, 0.0F, -0.2F);
+            head = mat_mul(head, mat_rotate_x(static_cast<float>(item.aim_pitch_degrees)));
+            head = mat_mul(head, mat_translate(0.0F, 0.0F, 0.2F));
+            draws.push_back({&set.head_preview, mat_mul(head, root)});
+        }
+        for (std::size_t part{}; part < pose.tool_part_count &&
+                                 part < tool.models->third_person_parts.size();
+             ++part) {
+            const auto& part_pose = pose.tool_parts[part];
+            auto held = mat_scale(static_cast<float>(pose.tool_model_scale));
+            held = mat_mul(held, mat_rotate_z(static_cast<float>(part_pose.orientation_degrees.z)));
+            held = mat_mul(held, mat_rotate_y(static_cast<float>(part_pose.orientation_degrees.y)));
+            held = mat_mul(held, mat_rotate_x(static_cast<float>(part_pose.orientation_degrees.x)));
+            held = mat_mul(held, translate(part_pose.position));
+            held = mat_mul(held, mat_rotate_x(static_cast<float>(pose.weapon_pitch_degrees)));
+            held = mat_mul(held, translate(world::retail_display_vector(pose.tool_anchor)));
+            held = mat_mul(held, mat_rotate_x(-90.0F));
+            draws.push_back({&tool.models->third_person_parts[part], mat_mul(held, root)});
+        }
+        const auto arm = [&](const ChunkMesh& mesh, const world::RetailThirdPersonArmPose& part) {
+            auto m = mat_rotate_z(static_cast<float>(part.extra_roll_degrees));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(part.extra_yaw_degrees)));
+            m = mat_mul(m, translate(world::retail_display_vector(part.model_offset)));
+            m = mat_mul(m, mat_rotate_y(static_cast<float>(part.yaw_degrees)));
+            m = mat_mul(m, mat_rotate_x(static_cast<float>(part.pitch_degrees)));
+            m = mat_mul(m, mat_rotate_z(static_cast<float>(part.roll_degrees)));
+            m = mat_mul(m, mat_scale(static_cast<float>(pose.arm_model_scale)));
+            m = mat_mul(m, translate(world::retail_display_vector(part.position)));
+            m = mat_mul(m, mat_rotate_x(-90.0F));
+            draws.push_back({&mesh, mat_mul(m, root)});
+        };
+        if (pose.draws_player_arms) {
+            using Part = world::RetailThirdPersonArmPart;
+            arm(upper, pose.arms[static_cast<std::size_t>(Part::right_upper)]);
+            arm(lower, pose.arms[static_cast<std::size_t>(Part::right_lower)]);
+            arm(upper, pose.arms[static_cast<std::size_t>(Part::left_upper)]);
+            arm(lower, pose.arms[static_cast<std::size_t>(Part::left_lower)]);
+        }
+        const auto frame = render(draws, 960U, 960U, 60.0, backend);
+        const auto path = png_directory / (prefix + item.name + ".png");
+        save_frame(path, frame, false);
+        std::cout << "wrote " << path.string() << " (weapon pitch "
+                  << pose.weapon_pitch_degrees << ")\n";
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -762,6 +1219,8 @@ int main(int argc, char** argv) {
         bool cosmetics = false;
         bool audio_probe = false;
         bool reload_aim = false;
+        std::optional<std::uint8_t> held_tool;
+        std::uint8_t held_class{17U}; // Medic: the only class carrying the riot shield
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
             if (argument == "--verbose") {
@@ -784,6 +1243,14 @@ int main(int argc, char** argv) {
                 const std::string value=argv[++index];const auto split=value.find('=');
                 expect(split!=std::string::npos,"Variant must be option=choice");
                 variants[value.substr(0,split)]=value.substr(split+1);
+            } else if (argument == "--viewmodel" && index + 1 < argc) {
+                held_tool = static_cast<std::uint8_t>(std::stoi(argv[++index]));
+            } else if (argument == "--no-cull-flash") {
+                cull_flash = false;
+            } else if (argument == "--near" && index + 1 < argc) {
+                view_near_plane = std::stof(argv[++index]);
+            } else if (argument == "--class" && index + 1 < argc) {
+                held_class = static_cast<std::uint8_t>(std::stoi(argv[++index]));
             }
         }
 
@@ -843,6 +1310,12 @@ int main(int argc, char** argv) {
         }
 
         const auto backend = shader_root / "dx11";
+        if (held_tool.has_value()) {
+            expect(!png_directory.empty(), "--viewmodel requires --png DIR");
+            capture_held_tool(asset_root, backend, png_directory, *held_tool, held_class);
+            bgfx::shutdown();
+            return 0;
+        }
         if(!skin_manifest.empty()){
             battlespades::world::ScriptedWeapon skin;std::string error;
             expect(skin.load(skin_manifest,error,variants),error);

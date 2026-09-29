@@ -1,6 +1,7 @@
 #include "battlespades/network/protocol168_players.hpp"
 
 #include "battlespades/world/class_catalog.hpp"
+#include "battlespades/world/jetpack_death.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 
 #include <algorithm>
@@ -249,6 +250,7 @@ bool Protocol168Roster::apply(const CreatePlayerPacket& packet,
     std::vector<std::uint8_t> retained_ugc_tools;
     bool retained_dominating_local_player{};
     bool retained_dominated_by_local_player{};
+    std::uint32_t retained_running_local_player_kills{};
     // CreatePlayer has no UGC suffix. A respawn replaces the life generation
     // but not the already-acknowledged selection; preserve it only for the
     // same named player/team so an unexpected id reuse cannot inherit tools.
@@ -262,6 +264,8 @@ bool Protocol168Roster::apply(const CreatePlayerPacket& packet,
             players_[id]->dominating_local_player;
         retained_dominated_by_local_player =
             players_[id]->dominated_by_local_player;
+        retained_running_local_player_kills =
+            players_[id]->running_local_player_kills;
     }
     auto& generation = generations_[id];
     ++generation;
@@ -284,6 +288,7 @@ bool Protocol168Roster::apply(const CreatePlayerPacket& packet,
     replica.ugc_tools = std::move(retained_ugc_tools);
     replica.dominating_local_player = retained_dominating_local_player;
     replica.dominated_by_local_player = retained_dominated_by_local_player;
+    replica.running_local_player_kills = retained_running_local_player_kills;
     if (!replica.loadout.empty()) replica.tool_id = replica.loadout.front();
     players_[id] = std::move(replica);
     if (error != nullptr) error->clear();
@@ -332,7 +337,12 @@ bool Protocol168Roster::update_world_state(
     player.input_flags = row.input_flags;
     player.action_flags = row.action_flags;
     player.state_flags = row.state_flags;
-    player.tool_id = row.tool_id;
+    // Retail applies the row, then rejects a tool id outside its selectable
+    // range (0..64) and keeps the held tool. The server writes 0xFF there for
+    // owner rows and for a body with no tool; adopting it made observers drop
+    // the held tool art (and log it) instead of keeping the last one.
+    constexpr std::uint8_t retail_tool_count{65U};
+    if (row.tool_id < retail_tool_count) player.tool_id = row.tool_id;
     player.pickup_id = row.pickup_id;
     player.jetpack_fuel = row.jetpack_fuel;
     player.spawn_protection = row.spawn_protection;
@@ -403,31 +413,35 @@ bool Protocol168Roster::apply_kill_relationships(
     auto* killer = mutable_player(killer_id);
     bool changed = false;
 
-    // Retail lines 3672-3673 use a separate forced/team-change branch: only
-    // the changing player's two local relationship markers are reset.
+    // gameScene.process_packet_kill_action (0x10194940, lines 3672-3676):
+    // only a forced/team-change kill resets relationship markers, on both the
+    // killer and the victim. An ordinary death keeps them: a player who is
+    // dominating you stays marked until revenge (BS/docs/KILLFEED_RETAIL.md).
     if (team_change_kill) {
-        if (killer != nullptr) {
-            killer->dominating_local_player = false;
-            killer->dominated_by_local_player = false;
-            changed = true;
+        for (auto* player : {killer, victim}) {
+            if (player != nullptr) {
+                player->dominating_local_player = false;
+                player->dominated_by_local_player = false;
+                changed = true;
+            }
         }
         return changed;
     }
 
-    // Every ordinary death first clears stale relationships on the victim.
-    if (victim != nullptr) {
-        victim->dominating_local_player = false;
-        victim->dominated_by_local_player = false;
-        changed = true;
-    }
-
-    if (killer_id == local_player_id && victim != nullptr) {
-        if (revenge) victim->dominating_local_player = false;
-        if (domination) victim->dominated_by_local_player = true;
-    }
-    if (victim_id == local_player_id && killer != nullptr) {
+    // Line 3688: the local-kill branch requires killer != victim; line 3708
+    // is the `elif` for a local death.
+    if (killer_id == local_player_id && killer_id != victim_id) {
+        if (victim != nullptr) {
+            if (revenge) victim->dominating_local_player = false;
+            if (domination) victim->dominated_by_local_player = true;
+            victim->running_local_player_kills = 0U;
+            changed = true;
+        }
+    } else if (victim_id == local_player_id && killer != nullptr) {
         if (revenge) killer->dominated_by_local_player = false;
         if (domination) killer->dominating_local_player = true;
+        if (killer_id != victim_id) ++killer->running_local_player_kills;
+        changed = true;
     }
     return changed;
 }
@@ -467,27 +481,61 @@ std::vector<RemotePlayerReplica> Protocol168Roster::players() const {
     return result;
 }
 
-void RemoteMotionInterpolator::reset(RemoteMotionSample sample) noexcept {
-    const auto orientation_length =
-        std::hypot(sample.orientation.x, sample.orientation.y,
-                   sample.orientation.z);
-    if (orientation_length > 1.0e-9) {
-        sample.orientation.x /= orientation_length;
-        sample.orientation.y /= orientation_length;
-        sample.orientation.z /= orientation_length;
-    } else {
-        sample.orientation = {1.0, 0.0, 0.0};
+RemoteMotionSample remote_motion_sample(const RemotePlayerReplica& replica,
+                                        double movement_speed_scale) noexcept {
+    RemoteMotionSample sample;
+    sample.position = replica.position;
+    sample.orientation = replica.orientation;
+    sample.velocity = replica.velocity;
+    sample.input_flags = replica.input_flags;
+    sample.hover = (replica.action_flags & 0x80U) != 0U;
+    // Protocol ids 66..69 map to world.pyd's compact 1..4 pack enum.
+    if (const auto pack = world::retail_jetpack_id(replica.loadout, replica.ugc_tools);
+        pack.has_value() && *pack >= 66U && *pack <= 69U) {
+        sample.jetpack = static_cast<std::uint8_t>(*pack - 65U);
     }
+    sample.jetpack_active = (replica.action_flags & 0x04U) != 0U;
+    sample.parachute = std::ranges::find(replica.loadout, std::uint8_t{72U}) !=
+                       replica.loadout.end();
+    sample.parachute_active = (replica.state_flags & 0x01U) != 0U;
+    sample.dead = replica.dead;
+    sample.class_id = replica.class_id;
+    sample.movement_speed_scale =
+        std::isfinite(movement_speed_scale) && movement_speed_scale > 0.0 ? movement_speed_scale
+                                                                          : 1.0;
+    return sample;
+}
+
+namespace {
+
+[[nodiscard]] world::Vec3 unit_orientation(world::Vec3 value) noexcept {
+    const auto length = std::hypot(value.x, value.y, value.z);
+    if (!(length > 1.0e-9)) return {1.0, 0.0, 0.0};
+    return {value.x / length, value.y / length, value.z / length};
+}
+
+} // namespace
+
+void RemoteMotionInterpolator::reset(RemoteMotionSample sample) noexcept {
+    sample.orientation = unit_orientation(sample.orientation);
     current_ = sample;
-    start_ = sample;
-    target_ = sample;
-    elapsed_ = 0.0;
-    duration_ = 1.0 / 30.0;
+    body_ = {};
+    body_.position = sample.position;
+    body_.velocity = sample.velocity;
+    body_.orientation = sample.orientation;
+    body_.crouch = (sample.input_flags & 0x20U) != 0U;
+    body_.jetpack = sample.jetpack;
+    body_.jetpack_active = sample.jetpack_active;
+    body_.jetpack_passive = sample.jetpack == 2U && sample.jetpack_active;
+    body_.parachute = sample.parachute;
+    body_.parachute_active = sample.parachute_active;
+    body_.burdened = sample.burdened;
     initialized_ = true;
 }
 
 void RemoteMotionInterpolator::push(RemoteMotionSample sample,
                                     double snapshot_interval) noexcept {
+    static_cast<void>(snapshot_interval);
     const auto finite = [](const world::Vec3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) &&
                std::isfinite(value.z);
@@ -500,66 +548,48 @@ void RemoteMotionInterpolator::push(RemoteMotionSample sample,
         reset(sample);
         return;
     }
-    const auto dx = sample.position.x - current_.position.x;
-    const auto dy = sample.position.y - current_.position.y;
-    const auto dz = sample.position.z - current_.position.z;
-    // Spawn/teleport/respawn changes are semantic discontinuities. Smoothing
-    // them would visibly drag a player through walls or across the map.
-    if (dx * dx + dy * dy + dz * dz > 64.0) {
-        reset(sample);
-        return;
-    }
-    start_ = current_;
-    target_ = sample;
-    elapsed_ = 0.0;
-    duration_ = std::clamp(snapshot_interval, 1.0 / 120.0, 0.1);
+    // Retail snaps the world object to the newest network position/velocity.
+    // Its airborne, wade, climb and fall bookkeeping belong to the local
+    // simulation of that object and survive the snap.
+    const auto airborne = body_.airborne;
+    const auto wade = body_.wade;
+    const auto fall_distance = body_.fall_distance;
+    const auto climb_timer = body_.climb_timer;
+    const auto climb_slowdown = body_.climb_slowdown;
+    reset(sample);
+    body_.airborne = airborne;
+    body_.wade = wade;
+    body_.fall_distance = fall_distance;
+    body_.climb_timer = climb_timer;
+    body_.climb_slowdown = climb_slowdown;
 }
 
-void RemoteMotionInterpolator::tick(double dt) noexcept {
-    if (!initialized_ || !std::isfinite(dt) || dt <= 0.0) return;
-    elapsed_ = std::min(duration_, elapsed_ + dt);
-    const auto alpha = duration_ > 0.0 ? elapsed_ / duration_ : 1.0;
-    const auto lerp = [alpha](double from, double to) {
-        return from + (to - from) * alpha;
-    };
-    current_.position = {
-        lerp(start_.position.x, target_.position.x),
-        lerp(start_.position.y, target_.position.y),
-        lerp(start_.position.z, target_.position.z)};
-    current_.velocity = {
-        lerp(start_.velocity.x, target_.velocity.x),
-        lerp(start_.velocity.y, target_.velocity.y),
-        lerp(start_.velocity.z, target_.velocity.z)};
-
-    // A look vector is an angle, not a Cartesian position. Component-wise
-    // interpolation crosses through zero when a peer turns across +/-180
-    // degrees, which makes normalization pick an arbitrary direction and the
-    // rendered character snap through a full half-turn. Interpolate yaw over
-    // its shortest wrapped arc and pitch independently, then reconstruct a
-    // unit vector. This is presentation-only; authority still lives in the
-    // decoded WorldUpdate row.
-    const auto normalized = [](world::Vec3 value,
-                               world::Vec3 fallback) noexcept {
-        const auto length = std::hypot(value.x, value.y, value.z);
-        if (length <= 1.0e-9) return fallback;
-        value.x /= length;
-        value.y /= length;
-        value.z /= length;
-        return value;
-    };
-    const auto from = normalized(start_.orientation, {1.0, 0.0, 0.0});
-    const auto to = normalized(target_.orientation, from);
-    const double from_yaw = std::atan2(from.y, from.x);
-    const double to_yaw = std::atan2(to.y, to.x);
-    const double yaw =
-        from_yaw + std::remainder(to_yaw - from_yaw, 2.0 * std::numbers::pi) *
-                       alpha;
-    const double pitch =
-        lerp(std::asin(std::clamp(from.z, -1.0, 1.0)),
-             std::asin(std::clamp(to.z, -1.0, 1.0)));
-    const double horizontal = std::cos(pitch);
-    current_.orientation = {horizontal * std::cos(yaw),
-                            horizontal * std::sin(yaw), std::sin(pitch)};
+void RemoteMotionInterpolator::tick(double dt, const world::VxlMap* map,
+                                    double world_gravity) noexcept {
+    if (!initialized_ || !std::isfinite(dt) || dt <= 0.0 || current_.dead) return;
+    world::PlayerInputState input;
+    input.forward = (current_.input_flags & 0x01U) != 0U;
+    input.backward = (current_.input_flags & 0x02U) != 0U;
+    input.left = (current_.input_flags & 0x04U) != 0U;
+    input.right = (current_.input_flags & 0x08U) != 0U;
+    input.jump = (current_.input_flags & 0x10U) != 0U;
+    input.crouch = (current_.input_flags & 0x20U) != 0U;
+    input.sneak = (current_.input_flags & 0x40U) != 0U;
+    input.sprint = (current_.input_flags & 0x80U) != 0U;
+    input.hover = current_.hover;
+    body_.orientation = current_.orientation;
+    const auto movement_class =
+        world::movement_config_for_class(current_.class_id, current_.movement_speed_scale);
+    static_cast<void>(world::step_player(body_, input, map, dt, movement_class, {},
+                                         world_gravity));
+    const auto finite = std::isfinite(body_.position.x) && std::isfinite(body_.position.y) &&
+                        std::isfinite(body_.position.z);
+    if (!finite) {
+        reset(current_);
+        return;
+    }
+    current_.position = body_.position;
+    current_.velocity = body_.velocity;
 }
 
 const RemoteMotionSample& RemoteMotionInterpolator::sample() const noexcept {
@@ -590,7 +620,10 @@ protocol168_collision_bodies(const Protocol168Roster& roster,
             continue;
         }
         const bool crouch = (player.input_flags & 0x20U) != 0U;
-        const bool wade = (player.state_flags & 0x08U) != 0U;
+        // WorldUpdate state bit 0x08 is "touching chemical goo", not water.
+        // Wade is derived exactly as the movement core does: resting with
+        // the origin below z=237 (the water plane).
+        const bool wade = player.position.z > 237.0;
         result.push_back({player.position,
                           world::player_body_height(crouch, wade),
                           player.player_id});

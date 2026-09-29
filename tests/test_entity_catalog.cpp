@@ -76,6 +76,20 @@ void entities_without_art_stay_empty() {
  * KeyError: 1 on receiving it. That was live-measured, so the flag is carried
  * from day one rather than added when the network stage lands.
  */
+/**
+ * Radar A1900 is the can_detect_player squared-distance limit (250) and A1901
+ * the 45 s lifetime; dynamite binds A1632 = 8, not the stale named 5.
+ */
+void radar_and_dynamite_use_the_stock_aliases() {
+    const auto* radar = find_entity_definition(36U);
+    expect(radar != nullptr && radar->sense_radius == 250.0F && radar->lifetime == 45.0F,
+           "radar station must sense 250 blocks and live 45 s");
+    const auto* dynamite = find_entity_definition(10U);
+    expect(dynamite != nullptr && dynamite->blast_radius == 8.0F &&
+               dynamite->blast_damage == 300.0F,
+           "dynamite must use the stock A1632 radius 8 and damage 300");
+}
+
 void base_is_never_wire_safe() {
     const auto* base = find_entity_definition(1U);
     expect(base != nullptr && !base->wire_safe, "BASE(1) must be flagged wire_safe=false");
@@ -447,6 +461,7 @@ int main() {
         {"the_catalog_covers_every_retail_id", the_catalog_covers_every_retail_id},
         {"entities_without_art_stay_empty", entities_without_art_stay_empty},
         {"base_is_never_wire_safe", base_is_never_wire_safe},
+        {"radar_and_dynamite_use_the_stock_aliases", radar_and_dynamite_use_the_stock_aliases},
         {"every_referenced_model_loads", every_referenced_model_loads},
         {"every_referenced_sound_ships", every_referenced_sound_ships},
         {"the_widest_rig_is_known", the_widest_rig_is_known},

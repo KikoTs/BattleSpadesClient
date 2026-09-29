@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace battlespades::world {
 namespace {
@@ -31,7 +32,32 @@ constexpr std::array<std::string_view, 3U> complete_keys{
     "TUTORIAL_COMPLETE_3",
 };
 
+constexpr std::array<std::uint8_t, 1U> shooting_loadout{17U};
+constexpr std::array<std::uint8_t, 3U> climb_loadout{17U, 5U, 2U};
+
 } // namespace
+
+bool TutorialLessons::on_tower_top(double local_x, double local_y, double z) noexcept {
+    const double dx = local_x - tower_center_local_x;
+    const double dy = local_y - tower_center_local_y;
+    return std::hypot(dx, dy) <= tower_radius && z <= tower_max_player_z;
+}
+
+std::span<const std::uint8_t> TutorialLessons::loadout(TutorialLessonStage stage) noexcept {
+    switch (stage) {
+    case TutorialLessonStage::shooting:
+        return shooting_loadout;
+    case TutorialLessonStage::climb:
+    case TutorialLessonStage::complete:
+        return climb_loadout;
+    case TutorialLessonStage::intro:
+    case TutorialLessonStage::basic_controls:
+    case TutorialLessonStage::jump:
+    case TutorialLessonStage::crouch:
+        break;
+    }
+    return {};
+}
 
 void TutorialLessons::enter(TutorialLessonStage stage) {
     stage_ = stage;
@@ -54,7 +80,7 @@ bool TutorialLessons::tick(double dt, double local_x, bool jump_input, bool crou
     case TutorialLessonStage::basic_controls:
         // The retail capsule collides at x=134.45 against the first authored
         // jump obstacle; the gate sits on the reachable approach side.
-        if (minimum_local_x_ <= 135.0) {
+        if (minimum_local_x_ <= basic_controls_max_local_x) {
             enter(TutorialLessonStage::jump);
             return true;
         }
@@ -62,7 +88,8 @@ bool TutorialLessons::tick(double dt, double local_x, bool jump_input, bool crou
     case TutorialLessonStage::jump:
         // Crossing x=119 proves the ledge was traversed even if a very
         // short jump pulse fell between samples.
-        if ((saw_jump_ && minimum_local_x_ <= 128.0) || minimum_local_x_ <= 119.0) {
+        if ((saw_jump_ && minimum_local_x_ <= jump_with_input_max_local_x) ||
+            minimum_local_x_ <= jump_fallback_max_local_x) {
             enter(TutorialLessonStage::crouch);
             return true;
         }
@@ -70,15 +97,16 @@ bool TutorialLessons::tick(double dt, double local_x, bool jump_input, bool crou
     case TutorialLessonStage::crouch:
         // The corridor cannot be crossed standing; x=99 is the
         // geometry-backed fallback for a missed crouch sample.
-        if ((saw_crouch_ && minimum_local_x_ <= 108.0) || minimum_local_x_ <= 99.0) {
+        if ((saw_crouch_ && minimum_local_x_ <= crouch_with_input_max_local_x) ||
+            minimum_local_x_ <= crouch_fallback_max_local_x) {
             enter(TutorialLessonStage::shooting);
             return true;
         }
         break;
     case TutorialLessonStage::shooting:
     case TutorialLessonStage::climb:
-        // Target destruction and building arrive with the weapon/tool
-        // milestones through advance_external().
+        // Target destruction and the tower top arrive through
+        // advance_external().
         break;
     case TutorialLessonStage::complete:
         break;

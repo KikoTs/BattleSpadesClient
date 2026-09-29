@@ -140,7 +140,9 @@ void append_text_button(ui::DrawList& list,
                         DrawRect bounds,
                         std::string_view label,
                         WidgetVisualState state = WidgetVisualState::normal,
-                        double requested_size = 36.0) {
+                        double requested_size = 36.0,
+                        bool retail_text_fit = false,
+                        std::string_view image = {}) {
     constexpr double slice_width{36.0};
     constexpr double seam{1.0};
     const auto middle_width = bounds.width - slice_width * 2.0;
@@ -163,9 +165,34 @@ void append_text_button(ui::DrawList& list,
                          color(white, intensity)));
     }
     const auto pressed_offset = state == WidgetVisualState::pressed ? 2.0 : 0.0;
+    double add_x{};
+    if (!image.empty()) {
+        // TextButton.draw_image: the (global_scale, centred) image sits at
+        // x + width/2 - text_width/2 - 2 and height/2 + 1 up from the bottom;
+        // the text box then moves right by half the image width.
+        constexpr double image_side{23.0 * 0.64};
+        const double text_width = bounds.width - 28.0;
+        const double centre_x = bounds.x + bounds.width * 0.5 - text_width * 0.5 - 2.0;
+        const double centre_y = bounds.y + bounds.height * 0.5 - 1.0 + pressed_offset;
+        list.push(sprite(image,
+                         DrawRect{centre_x - image_side * 0.5, centre_y - image_side * 0.5,
+                                  image_side, image_side},
+                         DrawSpace::design_pixels,
+                         TextureFilter::linear,
+                         UiTextureAnchor::top_left,
+                         1.0,
+                         color(white, intensity)));
+        add_x = image_side * 0.5;
+    }
+    if (retail_text_fit) {
+        // TextButton.set_text: text boxes taller than 30 px use
+        // big_button_aldo_font (36), others medium_button_aldo_font (18),
+        // then get_resized_font_and_formatted_text_to_fit_boundaries.
+        requested_size = bounds.height - 8.0 > 30.0 ? 36.0 : 18.0;
+    }
     auto command = text(label,
                         main_menu_assets::button_font,
-                        DrawRect{bounds.x + 14.0,
+                        DrawRect{bounds.x + 14.0 + add_x,
                                  bounds.y + 4.0 + pressed_offset,
                                  bounds.width - 28.0,
                                  bounds.height - 8.0},
@@ -178,6 +205,10 @@ void append_text_button(ui::DrawList& list,
                         intensity);
     command.line_spacing_pixels = 2.0;
     command.maximum_lines = 2U;
+    if (retail_text_fit) {
+        command.layout = ui::TextLayout::retail_wrapped_lines;
+        command.maximum_lines = 0U;
+    }
     list.push(std::move(command));
 }
 
@@ -403,10 +434,18 @@ void append_server_table(ui::DrawList& list,
                              UiTextureAnchor::top_left,
                              1.0,
                              color(background)));
+            // ListGrid.draw: draw_text_with_alignment_and_size_validation
+            // scales an over-wide cell down to its column width (a long
+            // server name never spills into PLAYERS).
             list.push(text(values[column],
                            "fonts/A750-Sans-Medium.ttf",
-                           DrawRect{x, y, widths[column], row_height},
-                           10.0));
+                           DrawRect{x, y, widths[column] - 4.0, row_height},
+                           10.0,
+                           menu_text,
+                           HorizontalTextAlignment::left,
+                           VerticalTextAlignment::retail_center,
+                           TextTransform::preserve,
+                           TextFit::retail_width_scale));
             x += widths[column];
         }
         if (highlighted) {
@@ -545,6 +584,9 @@ ui::DrawList DirectConnectPresentation::build_layer(const DirectConnectMenuModel
     if (endpoint.size() > visible_endpoint_characters) {
         endpoint.remove_prefix(endpoint.size() - visible_endpoint_characters);
     }
+    // InputServer.py's empty_text is "IP:PORT". Hostnames are a native
+    // addition, so the placeholder is the catalogue's localised
+    // "IP:PORT OR HOSTNAME" and no invented English example line follows.
     const auto displayed_endpoint = endpoint.empty() ? std::string_view{"IP:PORT OR HOSTNAME"}
                                                      : endpoint;
     list.push(text(displayed_endpoint,
@@ -554,14 +596,9 @@ ui::DrawList DirectConnectPresentation::build_layer(const DirectConnectMenuModel
                    menu.endpoint().empty() ? ColorRgba8{151U, 146U, 119U, 255U} : menu_text,
                    HorizontalTextAlignment::left,
                    VerticalTextAlignment::retail_center));
-    list.push(text("Example: play.example.net:32887",
-                   "fonts/A750-Sans-Medium.ttf",
-                   DrawRect{280.0, 249.0, 244.0, 16.0},
-                   9.0,
-                   ColorRgba8{151U, 146U, 119U, 255U},
-                   HorizontalTextAlignment::left,
-                   VerticalTextAlignment::retail_center));
-    if (menu.input_focused()) {
+    // The retail EditBox shows its empty_text without a caret; drawing the
+    // caret at the text origin covered the placeholder's first glyph.
+    if (menu.input_focused() && !endpoint.empty()) {
         const auto caret_x = std::min(
             522.0, 281.0 + static_cast<double>(endpoint.size()) * 10.25);
         list.push(sprite(white_pixel,
@@ -638,7 +675,7 @@ ServerBrowserPresentation::build_layer(const ServerBrowserModel& browser,
                      global_scale));
     list.push(text("PLAY_ONLINE",
                    main_menu_assets::button_font,
-                   DrawRect{175.0, 14.0, 450.0, 55.0},
+                   DrawRect{177.0, 18.0, 450.0, 55.0},
                    46.0,
                    menu_text,
                    HorizontalTextAlignment::center,
@@ -750,7 +787,8 @@ ServerBrowserPresentation::build_layer(const ServerBrowserModel& browser,
                        DrawRect{288.0, 470.0, 120.0, 30.0},
                        "REFRESH",
                        pointer_state(DrawRect{288.0, 470.0, 120.0, 30.0}, context),
-                       22.0);
+                       22.0,
+                       true);
 
     const auto* selected = browser.selected();
     append_text_button(
@@ -758,7 +796,9 @@ ServerBrowserPresentation::build_layer(const ServerBrowserModel& browser,
         DrawRect{417.0, 470.0, 113.0, 30.0},
         "FAVORITE",
         pointer_state(DrawRect{417.0, 470.0, 113.0, 30.0}, context, selected != nullptr),
-        20.0);
+        20.0,
+        true,
+        join_match_assets::favourite_star_button);
     if (selected != nullptr) {
         list.push(text(selected->map,
                        "fonts/Edo.ttf",
@@ -769,12 +809,19 @@ ServerBrowserPresentation::build_layer(const ServerBrowserModel& browser,
         const auto preview = context.selected_map_preview_asset.empty()
                                  ? join_match_assets::map_placeholder
                                  : std::string_view{context.selected_map_preview_asset};
-        list.push(sprite(preview,
-                         DrawRect{542.0, 162.0, 192.0, 192.0},
-                         DrawSpace::design_pixels,
-                         TextureFilter::linear,
-                         UiTextureAnchor::top_left,
-                         global_scale));
+        auto preview_sprite = sprite(preview,
+                                     DrawRect{542.0, 162.0, 192.0, 192.0},
+                                     DrawSpace::design_pixels,
+                                     TextureFilter::linear,
+                                     UiTextureAnchor::top_left,
+                                     global_scale);
+        // images.load: every map_previews image gets tex_coords[3:] +
+        // tex_coords[:3], a one-vertex shift that turns it 90 degrees
+        // clockwise (MayanJungle's vertical art shows horizontally).
+        if (preview.find("game_loading/map_previews/") != std::string_view::npos) {
+            preview_sprite.rotation_degrees = 90.0;
+        }
+        list.push(std::move(preview_sprite));
         list.push(
             text(selected->mode_description.empty() ? selected->mode : selected->mode_description,
                  "fonts/A750-Sans-Medium.ttf",

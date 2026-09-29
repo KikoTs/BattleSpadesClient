@@ -73,6 +73,81 @@ std::string_view retail_jetpack_model(std::uint8_t jetpack_id) noexcept {
     }
 }
 
+RetailJetpackAttachment retail_back_intel_attachment(
+    bool crouched, std::optional<std::uint8_t> jetpack_id) noexcept {
+    const bool pack = jetpack_id.has_value() && is_retail_jetpack(*jetpack_id);
+    if (crouched) {
+        return pack ? RetailJetpackAttachment{6, -1.15, 1.0, 0.1}
+                    : RetailJetpackAttachment{6, -0.65, 0.5, 0.1};
+    }
+    if (!pack) {
+        return {6, -0.38, 0.9, 0.1};
+    }
+    return {6, *jetpack_id == 66U ? -1.1 : -1.0, 0.9, 0.1};
+}
+
+VxlColor retail_character_color(VxlColor team_color) noexcept {
+    const auto half = [](std::uint8_t channel) {
+        return static_cast<std::uint8_t>((static_cast<unsigned int>(channel) + 1U) / 2U);
+    };
+    return {half(team_color.red), half(team_color.green), half(team_color.blue),
+            team_color.alpha};
+}
+
+VxlColor retail_spawn_flash_color(VxlColor character_color) noexcept {
+    const auto doubled = [](std::uint8_t channel) {
+        return static_cast<std::uint8_t>(std::min(
+            255.0, std::round(static_cast<double>(channel) * retail_spawn_color_multiplier)));
+    };
+    return {doubled(character_color.red), doubled(character_color.green),
+            doubled(character_color.blue), character_color.alpha};
+}
+
+void retail_spawn_blink_reset(RetailSpawnBlink& blink) noexcept {
+    blink.timer = 1.0;
+}
+
+void retail_spawn_blink_update(RetailSpawnBlink& blink, double dt) noexcept {
+    if (blink.timer > 0.0 && std::isfinite(dt) && dt > 0.0) {
+        blink.timer -= dt;
+    }
+}
+
+bool retail_spawn_blink_draw(RetailSpawnBlink& blink, double protection_remaining) noexcept {
+    if (!std::isfinite(protection_remaining) || protection_remaining <= 0.0) {
+        return false;
+    }
+    if (blink.timer <= 0.0) {
+        blink.timer = protection_remaining / retail_spawn_protection_time;
+        return false;
+    }
+    return true;
+}
+
+RetailToolColorPath retail_tool_color_path(std::uint8_t tool_id, bool use_team_color) noexcept {
+    switch (tool_id) {
+    // BlockTool (5, and SHRAPNEL 27 reuses the class), FlareBlockTool (22),
+    // PrefabTool (23) and its ZombiePrefabTool subclass (28), PaintbrushTool
+    // (43) and DisguiseTool (64) set use_color. UGCPrefabTool (42) resets it.
+    case 5U:
+    case 22U:
+    case 23U:
+    case 27U:
+    case 28U:
+    case 43U:
+    case 64U:
+        return RetailToolColorPath::block_color;
+    case 30U:
+        return RetailToolColorPath::other_team_color;
+    default:
+        return use_team_color ? RetailToolColorPath::team_color : RetailToolColorPath::none;
+    }
+}
+
+bool retail_tool_flashes_with_spawn_protection(std::uint8_t tool_id) noexcept {
+    return tool_id == 24U;
+}
+
 bool JetpackDeathPresentation::begin(std::uint8_t player_id,
                                      std::uint32_t generation,
                                      bool has_jetpack,

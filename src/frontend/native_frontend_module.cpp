@@ -8,6 +8,7 @@
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/explosion_sound.hpp"
 #include "battlespades/audio/entity_sound.hpp"
+#include "battlespades/audio/retail_event_cues.hpp"
 #include "battlespades/audio/server_audio_catalog.hpp"
 #include "battlespades/audio/sound_groups.hpp"
 #include "battlespades/core/utf8.hpp"
@@ -31,15 +32,19 @@
 #include "battlespades/frontend/identity_presentation.hpp"
 #include "battlespades/frontend/join_match_menu.hpp"
 #include "battlespades/frontend/join_match_presentation.hpp"
+#include "battlespades/frontend/kick_vote_menu.hpp"
 #include "battlespades/frontend/leaderboard_menu.hpp"
 #include "battlespades/frontend/leaderboard_presentation.hpp"
 #include "battlespades/frontend/live_client_policy.hpp"
+#include "battlespades/frontend/render_interpolation.hpp"
 #include "battlespades/frontend/loading_presentation.hpp"
 #include "battlespades/frontend/loading_screen.hpp"
 #include "battlespades/frontend/localization_catalog.hpp"
 #include "battlespades/frontend/main_menu.hpp"
 #include "battlespades/frontend/main_menu_presentation.hpp"
 #include "battlespades/frontend/match_overlays.hpp"
+#include "battlespades/frontend/retail_hud_rules.hpp"
+#include "battlespades/frontend/retail_input_rules.hpp"
 #include "battlespades/frontend/native_texture_preloader.hpp"
 #include "battlespades/frontend/objective_indicator.hpp"
 #include "battlespades/frontend/parity_debug_menu.hpp"
@@ -52,6 +57,7 @@
 #include "battlespades/world/cosmetic_preview.hpp"
 #include "battlespades/frontend/player_profile_presentation.hpp"
 #include "battlespades/frontend/player_progression.hpp"
+#include "battlespades/frontend/retail_announcer.hpp"
 #include "battlespades/frontend/player_name_projection.hpp"
 #include "battlespades/frontend/quick_play_menu.hpp"
 #include "battlespades/frontend/quick_play_presentation.hpp"
@@ -74,6 +80,7 @@
 #include "battlespades/network/aosplay_scores.hpp"
 #include "battlespades/network/enet_protocol168_client.hpp"
 #include "battlespades/network/live_protocol168_connection.hpp"
+#include "battlespades/network/protocol168_clock.hpp"
 #include "battlespades/network/protocol168_players.hpp"
 #include "battlespades/network/protocol168_runtime.hpp"
 #include "battlespades/network/protocol168_terrain.hpp"
@@ -83,8 +90,10 @@
 #include "battlespades/network/revival_identity.hpp"
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/frontend/ugc_status_presentation.hpp"
 #include "battlespades/platform/relay_host_tunnel.hpp"
 #include "battlespades/platform/native_steam_client.hpp"
+#include "battlespades/platform/steam_connect.hpp"
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
@@ -95,6 +104,7 @@
 #include "battlespades/text/text_rasterizer.hpp"
 #include "battlespades/ui/design_canvas.hpp"
 #include "battlespades/ui/draw_list_transform.hpp"
+#include "battlespades/world/block_placement.hpp"
 #include "battlespades/world/class_catalog.hpp"
 #include "battlespades/world/class_models.hpp"
 #include "battlespades/world/class_selection.hpp"
@@ -103,6 +113,7 @@
 #include "battlespades/world/emissive_volume.hpp"
 #include "battlespades/world/footstep_audio.hpp"
 #include "battlespades/world/remote_character_audio.hpp"
+#include "battlespades/world/retail_effects.hpp"
 #include "battlespades/world/gameplay_debug_lab.hpp"
 #include "battlespades/world/jetpack_death.hpp"
 #include "battlespades/world/kv6_model.hpp"
@@ -148,7 +159,10 @@
 #include <iterator>
 #include <limits>
 #include <locale>
+#include <compare>
+#include <functional>
 #include <map>
+#include <random>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -176,49 +190,31 @@ namespace {
     return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
 }
 
-/**
- * Retail localization key for a server DISCONNECT reason, empty if unknown.
- * Every BattleSpades server up to 0.1.0-beta.1 sent 3 when full, although
- * retail 3 is SERVER_OUT_OF_DATE; no BattleSpades server sends 3 otherwise.
- */
-[[nodiscard]] std::string_view disconnect_status_key(std::uint32_t reason) noexcept {
-    switch (reason) {
-    case 1U: return "ERROR_BANNED_CUSTOM";
-    case 2U: case 23U: case 24U: case 25U: return "KICKED_ERROR";
-    case 3U: case 4U: return "SERVERFULL_ERROR";
-    case 5U: return "NO_STEAM_CONNECTION";
-    case 6U: return "NO_VAC_CONNECTION";
-    case 7U: return "NO_VALID_LICENSE";
-    case 8U: return "INVALID_SESSION_TICKET";
-    case 10U: return "VERSION_ERROR";
-    case 11U: return "ERROR_TIMEOUT";
-    case 12U: return "RANKED_CONNECTION";
-    case 13U: return "LOBBY_ERROR_SERVER_ERROR";
-    case 14U: return "DLC_NOT_PURCHASHED";
-    case 19U: return "ERROR_TEMP_BANNED_OLD";
-    case 21U: return "INVALID_DEMO_CONTENT";
-    case 26U: return "LOBBY_ERROR_CLOSED";
-    case 27U: return "LOBBY_ERROR_LOBBY_FULL";
-    case 28U: return "LOBBY_ERROR_UNKNOWN";
-    case 29U: return "LOBBY_ERROR_SERVER_CONNECTION_FAILED";
-    case 30U: return "UGC_LOBBY_PUBLISHING_ERROR";
-    default: return {};
-    }
+/** enet.time_get() stand-in: monotonic milliseconds for ClockSync. */
+[[nodiscard]] std::uint64_t monotonic_milliseconds() noexcept {
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          std::chrono::steady_clock::now().time_since_epoch())
+                                          .count());
 }
 
-/** "steam:76561198…" addresses a player-hosted match over Valve's relays. */
+/**
+ * Retail localization key for a server DISCONNECT reason, empty if unknown.
+ * Retail 3 is SERVER_OUT_OF_DATE. BattleSpades servers up to 0.1.0-beta.1
+ * also sent 3 when full; those servers are out of date, and current servers
+ * send ERROR_FULL (4).
+ */
+[[nodiscard]] std::string_view disconnect_status_key(std::uint32_t reason) noexcept {
+    return retail_disconnect_status_key(reason);
+}
+
+/**
+ * "steam:76561198…" addresses a player-hosted match over Valve's relays.
+ *
+ * Rich presence now publishes it as "+connect steam:…" (Steam appends the
+ * value to a closed game's command line), so both spellings are accepted.
+ */
 [[nodiscard]] std::uint64_t parse_steam_endpoint(std::string_view value) noexcept {
-    constexpr std::string_view prefix{"steam:"};
-    if (value.size() <= prefix.size() || !value.starts_with(prefix)) return 0U;
-    const auto digits = value.substr(prefix.size());
-    if (digits.size() > 20U ||
-        !std::ranges::all_of(digits, [](char c) { return c >= '0' && c <= '9'; })) {
-        return 0U;
-    }
-    std::uint64_t id{};
-    const auto* const end = digits.data() + digits.size();
-    const auto parsed = std::from_chars(digits.data(), end, id);
-    return parsed.ec == std::errc{} && parsed.ptr == end ? id : 0U;
+    return platform::parse_steam_host_address(value);
 }
 
 constexpr std::uint32_t retail_width{800U};
@@ -238,6 +234,7 @@ constexpr std::uint32_t scancode_f9{66U};
 constexpr std::uint32_t scancode_f10{67U};
 constexpr std::uint32_t scancode_f11{68U};
 constexpr std::uint32_t scancode_f12{69U};
+constexpr std::uint32_t scancode_delete{76U};
 constexpr std::uint32_t scancode_right{79U};
 constexpr std::uint32_t scancode_left{80U};
 constexpr std::uint32_t scancode_down{81U};
@@ -522,7 +519,6 @@ newest_server_bundle_below(const std::filesystem::path& root) {
     switch (kill_type) {
     case 0U:
     case 2U:
-    case 30U:
         return killer_tool();
     case 1U:
         return "png/ui/kill_types/headshot.png";
@@ -575,12 +571,8 @@ newest_server_bundle_below(const std::filesystem::path& root) {
         return kill_tool_icon(33U);
     case 26U:
         return "png/ui/kill_types/sudden_death.png";
-    case 27U:
-        return kill_tool_icon(46U);
-    case 28U:
-        return kill_tool_icon(47U);
-    case 29U:
-        return kill_tool_icon(48U);
+    // HUD.add_kill has no branch for 20 or the UGC types 27-30, so retail
+    // draws no icon for them (BS docs/KILLFEED_RETAIL.md).
     case 31U:
         return kill_tool_icon(54U);
     case 32U:
@@ -758,6 +750,11 @@ settings_api(render::GraphicsBackend backend) noexcept {
 }
 
 [[nodiscard]] std::string english_text(std::string_view key) {
+    // Already-resolved display text (e.g. translate_key() in Settings) that
+    // must not be looked up or humanised a second time.
+    if (key.starts_with(literal_text_prefix)) {
+        return std::string{key.substr(literal_text_prefix.size())};
+    }
     constexpr std::string_view objective_row_prefix{"UGC_OBJECTIVE_ROW|"};
     if (key.starts_with(objective_row_prefix)) {
         const auto payload = key.substr(objective_row_prefix.size());
@@ -816,6 +813,12 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"SHOW_SKINS", "Show skins"},
         {"SHOW_OTHER_SKINS", "Show other players' skins"},
         {"WEAPON_MOTION", "Weapon movement"},
+        {"ABILITY_HINTS", "Ability key hints"},
+        {"ABILITY_HINT_PARACHUTE_DEPLOYED", "Parachute deployed"},
+        {"ABILITY_HINT_PARACHUTE_PENDING", "Parachute opens on descent"},
+        {"ABILITY_HINT_PARACHUTE_DEPLOY", "{0}: deploy parachute in air"},
+        {"ABILITY_HINT_JETPACK", "{0}: thrust"},
+        {"ABILITY_HINT_JETPACK_RECHARGE", "{0}: thrust; release + land to recharge"},
         {"FAVORITE", "Favourite"},
         {"RESOLUTION", "Resolution"},
         {"ANTIALIAS", "Anti-alias"},
@@ -1288,6 +1291,13 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
         visual.left_enabled = row.enabled && row.choice_index > 0U;
         visual.right_enabled =
             row.enabled && row.choice_count > 0U && row.choice_index + 1U < row.choice_count;
+        visual.unselected_half_hovered = row.unselected_half_hovered;
+        if (row.kind == SettingsRowKind::stepped_slider) {
+            // RangeBarControl.update_buttons_enabled_state greys an arrow at
+            // its end of the range; a volume row has no choice index.
+            visual.left_enabled = row.enabled && row.scalar_value > 0.0;
+            visual.right_enabled = row.enabled && row.scalar_value < 1.0;
+        }
 
         if (row.id == SettingsRowId::favorite_server) {
             visual.kind = SettingsPresentationRowKind::checkbox;
@@ -1314,7 +1324,9 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
             *row.control_action == menu.binding_capture->action) {
             visual.value_key = "PRESS_KEY";
             if (menu.binding_capture->rejection.has_value()) {
-                result.error_key = "That key is already assigned or reserved.";
+                // ERROR_CONTROL_ALREADY_BOUND; the frontend fills {0}/{1}
+                // (apply_binding_conflict_text) with the key and row names.
+                result.error_key = "A959";
                 result.tooltip_is_error = true;
             }
         }
@@ -1395,6 +1407,13 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
     return "unknown";
 }
 
+/** Who asked the Map Creator server to flush the project (F10 or Esc SAVE). */
+enum class UgcSaveOrigin : std::uint8_t {
+    quick_save,
+    pause_save,
+    pause_save_then_quit,
+};
+
 } // namespace
 
 struct NativeFrontendModule::Impl final {
@@ -1411,6 +1430,14 @@ struct NativeFrontendModule::Impl final {
      */
     [[nodiscard]] settings::ShaderQuality effective_shader_quality() const noexcept {
         return config.shader_quality_override.value_or(applied_settings.graphics.shader_quality);
+    }
+
+    /**
+     * True on the Retail (Legacy-equation) tier, where only effects the stock
+     * client drew are presented; enhanced tiers keep the extra sprite flash.
+     */
+    [[nodiscard]] bool retail_look_active() const noexcept {
+        return effective_shader_quality() == settings::ShaderQuality::compatibility;
     }
 
     FrontendNavigationModel navigation{16U};
@@ -1476,6 +1503,8 @@ struct NativeFrontendModule::Impl final {
     std::unique_ptr<settings::TomlSettingsStore> settings_store;
     std::unique_ptr<SettingsMenuModel> settings_menu;
     bool settings_opened_from_gameplay{};
+    /** SDL text input was switched on for the sensitivity edit box. */
+    bool settings_text_input{};
     SettingsPresentation settings_presentation;
     ResolutionConfirmationModel resolution_confirmation;
     settings::ClientSettings confirmed_settings{settings::retail_default_settings()};
@@ -1562,9 +1591,23 @@ struct NativeFrontendModule::Impl final {
     std::future<std::uint64_t> steam_lobby_worker;
     std::uint64_t steam_lobby_id{};
     bool steam_lobby_abandoned{};
-    /** When the last browser response landed; zero until the first one does. */
-    std::chrono::steady_clock::time_point browser_refreshed_at{};
-    static constexpr std::chrono::seconds browser_auto_refresh_period{10};
+    /**
+     * A Steam Join Game / accepted invite / Steam launch waiting to run.
+     *
+     * Held until the player is signed in and back on the Select Menu, the
+     * same gate --connect uses, so a join that arrives mid-match or before
+     * sign-in is performed rather than dropped.
+     */
+    std::optional<platform::SteamJoinTarget> pending_steam_join;
+    platform::SteamJoinDeduplicator steam_join_deduplicator;
+    /** Reads an invited lobby's connect value; joining a lobby waits on Steam. */
+    std::future<std::string> steam_lobby_resolve_worker;
+    /** The connect value this player's presence currently offers friends. */
+    std::string steam_presence_connect;
+    /** Once the first native attach failed, retries never flash the pending button. */
+    bool native_steam_failed_once{};
+    platform::NativeSteamState native_steam_reported_state{platform::NativeSteamState::unavailable};
+    std::chrono::steady_clock::time_point steam_runtime_retry_at{};
     struct QuickPlayRefreshOutcome final {
         QuickPlaySearchIntent request;
         network::DiscoveryResult discovery;
@@ -1739,6 +1782,24 @@ struct NativeFrontendModule::Impl final {
     std::array<std::optional<world::Vec3>, 128U> retained_corpse_positions{};
     /** Last decoded position retained independently of the current-life roster. */
     std::array<std::optional<world::Vec3>, 128U> last_known_player_positions{};
+    /** Retail running_local_player_kills (death-camera killer streak). */
+    RunningLocalKills running_local_kills;
+    /** SelectTeam.on_start gate for the match-start stinger (never ChangeTeam). */
+    MatchStartStingerGate team_select_entry;
+    /** ViewGameStats.current_screenshot_camera: the F11 file index. */
+    std::uint32_t screenshot_index{};
+    /** A backbuffer capture was requested and has not been written yet. */
+    bool screenshot_requested{};
+    /** One-shot UGC_HELP_HOVER per match (GameScene.displayed_hover_help). */
+    bool displayed_hover_help{};
+    /** UGC ToolsHelpPanel: last tool/prefab state whose tips were shown. */
+    std::optional<std::pair<std::uint8_t, bool>> ugc_tips_tool;
+    /** ToolsHelpPanel.toggle_closed: the builder closed the tips with H. */
+    bool ugc_tips_toggled_closed{};
+    /** UGC_HELP_WELCOME was shown for this editor session. */
+    bool ugc_welcome_shown{};
+    /** Spreads variant/pitch draws for client-local retail cues. */
+    std::uint32_t retail_cue_counter{};
     /**
      * Last live/firing tool for each roster generation.
      *
@@ -1761,6 +1822,8 @@ struct NativeFrontendModule::Impl final {
     struct PendingLocalJetpackDeath final {
         std::uint32_t generation{};
         std::optional<std::uint8_t> killer_id;
+        std::optional<std::uint8_t> kill_type;
+        bool never_respawn{};
     };
     std::optional<PendingLocalJetpackDeath> pending_local_jetpack_death;
     /** Death voice and input shutdown must remain one-shot while camera is deferred. */
@@ -1772,9 +1835,14 @@ struct NativeFrontendModule::Impl final {
     std::int32_t latest_world_loop{};
     /** Retail scene.timer used by every Character.update_animation gait. */
     double character_animation_timer_ms{};
-    /** Packet-0 cadence/token state; requests are bounded to one per second. */
+    /** Packet-0 cadence: one request per CLOCK_SYNC_RATE (60) fixed loops. */
     double clock_sync_elapsed{};
     std::int32_t clock_sync_token{};
+    /** GameScene.update's CONNECTION_PROBLEMS / ERROR_TIMEOUT liveness check. */
+    network::RetailConnectionWatchdog connection_watchdog;
+    /** Loader milestones already shown for the current handshake. */
+    network::Protocol168LoadingProgress shown_loading_progress;
+    bool shown_loading_initial_info{};
     /**
      * Retail suppresses duplicate hit-confirm sounds from a multi-pellet shot.
      * A new locally emitted Shoot(6) arms the next ShootResponse(9).
@@ -1831,7 +1899,12 @@ struct NativeFrontendModule::Impl final {
     struct ServerAmbientDefinition final {
         std::string name;
         std::vector<audio::SoundPosition> points;
+        /** AmbientSound.volume/attenuation, taken from the bound packet 24. */
+        float volume{1.0F};
+        float attenuation{audio::retail_default_attenuation};
     };
+    /** Smoothed GameScene reverb/ducking state (update_audio_effects). */
+    audio::EnvironmentAudioState environment_audio{};
     /** CreateAmbientSound(22) controllers indexed by the wire loop id. */
     std::map<std::uint8_t, ServerAmbientDefinition> server_ambient_sounds;
     bool server_ambience_received{};
@@ -1859,9 +1932,13 @@ struct NativeFrontendModule::Impl final {
      * from replaying the contact sound while retaining its break cue.
      */
     std::vector<PredictedTerrainHit> predicted_terrain_hits;
+    /** Per-shooter accuracy_spread replica for remote hitscan FX bloom. */
+    std::array<world::ObservedShotBloom, 256U> remote_shot_bloom{};
     /** Press-frame endpoint retained until BlockLine is committed or cancelled. */
     std::optional<std::array<std::int16_t, 3U>> block_line_start;
     std::optional<std::size_t> palette_selection{16U};
+    /** Palette.selector_active: set by arrow-key picks, cleared by a world pick. */
+    bool palette_selector_active{};
     std::uint8_t prefab_yaw_override{1U};
     std::string preview_prefab_name;
     std::optional<world::Kv6Model> preview_prefab_model;
@@ -1876,6 +1953,8 @@ struct NativeFrontendModule::Impl final {
     bool preview_prefab_valid{};
     std::int32_t preview_prefab_cost{};
     bool placement_cube_meshes_uploaded{};
+    /** Whether slots 20/21 currently hold the classic wireframe ghost. */
+    bool placement_cube_meshes_classic{};
     bool preview_prefab_meshes_uploaded{};
     /** Tool-41 variant currently uploaded into the two shared ghost slots. */
     std::optional<std::uint8_t> preview_ugc_item_uploaded;
@@ -1886,8 +1965,35 @@ struct NativeFrontendModule::Impl final {
     std::uint32_t preview_prefab_color{};
     bool started{false};
     bool audio_started{false};
+    /**
+     * Offline Training completion (the retail tutorial server's job): the
+     * 10 s DisplayCountdown that ends in a disconnect back to the menu.
+     */
+    std::optional<double> offline_tutorial_exit_seconds;
+    /** Offline targets already announced with TUTORIAL_DESTROY_TARGET. */
+    int offline_tutorial_targets_announced{};
     bool stop_requested{false};
     bool window_suspended{false};
+    /**
+     * Render-only interpolation (settings.toml `render_interpolation`). The
+     * last live-world tick frame is retained so intermediate frames can be
+     * re-submitted with an interpolated camera eye and no simulation work.
+     */
+    struct InterpolationScene final {
+        bool valid{false};
+        render::WorldCamera camera{};
+        std::vector<render::ViewModelDraw> tool_draws;
+        std::vector<render::WorldModelDraw> world_draws;
+        std::vector<world::DynamicLight> lights;
+        std::vector<render::LaserBeamDraw> lasers;
+        std::vector<render::SpotShadowDraw> spot_shadows;
+        std::vector<render::ZoneVolumeDraw> zones;
+        ui::DrawList ui;
+        bool scripted_images{false};
+    };
+    InterpolationScene interpolation_scene;
+    CameraEyeInterpolator camera_interpolator;
+    std::uint64_t current_tick_index{};
     bool suppress_next_settings_close{false};
     bool resolution_restart_required{false};
     bool boot_loading{true};
@@ -1932,6 +2038,14 @@ struct NativeFrontendModule::Impl final {
     core::DeferredCleanupQueue::Reservation tutorial_bootstrap_cleanup;
     /** Fully meshed and uploaded world waiting behind the retail START gate. */
     std::shared_ptr<world::VxlMap> tutorial_ready_map;
+    /**
+     * MenuScene.background_alpha: once the map is shown the loader splash
+     * fades out over one second (update subtracts dt) and reveals the world.
+     */
+    const world::VxlMap* menu_backdrop_map{};
+    std::chrono::steady_clock::time_point menu_backdrop_shown_at{};
+    /** When the loader's START last became enabled (TextButton.set_glow). */
+    std::optional<std::chrono::steady_clock::time_point> start_glow_since{};
     std::unique_ptr<world::TutorialWorldSession> tutorial_session;
     world::TerrainEffectSimulation terrain_effects;
     /**
@@ -1994,6 +2108,72 @@ struct NativeFrontendModule::Impl final {
     std::array<RemoteCharacterAudioPresentation, 128U> remote_character_audio{};
     audio::LoopVoice local_jetpack_flight_voice{audio::invalid_loop_voice};
     double local_jetpack_particle_clock{};
+    /** SetHP type 3/4 indicators (BURN/SUDDEN_DEATH_INDICATOR_TIME). */
+    double burn_indicator_remaining{};
+    double sudden_death_indicator_remaining{};
+    /**
+     * Character.set_is_on_fire (action 0x20) and set_touching_goo (state
+     * 0x08) presentation for every roster player, the local one included.
+     */
+    struct CharacterStatusPresentation final {
+        bool on_fire{};
+        bool touching_goo{};
+        audio::LoopVoice fire_voice{audio::invalid_loop_voice};
+        audio::LoopVoice goo_voice{audio::invalid_loop_voice};
+        double smoke_clock{};
+        double bomb_smoke_clock{};
+    };
+    std::array<CharacterStatusPresentation, 128U> character_status{};
+    /** BlockFire smoke cadence per entity: 1..2 puffs per second. */
+    std::map<std::uint64_t, double> surface_patch_smoke_due;
+    /** Crate cratedrop_freefall loops while a dropped crate falls. */
+    std::map<std::uint64_t, audio::LoopVoice> crate_freefall_loops;
+    /** Molotov/chemical in-flight create_fire_smoke cadence. */
+    std::map<std::uint64_t, double> projectile_smoke_clocks;
+    /** Flying Tracer entities (WEAPON_TRACER_SPEED 200). */
+    std::vector<world::TracerState> tracers;
+    /** One muzzleflash_default.kv6 draw alive for 0.05 s. */
+    struct MuzzleFlashPresentation final {
+        std::array<float, 16U> transform{};
+        float remaining{};
+    };
+    std::vector<MuzzleFlashPresentation> muzzle_flashes;
+    /**
+     * The local weapon's first-person flash: Weapon.muzzle_flash_timer and
+     * muzzle_flash_rotation, armed by shot_weapon and drawn by draw_fps /
+     * draw_sight in the viewmodel pass (never in world space).
+     */
+    struct LocalViewMuzzleFlash final {
+        std::uint8_t tool_id{};
+        float remaining{};
+        float roll_degrees{};
+    };
+    std::optional<LocalViewMuzzleFlash> local_view_muzzle_flash;
+    std::uint32_t local_view_muzzle_flash_serial{};
+    /** muzzleflash_default.kv6 for the viewmodel slot; loaded on first shot. */
+    std::optional<world::ChunkMesh> view_muzzle_flash_mesh;
+    bool view_muzzle_flash_mesh_attempted{};
+    /**
+     * The barrel mouth of one first-person tool part: its model-space tip
+     * (world::view_model_muzzle_tip) and this frame's part matrix.
+     */
+    struct ViewMuzzleAnchor final {
+        std::array<float, 16U> part{};
+        std::array<float, 3U> tip{};
+    };
+    /** Muzzle tip per uploaded sandbox tool part (index = part/slot). */
+    std::vector<std::optional<std::array<float, 3U>>> sandbox_part_muzzle_tips;
+    std::optional<std::array<float, 3U>> tutorial_pistol_muzzle_tip;
+    /**
+     * Last drawn first-person muzzle in VIEW space (x right, y up, -z ahead).
+     * Local tracers and the enhanced-tier shot light start here, converted
+     * back to world space, instead of at the crosshair.
+     */
+    std::optional<std::array<float, 3U>> local_view_muzzle_point;
+    double retail_effect_clock{};
+    /** Shared effect meshes (tracers, muzzle flash, crate parachute) by asset. */
+    std::map<std::string, std::optional<std::uint32_t>> effect_model_slots;
+    std::uint32_t next_effect_model_slot{render::WorldRenderer::effect_model_slot_base};
     /** Block Sucker owns a distinct warm-up -> loop -> tail state machine. */
     struct BlockSuckerAudioState final {
         std::uint8_t state{};
@@ -2009,6 +2189,24 @@ struct NativeFrontendModule::Impl final {
     BlockCannonAudioState local_block_cannon_audio;
     std::array<BlockCannonAudioState, 128U> remote_block_cannon_audio{};
     /**
+     * PaintbrushTool's RMB spray: ugc_colour_spraying (tool 43 tool_loop)
+     * starts at volume 0, fades in over PAINT_SECONDARY_FADE_IN_DURATION
+     * (0.3 s) while held and out over PAINT_SECONDARY_FADE_OUT_DURATION
+     * (0.5 s) after release, and closes silently on on_unset.
+     */
+    struct PaintSprayAudioState final {
+        audio::LoopVoice voice{audio::invalid_loop_voice};
+        bool spraying{};
+        std::int8_t fade{}; // 1 in, -1 out, 0 steady
+        double fade_time{};
+        float volume{};
+    };
+    PaintSprayAudioState local_paint_spray_audio;
+    std::array<PaintSprayAudioState, 128U> remote_paint_spray_audio{};
+    static constexpr double paint_spray_fade_in_seconds{0.3};
+    static constexpr double paint_spray_fade_out_seconds{0.5};
+    static constexpr std::uint8_t paintbrush_tool_id{43U};
+    /**
      * Retail Drill audio is two independent positional loops per projectile:
      * flight for its whole lifetime and contact for 0.5 seconds after each
      * Damage(37) bore. The boolean key domain separates packet-10 projectiles
@@ -2020,6 +2218,60 @@ struct NativeFrontendModule::Impl final {
         bool seen{};
     };
     std::map<std::pair<bool, std::uint64_t>, DrillAudioState> drill_audio;
+    struct RocketAudioState final {
+        audio::RocketFlightKind kind{audio::RocketFlightKind::none};
+        audio::LoopVoice flight{audio::invalid_loop_voice};
+        bool started{};
+        bool seen{};
+    };
+    /** Keyed like drill_audio: {is_server_entity, id}. */
+    std::map<std::pair<bool, std::uint64_t>, RocketAudioState> rocket_audio;
+    struct TurretAimAudioState final {
+        audio::TurretAimDetector detector;
+        audio::LoopVoice loop{audio::invalid_loop_voice};
+        bool seen{};
+    };
+    std::map<std::uint64_t, TurretAimAudioState> turret_aim_audio;
+    struct AirstrikeAudioState final {
+        audio::SoundPosition position{};
+        audio::LoopVoice whistle{audio::invalid_loop_voice};
+        bool started{};
+        bool seen{};
+    };
+    std::map<std::uint64_t, AirstrikeAudioState> airstrike_audio;
+    struct CharacterEquipmentAudio final {
+        audio::LoopVoice parachute_loop{audio::invalid_loop_voice};
+        audio::LoopVoice bomb_fuse_loop{audio::invalid_loop_voice};
+        bool parachute_active{};
+        bool seen{};
+    };
+    std::array<CharacterEquipmentAudio, 256U> character_equipment_audio{};
+    double medpack_heal_timer{};
+    struct GroundBombFuse final {
+        float fuse{};
+        double tick_timer{};
+        audio::LoopVoice fuse_loop{audio::invalid_loop_voice};
+    };
+    /** Raw CreateEntity fuse of each ground bomb (entity 14). */
+    std::map<std::uint64_t, GroundBombFuse> ground_bomb_fuses;
+    struct EntityPresenceAudio final {
+        audio::LoopVoice loop{audio::invalid_loop_voice};
+        bool chute_open{};
+        bool landed{};
+        double fall_speed{};
+        bool seen{};
+    };
+    /** Radar ping loops and supply-crate drop cues, keyed by entity id. */
+    std::map<std::uint64_t, EntityPresenceAudio> entity_presence_audio;
+    /** Stuck local sticky grenades that already played their attach cue. */
+    std::set<std::uint64_t> sticky_attach_played;
+    /**
+     * CreateEntity(21) type UGC_ENTITY (29) ids the Map Creator server sends
+     * for stock clients. Native markers come from packets 97/98, so these are
+     * consumed (and their DestroyEntity swallowed) instead of drawn twice.
+     */
+    std::set<std::uint32_t> ignored_ugc_entity_ids;
+    audio::LoopVoice medpack_heal_voice{audio::invalid_loop_voice};
     /**
      * The minigun's barrel-spin loop.
      *
@@ -2101,6 +2353,8 @@ struct NativeFrontendModule::Impl final {
         world::VxlColor disguise_color{};
         std::uint8_t block_sucker_state{};
         std::int32_t block_sucker_state_world_loop{-1};
+        /** Observer MinigunWeapon spin, advanced from the WorldUpdate trigger bits. */
+        world::RetailRemoteMinigunSpin minigun_spin{};
         std::uint32_t generation{};
         std::string body_appearance{}, weapon_appearance{};
         bool primary_was_held{};
@@ -2111,18 +2365,150 @@ struct NativeFrontendModule::Impl final {
         std::uint8_t grounded_snapshot_count{};
         std::optional<std::uint8_t> pending_tool_id;
         std::uint8_t pending_tool_snapshots{};
+        /** Colour baked into the held tool (block colour / other team). */
+        std::uint32_t tool_color_key{};
         network::RemoteMotionInterpolator motion;
     };
     std::map<std::uint8_t, RemotePlayerRenderRig> remote_player_rigs;
+    /**
+     * Shared character accessory meshes (render::WorldRenderer's
+     * character_accessory band): key -> slot and last frame drawn.
+     */
+    struct CharacterAccessorySlot final {
+        std::uint32_t slot{};
+        std::uint64_t last_frame{};
+    };
+    std::map<std::string, CharacterAccessorySlot> character_accessory_slots;
+    std::uint64_t character_accessory_frame{};
+    std::size_t character_accessory_builds_this_frame{};
+    /** Character.spawn_color_blink_timer per player life. */
+    struct SpawnBlinkState final {
+        std::uint32_t generation{};
+        float last_protection{};
+        double last_clock{};
+        world::RetailSpawnBlink blink{};
+    };
+    std::map<std::uint8_t, SpawnBlinkState> spawn_blinks;
+    /** Character.exploded for the current life (ExplodeCorpse arrived). */
+    std::array<std::optional<std::uint32_t>, 128U> exploded_corpse_generations{};
     /** GPU buffers no longer drawn, released incrementally outside packet handlers. */
     std::set<std::uint32_t> pending_remote_mesh_clears;
     /** CPU meshes are immutable and shared across player generations. */
     std::map<std::pair<std::uint64_t,std::string>, world::ClassModelSet> remote_class_model_cache;
-    std::map<std::pair<std::uint64_t,std::string>, world::WeaponModelSet> remote_weapon_model_cache;
+    /**
+     * Identity of one cached remote held-tool model set.
+     *
+     * A struct, not a packed integer: the old `tool<<56 | tool_colour<<32`
+     * key let the 0x01/0x02 colour-path flag land on the tool bits, so tool
+     * 22 collided with tool 23 (28/29, 64/65) for the same colour. The block
+     * colour of use_color tools is deliberately absent: those sets are cached
+     * untinted and recoloured in memory (world::tinted_weapon_models), so a
+     * remote builder scrolling the palette never reloads KV6 from disk.
+     */
+    struct RemoteWeaponModelKey final {
+        std::uint8_t tool_id{};
+        /** 0 = plain/team, 1 = block colour (tint applied later), 2 = other team, 3 = flash. */
+        std::uint8_t color_path{};
+        std::uint32_t tool_color{};
+        std::uint32_t body_color{};
+        std::string appearance;
+        [[nodiscard]] friend auto operator<=>(const RemoteWeaponModelKey&,
+                                              const RemoteWeaponModelKey&) = default;
+    };
+    struct CachedWeaponModels final {
+        world::WeaponModelSet models;
+        std::uint64_t last_used{};
+    };
+    std::map<RemoteWeaponModelKey, CachedWeaponModels> remote_weapon_model_cache;
+    std::uint64_t remote_model_cache_clock{};
+    /** LRU bound for remote held-tool sets (a full server's tools + skins). */
+    static constexpr std::size_t remote_weapon_model_cache_limit{96U};
+    /** Coarser bound for the other remote/entity mesh caches (clear on overflow). */
+    static constexpr std::size_t remote_model_cache_limit{128U};
+
+    /**
+     * Cached untinted-or-final model set for `key`, loading it on a miss and
+     * evicting the least-recently-used entry past the bound.
+     */
+    [[nodiscard]] const world::WeaponModelSet* cached_remote_weapon_models(
+        const RemoteWeaponModelKey& key, const std::function<world::WeaponModelLoadResult()>& load,
+        std::string* error = nullptr) {
+        if (auto found = remote_weapon_model_cache.find(key);
+            found != remote_weapon_model_cache.end()) {
+            found->second.last_used = ++remote_model_cache_clock;
+            return &found->second.models;
+        }
+        auto loaded = load();
+        if (!loaded) {
+            if (error != nullptr) {
+                *error = loaded.error;
+            }
+            return nullptr;
+        }
+        while (remote_weapon_model_cache.size() >= remote_weapon_model_cache_limit) {
+            const auto oldest = std::ranges::min_element(
+                remote_weapon_model_cache, {},
+                [](const auto& entry) { return entry.second.last_used; });
+            remote_weapon_model_cache.erase(oldest);
+        }
+        auto inserted = remote_weapon_model_cache.emplace(
+            key, CachedWeaponModels{std::move(*loaded.models), ++remote_model_cache_clock});
+        return &inserted.first->second.models;
+    }
+
+    /**
+     * Drops every CPU-side remote/entity model cache. The meshes are
+     * immutable copies; GPU slots are owned and reset by teardown separately.
+     */
+    void clear_remote_model_caches() {
+        remote_class_model_cache.clear();
+        remote_weapon_model_cache.clear();
+        entity_model_cache.clear();
+        remote_jetpack_model_cache.clear();
+        remote_disguise_model_cache.clear();
+    }
+
+    /**
+     * Bounds the colour/tint-keyed caches between ticks. Entries are only
+     * CPU copies read while uploading a rig or accessory slot, so dropping an
+     * oversized cache costs at most a later reload, never a visible glitch.
+     */
+    void trim_remote_model_caches() {
+        const auto trim = [](auto& cache) {
+            if (cache.size() > remote_model_cache_limit) {
+                cache.clear();
+            }
+        };
+        trim(remote_class_model_cache);
+        trim(entity_model_cache);
+        trim(remote_jetpack_model_cache);
+        trim(remote_disguise_model_cache);
+    }
     network::CosmeticAppearances remote_cosmetics;
 
     [[nodiscard]] const InventoryCosmetic* local_equipped_cosmetic(const std::string& slot) const {
         return applied_settings.main.skins_visible(true) ? inventory_menu.equipped_item(slot) : nullptr;
+    }
+
+    /**
+     * Interned "class:<id>:body" / "class:<id>:hat" / "weapon:<id>:world"
+     * slot keys. Rig sync and player draws resolved these for every remote
+     * player every frame, allocating three strings each time.
+     */
+    enum class CosmeticSlotKey : std::uint8_t { class_body, class_hat, weapon_world };
+    [[nodiscard]] static const std::string& cosmetic_slot_key(CosmeticSlotKey kind,
+                                                              std::uint8_t id) {
+        static const auto table = [] {
+            std::array<std::array<std::string, 256U>, 3U> keys;
+            for (std::size_t index{}; index < 256U; ++index) {
+                const auto number = std::to_string(index);
+                keys[0U][index] = "class:" + number + ":body";
+                keys[1U][index] = "class:" + number + ":hat";
+                keys[2U][index] = "weapon:" + number + ":world";
+            }
+            return keys;
+        }();
+        return table[static_cast<std::size_t>(kind)][id];
     }
 
     [[nodiscard]] const InventoryCosmetic* equipped_cosmetic(std::uint8_t player, const std::string& slot) const {
@@ -2150,6 +2536,46 @@ struct NativeFrontendModule::Impl final {
     bool scoreboard_visible{};
     /** ForceShowScores(72) owns this independently of the local TAB hold. */
     bool scoreboard_forced{};
+    /**
+     * POIFocus(18) LookAtController target. Retail has no timeout: death,
+     * the next local CreatePlayer, or the map change releases it.
+     */
+    std::optional<world::Vec3> poi_focus_target;
+    /** Retail KickVotePlayerSelect (packet-48 initiation) in-game menu. */
+    KickVoteMenuModel kick_vote_select;
+    KickVoteMenuPresentation kick_vote_presentation;
+    /** Team a spectator chose; its class choice then sends 13 + 15. */
+    std::optional<std::uint8_t> spectator_rejoin_team;
+    /** Frame clock for the kick menu's 0.5 s denial countdown. */
+    std::optional<std::chrono::steady_clock::time_point> kick_vote_last_tick;
+    /** prefab_manager.get_prefab_block_count cache for SelectClass popups. */
+    std::map<std::string, std::optional<std::size_t>, std::less<>> class_popup_prefab_blocks;
+
+    /**
+     * ForceShowScores(72) calls GameScene.stop_movement and POIFocus hands the
+     * camera to a LookAtController: both leave no local movement, look or
+     * action input until released.
+     */
+    [[nodiscard]] bool retail_gameplay_input_locked() const noexcept {
+        return scoreboard_forced || poi_focus_target.has_value();
+    }
+
+    void apply_poi_focus_lock() {
+        if (!poi_focus_target.has_value()) return;
+        if (tutorial_session == nullptr || screen() != FrontendScreen::tutorial_world ||
+            !tutorial_session->alive() || death_camera.active()) {
+            // Death (ChaseController) or scene teardown ends the lock.
+            poi_focus_target.reset();
+            return;
+        }
+        const auto eye = tutorial_session->eye_position();
+        const auto angles = retail_look_at_angles(eye[0U], eye[1U], eye[2U],
+                                                  poi_focus_target->x, poi_focus_target->y,
+                                                  poi_focus_target->z);
+        if (angles.has_value()) {
+            tutorial_session->set_look_angles(angles->yaw_degrees, angles->pitch_degrees);
+        }
+    }
     std::optional<std::uint8_t> forced_team;
     bool initial_join_submitted{};
     /** When the join code in active_join_wire_name was issued; nullopt for a plain name. */
@@ -2282,6 +2708,11 @@ struct NativeFrontendModule::Impl final {
                 item.position[2U] >= 256) {
                 continue;
             }
+            // UGCEntity draw loop: only the edited mode's zones and the
+            // shared MODE_NORMAL crate points are drawn (and pointable).
+            if (!world::ugc_item_visible_in_mode(item.mode, match_initial_info.ugc_mode)) {
+                continue;
+            }
             const auto id = ugc_presentation_entity_id(item);
             expected.insert(id);
             if (std::ranges::find(tutorial_session->entities(), id, &world::LocalEntity::id) !=
@@ -2313,6 +2744,48 @@ struct NativeFrontendModule::Impl final {
         }
         for (const auto id : stale) {
             static_cast<void>(tutorial_session->destroy_server_entity(id));
+        }
+    }
+
+    /**
+     * GameScene.process_packet_ugc_objectives (0x101a1380) when packet 68's
+     * mode differs from manager.ugc_mode: adopt it, drop the Game Data items
+     * (selected_class.ugc_tools = []), resend send_class_loadout with an
+     * empty UGC list, announce UGC_GAMEMODE_CHANGED + the MODE_MAP_TITLES
+     * title, and restart an open SelectGameData screen so it lists the new
+     * mode's objectives.
+     */
+    void apply_ugc_mode_change(std::uint8_t mode) {
+        match_initial_info.ugc_mode = mode;
+        sync_ugc_item_presentations();
+        game_hud.set_big_message(localized_text("UGC_GAMEMODE_CHANGED") + " " +
+                                 localized_text(retail_scoreboard_mode_title(mode, false)));
+        if (match_connection == nullptr || !local_player_id.has_value()) {
+            return;
+        }
+        const auto* local = tutorial_roster.player(*local_player_id);
+        if (local == nullptr) {
+            return;
+        }
+        const auto team = local->team;
+        if (!local->ugc_tools.empty()) {
+            network::SetClassLoadoutPacket packet;
+            packet.player_id = *local_player_id;
+            packet.class_id = local->class_id;
+            packet.instant = false;
+            packet.loadout = local->loadout;
+            packet.prefabs = local->prefabs;
+            packet.ugc_tools.clear();
+            if (!match_connection->send(network::encode_packet(packet))) {
+                settings_warning = "failed to queue SetClassLoadout(13)";
+                return;
+            }
+            static_cast<void>(tutorial_roster.update_loadout(
+                *local_player_id, packet.class_id, packet.loadout, packet.prefabs, {}));
+        }
+        if (ugc_loadout_active && screen() == FrontendScreen::class_selection &&
+            ugc_loadout_menu.library() == UgcLoadoutLibrary::game_data) {
+            configure_ugc_loadout(UgcLoadoutLibrary::game_data, team, true);
         }
     }
 
@@ -2363,6 +2836,8 @@ struct NativeFrontendModule::Impl final {
             static_cast<void>(lobby);
 #endif
         }
+        // Same reason: the lobby resolver also calls into steam_runtime.
+        if (steam_lobby_resolve_worker.valid()) steam_lobby_resolve_worker.wait();
     }
 
     [[nodiscard]] std::string localized_text(std::string_view key) const {
@@ -3026,6 +3501,27 @@ struct NativeFrontendModule::Impl final {
             request.lobby_id = target->first;
             request.action = "join";
             request.payload = nlohmann::json{{"invitation_id", target->second}};
+            // AoSPlay allows one lobby per account and lobbies persist while
+            // the game polls, so an invitation used to fail with "Leave the
+            // current lobby before joining another one." Leave first; the
+            // priority lane is ordered, so the join always follows it.
+            if (const auto current = social_client->snapshot().lobby;
+                current.has_value() && current->id != target->first) {
+                network::RevivalSocialRequest leave;
+                leave.generation = background_social_generation();
+                leave.kind = network::RevivalSocialRequestKind::lobby_action;
+                leave.priority = true;
+                leave.lobby_id = current->id;
+                leave.action = "leave";
+                if (!social_client->enqueue(std::move(leave))) {
+                    static_cast<void>(friends_lobby_menu.complete(operation->generation, false,
+                        "Could not leave your current lobby. Please retry.", now));
+                    social_open_match_generation.reset();
+                    return;
+                }
+                social_match_lobby_id.clear();
+                social_match_owner_id.clear();
+            }
             break;
         }
         case FriendsLobbyActionKind::decline_lobby_invite: {
@@ -3299,8 +3795,13 @@ struct NativeFrontendModule::Impl final {
         // The friends list now carries the match and a Join that reaches the
         // same loader as Direct Connect, so an invite needs no pasted id.
         const auto status = "Hosting " + host_presence_details();
-        const auto connect = "steam:" + std::to_string(host_id);
-        static_cast<void>(steam_runtime.publish_presence(status, connect));
+        // A whole switch: Steam appends it to the command line of a friend
+        // whose game is closed, where a bare "steam:<id>" was rejected as an
+        // unknown option and the game exited instead of joining.
+        const auto connect = platform::steam_host_connect_string(host_id);
+        static_cast<void>(
+            steam_runtime.publish_presence(status, connect, std::to_string(host_id)));
+        steam_presence_connect = connect;
         // The lobby is the route that needs no pasted id and no public address.
         // Opening it waits on Steam, so it happens on a worker.
         if (!steam_lobby_worker.valid() && steam_lobby_id == 0U) {
@@ -3359,8 +3860,9 @@ struct NativeFrontendModule::Impl final {
                                       : "the host asks for a ticket for " + steam_join_server_id);
         // A joined match is worth showing too, and a friend of the joiner can
         // reach the same host through the same connect string.
+        steam_presence_connect = platform::steam_host_connect_string(host_steam_id);
         static_cast<void>(steam_runtime.publish_presence(
-            "Playing a friend's match", "steam:" + std::to_string(host_steam_id)));
+            "Playing a friend's match", steam_presence_connect, std::to_string(host_steam_id)));
         return steam_client.local_port();
 #else
         static_cast<void>(host_steam_id);
@@ -3386,7 +3888,10 @@ struct NativeFrontendModule::Impl final {
         // Leaving a joined match must take its presence down as well, or the
         // friends list keeps offering a Join that leads nowhere. Only when this
         // client is not itself hosting, whose presence outlives the join.
-        if (was_running && steam_host_id == 0U) steam_runtime.clear_presence();
+        if (was_running && steam_host_id == 0U) {
+            steam_runtime.clear_presence();
+            steam_presence_connect.clear();
+        }
 #endif
     }
 
@@ -3402,6 +3907,7 @@ struct NativeFrontendModule::Impl final {
         if (steam_lobby_worker.valid()) steam_lobby_abandoned = true;
         steam_runtime.clear_presence();
 #endif
+        steam_presence_connect.clear();
         steam_host_id = 0U;
     }
 
@@ -3422,6 +3928,270 @@ struct NativeFrontendModule::Impl final {
         }
         steam_lobby_id = lobby;
 #endif
+    }
+
+    /**
+     * Presence for a dedicated server: "+connect host:port".
+     *
+     * Before 2026-09-28 the retail bridge published "+connect <dialled
+     * endpoint>" for every match, which for a Steam join or the player's own
+     * hosted match was the loopback tunnel, 127.0.0.1:<port>. Being the same
+     * application as the in-process runtime, it overwrote the "steam:<id>"
+     * presence a moment after it was set, so a friend's Join Game dialled
+     * their own machine. Steam and hosted matches publish their own presence;
+     * only a public endpoint is published here, through one writer.
+     */
+    void publish_dedicated_presence(const ServerConnectRequest& request,
+                                    const std::string& host,
+                                    std::uint16_t port) {
+        if (request.steam_host_id != 0U || steam_host_id != 0U ||
+            owned_local_server != nullptr) {
+            return;
+        }
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_client.running()) return;
+#endif
+        const auto connect = platform::endpoint_connect_string(host, port);
+        if (!connect.has_value()) {
+            if (!steam_presence_connect.empty()) clear_match_presence();
+            return;
+        }
+        const auto status =
+            "Playing " + (steam_presence_match.empty() ? request.identifier : steam_presence_match);
+        steam_presence_connect = *connect;
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_runtime.ready()) {
+            static_cast<void>(steam_runtime.publish_presence(
+                status, *connect, host + ":" + std::to_string(port)));
+            return;
+        }
+#endif
+        if (native_steam != nullptr && native_steam->ready()) {
+            static_cast<void>(native_steam->set_presence(*connect, status));
+        }
+    }
+
+    /** Take down this player's joinable presence (never a live host's). */
+    void clear_match_presence() noexcept {
+        if (steam_host_id != 0U) return;
+        steam_presence_connect.clear();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_runtime.ready()) {
+            steam_runtime.clear_presence();
+            return;
+        }
+#endif
+        if (native_steam != nullptr && native_steam->ready()) {
+            static_cast<void>(native_steam->clear_presence());
+        }
+    }
+
+    /**
+     * Steam's invite dialog for the match this player is in.
+     *
+     * Friends can also be invited from Steam's own friends list ("Invite to
+     * Game"), which works whenever presence carries connect; this opens the
+     * overlay's picker directly. False when there is nothing to invite to or
+     * the overlay is not running in this process (not launched via Steam).
+     */
+    [[nodiscard]] bool open_steam_invite_dialog() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (!steam_runtime.ready() || (steam_presence_connect.empty() && steam_lobby_id == 0U)) {
+            return false;
+        }
+        return steam_runtime.open_invite_dialog(steam_presence_connect, steam_lobby_id);
+#else
+        return false;
+#endif
+    }
+
+    /** Accept a join Steam handed us, once per click. */
+    void queue_steam_join(std::optional<platform::SteamJoinTarget> target,
+                          std::string_view source) {
+        if (!target.has_value()) {
+            core::diagnostic("steam", std::string{"ignored an unrecognised join from "} +
+                                          std::string{source});
+            return;
+        }
+        // Join Game on a friend who is in this player's own hosted match.
+        if (target->kind == platform::SteamJoinTargetKind::steam_host && steam_host_id != 0U &&
+            target->steam_id == steam_host_id) {
+            return;
+        }
+        if (!steam_join_deduplicator.accept(*target, std::chrono::steady_clock::now())) return;
+        core::diagnostic("steam", "join queued from " + std::string{source});
+        pending_steam_join = std::move(target);
+    }
+
+    /** Is the player inside a match (or loading one) rather than the menus? */
+    [[nodiscard]] bool steam_join_must_leave_match() const {
+        switch (screen()) {
+        case FrontendScreen::game_loading:
+        case FrontendScreen::class_selection:
+        case FrontendScreen::tutorial_world:
+        case FrontendScreen::pause_menu:
+        case FrontendScreen::change_team:
+        case FrontendScreen::parity_debug:
+        case FrontendScreen::gameplay_debug:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    /** Perform a queued Steam join once the player can be taken to it. */
+    void consume_pending_steam_join() {
+        if (!pending_steam_join.has_value() ||
+            pending_steam_join->kind == platform::SteamJoinTargetKind::lobby) {
+            return;
+        }
+        // Signing in comes first; the identity gate finishes, then the join.
+        if (!authenticated_identity || navigation.shell().transitioning()) return;
+        const auto current = screen();
+        if (current == FrontendScreen::identity || current == FrontendScreen::startup_loading) {
+            return;
+        }
+        if (current != FrontendScreen::select_menu) {
+            // Leave the match or menu first; the route exit hooks tear the
+            // current match down and the join runs from the Select Menu.
+            if (steam_join_must_leave_match() && audio_started) audio->stop_all();
+            return_to_select();
+            return;
+        }
+        if (!navigation.shell().accepts_input()) return;
+        const auto target = std::move(*pending_steam_join);
+        pending_steam_join.reset();
+        if (target.kind == platform::SteamJoinTargetKind::steam_host) {
+            std::string steam_error;
+            const auto port = start_steam_client(target.steam_id, steam_error);
+            if (port == 0U) {
+                settings_warning = steam_error.empty()
+                                       ? "Could not reach that friend's match through Steam."
+                                       : steam_error;
+                return;
+            }
+            begin_match_loading(ServerConnectRequest{"steam:" + std::to_string(target.steam_id),
+                                                     "127.0.0.1", port, {}, {}, {}, false,
+                                                     steam_join_server_id,
+                                                     steam_join_wants_ticket()});
+            return;
+        }
+        network::ServerEndpoint endpoint;
+        std::string endpoint_error;
+        if (!network::parse_server_endpoint(target.endpoint, endpoint, endpoint_error)) {
+            settings_warning = "Steam sent an invalid server address: " + endpoint_error;
+            return;
+        }
+        begin_match_loading(ServerConnectRequest{endpoint.identifier(), endpoint.host,
+                                                 endpoint.port, {}, {}, {}, false, {}, false});
+    }
+
+    /** The Steam button follows the retail runtime; see IdentitySteamState. */
+    void sync_identity_steam_button() {
+        using platform::NativeSteamState;
+        const auto state =
+            native_steam == nullptr ? NativeSteamState::unavailable : native_steam->state();
+        if (state != native_steam_reported_state) {
+            if (state == NativeSteamState::retrying ||
+                (state == NativeSteamState::unavailable &&
+                 native_steam_reported_state == NativeSteamState::starting)) {
+                native_steam_failed_once = true;
+            }
+            const auto error = native_steam == nullptr ? std::string_view{}
+                                                       : native_steam->last_error();
+            core::diagnostic("steam",
+                             std::string{"retail runtime "} +
+                                 (state == NativeSteamState::ready      ? "ready"
+                                  : state == NativeSteamState::starting ? "starting"
+                                  : state == NativeSteamState::retrying ? "will retry"
+                                                                        : "unavailable") +
+                                 (error.empty() ? std::string{} : ": " + std::string{error}));
+            native_steam_reported_state = state;
+        }
+        // Pending only on the first attempt: a retry every few seconds while
+        // Steam is closed must not flash the button in and out.
+        const auto shown = state == NativeSteamState::ready ? IdentitySteamState::available
+                           : state == NativeSteamState::starting && !native_steam_failed_once
+                               ? IdentitySteamState::connecting
+                               : IdentitySteamState::hidden;
+        if (identity_menu.steam_state() != shown) identity_menu.set_steam_state(shown);
+    }
+
+    /**
+     * Every frame: the retail bridge's handshake and events, the in-process
+     * runtime's join requests, lobby invites, and the queued join itself.
+     *
+     * Steam callbacks are pumped continuously on their own threads (the
+     * bridge's loop and the runtime's pump); this collects what they read.
+     */
+    void pump_steam_integration() {
+        if (native_steam != nullptr) {
+            static_cast<void>(native_steam->poll());
+            for (auto& event : native_steam->take_join_events()) {
+                if (event.lobby_id != 0U) {
+                    queue_steam_join(
+                        platform::SteamJoinTarget{platform::SteamJoinTargetKind::lobby,
+                                                  event.lobby_id, {}},
+                        "a Steam lobby invite");
+                } else {
+                    queue_steam_join(platform::parse_steam_join_target(event.connect),
+                                     "Steam Join Game");
+                }
+            }
+        }
+        sync_identity_steam_button();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        const auto now = std::chrono::steady_clock::now();
+        if (!steam_runtime.ready()) {
+            // Steam started after the game: attach when it appears, so
+            // presence and Join Game work without restarting the game.
+            if (steam_runtime_retry_at == std::chrono::steady_clock::time_point{}) {
+                steam_runtime_retry_at = now + std::chrono::seconds{30};
+            } else if (now >= steam_runtime_retry_at) {
+                steam_runtime_retry_at = now + std::chrono::seconds{30};
+                attach_steam_for_presence();
+            }
+        } else {
+            for (auto& request : steam_runtime.take_join_requests()) {
+                if (request.lobby_id != 0U) {
+                    queue_steam_join(
+                        platform::SteamJoinTarget{platform::SteamJoinTargetKind::lobby,
+                                                  request.lobby_id, {}},
+                        "a Steam lobby invite");
+                } else {
+                    queue_steam_join(platform::parse_steam_join_target(request.connect),
+                                     "Steam Join Game");
+                }
+            }
+        }
+        using namespace std::chrono_literals;
+        if (steam_lobby_resolve_worker.valid() &&
+            steam_lobby_resolve_worker.wait_for(0ms) == std::future_status::ready) {
+            const auto connect = steam_lobby_resolve_worker.get();
+            auto target = platform::parse_steam_join_target(connect);
+            if (target.has_value() && target->kind != platform::SteamJoinTargetKind::lobby) {
+                pending_steam_join = std::move(target);
+            } else {
+                settings_warning = "That Steam lobby no longer leads to a match.";
+            }
+        }
+        if (pending_steam_join.has_value() &&
+            pending_steam_join->kind == platform::SteamJoinTargetKind::lobby &&
+            !steam_lobby_resolve_worker.valid() && steam_runtime.ready()) {
+            const auto lobby = pending_steam_join->steam_id;
+            pending_steam_join.reset();
+            steam_lobby_resolve_worker = std::async(std::launch::async, [this, lobby] {
+                return steam_runtime.resolve_lobby_connect(lobby);
+            });
+        }
+#else
+        if (pending_steam_join.has_value() &&
+            pending_steam_join->kind == platform::SteamJoinTargetKind::lobby) {
+            pending_steam_join.reset();
+            settings_warning = "This build cannot open Steam lobby invites.";
+        }
+#endif
+        consume_pending_steam_join();
     }
 
     /** Stop and unpublish every resource owned by a client-hosted match. */
@@ -3576,6 +4346,13 @@ struct NativeFrontendModule::Impl final {
                 if (social_leave_after_create && is_create_match_screen(screen()))
                     static_cast<void>(navigation.pop());
             }
+        }
+        {
+            const auto current = screen();
+            social_client->set_foreground(current == FrontendScreen::friends_lobby ||
+                                          current == FrontendScreen::ugc_editor_browser ||
+                                          current == FrontendScreen::ugc_editor_lobby ||
+                                          is_create_match_screen(current));
         }
         social_client->tick(now);
         for (auto result : social_client->drain(now)) {
@@ -3925,7 +4702,10 @@ struct NativeFrontendModule::Impl final {
             sync_social_match_lobby(authoritative, apply_settings);
         }
         const auto status = social_client->status(now);
-        friends_lobby_menu.set_service_status(status.available, status.last_error);
+        // Buttons follow the account, not the last background poll: a single
+        // slow or failed sync used to grey out the whole Friends menu.
+        friends_lobby_menu.set_service_status(status.enabled, status.last_error);
+        friends_lobby_menu.set_connected(status.available);
         friends_lobby_menu.tick(now);
         if (is_create_match_screen(screen()) && !authoritative.lobby && !friends_lobby_menu.busy()) {
             create_match_menu.set_host_authority(true);
@@ -3952,6 +4732,7 @@ struct NativeFrontendModule::Impl final {
             queue_social_start_failed(settings_warning);
         }
         pump_ugc_social_settings(now);
+        pump_ugc_save(now);
         if (social_open_match_generation && ugc_create_deadline != std::chrono::steady_clock::time_point{} &&
             now >= ugc_create_deadline) {
             social_open_match_generation.reset();
@@ -4063,7 +4844,7 @@ struct NativeFrontendModule::Impl final {
 
     void begin_identity_bootstrap() {
         identity_menu.reset_form();
-        identity_menu.set_steam_available(native_steam != nullptr && native_steam->ready());
+        sync_identity_steam_button();
         authenticated_identity = false;
         enter_main_menu_pending = false;
         if (const auto cached = identity_service->cached_account(); cached.has_value()) {
@@ -4414,6 +5195,97 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    void advance_paint_spray_audio(PaintSprayAudioState& state,
+                                   bool selected,
+                                   bool spraying,
+                                   audio::SoundPosition position,
+                                   bool head_relative,
+                                   double dt) {
+        if (!audio_started) {
+            state = {};
+            return;
+        }
+        if (!selected) {
+            if (state.voice != audio::invalid_loop_voice) audio->stop_weapon_loop(state.voice);
+            state = {};
+            return;
+        }
+        if (spraying && !state.spraying) {
+            // on_start_secondary
+            state.fade = 1;
+            if (state.voice == audio::invalid_loop_voice) {
+                state.voice = audio->start_weapon_loop(paintbrush_tool_id,
+                                                       audio::WeaponCue::tool_loop,
+                                                       position,
+                                                       0.0F,
+                                                       head_relative);
+                state.volume = 0.0F;
+                state.fade_time = 0.0;
+            } else {
+                state.fade_time = static_cast<double>(state.volume) * paint_spray_fade_in_seconds;
+            }
+        } else if (!spraying && state.spraying && state.voice != audio::invalid_loop_voice) {
+            // on_stop_secondary
+            state.fade = -1;
+            state.fade_time =
+                (1.0 - static_cast<double>(state.volume)) * paint_spray_fade_out_seconds;
+        }
+        state.spraying = spraying;
+        if (state.voice == audio::invalid_loop_voice) {
+            state.fade = 0;
+            return;
+        }
+        if (state.fade != 0) {
+            const double duration =
+                state.fade > 0 ? paint_spray_fade_in_seconds : paint_spray_fade_out_seconds;
+            state.fade_time = std::min(state.fade_time + dt, duration);
+            const auto progress = static_cast<float>(state.fade_time / duration);
+            state.volume = state.fade > 0 ? progress : 1.0F - progress;
+            if (state.fade_time >= duration) {
+                if (state.fade < 0) {
+                    audio->stop_weapon_loop(state.voice);
+                    state = {};
+                    return;
+                }
+                state.fade = 0;
+                state.fade_time = 0.0;
+            }
+        }
+        audio->update_weapon_loop(state.voice, position, 1.0F, state.volume);
+    }
+
+    /** Remote spray loops follow the WorldUpdate secondary bit per frame. */
+    void advance_remote_paint_spray_audio(double dt) {
+        for (std::size_t id{}; id < remote_paint_spray_audio.size(); ++id) {
+            auto& state = remote_paint_spray_audio[id];
+            if (state.voice == audio::invalid_loop_voice && !state.spraying) continue;
+            const auto* player = tutorial_roster.player(static_cast<std::uint8_t>(id));
+            if (player == nullptr) {
+                advance_paint_spray_audio(state, false, false, {}, false, dt);
+                continue;
+            }
+            advance_paint_spray_audio(state, true, state.spraying, remote_sound_position(*player),
+                                      false, dt);
+        }
+    }
+
+    void update_remote_paint_spray_audio(const network::WorldPlayerWeaponRow& row,
+                                         const network::RemotePlayerReplica& player) {
+        if (row.player_id >= remote_paint_spray_audio.size()) return;
+        const bool selected = row.health > 0 && row.tool_id == paintbrush_tool_id;
+        const bool spraying =
+            selected && (row.action_flags & network::world_action_secondary) != 0U;
+        advance_paint_spray_audio(remote_paint_spray_audio[row.player_id], selected, spraying,
+                                  remote_sound_position(player), false, 0.0);
+    }
+
+    void stop_all_paint_spray_audio() {
+        advance_paint_spray_audio(local_paint_spray_audio, false, false, {}, true, 0.0);
+        for (auto& state : remote_paint_spray_audio) {
+            advance_paint_spray_audio(state, false, false, {}, false, 0.0);
+        }
+    }
+
     void stop_all_block_cannon_audio() {
         const auto stop = [this](BlockCannonAudioState& state) {
             if (state.voice != audio::invalid_loop_voice && audio_started) {
@@ -4532,6 +5404,238 @@ struct NativeFrontendModule::Impl final {
         drill_audio.clear();
     }
 
+    /**
+     * Rocket / Rocket2 flight loops (rocket.py:33-36, rocket2.py:30): each
+     * projectile owns a loops=0 world cue that follows it and closes on
+     * delete. The class is fixed at creation from the owner's held tool, so
+     * the classification is remembered for the projectile's lifetime.
+     */
+    void advance_rocket_audio() {
+        const auto stop = [this](RocketAudioState& state) {
+            if (audio_started && state.flight != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(state.flight);
+            }
+            state.flight = audio::invalid_loop_voice;
+        };
+        if (!audio_started || tutorial_session == nullptr) {
+            for (auto& [key, state] : rocket_audio) {
+                static_cast<void>(key);
+                stop(state);
+            }
+            rocket_audio.clear();
+            return;
+        }
+        for (auto& [key, state] : rocket_audio) {
+            static_cast<void>(key);
+            state.seen = false;
+        }
+        const auto present = [this](std::pair<bool, std::uint64_t> key,
+                                    const world::Vec3& position,
+                                    audio::RocketFlightKind kind) {
+            const audio::SoundPosition sound_position{static_cast<float>(position.x),
+                                                      static_cast<float>(position.y),
+                                                      static_cast<float>(position.z)};
+            auto found = rocket_audio.find(key);
+            if (found == rocket_audio.end()) {
+                constexpr std::size_t rocket_voice_budget{64U};
+                if (rocket_audio.size() >= rocket_voice_budget) {
+                    return;
+                }
+                found = rocket_audio.emplace(key, RocketAudioState{kind}).first;
+                if (kind == audio::RocketFlightKind::turret && key.first) {
+                    // Rocket.set_position: a turret rocket plays the turret's
+                    // launch report at its first position.
+                    static_cast<void>(play_retail_cue(audio::turret_rocket_shoot_cue,
+                                                      sound_position,
+                                                      false,
+                                                      static_cast<std::uint32_t>(key.second)));
+                }
+            }
+            auto& state = found->second;
+            state.seen = true;
+            if (!state.started) {
+                state.started = true;
+                state.flight = audio->start_named_voice_loop(
+                    audio::rocket_flight_loop(state.kind), sound_position, 1.0F, false);
+            } else if (state.flight != audio::invalid_loop_voice) {
+                audio->update_weapon_loop(state.flight, sound_position);
+            }
+        };
+        for (const auto& projectile : tutorial_session->projectiles()) {
+            auto kind = audio::RocketFlightKind::none;
+            if (projectile.tool_id == 12U) {
+                kind = projectile.autonomous_source ? audio::RocketFlightKind::turret
+                                                    : audio::RocketFlightKind::rpg;
+            } else if (projectile.tool_id == 13U || projectile.tool_id == 46U) {
+                kind = audio::RocketFlightKind::rocket2;
+            }
+            if (kind != audio::RocketFlightKind::none) {
+                present({false, projectile.id}, projectile.position, kind);
+            }
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (!entity.alive || (entity.type != 21U && entity.type != 22U)) {
+                continue;
+            }
+            std::optional<std::uint8_t> owner_tool;
+            if (const auto* owner = tutorial_roster.player(entity.owner); owner != nullptr) {
+                owner_tool = owner->tool_id;
+            }
+            present({true, entity.id},
+                    entity.position,
+                    audio::rocket_flight_kind(entity.type, owner_tool));
+        }
+        for (auto iterator = rocket_audio.begin(); iterator != rocket_audio.end();) {
+            if (iterator->second.seen) {
+                ++iterator;
+                continue;
+            }
+            stop(iterator->second);
+            iterator = rocket_audio.erase(iterator);
+        }
+    }
+
+    /**
+     * RocketTurret.update aim cues (rocketTurret.py:59-79): turret_aim_start
+     * plus the turret_aiming_lp loop while the head turns, turret_aim_stop
+     * when it settles. Only a turret with an owning player makes the noise.
+     */
+    void advance_turret_aim_audio(double dt) {
+        if (!audio_started || tutorial_session == nullptr) {
+            stop_all_turret_aim_audio();
+            return;
+        }
+        for (auto& [id, state] : turret_aim_audio) {
+            static_cast<void>(id);
+            state.seen = false;
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (!entity.alive || entity.type != 8U) {
+                continue;
+            }
+            auto& state = turret_aim_audio[entity.id];
+            state.seen = true;
+            const audio::SoundPosition position{static_cast<float>(entity.position.x),
+                                                static_cast<float>(entity.position.y),
+                                                static_cast<float>(entity.position.z)};
+            const auto edge = state.detector.update(entity.aim_pitch, entity.aim_yaw, dt);
+            if (edge == audio::TurretAimDetector::Edge::started) {
+                static_cast<void>(audio->play_named_one_shot("turret_aim_start", position));
+                if (state.loop == audio::invalid_loop_voice) {
+                    state.loop = audio->start_named_voice_loop("turret_aiming_lp", position);
+                }
+            } else if (edge == audio::TurretAimDetector::Edge::stopped) {
+                if (state.loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.loop);
+                    state.loop = audio::invalid_loop_voice;
+                }
+                static_cast<void>(audio->play_named_one_shot("turret_aim_stop", position));
+            } else if (state.loop != audio::invalid_loop_voice) {
+                audio->update_weapon_loop(state.loop, position);
+            }
+        }
+        for (auto iterator = turret_aim_audio.begin(); iterator != turret_aim_audio.end();) {
+            if (iterator->second.seen) {
+                ++iterator;
+                continue;
+            }
+            // RocketTurret.on_delete closes the loop without a stop cue.
+            if (iterator->second.loop != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(iterator->second.loop);
+            }
+            iterator = turret_aim_audio.erase(iterator);
+        }
+    }
+
+    void stop_all_turret_aim_audio() {
+        if (audio_started) {
+            for (auto& [id, state] : turret_aim_audio) {
+                static_cast<void>(id);
+                if (state.loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.loop);
+                }
+            }
+        }
+        turret_aim_audio.clear();
+    }
+
+    /**
+     * AirStrikeEntity (gameScene.pyd): update keeps the positional
+     * `airstrike_drop` whistle looping on the falling shell; on_delete closes
+     * it and plays AIRSTRIKE_EXPLODE[_WATER]_SOUND client-locally at the
+     * shell. The server sends no sound for either.
+     */
+    void advance_airstrike_audio() {
+        if (!audio_started || tutorial_session == nullptr) {
+            stop_all_airstrike_audio();
+            return;
+        }
+        for (auto& [id, state] : airstrike_audio) {
+            static_cast<void>(id);
+            state.seen = false;
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (!entity.alive || entity.type != 17U) {
+                continue;
+            }
+            auto& state = airstrike_audio[entity.id];
+            state.seen = true;
+            state.position = {static_cast<float>(entity.position.x),
+                              static_cast<float>(entity.position.y),
+                              static_cast<float>(entity.position.z)};
+            if (state.whistle == audio::invalid_loop_voice && !state.started) {
+                state.started = true;
+                state.whistle = audio->start_named_voice_loop("airstrike_drop", state.position);
+            } else if (state.whistle != audio::invalid_loop_voice) {
+                audio->update_weapon_loop(state.whistle, state.position);
+            }
+        }
+        for (auto iterator = airstrike_audio.begin(); iterator != airstrike_audio.end();) {
+            if (iterator->second.seen) {
+                ++iterator;
+                continue;
+            }
+            auto& state = iterator->second;
+            if (state.whistle != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(state.whistle);
+            }
+            const bool submerged =
+                state.position.z >= static_cast<float>(world::VxlMap::height) - 1.0F;
+            // Airstrike.delete: play_pitched(..., volume=1.0) with the cue's
+            // +-0.8 semitones; retail applies no extra gain (IDA 2026-09-29).
+            static_cast<void>(play_retail_cue(audio::airstrike_explode_cue(submerged),
+                                              state.position,
+                                              false,
+                                              static_cast<std::uint32_t>(iterator->first),
+                                              audio::airstrike_explosion_volume));
+            iterator = airstrike_audio.erase(iterator);
+        }
+    }
+
+    void stop_all_airstrike_audio() {
+        if (audio_started) {
+            for (auto& [id, state] : airstrike_audio) {
+                static_cast<void>(id);
+                if (state.whistle != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.whistle);
+                }
+            }
+        }
+        airstrike_audio.clear();
+    }
+
+    void stop_all_rocket_audio() {
+        if (audio_started) {
+            for (auto& [key, state] : rocket_audio) {
+                static_cast<void>(key);
+                if (state.flight != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.flight);
+                }
+            }
+        }
+        rocket_audio.clear();
+    }
+
     /** Stops one observer fire loop and optionally lands its retail tail. */
     void stop_remote_fire_loop(std::uint8_t player_id,
                                audio::SoundPosition position,
@@ -4599,36 +5703,40 @@ struct NativeFrontendModule::Impl final {
         refresh_server_ambient_positions(listener);
     }
 
-    /** Resolve one OpenAL source against the current authoritative VXL. */
-    [[nodiscard]] float spatial_sound_gain(audio::SoundPosition listener,
-                                           audio::SoundPosition source) const noexcept {
-        if (tutorial_session == nullptr) {
-            return 1.0F;
+    /**
+     * GameScene.update_audio_effects (gameScene 0x101446f0), run once per
+     * fixed update from the listener eye: 5 ceiling + 8 wall `world.hitscan`
+     * probes pick the room targets, smoothed at 0.03 per update into the EFX
+     * reverb and the ambience ducking. Retail has no other audio raycast.
+     */
+    void update_environment_audio(audio::SoundPosition listener) {
+        if (!audio_started || audio == nullptr || tutorial_session == nullptr) {
+            return;
         }
-        const float delta_x = source.x - listener.x;
-        const float delta_y = source.y - listener.y;
-        const float delta_z = source.z - listener.z;
-        // Retail's in-world zone hard-culls at 50 blocks. Avoid traversing the
-        // VXL for a source OpenAL will make inaudible anyway.
-        constexpr float hearing_distance{50.0F};
-        if (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z >=
-            hearing_distance * hearing_distance) {
-            return 0.0F;
-        }
-        return world::raycast_acoustic_path(
-                   tutorial_session->map(),
-                   {listener.x, listener.y, listener.z},
-                   {source.x, source.y, source.z})
-            .transmission;
-    }
-
-    [[nodiscard]] static float spatial_sound_gain_callback(
-        void* context,
-        audio::SoundPosition listener,
-        audio::SoundPosition source) noexcept {
-        return context != nullptr
-                   ? static_cast<Impl*>(context)->spatial_sound_gain(listener, source)
-                   : 1.0F;
+        const auto& map = tutorial_session->map();
+        const std::array<float, 3U> origin{listener.x, listener.y, listener.z};
+        const auto targets = audio::probe_retail_reverb(
+            [&](const std::array<float, 3U>& direction) -> std::optional<float> {
+                const float length = std::sqrt(direction[0U] * direction[0U] +
+                                               direction[1U] * direction[1U] +
+                                               direction[2U] * direction[2U]);
+                // World.hitscan's default length is 512 blocks.
+                const auto hit = world::trace_first_solid(
+                    map,
+                    origin,
+                    {direction[0U] / length, direction[1U] / length, direction[2U] / length},
+                    512.0F);
+                if (!hit.has_value()) {
+                    return std::nullopt;
+                }
+                // distance_vector_3d(position, hit_cell): the hit is a cell.
+                const float x = static_cast<float>(hit->cell.x) - origin[0U];
+                const float y = static_cast<float>(hit->cell.y) - origin[1U];
+                const float z = static_cast<float>(hit->cell.z) - origin[2U];
+                return std::sqrt(x * x + y * y + z * z);
+            });
+        environment_audio = audio::step_environment_audio(environment_audio, targets);
+        audio->apply_environment_audio(environment_audio);
     }
 
     void remember_predicted_terrain_hit(std::uint8_t player_id,
@@ -4670,15 +5778,311 @@ struct NativeFrontendModule::Impl final {
                                   std::int32_t shot_world_loop,
                                   std::array<float, 3U> origin,
                                   std::array<float, 3U> orientation,
-                                  bool zoomed) {
+                                  bool zoomed,
+                                  std::optional<double> hip_accuracy = std::nullopt,
+                                  std::optional<std::array<float, 3U>> tracer_muzzle =
+                                      std::nullopt) {
         if (tutorial_session == nullptr) {
             return;
         }
-        for (const auto& impact : world::replicated_hitscan_impacts(
-                 tutorial_session->map(), origin, orientation, tool_id, seed, zoomed)) {
+        const auto impacts = world::replicated_hitscan_impacts(
+            tutorial_session->map(), origin, orientation, tool_id, seed, zoomed, hip_accuracy);
+        for (const auto& impact : impacts) {
             terrain_effects.spawn_impact(impact);
             remember_predicted_terrain_hit(player_id, impact.cell, shot_world_loop);
         }
+        const auto* shot_weapon = world::find_weapon_definition(tool_id);
+        if (tracer_muzzle.has_value() && shot_weapon != nullptr) {
+            // Character.shoot (character.pyd 0x10049DB0) creates one Tracer
+            // per pellet, ttl = min(range / WEAPON_TRACER_SPEED, 0.5) after
+            // the 16-block prestep; Tracer.update deletes it at the first
+            // hitscan contact or when the ttl runs out (never past 100
+            // blocks of flight).
+            const float reach =
+                world::retail_tracer_prestep +
+                world::retail_tracer_ttl(shot_weapon->maximum_range) * world::weapon_tracer_speed;
+            for (const auto& pellet : world::replicated_hitscan_pellets(
+                     tutorial_session->map(), origin, orientation, tool_id, seed, zoomed,
+                     hip_accuracy)) {
+                std::array<float, 3U> target{};
+                float distance{reach};
+                if (pellet.contact.has_value()) {
+                    float squared{};
+                    for (std::size_t axis{}; axis < 3U; ++axis) {
+                        const float delta = (*pellet.contact)[axis] - origin[axis];
+                        squared += delta * delta;
+                    }
+                    distance = std::min(reach, std::sqrt(squared));
+                }
+                for (std::size_t axis{}; axis < 3U; ++axis) {
+                    target[axis] = origin[axis] + pellet.direction[axis] * distance;
+                }
+                // Retail: Tracer(prestep=16) from the shooter's eye.
+                // Enhanced: out of the gun's muzzle towards the contact.
+                if (const auto launch = world::plan_tracer_launch(
+                        retail_look_active(), origin, pellet.direction, tracer_muzzle, target);
+                    launch.has_value()) {
+                    spawn_tracer(tool_id, launch->start, launch->end);
+                }
+            }
+        }
+    }
+
+    /** Effect mesh by kv6 asset path, uploaded once into the effect slot band. */
+    [[nodiscard]] std::optional<std::uint32_t> effect_model_slot(std::string_view asset) {
+        const std::string key{asset};
+        if (const auto found = effect_model_slots.find(key); found != effect_model_slots.end()) {
+            return found->second;
+        }
+        std::optional<std::uint32_t> slot;
+        if (world_renderer.is_initialized() &&
+            next_effect_model_slot < render::WorldRenderer::effect_model_slot_base +
+                                         render::WorldRenderer::effect_model_slot_count) {
+            std::string error;
+            const auto model = load_runtime_model(config.asset_root / key, &error);
+            if (model.has_value() &&
+                world_renderer.set_world_model_mesh(next_effect_model_slot, model->mesh())) {
+                slot = next_effect_model_slot++;
+            }
+        }
+        effect_model_slots.emplace(key, slot);
+        return slot;
+    }
+
+    /**
+     * The local first-person muzzle in world space: the barrel mouth of the
+     * drawn view model (local_view_muzzle_point) carried through the camera
+     * basis. The view-model pass shares the world projection, so this point
+     * lands on the gun's muzzle on screen. Falls back to the old point just
+     * ahead of the eye before any view model has been drawn.
+     */
+    [[nodiscard]] std::array<float, 3U> local_muzzle_point() const {
+        if (tutorial_session == nullptr) {
+            return {};
+        }
+        const auto eye = tutorial_session->eye_position();
+        if (local_view_muzzle_point.has_value()) {
+            const auto basis =
+                render::world_camera_basis(tutorial_session->yaw(), tutorial_session->pitch());
+            const auto& view = *local_view_muzzle_point;
+            std::array<float, 3U> world{};
+            for (std::size_t axis{}; axis < 3U; ++axis) {
+                world[axis] = static_cast<float>(eye[axis] + basis.right[axis] * view[0U] +
+                                                 basis.up[axis] * view[1U] -
+                                                 basis.forward[axis] * view[2U]);
+            }
+            return world;
+        }
+        const auto& player = tutorial_session->player();
+        return {static_cast<float>(eye[0U] + player.orientation.x * 0.72),
+                static_cast<float>(eye[1U] + player.orientation.y * 0.72),
+                static_cast<float>(eye[2U] + player.orientation.z * 0.72)};
+    }
+
+    /**
+     * Pick the part whose barrel mouth sits furthest ahead of the eye (the
+     * minigun's barrel, not its body) and remember it as the local muzzle.
+     */
+    [[nodiscard]] std::optional<ViewMuzzleAnchor>
+    record_view_muzzle_anchor(std::span<const ViewMuzzleAnchor> candidates) {
+        std::optional<ViewMuzzleAnchor> best;
+        float best_depth{};
+        for (const auto& candidate : candidates) {
+            const auto point = mat_transform_point(candidate.part, candidate.tip);
+            if (!best.has_value() || point[2U] < best_depth) {
+                best = candidate;
+                best_depth = point[2U];
+            }
+        }
+        if (best.has_value()) {
+            local_view_muzzle_point = mat_transform_point(best->part, best->tip);
+        }
+        return best;
+    }
+
+    /** ADS: the sight replaces the gun, so the muzzle is retail's aimed flash spot. */
+    void record_zoomed_view_muzzle(std::uint8_t tool_id) {
+        std::array<float, 3U> point{0.0F, -0.1F, -1.5F};
+        if (const auto zoomed =
+                world::evaluate_retail_view_muzzle_flash(tool_id, true, {}, 0.0);
+            zoomed.has_value() && zoomed->position.z >= 0.5) {
+            // R_y(180): x and z flip sign.
+            point = {static_cast<float>(-zoomed->position.x),
+                     static_cast<float>(zoomed->position.y),
+                     static_cast<float>(-zoomed->position.z)};
+        }
+        local_view_muzzle_point = point;
+    }
+
+    void spawn_tracer(std::uint8_t tool_id,
+                      std::array<float, 3U> muzzle,
+                      std::array<float, 3U> target) {
+        const auto* weapon = world::find_weapon_definition(tool_id);
+        if (weapon == nullptr || weapon->tracer_model_asset.empty()) {
+            return;
+        }
+        constexpr std::size_t maximum_tracers{96U};
+        if (tracers.size() >= maximum_tracers) {
+            tracers.erase(tracers.begin());
+        }
+        if (auto tracer = world::make_tracer(muzzle, target, tool_id); tracer.has_value()) {
+            tracers.push_back(*tracer);
+        }
+    }
+
+    /** Third-person muzzleflash_default.kv6 at the recovered attachment. */
+    void spawn_remote_muzzle_flash(const network::RemotePlayerReplica& shooter,
+                                   std::uint8_t tool_id,
+                                   std::uint32_t seed) {
+        const auto attachment = world::retail_third_person_muzzle_attachment(tool_id);
+        const auto held = remote_held_weapon_matrix(shooter, tool_id);
+        if (!attachment.has_value() || !held.has_value()) {
+            return;
+        }
+        // Weapon.draw: offset = muzzle_flash_offset, size = weapon size *
+        // muzzle_flash_scale, same matrix as the weapon, extra roll random.
+        const auto offset = world::retail_display_vector(attachment->offset);
+        auto transform = mat_rotate_z(world::muzzle_flash_roll_degrees(seed));
+        transform = mat_mul(transform, mat_translate(static_cast<float>(offset.x),
+                                                     static_cast<float>(offset.y),
+                                                     static_cast<float>(offset.z)));
+        transform = mat_mul(transform, mat_scale(static_cast<float>(attachment->scale)));
+        transform = mat_mul(transform, *held);
+        push_muzzle_flash(transform, tool_id);
+    }
+
+    /** Weapon.shot_weapon for the local weapon (tools with a view flash only). */
+    void arm_local_view_muzzle_flash(std::uint8_t tool_id, std::uint32_t seed) {
+        const auto flash = world::retail_view_muzzle_flash(tool_id);
+        if (!flash.has_value()) {
+            return;
+        }
+        ++local_view_muzzle_flash_serial;
+        local_view_muzzle_flash = LocalViewMuzzleFlash{
+            tool_id, static_cast<float>(flash->duration),
+            world::muzzle_flash_roll_degrees(seed ^ (local_view_muzzle_flash_serial * 2654435761U))};
+    }
+
+    /** The viewmodel slot that holds muzzleflash_default.kv6 (last slot). */
+    static constexpr std::uint32_t view_model_slot_muzzle_flash{
+        render::WorldRenderer::view_model_slot_count - 1U};
+
+    /**
+     * Weapon.draw_fps / Weapon.draw_sight -> draw_muzzle for the held tool.
+     * Appended after the tool parts, as retail draws it last with depth test.
+     */
+    void append_local_view_muzzle_flash(std::vector<render::ViewModelDraw>& draws,
+                                        std::uint8_t tool_id, bool zoomed,
+                                        world::ViewModelVector sway,
+                                        const std::optional<ViewMuzzleAnchor>& anchor = {}) {
+        if (!local_view_muzzle_flash.has_value() || local_view_muzzle_flash->tool_id != tool_id ||
+            local_view_muzzle_flash->remaining <= 0.0F) {
+            return;
+        }
+        const auto pose = world::evaluate_retail_view_muzzle_flash(
+            tool_id, zoomed, sway, local_view_muzzle_flash->roll_degrees);
+        if (!pose.has_value()) {
+            return;
+        }
+        if (!world_renderer.view_model_mesh_resident(view_model_slot_muzzle_flash)) {
+            if (!view_muzzle_flash_mesh_attempted) {
+                view_muzzle_flash_mesh_attempted = true;
+                std::string error;
+                if (auto model = load_runtime_model(
+                        config.asset_root / std::string{world::muzzle_flash_model_asset}, &error);
+                    model.has_value()) {
+                    view_muzzle_flash_mesh = model->mesh();
+                }
+            }
+            if (!view_muzzle_flash_mesh.has_value() ||
+                !world_renderer.set_view_model_mesh(view_model_slot_muzzle_flash,
+                                                    *view_muzzle_flash_mesh)) {
+                return;
+            }
+        }
+        Mat4 model = mat_scale(static_cast<float>(pose->model_scale));
+        model = mat_mul(model, mat_rotate_z(static_cast<float>(pose->roll_degrees)));
+        model = mat_mul(model, mat_translate(static_cast<float>(pose->position.x),
+                                             static_cast<float>(pose->position.y),
+                                             static_cast<float>(pose->position.z)));
+        model = mat_mul(model, mat_rotate_y(static_cast<float>(pose->yaw_degrees)));
+        const auto flash_data = world::retail_view_muzzle_flash(tool_id);
+        if (!zoomed && anchor.has_value() && flash_data.has_value() && !retail_look_active()) {
+            // Enhanced tiers: anchor the flash to the drawn barrel mouth in
+            // the part's own space, so it sits on the muzzle and follows the
+            // hold, recoil and barrel spin. Same size as retail (the part
+            // matrix already carries view_model_size). The Retail tier keeps
+            // retail's root-space muzzle_flash_view_offset above.
+            const auto centre =
+                world::anchored_view_muzzle_flash_centre(anchor->tip, flash_data->scale);
+            model = mat_scale(static_cast<float>(flash_data->scale));
+            model = mat_mul(model, mat_rotate_z(static_cast<float>(pose->roll_degrees)));
+            model = mat_mul(model, mat_translate(centre[0U], centre[1U], centre[2U]));
+            model = mat_mul(model, anchor->part);
+        }
+        render::ViewModelDraw draw{view_model_slot_muzzle_flash, model};
+        draw.unlit = true;
+        draws.push_back(draw);
+    }
+
+    void push_muzzle_flash(const std::array<float, 16U>& transform, std::uint8_t tool_id) {
+        constexpr std::size_t maximum_flashes{32U};
+        if (muzzle_flashes.size() >= maximum_flashes) {
+            muzzle_flashes.erase(muzzle_flashes.begin());
+        }
+        muzzle_flashes.push_back({transform, world::muzzle_flash_duration_for(tool_id)});
+    }
+
+    /** Tracers, muzzle flashes and crate parachutes for this frame. */
+    [[nodiscard]] std::vector<render::WorldModelDraw> retail_effect_model_draws() {
+        std::vector<render::WorldModelDraw> draws;
+        if (tutorial_session == nullptr) {
+            return draws;
+        }
+        for (const auto& tracer : tracers) {
+            const auto* weapon = world::find_weapon_definition(tracer.tool_id);
+            if (weapon == nullptr) {
+                continue;
+            }
+            const auto slot = effect_model_slot(weapon->tracer_model_asset);
+            if (!slot.has_value()) {
+                continue;
+            }
+            // projectile_presentation_transform applies retail's -0.5
+            // display offset; tracers are drawn at their true position.
+            const auto transform = world::projectile_presentation_transform(
+                {tracer.position[0U] + 0.5, tracer.position[1U] + 0.5, tracer.position[2U] + 0.5},
+                {tracer.direction[0U], tracer.direction[1U], tracer.direction[2U]},
+                0.0,
+                world::tracer_model_scale);
+            draws.push_back({*slot, transform});
+        }
+        if (!muzzle_flashes.empty()) {
+            if (const auto slot = effect_model_slot(world::muzzle_flash_model_asset);
+                slot.has_value()) {
+                for (const auto& flash : muzzle_flashes) {
+                    render::WorldModelDraw draw{*slot, flash.transform};
+                    // PASSTHROUGH_SHADER: the flash is unlit.
+                    draw.albedo_gain = 1.6F;
+                    draws.push_back(draw);
+                }
+            }
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (entity.type < 3U || entity.type > 6U || !entity.alive ||
+                !entity.crate_drop.parachute_deployed || entity.crate_drop.parachute_removed) {
+                continue;
+            }
+            const auto* definition = world::find_entity_definition(entity.type);
+            const auto slot = effect_model_slot(world::crate_parachute_model_asset);
+            if (definition == nullptr || !slot.has_value()) {
+                continue;
+            }
+            const auto transform = world::entity_presentation_transform(
+                entity, *definition, world::crate_parachute_part, 0.0);
+            draws.push_back({*slot, transform});
+        }
+        return draws;
     }
 
     /**
@@ -4689,15 +6093,14 @@ struct NativeFrontendModule::Impl final {
      * ShootFeedback through play_weapon_shoot therefore made SMGs, Tommy guns
      * and the automatic pistol completely silent to other clients.
      */
-    [[nodiscard]] audio::SoundPosition
-    remote_muzzle_position(const network::RemotePlayerReplica& shooter,
-                           std::uint8_t tool_id) const {
-        const auto fallback = remote_sound_position(shooter);
-        const auto attachment = world::retail_third_person_muzzle_attachment(tool_id);
+    /** The remote player's held-weapon display matrix, as Tool.apply_transform builds it. */
+    [[nodiscard]] std::optional<std::array<float, 16U>>
+    remote_held_weapon_matrix(const network::RemotePlayerReplica& shooter,
+                              std::uint8_t tool_id) const {
         const auto rig = remote_player_rigs.find(shooter.player_id);
-        if (!attachment.has_value() || rig == remote_player_rigs.end() ||
-            rig->second.tool_id != tool_id || rig->second.tool_part_count == 0U) {
-            return fallback;
+        if (rig == remote_player_rigs.end() || rig->second.tool_id != tool_id ||
+            rig->second.tool_part_count == 0U) {
+            return std::nullopt;
         }
 
         const auto& motion = rig->second.motion.sample();
@@ -4717,7 +6120,7 @@ struct NativeFrontendModule::Impl final {
             tool_id, rig->second.tool_part_count, elapsed,
             rig->second.action_serial, aim_pitch);
         if (pose.tool_part_count == 0U) {
-            return fallback;
+            return std::nullopt;
         }
 
         const auto& part = pose.tool_parts[0U];
@@ -4747,6 +6150,19 @@ struct NativeFrontendModule::Impl final {
                                      static_cast<float>(motion.position.z)));
         held = mat_mul(held, root);
 
+        return held;
+    }
+
+    [[nodiscard]] audio::SoundPosition
+    remote_muzzle_position(const network::RemotePlayerReplica& shooter,
+                           std::uint8_t tool_id) const {
+        const auto fallback = remote_sound_position(shooter);
+        const auto attachment = world::retail_third_person_muzzle_attachment(tool_id);
+        const auto held_matrix = remote_held_weapon_matrix(shooter, tool_id);
+        if (!attachment.has_value() || !held_matrix.has_value()) {
+            return fallback;
+        }
+        const auto& held = *held_matrix;
         auto local = world::retail_display_vector(attachment->offset);
         local.x *= attachment->scale;
         local.y *= attachment->scale;
@@ -4774,14 +6190,19 @@ struct NativeFrontendModule::Impl final {
         const auto direction = std::array<float, 3U>{static_cast<float>(shooter.orientation.x),
                                                      static_cast<float>(shooter.orientation.y),
                                                      static_cast<float>(shooter.orientation.z)};
-        world::emit_weapon_muzzle(particles,
-                                  {muzzle.x, muzzle.y, muzzle.z},
-                                  direction,
-                                  static_cast<std::uint32_t>(feedback.seed) ^
-                                      (static_cast<std::uint32_t>(feedback.shooter_id) << 16U) ^
-                                      static_cast<std::uint32_t>(latest_world_loop));
-        terrain_effects.spawn_weapon_flash({muzzle.x, muzzle.y, muzzle.z},
-                                           feedback.tool_id);
+        const auto flash_seed = static_cast<std::uint32_t>(feedback.seed) ^
+                                (static_cast<std::uint32_t>(feedback.shooter_id) << 16U) ^
+                                static_cast<std::uint32_t>(latest_world_loop);
+        // Weapon.draw: the retail flash is muzzleflash_default.kv6 for
+        // muzzle_flash_duration. The sprite burst and light are enhanced-tier
+        // extras only.
+        spawn_remote_muzzle_flash(shooter, feedback.tool_id, flash_seed);
+        if (!retail_look_active()) {
+            world::emit_weapon_muzzle(particles, {muzzle.x, muzzle.y, muzzle.z}, direction,
+                                      flash_seed);
+            terrain_effects.spawn_weapon_flash({muzzle.x, muzzle.y, muzzle.z},
+                                               feedback.tool_id);
+        }
         present_hitscan_contacts(
             feedback.shooter_id,
             feedback.tool_id,
@@ -4791,7 +6212,13 @@ struct NativeFrontendModule::Impl final {
              static_cast<float>(shooter.position.y),
              static_cast<float>(shooter.position.z)},
             direction,
-            network::world_player_zoomed(shooter.action_flags));
+            network::world_player_zoomed(shooter.action_flags),
+            world::observe_hitscan_bloom(
+                remote_shot_bloom[feedback.shooter_id], feedback.tool_id,
+                std::chrono::duration<double>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count()),
+            std::array<float, 3U>{muzzle.x, muzzle.y, muzzle.z});
 
         if (!audio_started || feedback.shooter_id >= remote_fire_loops.size()) {
             return;
@@ -5046,11 +6473,11 @@ struct NativeFrontendModule::Impl final {
         const auto stem = world::choose_voice_line(
             set->bank(voice), force ? 0U : voice_rng(), voice_rng(), state);
         if (!stem.empty()) {
-            // Louder than foley: a voice line is meant to carry.
+            // play_vo -> Character.play_sound at volume 1.0 (IN_WORLD).
             static_cast<void>(
                 audio->play_named_one_shot(stem,
                                            position,
-                                           0.9F,
+                                           audio::retail_character_sound_volume,
                                            head_relative,
                                            0.0F,
                                            0.15F,
@@ -5104,22 +6531,34 @@ struct NativeFrontendModule::Impl final {
                                  std::uint32_t& variant_counter) {
         using audio::OpenAlFrontendAudio;
         const auto variants = world::movement_sound_variants(sound);
-        // Rotate rather than randomise: four samples cycling is enough to break
-        // the repetition, and a counter cannot accidentally repeat one twice.
-        const auto pick = variants > 1U ? (variant_counter++ % variants) : 0U;
+        // MediaManager.get_sound_name: a random member that is never the one
+        // played last. `variant_counter` holds the last pick (+1; 0 = none).
+        const std::uint32_t last = variant_counter == 0U ? variants : variant_counter - 1U;
+        const auto pick = variants > 1U
+                              ? audio::pick_non_repeating_variant(
+                                    static_cast<std::uint32_t>(variants), last, voice_rng())
+                              : 0U;
+        variant_counter = pick + 1U;
         const bool uses_named_class_foley = class_id == 4U || class_id == 14U ||
                                              class_id == 15U ||
                                              sound == world::MovementSound::jetpack_land;
-        const float movement_gain = sound == world::MovementSound::wade ||
-                                            sound == world::MovementSound::water_jump ||
-                                            sound == world::MovementSound::water_land
-                                        ? 0.78F
-                                        : 0.52F;
+        // Character.play_sound default volume 1.0; the cue rows carry the
+        // pitch (+-1.5 steps/wading, +-0.8 jump/land/fall-hurt). The jetpack
+        // landing cue is a plain string row and stays unpitched.
+        const float movement_gain = audio::retail_character_sound_volume;
+        const auto bounds = sound == world::MovementSound::footstep ||
+                                    sound == world::MovementSound::wade
+                                ? audio::retail_footstep_pitch
+                            : sound == world::MovementSound::jetpack_land
+                                ? audio::PitchBounds{}
+                                : audio::retail_movement_impact_pitch;
+        const float pitch = audio::retail_sound_pitch_ratio(bounds.minimum, bounds.maximum,
+                                                            voice_rng());
         if (uses_named_class_foley) {
             const auto stem = world::class_movement_sound_stem(class_id, sound, pick);
             if (stem[0] != '\0') {
-                static_cast<void>(
-                    audio->play_named_one_shot(stem, position, movement_gain, false));
+                static_cast<void>(audio->play_named_one_shot(
+                    stem, position, movement_gain, false, 0.0F, 0.15F, false, pitch));
             }
             return;
         }
@@ -5151,9 +6590,7 @@ struct NativeFrontendModule::Impl final {
         case world::MovementSound::none:
             return;
         }
-        // Quieter than gunfire on purpose: these fire twice a second while
-        // moving, so at parity gain they would dominate the mix.
-        audio->play_one_shot(handle, position, movement_gain);
+        audio->play_pitched_one_shot(handle, position, movement_gain, pitch);
     }
 
     void play_movement_sound(world::MovementSound sound, audio::SoundPosition position) {
@@ -5306,7 +6743,7 @@ struct NativeFrontendModule::Impl final {
              static_cast<float>(local.velocity.z)},
             static_cast<std::uint32_t>(local_player_id.value_or(127U)) << 24U);
 
-        for (const auto& player : tutorial_roster.players()) {
+        for (const auto& player : tutorial_roster.present_players()) {
             if (local_player_id == player.player_id ||
                 player.player_id >= remote_character_audio.size()) {
                 continue;
@@ -5326,6 +6763,704 @@ struct NativeFrontendModule::Impl final {
                  static_cast<float>(player.velocity.z)},
                 (static_cast<std::uint32_t>(player.player_id) << 24U) ^
                     player.generation);
+        }
+    }
+
+    /**
+     * Per-character equipment loops every client hears (2D for the local
+     * player, positioned for everyone else, as Character.play_sound does):
+     *
+     * - Player.set_parachute_active (player.pyd 0x1000ce00): PARACHUTE_open
+     *   on the deploy edge, PARACHUTE_close on the release edge;
+     *   Character.update_parachute_sound keeps PARACHUTE_loop running while
+     *   the canopy is out.
+     * - Character.update_bomb_sound (character.pyd 0x1003ae80): bomb_fuse_lp
+     *   loops while the character holds BOMB_TOOL (25).
+     */
+    void advance_character_equipment_audio() {
+        if (!audio_started || tutorial_session == nullptr) {
+            stop_all_character_equipment_audio();
+            return;
+        }
+        const auto update = [this](CharacterEquipmentAudio& state,
+                                   bool alive,
+                                   bool parachute_active,
+                                   bool holding_bomb,
+                                   audio::SoundPosition position,
+                                   bool local) {
+            state.seen = true;
+            const auto cue_position = local ? audio::SoundPosition{} : position;
+            parachute_active = alive && parachute_active;
+            if (parachute_active != state.parachute_active) {
+                state.parachute_active = parachute_active;
+                static_cast<void>(audio->play_named_one_shot(
+                    parachute_active ? "AoS_soundfx_PLAYER_commando_item_PARACHUTE_open_001"
+                                     : "AoS_soundfx_PLAYER_commando_item_PARACHUTE_close_001",
+                    cue_position,
+                    1.0F,
+                    local));
+            }
+            const auto hold_loop = [&](audio::LoopVoice& voice, bool wanted, std::string_view stem) {
+                if (!wanted) {
+                    if (voice != audio::invalid_loop_voice) {
+                        audio->stop_weapon_loop(voice);
+                        voice = audio::invalid_loop_voice;
+                    }
+                    return;
+                }
+                if (voice == audio::invalid_loop_voice) {
+                    voice = audio->start_named_voice_loop(stem, cue_position, 1.0F, local);
+                } else if (!local) {
+                    audio->update_weapon_loop(voice, position);
+                }
+            };
+            hold_loop(state.parachute_loop,
+                      parachute_active,
+                      "AoS_soundfx_PLAYER_commando_item_PARACHUTE_loop_001");
+            hold_loop(state.bomb_fuse_loop, alive && holding_bomb, "bomb_fuse_lp");
+        };
+        for (auto& state : character_equipment_audio) {
+            state.seen = false;
+        }
+        if (local_player_id.has_value() && *local_player_id < character_equipment_audio.size()) {
+            const auto& local = tutorial_session->player();
+            update(character_equipment_audio[*local_player_id],
+                   tutorial_session->alive(),
+                   local.parachute_active,
+                   tutorial_session->selected_tool_id() == std::optional<std::uint8_t>{25U},
+                   {},
+                   true);
+        }
+        for (const auto& player : tutorial_roster.present_players()) {
+            if (local_player_id == player.player_id ||
+                player.player_id >= character_equipment_audio.size()) {
+                continue;
+            }
+            update(character_equipment_audio[player.player_id],
+                   !player.dead,
+                   (player.state_flags & 0x01U) != 0U,
+                   player.tool_id == 25U,
+                   remote_sound_position(player),
+                   false);
+        }
+        for (auto& state : character_equipment_audio) {
+            if (!state.seen) {
+                // PlayerLeft / roster removal: close loops without cues.
+                if (state.parachute_loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.parachute_loop);
+                }
+                if (state.bomb_fuse_loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.bomb_fuse_loop);
+                }
+                state = {};
+            }
+        }
+    }
+
+    /**
+     * Character.update_sounds L1218-1227 (main character only): the 2D
+     * medi_pack_healing cue starts with a heal and is cut once no heal has
+     * arrived for a second.
+     */
+    void advance_medpack_heal_audio(double dt) {
+        if (medpack_heal_timer > 0.0) {
+            medpack_heal_timer -= dt;
+            if (medpack_heal_voice == audio::invalid_loop_voice && audio_started) {
+                medpack_heal_voice = audio->start_named_voice_loop(
+                    "AoS_soundfx_PLAYER_medic_item_medi_pack_healing_001", {}, 1.0F, true);
+            }
+        }
+        if (medpack_heal_timer <= 0.0 && medpack_heal_voice != audio::invalid_loop_voice) {
+            if (audio_started) {
+                audio->stop_weapon_loop(medpack_heal_voice);
+            }
+            medpack_heal_voice = audio::invalid_loop_voice;
+        }
+    }
+
+    /**
+     * Client-local world-entity cues every client plays for itself:
+     *
+     * - RadarStationEntity.update (0x100ee1d0): RADAR_ping loops at the radar.
+     * - Crate.update (0x1009ec90): cratedrop_freefall while an airdropped
+     *   crate falls, cratedrop_chuteopen (volume 4) once it is within
+     *   CRATE_PARACHUTE_DEPLOYMENT_HEIGHT (10) of the ground, and
+     *   cratedrop_land when it lands fast enough.
+     * - BombPickup.update (0x100cfea0): an armed ground bomb loops
+     *   bomb_fuse_lp and plays bomb_tick, accelerating under 2 s.
+     * - AttachedStickyGrenadeEntity.update: the attach cue once on sticking.
+     */
+    void advance_world_entity_audio(double dt) {
+        if (!audio_started || tutorial_session == nullptr) {
+            stop_all_world_entity_audio();
+            return;
+        }
+        const auto to_sound = [](const world::Vec3& value) {
+            return audio::SoundPosition{static_cast<float>(value.x),
+                                        static_cast<float>(value.y),
+                                        static_cast<float>(value.z)};
+        };
+        const auto& map = tutorial_session->map();
+        const auto ground_distance = [&map](const world::Vec3& position) {
+            if (position.x < 0.0 || position.y < 0.0 ||
+                position.x >= static_cast<double>(world::VxlMap::width) ||
+                position.y >= static_cast<double>(world::VxlMap::depth)) {
+                return std::numeric_limits<double>::infinity();
+            }
+            const auto x = static_cast<std::uint32_t>(position.x);
+            const auto y = static_cast<std::uint32_t>(position.y);
+            const auto start = static_cast<std::uint32_t>(
+                std::clamp(std::floor(position.z) + 1.0,
+                           0.0,
+                           static_cast<double>(world::VxlMap::height)));
+            for (auto z = start; z < world::VxlMap::height; ++z) {
+                if (map.solid(x, y, z)) {
+                    return static_cast<double>(z) - position.z;
+                }
+            }
+            return std::numeric_limits<double>::infinity();
+        };
+        for (auto& [id, state] : entity_presence_audio) {
+            static_cast<void>(id);
+            state.seen = false;
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (!entity.alive) {
+                continue;
+            }
+            const auto position = to_sound(entity.position);
+            if (entity.type == 36U) {
+                auto& state = entity_presence_audio[entity.id];
+                state.seen = true;
+                if (state.loop == audio::invalid_loop_voice) {
+                    state.loop = audio->start_named_voice_loop(
+                        "AoS_soundfx_PLAYER_marksman_item_RADAR_ping_001", position, 0.75F);
+                } else {
+                    audio->update_weapon_loop(state.loop, position, 1.0F, 0.75F);
+                }
+            } else if (entity.type >= 3U && entity.type <= 6U) {
+                auto& state = entity_presence_audio[entity.id];
+                state.seen = true;
+                if (state.landed) {
+                    continue;
+                }
+                const bool falling = !entity.grounded && entity.velocity.z > 0.1;
+                if (falling) {
+                    state.fall_speed = entity.velocity.z;
+                    if (state.loop == audio::invalid_loop_voice) {
+                        state.loop =
+                            audio->start_named_voice_loop("cratedrop_freefall", position, 0.75F);
+                    } else {
+                        audio->update_weapon_loop(state.loop, position, 1.0F, 0.75F);
+                    }
+                    if (!state.chute_open && ground_distance(entity.position) < 10.0) {
+                        state.chute_open = true;
+                        static_cast<void>(
+                            audio->play_named_one_shot("cratedrop_chuteopen", position, 4.0F));
+                    }
+                } else if (state.loop != audio::invalid_loop_voice) {
+                    // Landed: close the fall cue; a fast touchdown lands
+                    // audibly. landing_sound_threshold is not recovered;
+                    // 1 block/s separates a chute landing (2 blocks/s) from
+                    // a settle (inferred).
+                    state.landed = true;
+                    audio->stop_weapon_loop(state.loop);
+                    state.loop = audio::invalid_loop_voice;
+                    if (state.fall_speed > 1.0) {
+                        static_cast<void>(
+                            audio->play_named_one_shot("cratedrop_land", position, 0.75F));
+                    }
+                }
+            } else if (entity.type == 14U) {
+                const auto found = ground_bomb_fuses.find(entity.id);
+                if (found == ground_bomb_fuses.end()) {
+                    continue;
+                }
+                auto& bomb = found->second;
+                if (bomb.fuse <= 0.0F) {
+                    continue;
+                }
+                bomb.fuse = std::max(0.0F, bomb.fuse - static_cast<float>(dt));
+                if (bomb.fuse_loop == audio::invalid_loop_voice) {
+                    bomb.fuse_loop = audio->start_named_voice_loop("bomb_fuse_lp", position);
+                } else {
+                    audio->update_weapon_loop(bomb.fuse_loop, position);
+                }
+                bomb.tick_timer -= dt;
+                if (bomb.tick_timer <= 0.0) {
+                    static_cast<void>(audio->play_named_one_shot("bomb_tick", position));
+                    // Re-arm: 0.5 s until the last two seconds, then faster
+                    // (ceil(fuse) / 10 + 0.2; approximate recovery).
+                    bomb.tick_timer =
+                        bomb.fuse >= 2.0F
+                            ? 0.5
+                            : std::ceil(static_cast<double>(bomb.fuse)) / 10.0 + 0.2;
+                }
+            }
+        }
+        for (auto iterator = entity_presence_audio.begin();
+             iterator != entity_presence_audio.end();) {
+            if (iterator->second.seen) {
+                ++iterator;
+                continue;
+            }
+            if (iterator->second.loop != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(iterator->second.loop);
+            }
+            iterator = entity_presence_audio.erase(iterator);
+        }
+        for (auto iterator = ground_bomb_fuses.begin(); iterator != ground_bomb_fuses.end();) {
+            const auto id = iterator->first;
+            const bool alive = std::ranges::any_of(
+                tutorial_session->entities(), [id](const world::LocalEntity& entity) {
+                    return entity.alive && entity.id == id && entity.type == 14U;
+                });
+            if (alive) {
+                ++iterator;
+                continue;
+            }
+            // BombPickup.delete closes the fuse loop.
+            if (iterator->second.fuse_loop != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(iterator->second.fuse_loop);
+            }
+            iterator = ground_bomb_fuses.erase(iterator);
+        }
+        std::set<std::uint64_t> live_sticky;
+        for (const auto& projectile : tutorial_session->projectiles()) {
+            if (projectile.behavior != world::TutorialProjectileBehavior::stick ||
+                !projectile.stuck) {
+                continue;
+            }
+            live_sticky.insert(projectile.id);
+            if (sticky_attach_played.insert(projectile.id).second) {
+                const bool submerged =
+                    projectile.position.z >= static_cast<double>(world::VxlMap::height) - 2.0;
+                const audio::RetailCue attach{
+                    submerged
+                        ? "AoS_soundfx_PLAYER_specialist_wpn_sticky_grenade_attach_water_001-003"
+                        : "AoS_soundfx_PLAYER_specialist_wpn_sticky_grenade_attach_001-005",
+                    {0.0F, 0.0F}};
+                static_cast<void>(play_retail_cue(attach,
+                                                  to_sound(projectile.position),
+                                                  false,
+                                                  static_cast<std::uint32_t>(projectile.id),
+                                                  0.75F));
+            }
+        }
+        std::erase_if(sticky_attach_played,
+                      [&live_sticky](std::uint64_t id) { return !live_sticky.contains(id); });
+    }
+
+    void stop_all_world_entity_audio() {
+        if (audio_started) {
+            for (auto& [id, state] : entity_presence_audio) {
+                static_cast<void>(id);
+                if (state.loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.loop);
+                }
+            }
+            for (auto& [id, bomb] : ground_bomb_fuses) {
+                static_cast<void>(id);
+                if (bomb.fuse_loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(bomb.fuse_loop);
+                }
+            }
+        }
+        entity_presence_audio.clear();
+        for (auto& [id, bomb] : ground_bomb_fuses) {
+            static_cast<void>(id);
+            bomb.fuse_loop = audio::invalid_loop_voice;
+        }
+        sticky_attach_played.clear();
+    }
+
+    void stop_all_character_equipment_audio() {
+        medpack_heal_timer = 0.0;
+        if (medpack_heal_voice != audio::invalid_loop_voice && audio_started) {
+            audio->stop_weapon_loop(medpack_heal_voice);
+        }
+        medpack_heal_voice = audio::invalid_loop_voice;
+        for (auto& state : character_equipment_audio) {
+            if (audio_started) {
+                if (state.parachute_loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.parachute_loop);
+                }
+                if (state.bomb_fuse_loop != audio::invalid_loop_voice) {
+                    audio->stop_weapon_loop(state.bomb_fuse_loop);
+                }
+            }
+            state = {};
+        }
+    }
+
+    /** Position a roster player is drawn at: the interpolated rig when present. */
+    [[nodiscard]] world::Vec3
+    presented_player_position(const network::RemotePlayerReplica& player) const {
+        if (tutorial_session != nullptr && local_player_id == player.player_id) {
+            return tutorial_session->player().position;
+        }
+        if (const auto rig = remote_player_rigs.find(player.player_id);
+            rig != remote_player_rigs.end()) {
+            return rig->second.motion.sample().position;
+        }
+        return player.position;
+    }
+
+    void stop_character_status(CharacterStatusPresentation& state) {
+        if (audio_started && audio != nullptr) {
+            if (state.fire_voice != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(state.fire_voice);
+            }
+            if (state.goo_voice != audio::invalid_loop_voice) {
+                audio->stop_weapon_loop(state.goo_voice);
+            }
+        }
+        state = {};
+    }
+
+    void stop_all_retail_status_effects() {
+        for (auto& state : character_status) {
+            stop_character_status(state);
+        }
+        if (audio_started && audio != nullptr) {
+            for (const auto& [entity_id, voice] : crate_freefall_loops) {
+                static_cast<void>(entity_id);
+                audio->stop_weapon_loop(voice);
+            }
+        }
+        crate_freefall_loops.clear();
+        surface_patch_smoke_due.clear();
+        projectile_smoke_clocks.clear();
+        tracers.clear();
+        muzzle_flashes.clear();
+        burn_indicator_remaining = 0.0;
+        sudden_death_indicator_remaining = 0.0;
+        game_hud.set_status_tints(std::nullopt, std::nullopt);
+    }
+
+    /**
+     * Retail status presentation advanced once per rendered frame:
+     *
+     * - SetHP burn / sudden-death screen indicators (1.2 s each);
+     * - Character.set_is_on_fire (WorldUpdate action 0x20): molotov_player_
+     *   ignite, the molotov_player_on_fire_lp loop and the burning-character
+     *   smoke (CHARACTER_MOLOTOV_SMOKE_*), ended by molotov_pl_on_fire_burnout
+     *   or molotov_pl_on_fire_water_stop when submerged;
+     * - Character.set_touching_goo (state 0x08): the chem_bomb_burn loop
+     *   (A2920), ended by chem_bomb_burn_end (A2921) or the water end (A2922);
+     * - BlockFire smoke (BLOCKFIRE_SMOKE_GENERATION_*), crate air-drop audio,
+     *   molotov/chemical in-flight smoke, tracers and the KV6 muzzle flash.
+     */
+    void advance_retail_status_effects(double dt) {
+        const double step = std::clamp(dt, 0.0, 0.1);
+        retail_effect_clock += step;
+        burn_indicator_remaining = std::max(0.0, burn_indicator_remaining - step);
+        sudden_death_indicator_remaining =
+            std::max(0.0, sudden_death_indicator_remaining - step);
+        {
+            const auto team = local_player_team_color();
+            const auto tints = world::status_tints(burn_indicator_remaining,
+                                                   sudden_death_indicator_remaining,
+                                                   {team.red, team.green, team.blue});
+            const auto rgba = [](const std::optional<world::StatusTint>& tint)
+                -> std::optional<ui::ColorRgba8> {
+                if (!tint.has_value()) return std::nullopt;
+                return ui::ColorRgba8{tint->color[0U], tint->color[1U], tint->color[2U],
+                                      tint->alpha};
+            };
+            game_hud.set_status_tints(rgba(tints.burn), rgba(tints.sudden_death));
+        }
+
+        for (auto iterator = tracers.begin(); iterator != tracers.end();) {
+            if (!world::advance_tracer(*iterator, static_cast<float>(step))) {
+                iterator = tracers.erase(iterator);
+            } else {
+                ++iterator;
+            }
+        }
+        for (auto iterator = muzzle_flashes.begin(); iterator != muzzle_flashes.end();) {
+            iterator->remaining -= static_cast<float>(step);
+            if (iterator->remaining <= 0.0F) {
+                iterator = muzzle_flashes.erase(iterator);
+            } else {
+                ++iterator;
+            }
+        }
+        // Weapon.update: muzzle_flash_timer -= dt; drawn while it stays > 0.
+        if (local_view_muzzle_flash.has_value()) {
+            local_view_muzzle_flash->remaining -= static_cast<float>(step);
+            if (local_view_muzzle_flash->remaining <= 0.0F) {
+                local_view_muzzle_flash.reset();
+            }
+        }
+
+        if (tutorial_session == nullptr) {
+            return;
+        }
+
+        // Character fire and goo.
+        std::array<bool, 128U> present{};
+        for (const auto& player : tutorial_roster.present_players()) {
+            if (player.player_id >= character_status.size()) {
+                continue;
+            }
+            present[player.player_id] = true;
+            auto& state = character_status[player.player_id];
+            const bool on_fire =
+                !player.dead && (player.action_flags & world::world_action_on_fire_bit) != 0U;
+            const bool touching_goo =
+                !player.dead && (player.state_flags & world::world_state_touching_goo_bit) != 0U;
+            const auto position = presented_player_position(player);
+            const bool local = local_player_id == player.player_id;
+            const audio::SoundPosition sound_position{static_cast<float>(position.x),
+                                                      static_cast<float>(position.y),
+                                                      static_cast<float>(position.z)};
+            const bool in_water = world::character_in_water(position);
+            const auto edges = world::character_status_edges(
+                state.on_fire, on_fire, state.touching_goo, touching_goo);
+            if (audio_started && audio != nullptr) {
+                if (edges.ignited) {
+                    static_cast<void>(audio->play_named_one_shot(
+                        "molotov_player_ignite", sound_position, 1.0F, local));
+                    if (state.fire_voice == audio::invalid_loop_voice) {
+                        state.fire_voice = audio->start_named_voice_loop(
+                            "molotov_player_on_fire_lp", sound_position, 0.8F, local);
+                    }
+                } else if (edges.extinguished) {
+                    if (state.fire_voice != audio::invalid_loop_voice) {
+                        audio->stop_weapon_loop(state.fire_voice);
+                        state.fire_voice = audio::invalid_loop_voice;
+                    }
+                    static_cast<void>(audio->play_named_one_shot(
+                        in_water ? "molotov_pl_on_fire_water_stop" : "molotov_pl_on_fire_burnout",
+                        sound_position, 1.0F, local));
+                } else if (on_fire && state.fire_voice != audio::invalid_loop_voice && !local) {
+                    audio->update_weapon_loop(state.fire_voice, sound_position, 1.0F, 0.8F);
+                }
+                if (edges.goo_started) {
+                    if (state.goo_voice == audio::invalid_loop_voice) {
+                        state.goo_voice = audio->start_named_voice_loop(
+                            "AoS_soundfx_PLAYER_specialist_wpn_chem_bomb_burn_loop_001",
+                            sound_position, 0.8F, local);
+                    }
+                } else if (edges.goo_ended) {
+                    if (state.goo_voice != audio::invalid_loop_voice) {
+                        audio->stop_weapon_loop(state.goo_voice);
+                        state.goo_voice = audio::invalid_loop_voice;
+                    }
+                    const auto stems = audio::sound_group_stems(
+                        in_water ? "AoS_soundfx_PLAYER_specialist_wpn_chem_bomb_burn_end_water_001-003"
+                                 : "AoS_soundfx_PLAYER_specialist_wpn_chem_bomb_burn_end_001");
+                    if (!stems.empty()) {
+                        const auto draw = static_cast<std::uint32_t>(
+                            retail_effect_clock * 1000.0) ^ player.player_id;
+                        static_cast<void>(audio->play_named_one_shot(
+                            stems[draw % stems.size()], sound_position, 1.0F, local));
+                    }
+                } else if (touching_goo && state.goo_voice != audio::invalid_loop_voice &&
+                           !local) {
+                    audio->update_weapon_loop(state.goo_voice, sound_position, 1.0F, 0.8F);
+                }
+            }
+            state.on_fire = on_fire;
+            state.touching_goo = touching_goo;
+            if (on_fire) {
+                state.smoke_clock += step;
+                std::uint32_t emitted{};
+                while (state.smoke_clock >= world::character_fire_smoke_period && emitted < 5U) {
+                    state.smoke_clock -= world::character_fire_smoke_period;
+                    ++emitted;
+                    // Rise from the burning body, a little below the eye.
+                    world::emit_lut_smoke(
+                        particles,
+                        {static_cast<float>(position.x), static_cast<float>(position.y),
+                         static_cast<float>(position.z) + 0.8F},
+                        world::character_fire_smoke,
+                        (static_cast<std::uint32_t>(player.player_id) << 24U) ^
+                            static_cast<std::uint32_t>(retail_effect_clock * 997.0) ^ emitted);
+                }
+                if (emitted == 5U) {
+                    state.smoke_clock = 0.0;
+                }
+            } else {
+                state.smoke_clock = 0.0;
+            }
+            // BombTool.update / create_fuse_fx: while the bomb is the held
+            // tool its fuse smokes at BOMB_SMOKE_GENERATION_RATE (25/s).
+            constexpr std::uint8_t bomb_tool_id{25U};
+            if (!player.dead && player.tool_id == bomb_tool_id) {
+                const auto& orientation =
+                    local ? tutorial_session->player().orientation : player.orientation;
+                std::array<double, 3U> forward{orientation.x, orientation.y, orientation.z};
+                const auto length = std::sqrt(forward[0U] * forward[0U] +
+                                              forward[1U] * forward[1U] +
+                                              forward[2U] * forward[2U]);
+                if (length > 1.0e-6) {
+                    for (auto& axis : forward) {
+                        axis /= length;
+                    }
+                } else {
+                    forward = {1.0, 0.0, 0.0};
+                }
+                // right = forward x (0,0,-1); up = right x forward.
+                std::array<double, 3U> right{-forward[1U], forward[0U], 0.0};
+                const auto right_length = std::hypot(right[0U], right[1U]);
+                if (right_length > 1.0e-6) {
+                    right[0U] /= right_length;
+                    right[1U] /= right_length;
+                } else {
+                    right = {1.0, 0.0, 0.0};
+                }
+                const std::array<double, 3U> up{right[1U] * forward[2U] - right[2U] * forward[1U],
+                                                right[2U] * forward[0U] - right[0U] * forward[2U],
+                                                right[0U] * forward[1U] - right[1U] * forward[0U]};
+                // BOMB_TOOL_SMOKE_FP_* (main) / BOMB_TOOL_SMOKE_TP_* (others);
+                // third person starts PLAYER_RADIUS below the origin.
+                const double forward_offset = local ? 0.0 : 0.82;
+                const double right_offset = local ? 0.0 : 0.37;
+                const double up_offset = 0.45;
+                const double base_drop = local ? 0.0 : 0.45;
+                const std::array<float, 3U> fuse{
+                    static_cast<float>(position.x + forward[0U] * forward_offset +
+                                       right[0U] * right_offset + up[0U] * up_offset),
+                    static_cast<float>(position.y + forward[1U] * forward_offset +
+                                       right[1U] * right_offset + up[1U] * up_offset),
+                    static_cast<float>(position.z + base_drop + forward[2U] * forward_offset +
+                                       right[2U] * right_offset + up[2U] * up_offset)};
+                state.bomb_smoke_clock += step;
+                std::uint32_t emitted{};
+                while (state.bomb_smoke_clock >= world::bomb_fuse_smoke_period && emitted < 8U) {
+                    state.bomb_smoke_clock -= world::bomb_fuse_smoke_period;
+                    ++emitted;
+                    world::emit_lut_smoke(particles, fuse, world::bomb_fuse_smoke,
+                                          (static_cast<std::uint32_t>(player.player_id) << 20U) ^
+                                              static_cast<std::uint32_t>(retail_effect_clock * 25.0) ^
+                                              emitted);
+                }
+                if (emitted == 8U) {
+                    state.bomb_smoke_clock = 0.0;
+                }
+            } else {
+                state.bomb_smoke_clock = 0.0;
+            }
+        }
+        for (std::size_t index{}; index < character_status.size(); ++index) {
+            if (!present[index] && (character_status[index].fire_voice != audio::invalid_loop_voice ||
+                                    character_status[index].goo_voice != audio::invalid_loop_voice ||
+                                    character_status[index].on_fire ||
+                                    character_status[index].touching_goo)) {
+                stop_character_status(character_status[index]);
+            }
+        }
+
+        // Entities: block fire smoke, crate drop audio, projectile smoke.
+        std::set<std::uint64_t> alive;
+        for (const auto& entity : tutorial_session->entities()) {
+            alive.insert(entity.id);
+            const std::array<float, 3U> at{static_cast<float>(entity.position.x),
+                                           static_cast<float>(entity.position.y),
+                                           static_cast<float>(entity.position.z)};
+            if (entity.type == 28U && entity.alive) {
+                auto [due, inserted] = surface_patch_smoke_due.try_emplace(entity.id, 0.0);
+                if (inserted) {
+                    due->second = retail_effect_clock;
+                }
+                if (retail_effect_clock >= due->second) {
+                    world::emit_lut_smoke(particles, at, world::block_fire_smoke,
+                                          static_cast<std::uint32_t>(entity.id) ^
+                                              static_cast<std::uint32_t>(retail_effect_clock * 131.0));
+                    // BlockFireEntity.update_smoke: a new random rate of
+                    // 1..2 puffs per second after every puff.
+                    const auto draw = static_cast<float>(
+                        (static_cast<std::uint32_t>(entity.id) * 2654435761U ^
+                         static_cast<std::uint32_t>(retail_effect_clock * 1000.0)) % 1000U) /
+                                      1000.0F;
+                    const float rate = world::block_fire_smoke_min_rate +
+                                       draw * (world::block_fire_smoke_max_rate -
+                                               world::block_fire_smoke_min_rate);
+                    due->second = retail_effect_clock + 1.0 / static_cast<double>(rate);
+                }
+            }
+            if ((entity.type == 27U || entity.type == 32U) && entity.alive) {
+                // ExplodeOnImpactEntity.update calls create_fire_smoke every
+                // frame; one puff per 1/60 s keeps it frame-rate independent.
+                auto& clock = projectile_smoke_clocks[entity.id];
+                clock += step;
+                std::uint32_t emitted{};
+                while (clock >= 1.0 / 60.0 && emitted < 6U) {
+                    clock -= 1.0 / 60.0;
+                    ++emitted;
+                    world::emit_lut_smoke(particles, at, world::projectile_fire_smoke,
+                                          static_cast<std::uint32_t>(entity.id) * 40503U ^
+                                              static_cast<std::uint32_t>(retail_effect_clock * 60.0) ^
+                                              emitted);
+                }
+                if (emitted == 6U) {
+                    clock = 0.0;
+                }
+            }
+            if (entity.type == 14U && entity.alive) {
+                // BombPickup.update_fuse_fx / create_fuse_fx: an armed bomb on
+                // the ground smokes at BOMB_SMOKE_GENERATION_RATE (25/s) from
+                // position + BOMB_SMOKE_X/Y/Z_OFFSET (-0.05, -0.05, -1.2).
+                const auto ground = ground_bomb_fuses.find(entity.id);
+                const bool armed =
+                    entity.fuse > 0.0 ||
+                    (ground != ground_bomb_fuses.end() && ground->second.fuse > 0.0F);
+                auto& clock = projectile_smoke_clocks[entity.id];
+                if (!armed) {
+                    clock = 0.0;
+                } else {
+                    clock += step;
+                    const std::array<float, 3U> fuse_at{at[0U] - 0.05F, at[1U] - 0.05F,
+                                                        at[2U] - 1.2F};
+                    std::uint32_t emitted{};
+                    while (clock >= world::bomb_fuse_smoke_period && emitted < 8U) {
+                        clock -= world::bomb_fuse_smoke_period;
+                        ++emitted;
+                        world::emit_lut_smoke(particles, fuse_at, world::bomb_fuse_smoke,
+                                              static_cast<std::uint32_t>(entity.id) * 69069U ^
+                                                  static_cast<std::uint32_t>(
+                                                      retail_effect_clock * 25.0) ^
+                                                  emitted);
+                    }
+                    if (emitted == 8U) {
+                        clock = 0.0;
+                    }
+                }
+            }
+            if (entity.type >= 3U && entity.type <= 6U && audio_started && audio != nullptr) {
+                const audio::SoundPosition sound_position{at[0U], at[1U], at[2U]};
+                const auto loop = crate_freefall_loops.find(entity.id);
+                if (entity.crate_drop.falling && entity.alive) {
+                    if (loop == crate_freefall_loops.end()) {
+                        const auto voice = audio->start_named_voice_loop(
+                            "cratedrop_freefall", sound_position, 1.0F, false);
+                        if (voice != audio::invalid_loop_voice) {
+                            crate_freefall_loops.emplace(entity.id, voice);
+                        }
+                    } else {
+                        audio->update_weapon_loop(loop->second, sound_position, 1.0F, 1.0F);
+                    }
+                } else if (loop != crate_freefall_loops.end()) {
+                    audio->stop_weapon_loop(loop->second);
+                    crate_freefall_loops.erase(loop);
+                }
+            }
+        }
+        std::erase_if(surface_patch_smoke_due,
+                      [&alive](const auto& entry) { return !alive.contains(entry.first); });
+        std::erase_if(projectile_smoke_clocks,
+                      [&alive](const auto& entry) { return !alive.contains(entry.first); });
+        for (auto iterator = crate_freefall_loops.begin(); iterator != crate_freefall_loops.end();) {
+            if (alive.contains(iterator->first)) {
+                ++iterator;
+                continue;
+            }
+            if (audio_started && audio != nullptr) {
+                audio->stop_weapon_loop(iterator->second);
+            }
+            iterator = crate_freefall_loops.erase(iterator);
         }
     }
 
@@ -5405,7 +7540,7 @@ struct NativeFrontendModule::Impl final {
         if (!network_match || tutorial_session == nullptr || !audio_started) {
             return;
         }
-        for (const auto& player : tutorial_roster.players()) {
+        for (const auto& player : tutorial_roster.present_players()) {
             if (local_player_id == player.player_id ||
                 player.player_id >= remote_character_audio.size()) {
                 continue;
@@ -5427,31 +7562,28 @@ struct NativeFrontendModule::Impl final {
         return {position[0U], position[1U], position[2U]};
     }
 
-    [[nodiscard]] audio::SoundPosition
-    closest_ambient_point(const ServerAmbientDefinition& definition,
-                          audio::SoundPosition listener,
-                          audio::SoundPosition fallback) const noexcept {
-        if (definition.points.empty()) {
-            return fallback;
-        }
-        const auto distance_squared = [listener](audio::SoundPosition point) {
-            const float x = point.x - listener.x;
-            const float y = point.y - listener.y;
-            const float z = point.z - listener.z;
-            return (x * x) + (y * y) + (z * z);
-        };
-        return *std::ranges::min_element(definition.points, {}, distance_squared);
-    }
-
-    /** Keep a local emitter bound to the nearest authored map point. */
+    /**
+     * GameScene.update's AmbientSound pass: port of AmbientSound.update
+     * (gameScene 0x1010b330) plus the indoor ducking. A position moves a
+     * 2-point emitter; a volume (beds and >= 3-point emitters) is scaled by
+     * `1 - 0.8 * global_ambience_ducking`.
+     */
     void refresh_server_ambient_positions(audio::SoundPosition listener) {
         if (!audio_started || audio == nullptr) {
             return;
         }
         for (const auto& [loop_id, definition] : server_ambient_sounds) {
-            if (!definition.points.empty()) {
-                audio->update_named_loop(loop_id,
-                                         closest_ambient_point(definition, listener, listener));
+            const auto update = audio::retail_ambient_emitter_update(
+                definition.points, listener, definition.volume, definition.attenuation);
+            if (update.position.has_value()) {
+                audio->update_named_loop(loop_id, *update.position);
+            }
+            if (update.volume.has_value()) {
+                audio->set_named_loop_mix(
+                    loop_id,
+                    audio::ducked_ambience_volume(*update.volume,
+                                                  environment_audio.ambience_ducking),
+                    definition.points.size() >= 3U);
             }
         }
     }
@@ -5527,8 +7659,17 @@ struct NativeFrontendModule::Impl final {
             }
             return;
         }
-        if (!audio->play_named_one_shot(
-                stem, position, packet.volume, relative, packet.time, packet.attenuation)) {
+        // process_packet_play_sound: plain media.play in HUD_AUDIO_ZONE --
+        // unpitched and dry (no reverb send).
+        if (!audio->play_named_one_shot(stem,
+                                        position,
+                                        packet.volume,
+                                        relative,
+                                        packet.time,
+                                        packet.attenuation,
+                                        false,
+                                        1.0F,
+                                        false)) {
             settings_warning = std::string{audio->last_error()};
         }
     }
@@ -5542,31 +7683,51 @@ struct NativeFrontendModule::Impl final {
         // omit packet 22/24. Never layer it over the authoritative stream.
         audio->stop_ambience();
         audio::SoundPosition position = packet_sound_position(packet.position);
+        float volume = packet.volume;
+        bool non_positional = !packet.positioned;
         if (const auto found = server_ambient_sounds.find(packet.loop_id);
-            found != server_ambient_sounds.end() && !found->second.points.empty()) {
+            found != server_ambient_sounds.end()) {
+            // set_looping_sound_id binds the controller to this stream; its
+            // volume/attenuation drive AmbientSound.update from now on.
+            found->second.volume = packet.volume;
+            found->second.attenuation = packet.attenuation;
             const auto listener = tutorial_session != nullptr
                                       ? tutorial_session->eye_position()
                                       : std::array<double, 3U>{0.0, 0.0, 0.0};
             const audio::SoundPosition listener_position{static_cast<float>(listener[0U]),
                                                          static_cast<float>(listener[1U]),
                                                          static_cast<float>(listener[2U])};
-            position = closest_ambient_point(found->second, listener_position, position);
+            const auto update = audio::retail_ambient_emitter_update(
+                found->second.points, listener_position, packet.volume, packet.attenuation);
+            if (update.position.has_value()) {
+                position = *update.position;
+            } else if (found->second.points.size() == 1U && packet.positioned) {
+                // A 1-point controller never repositions its stream. The
+                // BattleSpades server bootstraps it at the listener, so start
+                // it on its single authored point instead.
+                position = found->second.points.front();
+            }
+            if (update.volume.has_value()) {
+                volume = audio::ducked_ambience_volume(*update.volume,
+                                                       environment_audio.ambience_ducking);
+            }
+            non_positional = non_positional || found->second.points.size() >= 3U;
         }
         if (packet.looping) {
             if (!audio->start_named_loop(packet.loop_id,
                                          packet.name,
                                          true,
                                          position,
-                                         packet.volume,
-                                         !packet.positioned,
+                                         volume,
+                                         non_positional,
                                          packet.attenuation,
                                          packet.time)) {
                 settings_warning = std::string{audio->last_error()};
             }
         } else if (!audio->play_named_ambient_one_shot(packet.name,
                                                        position,
-                                                       packet.volume,
-                                                       !packet.positioned,
+                                                       volume,
+                                                       non_positional,
                                                        packet.attenuation,
                                                        packet.time)) {
             settings_warning = std::string{audio->last_error()};
@@ -5663,6 +7824,11 @@ struct NativeFrontendModule::Impl final {
                 stem = definition->sound_trigger;
                 break;
             case world::EntityEventKind::detonated:
+                if (event.type == 17U) {
+                    // AirStrikeEntity.on_delete owns airstrike_explode[_water]
+                    // (advance_airstrike_audio), not the generic explode.
+                    continue;
+                }
                 if (event.type == 11U) {
                     // The grave's TerrainImpactKind::grave_explosion owns the
                     // exact death_explode[_water] cue. Playing the entity
@@ -5676,6 +7842,16 @@ struct NativeFrontendModule::Impl final {
             case world::EntityEventKind::expired:
                 if (event.type == 28U) {
                     stem = "molotov_blocks_burnout";
+                }
+                break;
+            case world::EntityEventKind::parachute_opened:
+                // Crate.update: Crate_Parachute appears with cratedrop_chuteopen.
+                stem = "cratedrop_chuteopen";
+                break;
+            case world::EntityEventKind::landed:
+                // CRATEDROP_LAND_SOUND past the landing-speed threshold.
+                if (event.value >= 2.0) {
+                    stem = "cratedrop_land";
                 }
                 break;
             case world::EntityEventKind::target_changed:
@@ -5692,18 +7868,26 @@ struct NativeFrontendModule::Impl final {
             if (stem.empty() || !entity_cue_ready(event.type, event.kind)) {
                 continue;
             }
-            if (event.type == 28U) {
-                pitch_bounds = {-0.4F, 0.4F};
-            }
+            // Entity type 28 (block fire) cues go through Entity.play_sound ->
+            // media.play with no pitch (IDA 2026-09-29); the former +-0.4
+            // semitone draw was a native invention.
             const auto draw = static_cast<std::uint32_t>(event.entity_id) ^
                               static_cast<std::uint32_t>(latest_world_loop);
             const auto pitch = audio::retail_sound_pitch_ratio(
                 pitch_bounds[0U], pitch_bounds[1U], draw);
             const auto stems = audio::sound_group_stems(stem);
+            // Entity.play_sound defaults to 0.75; Crate.update plays the
+            // chute-open at volume 4 and detonations use play_pitched at 1.0.
+            const float entity_gain =
+                event.kind == world::EntityEventKind::parachute_opened
+                    ? audio::retail_crate_chute_open_volume
+                : event.kind == world::EntityEventKind::detonated
+                    ? audio::retail_character_sound_volume
+                    : audio::retail_entity_sound_volume;
             if (!stems.empty()) {
                 static_cast<void>(audio->play_named_one_shot(stems[draw % stems.size()],
                                                               position,
-                                                              0.8F,
+                                                              entity_gain,
                                                               false,
                                                               0.0F,
                                                               0.15F,
@@ -5911,6 +8095,19 @@ struct NativeFrontendModule::Impl final {
                               settings::Resolution fallback_resolution) const {
         SettingsMenuEnvironment environment;
         environment.context = context;
+        if (context == SettingsMenuContext::in_game) {
+            // mainTab.on_menu_opened: enabled on a non-custom server, labelled
+            // with the server name, checked when it is already a favourite.
+            if (const auto live = live_favourite(); live.has_value()) {
+                environment.favorite_server_available = true;
+                environment.favorite_server = favourite_servers.contains(live->identifier);
+                environment.favorite_server_description =
+                    std::string{literal_text_prefix} + live->label;
+            } else if (!match_initial_info.server_name.empty()) {
+                environment.favorite_server_description =
+                    std::string{literal_text_prefix} + match_initial_info.server_name;
+            }
+        }
         environment.multisampling_supported = true;
         environment.glsl_shader_quality_supported = true;
         environment.graphics_apis.clear();
@@ -5941,6 +8138,8 @@ struct NativeFrontendModule::Impl final {
         settings_menu = std::make_unique<SettingsMenuModel>(
             settings_session,
             make_settings_environment(context, settings_session.draft().graphics.resolution));
+        // KeyControl text = translate_key(): catalogue string or the raw id.
+        settings_menu->set_key_name_lookup(key_name_catalogue_lookup());
     }
 
     void load_settings() {
@@ -5953,6 +8152,9 @@ struct NativeFrontendModule::Impl final {
         favourite_server_store = std::make_unique<FavoriteServerStore>(
             config.settings_path.parent_path() / "server_favorites.txt");
         favourite_servers = favourite_server_store->load();
+        load_server_region();
+        server_browser.set_mode_title_lookup(
+            [this](std::string_view key) { return localized_text(key); });
         const auto loaded = settings_store->load();
         auto initial = loaded ? loaded.settings : settings::retail_default_settings();
         if (!loaded) {
@@ -6005,7 +8207,7 @@ struct NativeFrontendModule::Impl final {
         if (loaded && loaded.file_found &&
             !window.apply_display_mode(
                 {initial.graphics.resolution.width, initial.graphics.resolution.height},
-                initial.main.fullscreen)) {
+                initial.main.fullscreen, fullscreen_kind_for(initial.graphics))) {
             settings_warning = "saved display mode could not be applied";
             const auto actual_extent = window.logical_extent();
             applied_settings.main.fullscreen = window.is_fullscreen();
@@ -6015,14 +8217,25 @@ struct NativeFrontendModule::Impl final {
         rebuild_settings_menu(SettingsMenuContext::frontend);
     }
 
+    [[nodiscard]] static platform::FullscreenKind fullscreen_kind_for(
+        const settings::GraphicsSettings& graphics) noexcept {
+        return graphics.borderless_fullscreen ? platform::FullscreenKind::borderless
+                                              : platform::FullscreenKind::exclusive;
+    }
+
     [[nodiscard]] bool apply_display(const settings::ClientSettings& value) {
         const platform::WindowExtent requested{value.graphics.resolution.width,
                                                value.graphics.resolution.height};
+        const auto kind = fullscreen_kind_for(value.graphics);
         if (window.is_fullscreen() == value.main.fullscreen &&
-            window.logical_extent() == requested) {
+            (!value.main.fullscreen || window.fullscreen_kind() == kind) &&
+            // Borderless always covers the desktop; its extent is not the
+            // requested resolution, so only the mode itself is compared.
+            ((value.main.fullscreen && kind == platform::FullscreenKind::borderless) ||
+             window.logical_extent() == requested)) {
             return true;
         }
-        if (!window.apply_display_mode(requested, value.main.fullscreen)) {
+        if (!window.apply_display_mode(requested, value.main.fullscreen, kind)) {
             settings_warning = "display mode change was rejected by SDL";
             return false;
         }
@@ -6040,6 +8253,7 @@ struct NativeFrontendModule::Impl final {
         applied_settings.main.show_skins=value.show_skins;
         applied_settings.main.show_other_skins=value.show_other_skins;
         applied_settings.main.weapon_motion=value.weapon_motion;
+        applied_settings.main.ability_hints=value.ability_hints;
     }
 
     [[nodiscard]] bool apply_runtime_settings(const settings::ClientSettings& value,
@@ -6084,6 +8298,7 @@ struct NativeFrontendModule::Impl final {
         case SettingsRowId::show_skins:
         case SettingsRowId::show_other_skins:
         case SettingsRowId::weapon_motion:
+        case SettingsRowId::ability_hints:
             apply_cosmetic_preferences(draft.main);
             return true;
         case SettingsRowId::language:
@@ -6235,6 +8450,7 @@ struct NativeFrontendModule::Impl final {
                         case SettingsRowId::show_skins:
                         case SettingsRowId::show_other_skins:
                         case SettingsRowId::weapon_motion:
+                        case SettingsRowId::ability_hints:
                         case SettingsRowId::language:
                         case SettingsRowId::master_volume:
                         case SettingsRowId::music_volume:
@@ -6261,8 +8477,11 @@ struct NativeFrontendModule::Impl final {
                                 apply_live_preview(SettingsRowId::vsync, payload.draft));
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsCommitCommand>) {
+                        // settingsMenu.save_pressed: Done in a match returns to
+                        // the game rather than to EscapeMenu.
+                        const bool done_to_game = settings_opened_from_gameplay;
                         if (!payload.changed) {
-                            close_settings();
+                            close_settings(done_to_game);
                             return;
                         }
                         if (payload.resolution_changed) {
@@ -6300,10 +8519,9 @@ struct NativeFrontendModule::Impl final {
                                 return;
                             }
                             confirmed_settings = payload.settings;
-                            close_settings();
+                            close_settings(done_to_game);
                             if (payload.restart_required) {
-                                settings_warning =
-                                    "Restart required for graphics quality changes to take effect.";
+                                show_restart_notice();
                             }
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsRestoreCommand>) {
@@ -6315,17 +8533,151 @@ struct NativeFrontendModule::Impl final {
                             return;
                         }
                         if (screen() == FrontendScreen::settings) {
-                            close_settings();
+                            close_settings(payload.return_to_game);
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsFavoriteServerCommand>) {
-                        // Frontend Settings intentionally exposes Favourite as
-                        // disabled; live server-list integration owns this effect.
+                        // mainTab.save_pressed: favourite_add/favourite_del on
+                        // the live server's host:port, only when it changed.
+                        apply_live_favourite(payload.favorite);
                     } else if constexpr (std::is_same_v<Payload, SettingsBindingRejectedEffect>) {
                         settings_warning = "key binding was rejected";
                     }
                 },
                 effect);
         }
+        if (settings_text_input &&
+            (settings_menu == nullptr || !settings_menu->text_editing() ||
+             screen() != FrontendScreen::settings)) {
+            settings_text_input = false;
+            static_cast<void>(window.set_text_input_enabled(false));
+        }
+    }
+
+    static constexpr std::array<std::pair<ServerBrowserRegion, std::string_view>, 4U>
+        server_region_names{{{ServerBrowserRegion::us_west, "us_west"},
+                             {ServerBrowserRegion::us_east, "us_east"},
+                             {ServerBrowserRegion::europe, "europe"},
+                             {ServerBrowserRegion::australia, "australia"}}};
+
+    [[nodiscard]] std::filesystem::path server_region_path() const {
+        return config.settings_path.parent_path() / "server_region.txt";
+    }
+
+    /** config.server_region: restored at boot; US West when never chosen. */
+    void load_server_region() {
+        if (config.settings_path.empty()) return;
+        std::ifstream input{server_region_path()};
+        std::string name;
+        if (!(input >> name)) return;
+        for (const auto& [region, text] : server_region_names) {
+            if (name == text) server_browser.set_region(region);
+        }
+    }
+
+    /** serverMenu.set_tab: config.server_region = ...; config.save(). */
+    void save_server_region() {
+        if (config.settings_path.empty()) return;
+        for (const auto& [region, text] : server_region_names) {
+            if (region != server_browser.region()) continue;
+            std::ofstream output{server_region_path(), std::ios::trunc};
+            output << text << '\n';
+            if (!output) {
+                std::fprintf(stderr, "[browser] could not save the server region\n");
+            }
+        }
+    }
+
+    /**
+     * InitialInfo.custom_game_rules for the loader. The Protocol 168 packet
+     * this client reads carries none, so a custom match's rules come from
+     * the Match Lobby that started it: the explicit deviations from the
+     * playlist defaults, exactly what the host's server was launched with.
+     */
+    [[nodiscard]] std::vector<std::pair<std::string, std::string>> custom_match_rules() const {
+        if (social_client == nullptr) return {};
+        const auto snapshot = social_client->snapshot();
+        if (!snapshot.lobby.has_value() || snapshot.lobby->lobby_type == "ugc" ||
+            snapshot.lobby->server_id.empty()) {
+            return {};
+        }
+        // Only the match that lobby launched: the owner's own server, or the
+        // server a member followed the lobby to.
+        if (owned_local_server == nullptr &&
+            snapshot.lobby->server_id != social_last_joined_server_id) {
+            return {};
+        }
+        std::vector<std::pair<std::string, std::string>> rules;
+        for (const auto& [rule, value] : social_configuration(*snapshot.lobby).rule_overrides) {
+            rules.emplace_back(rule, value);
+        }
+        return rules;
+    }
+
+    /**
+     * loadingMenu.update: 30 s without progress disconnects, returns to the
+     * previous menu and shows ERROR_TIMEOUT there.
+     */
+    void leave_timed_out_loading() {
+        if (screen() != FrontendScreen::game_loading ||
+            match_loading.snapshot().state != MatchLoadingState::timed_out) {
+            return;
+        }
+        // Popping the loader runs its route exit hook, which retires the
+        // connection exactly like the BACK strip.
+        if (!navigation.pop()) return;
+        const auto message = localized_text("ERROR_TIMEOUT");
+        if (screen() == FrontendScreen::direct_connect) {
+            direct_connect_menu.set_error(message);
+        } else if (screen() == FrontendScreen::server_browser) {
+            server_browser_status = "ERROR_TIMEOUT";
+        } else {
+            settings_warning = message;
+        }
+        play_back();
+    }
+
+    /** settingsMenu: CHANGE_MSAA_SETTINGS as big text for five seconds. */
+    void show_restart_notice() {
+        const auto notice = localized_text("CHANGE_MSAA_SETTINGS");
+        if (screen() == FrontendScreen::tutorial_world) {
+            game_hud.set_big_message(notice, true, 5.0);
+        } else {
+            settings_warning = notice;
+        }
+    }
+
+    /** The live match's favourite key and label, when retail offers the row. */
+    struct LiveFavourite final {
+        std::string identifier;
+        std::string label;
+    };
+
+    [[nodiscard]] std::optional<LiveFavourite> live_favourite() const {
+        if (!network_match || match_connection == nullptr || !active_match_request.has_value()) {
+            return std::nullopt;
+        }
+        const auto& request = *active_match_request;
+        // mainTab.on_menu_opened: SERVERMODE_CUSTOM keeps the row disabled.
+        // Native custom matches are the ones this client hosts, reaches over a
+        // Steam relay, or opens in the Map Creator.
+        const bool custom = owned_local_server != nullptr || request.steam_host_id != 0U ||
+                            request_uses_steam_tunnel(request) ||
+                            match_initial_info.map_is_ugc();
+        if (custom || !FavoriteServerStore::valid_identifier(request.identifier)) {
+            return std::nullopt;
+        }
+        return LiveFavourite{request.identifier,
+                             match_initial_info.server_name.empty()
+                                 ? request.identifier
+                                 : match_initial_info.server_name};
+    }
+
+    void apply_live_favourite(bool favourite) {
+        const auto live = live_favourite();
+        if (!live.has_value()) return;
+        const bool changed = favourite ? favourite_servers.insert(live->identifier).second
+                                       : favourite_servers.erase(live->identifier) != 0U;
+        if (changed) persist_favourite_servers();
     }
 
     void play_back() {
@@ -6388,6 +8740,94 @@ struct NativeFrontendModule::Impl final {
         case UgcLoadoutAudioCue::back:
             audio->play_menu_back();
             break;
+        }
+    }
+
+    /**
+     * SelectTeam.on_start (selectTeam.py:18-27): the match-start stinger in
+     * MUSIC_AUDIO_ZONE (scaled by the music slider), then the secondary bed
+     * unless the mode is classic. Called on SelectTeam entry only, never for
+     * the in-game ChangeTeam menu (MatchStartStingerGate).
+     */
+    void play_match_start_stinger() {
+        if (!audio_started) {
+            return;
+        }
+        const auto stinger = match_start_stinger(match_initial_info.classic);
+        static_cast<void>(audio->play_named_one_shot(
+            stinger.stem, {}, audio->music_volume(), true, 0.0F, 0.15F, true));
+        if (stinger.start_secondary_bed) {
+            start_secondary_selection_music();
+        }
+    }
+
+    /**
+     * Play one retail client-local cue: a random member of its numbered
+     * group at a random pitch within its semitone bounds (media.play_pitched).
+     * `head_relative` is for cues whose source is the local player.
+     */
+    bool play_retail_cue(const audio::RetailCue& cue,
+                         audio::SoundPosition position,
+                         bool head_relative,
+                         std::uint32_t seed = 0U,
+                         float gain = 1.0F,
+                         bool protect = false) {
+        if (!audio_started) {
+            return false;
+        }
+        const auto stems = audio::sound_group_stems(cue.group);
+        if (stems.empty()) {
+            return false;
+        }
+        const auto draw = seed ^ static_cast<std::uint32_t>(latest_world_loop) ^
+                          (++retail_cue_counter * 2654435761U);
+        return audio->play_named_one_shot(
+            stems[draw % stems.size()],
+            position,
+            gain,
+            head_relative,
+            0.0F,
+            0.15F,
+            protect,
+            audio::retail_sound_pitch_ratio(
+                cue.pitch_semitones[0U], cue.pitch_semitones[1U], draw));
+    }
+
+    /**
+     * BUILD_ERROR_SOUND: 2D and unpitched, played by every placement tool
+     * (blockTool, c4/dynamite/landmine/medPack weapons, prefabTool,
+     * flareBlockTool, UGC tools) when a placement is refused.
+     */
+    void play_build_error() {
+        static_cast<void>(play_retail_cue(audio::build_error_cue, {}, true));
+    }
+
+    /** GameScene.process_packet_kill_action banners, stingers and streaks. */
+    void announce_kill_action(const network::KillActionPacket& kill,
+                              const network::RemotePlayerReplica& victim,
+                              const network::RemotePlayerReplica* killer) {
+        if (!local_player_id.has_value()) {
+            return;
+        }
+        KillAnnouncementInput input;
+        input.local_is_killer = kill.killer_id == *local_player_id;
+        input.local_is_victim = kill.player_id == *local_player_id;
+        input.killer_is_victim = kill.killer_id == kill.player_id;
+        input.killer_known = killer != nullptr;
+        input.kill_count = kill.kill_count;
+        input.domination = kill.domination;
+        input.revenge = kill.revenge;
+        input.victim_name = victim.name;
+        input.killer_name = killer != nullptr ? killer->name : std::string{};
+        static_cast<void>(running_local_kills.apply(input, kill.player_id, kill.killer_id));
+        for (const auto& announcement : kill_action_announcements(input)) {
+            game_hud.set_big_message(format_announcement(
+                localized_text(announcement.string_id), announcement.parameter));
+            if (!announcement.stinger.empty() && audio_started) {
+                // media.play(<ks sound>) with no position: a 2D HUD cue.
+                static_cast<void>(audio->play_named_one_shot(
+                    announcement.stinger, {}, 1.0F, true, 0.0F, 0.15F, true));
+            }
         }
     }
 
@@ -6789,7 +9229,7 @@ struct NativeFrontendModule::Impl final {
         game_chat.add_player_message("NightOwl", {137U, 179U, 44U, 255U},
                                      "Incoming on the east side", false);
         game_chat.add("The enemy intelligence has been dropped.",
-                      {255U, 220U, 96U, 255U});
+                      retail_server_message_color);
         game_chat.begin(ChatChannel::global);
         static_cast<void>(game_chat.append_text("Meet at the bridge"));
     }
@@ -7163,6 +9603,35 @@ struct NativeFrontendModule::Impl final {
         launch.match_minutes = configuration.match_minutes;
         launch.bot_count = configuration.bot_count;
         launch.bot_difficulty = configuration.bot_difficulty;
+        // Lobby metadata echoes only the file stem; recover the custom map.
+        auto hosted = configuration;
+        if (!hosted.custom_map && mode != modes.end() &&
+            std::ranges::find(mode->maps, std::string_view{hosted.map_name}) == mode->maps.end()) {
+            const auto custom_maps = create_match_menu.custom_maps();
+            const auto custom =
+                std::ranges::find(custom_maps, hosted.map_name, &CreateMatchCustomMap::stem);
+            if (custom != custom_maps.end()) {
+                hosted.custom_map = true;
+                hosted.subscribed_map = custom->subscribed;
+                hosted.map_title = custom->title;
+                hosted.map_author = custom->author;
+            }
+        }
+        if (hosted.custom_map) {
+            // Saved/Subscribed map: the start worker stages this triplet in
+            // the session's own maps directory ([world] maps_path).
+            launch.custom_map_files = create_match_custom_map_files(hosted);
+            const auto problem = platform::validate_custom_map_files(launch.map_name,
+                                                                     launch.custom_map_files);
+            if (!problem.empty()) {
+                settings_warning = "The selected custom map cannot be hosted: " + problem;
+                return;
+            }
+        }
+        // The lobby shows the authored title; the server keeps the file stem.
+        const auto lobby_map_name = hosted.custom_map && !hosted.map_title.empty()
+                                        ? hosted.map_title
+                                        : launch.map_name;
 
         std::optional<network::RevivalRelayLobbyRequest> relay_request;
         if (public_lobby && social_client != nullptr) {
@@ -7171,7 +9640,7 @@ struct NativeFrontendModule::Impl final {
                 social.lobby->owner_id == friends_lobby_menu.local_account_id()) {
                 relay_request = network::RevivalRelayLobbyRequest{
                     launch.server_name,
-                    launch.map_name,
+                    lobby_map_name,
                     mode_key,
                     mode_code,
                     launch.maximum_players,
@@ -7305,11 +9774,20 @@ struct NativeFrontendModule::Impl final {
                         std::is_same_v<Payload, CreateMatchPlatformActionEffect>) {
                         if (payload.action == CreateMatchPlatformAction::invite_friends) {
                             const auto now = std::chrono::steady_clock::now();
-                            friends_lobby_menu.enter(now);
-                            static_cast<void>(window.set_text_input_enabled(true));
-                            if (!navigation.push(FrontendScreen::friends_lobby)) {
-                                friends_lobby_menu.leave();
-                                static_cast<void>(window.set_text_input_enabled(false));
+                            // With AoSPlay unreachable its friends screen can
+                            // only say so; Steam's invite picker still works
+                            // for a match Steam carries.
+                            if ((social_client == nullptr ||
+                                 !social_client->status(now).available) &&
+                                open_steam_invite_dialog()) {
+                                play_confirm();
+                            } else {
+                                friends_lobby_menu.enter(now);
+                                static_cast<void>(window.set_text_input_enabled(true));
+                                if (!navigation.push(FrontendScreen::friends_lobby)) {
+                                    friends_lobby_menu.leave();
+                                    static_cast<void>(window.set_text_input_enabled(false));
+                                }
                             }
                         }
                     } else if constexpr (
@@ -7451,6 +9929,74 @@ struct NativeFrontendModule::Impl final {
         return config.settings_path.parent_path() / "hosted_ugc" / "maps";
     }
 
+    /**
+     * Retail mapsPanel (ugc_mode): SAVED_MAPS from get_hosted_ugc_map_names
+     * ahead of the localised TEMPLATES, plus every stem already on disk so
+     * a new template never reuses a Custommap_N file name.
+     */
+    void refresh_ugc_editor_saved_projects() {
+        const auto root = ugc_maps_root();
+        auto scan = scan_ugc_projects(root);
+        std::vector<UgcEditorSavedProject> projects;
+        projects.reserve(scan.maps.size());
+        for (auto& map : scan.maps) {
+            projects.push_back(UgcEditorSavedProject{
+                std::filesystem::path{map.uid}.stem().string(), std::move(map.title),
+                std::move(map.baseplate), std::move(map.author), map.prefab_set});
+        }
+        std::vector<std::string> titles;
+        for (const auto key : ugc_editor_template_title_keys()) {
+            titles.push_back(localized_text(key));
+        }
+        ugc_editor_lobby.set_template_titles(titles);
+        ugc_editor_lobby.set_saved_projects(std::move(projects), list_ugc_map_stems(root));
+    }
+
+    /**
+     * Create Match SAVED_MAPS (hosted_ugc/maps) and SUBSCRIBED_MAPS (retail
+     * keeps Workshop downloads as ugc/maps/Subscribed_<id>.* under the game
+     * root). The sidecar `tags` list the modes the map validates for.
+     */
+    [[nodiscard]] std::vector<CreateMatchCustomMap> scan_create_match_custom_maps() const {
+        std::vector<CreateMatchCustomMap> output;
+        const auto append = [&output](const std::filesystem::path& root, bool subscribed) {
+            std::error_code code;
+            if (!std::filesystem::is_directory(root, code) || code) return;
+            for (auto& map : scan_ugc_projects(root).maps) {
+                auto stem = std::filesystem::path{map.uid}.stem().string();
+                if (subscribed != stem.starts_with("Subscribed_")) continue;
+                CreateMatchCustomMap custom;
+                custom.stem = std::move(stem);
+                custom.title = std::move(map.title);
+                custom.author = std::move(map.author);
+                custom.subscribed = subscribed;
+                for (const auto& mode : map.modes) {
+                    if (!mode.mode_id.empty()) custom.mode_keys.push_back(mode.mode_id);
+                }
+                output.push_back(std::move(custom));
+            }
+        };
+        append(ugc_maps_root(), false);
+        append(config.asset_root / "ugc" / "maps", true);
+        return output;
+    }
+
+    /** Source files of one Create Match custom map, for LocalServerLaunchConfig. */
+    [[nodiscard]] std::vector<std::filesystem::path>
+    create_match_custom_map_files(const CreateMatchConfiguration& configuration) const {
+        const auto root = configuration.subscribed_map ? config.asset_root / "ugc" / "maps"
+                                                       : ugc_maps_root();
+        std::vector<std::filesystem::path> files;
+        for (const auto extension : {".vxl", ".txt", ".ugc", ".png"}) {
+            auto path = root / (configuration.map_name + extension);
+            std::error_code code;
+            if (std::filesystem::is_regular_file(path, code) && !code) {
+                files.push_back(std::move(path));
+            }
+        }
+        return files;
+    }
+
     /** Rebuild the Publish Map list from the same catalog Map Creator writes. */
     void refresh_ugc_publish_repository() {
         auto scan = scan_ugc_projects(ugc_maps_root());
@@ -7544,6 +10090,7 @@ struct NativeFrontendModule::Impl final {
                 break;
             }
             ugc_editor_lobby = UgcEditorLobbyModel{};
+            refresh_ugc_editor_saved_projects();
             ugc_social_lobby_id.clear();
             ugc_leave_after_create = false;
             static_cast<void>(navigation.push(FrontendScreen::ugc_editor_lobby));
@@ -7616,6 +10163,22 @@ struct NativeFrontendModule::Impl final {
             return;
         }
 
+        // The project file stem is the editor identity (retail
+        // hosted_ugc_map_filename). A template always opens a brand-new
+        // Custommap_N: re-check the catalog so a stem written since the lobby
+        // opened is never reopened by accident. SAVED_MAPS keep their stem.
+        std::string project = configuration.project_stem;
+        if (!configuration.saved_project) {
+            const auto stems = list_ugc_map_stems(ugc_maps_root());
+            const auto taken = std::ranges::any_of(stems, [&project](const std::string& stem) {
+                return stem.size() == project.size() &&
+                       std::ranges::equal(stem, project, [](unsigned char a, unsigned char b) {
+                           return std::tolower(a) == std::tolower(b);
+                       });
+            });
+            if (project.empty() || taken) project = generate_ugc_map_filename(stems);
+        }
+
         platform::LocalServerLaunchConfig launch;
         launch.program = platform::LocalServerProgram::map_creator;
         launch.bundle_root = *bundle;
@@ -7630,7 +10193,7 @@ struct NativeFrontendModule::Impl final {
         launch.match_minutes = 15U;
         launch.bot_count = 0U;
         launch.map_creator = platform::LocalMapCreatorLaunchConfig{
-            .project = configuration.map_title,
+            .project = std::move(project),
             .terrain = std::string{terrain->second},
             .target_mode = configuration.ugc_mode,
             .title = configuration.map_title,
@@ -7949,6 +10512,7 @@ struct NativeFrontendModule::Impl final {
             }
             break;
         case FrontendScreen::tutorial_world:
+            kick_vote_pointer_move(point);
             break;
         case FrontendScreen::pause_menu:
             pause_menu.pointer_move(settings_point(point));
@@ -8044,7 +10608,12 @@ struct NativeFrontendModule::Impl final {
                 ugc_loadout_menu.pointer_move(settings_point(point));
             } else {
                 class_selection_menu.pointer_move(settings_point(point));
+                // HorizontalScrollBar/TextButton/SquareButton act on press+release.
+                class_selection_menu.pointer_press(settings_point(point));
             }
+            break;
+        case FrontendScreen::tutorial_world:
+            kick_vote_pointer_press(point);
             break;
         case FrontendScreen::pause_menu:
             pause_menu.pointer_press(settings_point(point));
@@ -8059,7 +10628,14 @@ struct NativeFrontendModule::Impl final {
         case FrontendScreen::settings:
             if (settings_menu != nullptr) {
                 if (const auto raw = settings_point(point); raw.has_value()) {
+                    const bool was_editing = settings_menu->text_editing();
                     settings_menu->pointer_press(*raw);
+                    // The sensitivity EditBox takes typed text only while it
+                    // has focus; SDL text input follows that focus.
+                    if (was_editing != settings_menu->text_editing()) {
+                        settings_text_input = settings_menu->text_editing();
+                        static_cast<void>(window.set_text_input_enabled(settings_text_input));
+                    }
                 } else {
                     settings_menu->cancel_pointer_capture();
                 }
@@ -8283,38 +10859,26 @@ struct NativeFrontendModule::Impl final {
             }
             pending_friend_matches.clear();
             static_cast<void>(server_browser.finish_refresh(outcome.request.generation));
-            browser_refreshed_at = std::chrono::steady_clock::now();
-            if (!outcome.discovery.error.empty()) {
-                server_browser_status = outcome.discovery.error;
+            if (!outcome.discovery.error.empty() && outcome.discovery.servers.empty()) {
+                // serverMenu.on_server_error names SERVER_LIST_ERROR, an id
+                // the retail string table never defined. The localised
+                // SERVER_SEARCH_FAILED stands in; the transport's own reason
+                // stays in the log rather than as English on the screen.
+                std::fprintf(stderr, "[browser] server list error: %s\n",
+                             outcome.discovery.error.c_str());
+                server_browser_status = "SERVER_SEARCH_FAILED";
             } else {
-                server_browser_status = "Received " +
-                                        std::to_string(server_browser.visible_indices().size()) +
-                                        " servers";
+                // serverMenu.got_servers: RECEIVED_N_SERVERS with every row
+                // the master returned, before the Full/Empty filters hide any.
+                server_browser_status = format_retail_template(
+                    localized_text("RECEIVED_N_SERVERS"),
+                    {std::to_string(server_browser.servers().size())});
             }
         }
         if (pending_browser_refresh.has_value()) {
             const auto pending = *pending_browser_refresh;
             launch_browser_refresh(pending);
         }
-    }
-
-    /**
-     * Re-read the list while the player is looking at it.
-     *
-     * Nothing refreshed the browser except entering it, changing its source or
-     * region, and the Refresh button, so the player counts froze the moment the
-     * screen opened and stayed frozen however long they read it. The master
-     * re-probes each server about once a minute, so a ten-second poll shows
-     * every change it publishes without asking it for more.
-     */
-    void pump_server_browser_auto_refresh() {
-        if (screen() != FrontendScreen::server_browser) return;
-        if (server_browser.refreshing() || browser_refresh_worker.valid()) return;
-        if (browser_refreshed_at == std::chrono::steady_clock::time_point{}) return;
-        if (std::chrono::steady_clock::now() - browser_refreshed_at < browser_auto_refresh_period) {
-            return;
-        }
-        begin_server_browser_refresh();
     }
 
     /** Does this request dial the Steam tunnel this client opened? */
@@ -8328,7 +10892,12 @@ struct NativeFrontendModule::Impl final {
         // "the previous connection" on the way in must not close the tunnel the
         // new connection is about to dial: that ended every relayed join with
         // "client closed" 750 ms after the host accepted it.
-        if (!keep_steam_tunnel) stop_steam_client();
+        if (!keep_steam_tunnel) {
+            stop_steam_client();
+            // A dedicated server's presence goes with the connection, or the
+            // friends list keeps offering a Join into a match already left.
+            if (!steam_presence_connect.empty() && steam_host_id == 0U) clear_match_presence();
+        }
         if (!match_connection) return;
         match_connection->request_stop();
         match_connection_cleanup.defer(std::packaged_task<void()>{
@@ -8359,6 +10928,11 @@ struct NativeFrontendModule::Impl final {
         enforce_developer_access();
         network::Protocol168SessionConfig session;
         session.player_name = std::move(wire_name);
+        // send_map_validation: crc32 of the local stock map, so an unchanged
+        // map can skip the full MapSync download.
+        session.local_map_directory = config.asset_root / "maps";
+        shown_loading_progress = {};
+        shown_loading_initial_info = false;
         // Interactive retail flow is Map/State -> SelectTeam -> SelectClass ->
         // NewPlayerConnection. Sending packet 15 here silently joined Blue.
         session.auto_join = false;
@@ -8405,10 +10979,7 @@ struct NativeFrontendModule::Impl final {
             static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
             active_steam_ticket = 0U;
         }
-        if (transport_started && native_steam != nullptr && native_steam->ready()) {
-            static_cast<void>(native_steam->set_server_presence(
-                host + ":" + std::to_string(port)));
-        }
+        if (transport_started) publish_dedicated_presence(request, host, port);
         return transport_started;
     }
 
@@ -8542,8 +11113,20 @@ struct NativeFrontendModule::Impl final {
         const auto key = status.disconnect_reason.has_value()
                              ? disconnect_status_key(*status.disconnect_reason)
                              : std::string_view{};
-        fail_map_transition_reconnect(status.error,
-                                      key.empty() ? std::string_view{"SERVER_CONNECTION_FAILED"} : key);
+        // Kicks 23-25 fill the A958 template with the localised reason. The
+        // loader draws a non-identifier status verbatim, so pass the text.
+        const auto kick_reason = status.disconnect_reason.has_value()
+                                     ? retail_disconnect_kick_reason_key(*status.disconnect_reason)
+                                     : std::string_view{};
+        const auto kick_text =
+            kick_reason.empty() ? std::string{}
+                                : format_retail_template(localized_text(key),
+                                                         {localized_text(kick_reason)});
+        fail_map_transition_reconnect(
+            status.error, !kick_text.empty()           ? std::string_view{kick_text}
+                          : !key.empty()               ? key
+                          : !status.failure_key.empty() ? std::string_view{status.failure_key}
+                                                        : std::string_view{"SERVER_CONNECTION_FAILED"});
         initial_join_submitted = false;
         if (screen() != FrontendScreen::game_loading && navigation.leave_match_instant()) {
             static_cast<void>(navigation.push(FrontendScreen::game_loading));
@@ -8693,24 +11276,28 @@ struct NativeFrontendModule::Impl final {
         apply_retail_state_lighting();
         world_renderer.set_retail_fog_color(match_state_info.fog_color);
 
-        const std::string selected_skydome = live_official_environment.has_value()
-                                                 ? std::string{live_official_environment->skydome}
-                                                 : std::string{server_skydome};
-
-        // set_skydome deliberately preserves the currently installed fog.
-        // Seed it from the server only on the fallback path; official maps
-        // replace it with the locally derived horizon after the dome succeeds.
-        if (!live_official_environment.has_value()) {
-            world_renderer.set_fog_color(match_state_info.fog_color);
+        // Retail process_packet_skybox_data uses the server's dome name. The
+        // local official-map table is only a fallback for an empty or
+        // unloadable name (P2-15).
+        std::string selected_skydome{server_skydome};
+        // Decision D2: StateData fog is authoritative in every shader tier.
+        // set_skydome preserves the installed fog, so seed it first.
+        world_renderer.set_fog_color(match_state_info.fog_color);
+        bool dome_ready = !selected_skydome.empty() && world_renderer.set_skydome(selected_skydome);
+        if (!dome_ready && live_official_environment.has_value()) {
+            selected_skydome = std::string{live_official_environment->skydome};
+            dome_ready = world_renderer.set_skydome(selected_skydome);
         }
-        if (!world_renderer.set_skydome(selected_skydome)) {
+        if (!dome_ready) {
             return false;
         }
         if (live_official_environment.has_value()) {
+            // The locally derived atmosphere only tints on top (sun, ambient,
+            // horizon blend); the fog colour stays the server's.
             auto atmosphere = world::resolve_map_atmosphere(config.asset_root, selected_skydome);
-            const auto local_fog = atmosphere.fog_color;
+            atmosphere.fog_color = match_state_info.fog_color;
             world_renderer.set_atmosphere(atmosphere);
-            world_renderer.set_fog_color(local_fog);
+            world_renderer.set_fog_color(match_state_info.fog_color);
             world_renderer.set_retail_fog_color(match_state_info.fog_color);
         }
         return true;
@@ -8750,6 +11337,30 @@ struct NativeFrontendModule::Impl final {
             return {row[0U], row[1U], row[2U], 255U};
         }
         return {18U, 67U, 94U, 255U};
+    }
+
+    /**
+     * Retail VXL.generate_ground_color_table over the server's ground rows:
+     * implicit interior voxels exposed by digging take table[z] plus a 0..3
+     * grey jitter instead of the column's last surface colour (P3-11).
+     */
+    void apply_ground_color_table() {
+        const world::VxlMap* coloured{};
+        if (tutorial_session != nullptr) {
+            tutorial_session->set_ground_colors(server_ground_colors);
+            coloured = &tutorial_session->map();
+        } else if (tutorial_ready_map != nullptr) {
+            tutorial_ready_map->set_ground_colors(server_ground_colors);
+            coloured = tutorial_ready_map.get();
+        }
+        // The minimap reads get_color of each column's top voxel. Open water
+        // is the implicit z=239 bed, whose colour is the table's last row
+        // (stock (40,54,64) slate blue). An overview built before the table
+        // existed painted every sea/river black.
+        if (coloured != nullptr && !server_ground_colors.empty()) {
+            minimap_pixels = world::build_minimap_overview_rgba(*coloured);
+            minimap_texture_upload_pending = true;
+        }
     }
 
     void queue_all_live_chunks() {
@@ -8802,6 +11413,7 @@ struct NativeFrontendModule::Impl final {
         draft.water = {water.red, water.green, water.blue, 255U};
         draft.target_mode = match_initial_info.ugc_mode;
         draft.map_title = ugc_map_title;
+        discard_pending_ugc_preview();
         if (!ugc_ingame_settings.open(true, std::move(draft), available_ugc_skydomes())) {
             settings_warning = "No valid retail skydomes are installed";
             return;
@@ -8844,7 +11456,9 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         live_skydome_name = applied->skydome;
-        match_initial_info.ugc_mode = applied->target_mode;
+        commit_pending_ugc_preview();
+        // The target mode is adopted from the server's packet 68, which also
+        // runs the retail mode-change reset for the host (UGC-6).
         ugc_map_title = applied->map_title;
         if (!apply_live_map_environment(live_skydome_name)) {
             settings_warning = "UGC skydome update failed: " +
@@ -8854,28 +11468,258 @@ struct NativeFrontendModule::Impl final {
         play_confirm();
     }
 
+    /**
+     * Map Preview "Set" (ugcSettings.on_map_preview_set_clicked): the settings
+     * menu gives way to ScreenshotHud. Retail parks the player behind a fly
+     * camera; the native HUD keeps first-person movement for framing but hides
+     * the held tool and the game HUD, exactly what the capture must exclude.
+     */
     void capture_ugc_overhead_preview() {
-        if (tutorial_session == nullptr || !match_initial_info.map_is_ugc()) {
+        if (tutorial_session == nullptr || !match_initial_info.map_is_ugc() ||
+            !ugc_ingame_settings.visible()) {
             settings_warning = "A loaded UGC world is required for map-preview capture";
+            return;
+        }
+        ugc_screenshot_resume_draft = ugc_ingame_settings.draft();
+        ugc_ingame_settings.cancel();
+        ugc_screenshot_hud_active = true;
+        ugc_preview_capture = UgcPreviewCaptureState::idle;
+        tutorial_session->set_view_model_suppressed(true);
+        play_confirm();
+    }
+
+    /** ScreenshotHud menu key: back to UGCSettings with its draft retained. */
+    void close_ugc_screenshot_hud() {
+        if (!ugc_screenshot_hud_active) return;
+        ugc_screenshot_hud_active = false;
+        ugc_preview_capture = UgcPreviewCaptureState::idle;
+        if (tutorial_session != nullptr) tutorial_session->set_view_model_suppressed(false);
+        if (ugc_screenshot_resume_draft.has_value()) {
+            auto draft = std::move(*ugc_screenshot_resume_draft);
+            ugc_screenshot_resume_draft.reset();
+            if (!ugc_ingame_settings.open(true, std::move(draft), available_ugc_skydomes())) {
+                settings_warning = "No valid retail skydomes are installed";
+            }
+        }
+        cancel_pointer_capture();
+        play_back();
+    }
+
+    /** set_temp_ugc_preview_image: held until UGCSettings OK (UGC-13). */
+    void set_pending_ugc_preview(std::vector<std::uint8_t> rgba, std::uint32_t extent) {
+        std::vector<std::byte> png;
+        std::string error;
+        if (!encode_png_rgba8(rgba, extent, extent, png, error)) {
+            settings_warning = "UGC preview capture failed: " + error;
+            return;
+        }
+        ugc_pending_preview_png = std::move(png);
+        ugc_pending_preview_rgba = std::move(rgba);
+        ugc_pending_preview_extent = extent;
+        ugc_pending_preview_texture_dirty = true;
+    }
+
+    /** ScreenshotHud.on_mouse_press: LMB queues a capture, RMB the overhead map. */
+    void ugc_screenshot_mouse_press(bool left) {
+        if (!ugc_screenshot_hud_active || tutorial_session == nullptr) return;
+        if (left) {
+            if (ugc_preview_capture == UgcPreviewCaptureState::idle) {
+                ugc_preview_capture = UgcPreviewCaptureState::hide_frame;
+            }
             return;
         }
         if (minimap_pixels.size() !=
             static_cast<std::size_t>(world::VxlMap::width) * world::VxlMap::depth * 4U) {
             minimap_pixels = world::build_minimap_overview_rgba(tutorial_session->map());
         }
+        set_pending_ugc_preview(minimap_pixels, world::VxlMap::width);
+    }
+
+    /** take_screenshot: the frame drawn without HUD arrives a frame later. */
+    void consume_ugc_preview_capture() {
+        if (ugc_preview_capture != UgcPreviewCaptureState::waiting) return;
+        auto capture = renderer.take_backbuffer_capture();
+        if (!capture.has_value()) return;
+        ugc_preview_capture = UgcPreviewCaptureState::idle;
+        std::uint32_t extent{};
+        auto rgba = ugc_screenshot_preview_rgba(capture->rgba, capture->width, capture->height,
+                                                extent);
+        if (!rgba.empty()) set_pending_ugc_preview(std::move(rgba), extent);
+    }
+
+    void discard_pending_ugc_preview() {
+        ugc_pending_preview_png.clear();
+        ugc_pending_preview_rgba.clear();
+        ugc_pending_preview_extent = 0U;
+    }
+
+    /**
+     * UGCSettings.save_pressed -> set_ugc_preview_image: upload the preview
+     * (packet 102, persisted by the editor server) and mirror it into the
+     * local catalog when this client owns the project files.
+     */
+    void commit_pending_ugc_preview() {
+        if (ugc_pending_preview_png.empty()) return;
+        if (upload_ugc_preview(ugc_pending_preview_png)) {
+            server_ugc_preview_png = ugc_pending_preview_png;
+        } else {
+            settings_warning = "failed to queue the UGC map preview (102)";
+        }
         std::string error;
-        if (!write_ugc_overhead_preview(ugc_maps_root(),
-                                        ugc_map_title,
-                                        minimap_pixels,
-                                        world::VxlMap::width,
-                                        world::VxlMap::depth,
-                                        server_ugc_preview_png,
-                                        error)) {
-            settings_warning = "UGC preview capture failed: " + error;
+        if (!write_ugc_preview_png(ugc_maps_root(), ugc_map_title, ugc_pending_preview_png,
+                                   error)) {
+            // A guest or remote editor has no local project; the server copy
+            // is authoritative either way.
+            std::fprintf(stderr, "[ugc] local preview mirror skipped: %s\n", error.c_str());
+        }
+        discard_pending_ugc_preview();
+    }
+
+    /**
+     * LoadingMenu.draw_map_tab shows a Map Creator project's own png. The
+     * client that launched the editor owns the project files, so the preview
+     * comes from its catalog (a guest keeps the stock baseplate art).
+     */
+    void apply_ugc_loader_preview() {
+        if (owned_local_server == nullptr || !owned_local_server->running()) return;
+        try {
+            const auto root = ugc_maps_root();
+            const auto scan = scan_ugc_projects(root);
+            const auto project = std::ranges::find_if(scan.maps, [&](const auto& candidate) {
+                return candidate.title == ugc_map_title;
+            });
+            if (project == scan.maps.end()) return;
+            std::error_code code;
+            auto png = std::filesystem::weakly_canonical(root, code) /
+                       std::filesystem::path{project->uid};
+            if (code) return;
+            png.replace_extension(".png");
+            if (!std::filesystem::is_regular_file(png, code) || code) return;
+            const auto decoded = render::decode_png_rgba8(png);
+            if (!decoded.texture.has_value()) return;
+            constexpr std::string_view asset{"runtime/ugc_loader_preview"};
+            const auto key = texture_key(asset, render::TextureFilter::linear);
+            if (const auto existing = image_textures.find(key); existing != image_textures.end()) {
+                static_cast<void>(renderer.release_texture(existing->second.texture));
+                image_textures.erase(existing);
+            }
+            const auto texture = renderer.create_texture_rgba8(
+                decoded.texture->rgba8, decoded.texture->extent, render::TextureFilter::linear);
+            if (!texture.has_value()) return;
+            image_textures.emplace(key, *texture);
+            match_loading.set_map_preview_override(std::string{asset});
+        } catch (const std::exception& exception) {
+            settings_warning = std::string{"UGC loader preview failed: "} + exception.what();
+        }
+    }
+
+    /** The pending preview's texture (drawn bottom-right while framing). */
+    void sync_ugc_preview_texture() {
+        if (!ugc_pending_preview_texture_dirty || ugc_pending_preview_rgba.empty()) return;
+        ugc_pending_preview_texture_dirty = false;
+        const auto key = texture_key(ugc_preview_texture_asset, render::TextureFilter::linear);
+        if (const auto existing = image_textures.find(key); existing != image_textures.end()) {
+            static_cast<void>(renderer.release_texture(existing->second.texture));
+            image_textures.erase(existing);
+        }
+        const auto texture = renderer.create_texture_rgba8(
+            ugc_pending_preview_rgba,
+            render::UiExtent{ugc_pending_preview_extent, ugc_pending_preview_extent},
+            render::TextureFilter::linear);
+        if (!texture.has_value()) {
+            settings_warning = "UGC preview upload failed: " + std::string{renderer.last_error()};
             return;
         }
-        settings_warning = "UGC overhead preview saved";
-        play_confirm();
+        image_textures.emplace(key, *texture);
+    }
+
+    /**
+     * ScreenshotHud.draw_hud: nothing at all on the capture frame; otherwise
+     * the SCREENSHOT_HUD_TEXT help panel, the pending preview in a black
+     * (0,0,0,100) box of 30% of the window height 10 px from the bottom-right
+     * corner with 5 px image padding, and the chat.
+     */
+    [[nodiscard]] ui::DrawList ugc_screenshot_hud_draw_list() {
+        ui::DrawList list;
+        if (ugc_preview_capture == UgcPreviewCaptureState::hide_frame) {
+            if (renderer.request_backbuffer_capture()) {
+                ugc_preview_capture = UgcPreviewCaptureState::waiting;
+            } else {
+                ugc_preview_capture = UgcPreviewCaptureState::idle;
+                settings_warning = "UGC preview capture failed: " +
+                                   std::string{renderer.last_error()};
+            }
+            return list;
+        }
+        if (ugc_preview_capture == UgcPreviewCaptureState::waiting) {
+            return list;
+        }
+        const auto width = static_cast<double>(drawable_extent.width);
+        const auto height = static_cast<double>(drawable_extent.height);
+        const auto text = resolve_control_placeholders(localized_text("SCREENSHOT_HUD_TEXT"),
+                                                       control_key_names());
+        constexpr double padding{20.0};
+        const double panel_width = std::max(200.0, width * 0.8);
+        const double panel_height = 5.0 * 26.0 + padding;
+        list.push(ui::SpriteDrawCommand{std::string{game_hud_assets::white_pixel},
+                                        ui::DrawRect{10.0, 10.0, panel_width, panel_height},
+                                        ui::DrawSpace::window_pixels,
+                                        ui::TextureFilter::linear,
+                                        ui::TextureAnchor::top_left,
+                                        1.0,
+                                        ui::SpriteSizing::stretch,
+                                        ui::ColorModulation{ui::ColorRgba8{0U, 0U, 0U, 255U},
+                                                            1'000U, 588U}});
+        list.push(ui::TextDrawCommand{text,
+                                      std::string{game_hud_assets::help_font},
+                                      ui::DrawRect{10.0 + padding * 0.5, 10.0 + padding * 0.5 + 20.0,
+                                                   panel_width - padding, panel_height - padding},
+                                      ui::DrawSpace::window_pixels,
+                                      20.0,
+                                      2.0,
+                                      6U,
+                                      ui::HorizontalTextAlignment::left,
+                                      ui::VerticalTextAlignment::top,
+                                      ui::TextTransform::preserve,
+                                      ui::TextFit::none,
+                                      ui::ColorModulation{ui::ColorRgba8{244U, 236U, 187U, 255U},
+                                                          1'000U, 1'000U},
+                                      1.0,
+                                      ui::TextLayout::retail_wrapped_lines,
+                                      false});
+        if (!ugc_pending_preview_rgba.empty() || !server_ugc_preview_png.empty()) {
+            const double side = width < height ? width * 0.3 : height * 0.3;
+            constexpr double edge{10.0};
+            constexpr double image_padding{5.0};
+            const double left = width - side - edge;
+            const double top = height - side - edge;
+            list.push(ui::SpriteDrawCommand{std::string{game_hud_assets::white_pixel},
+                                            ui::DrawRect{left, top, side, side},
+                                            ui::DrawSpace::window_pixels,
+                                            ui::TextureFilter::linear,
+                                            ui::TextureAnchor::top_left,
+                                            1.0,
+                                            ui::SpriteSizing::stretch,
+                                            ui::ColorModulation{ui::ColorRgba8{0U, 0U, 0U, 255U},
+                                                                1'000U, 392U}});
+            if (!ugc_pending_preview_rgba.empty()) {
+                list.push(ui::SpriteDrawCommand{std::string{ugc_preview_texture_asset},
+                                                ui::DrawRect{left + image_padding,
+                                                             top + image_padding,
+                                                             side - image_padding * 2.0,
+                                                             side - image_padding * 2.0},
+                                                ui::DrawSpace::window_pixels,
+                                                ui::TextureFilter::linear});
+            }
+        }
+        const auto chat = game_chat_presentation.build(
+            game_chat, ui::PixelExtent{static_cast<std::int32_t>(drawable_extent.width),
+                                       static_cast<std::int32_t>(drawable_extent.height)},
+            [this](std::string_view line, double font_pixels, std::string_view font_asset) {
+                return measure_chat_text(line, font_pixels, font_asset);
+            });
+        for (const auto& command : chat.commands()) list.push(command);
+        return list;
     }
 
     /**
@@ -8897,6 +11741,7 @@ struct NativeFrontendModule::Impl final {
 
         if (inside(layout.cancel_button)) {
             ugc_ingame_settings.cancel();
+            discard_pending_ugc_preview();
             play_back();
             return;
         }
@@ -8960,7 +11805,7 @@ struct NativeFrontendModule::Impl final {
             const auto id = std::to_integer<std::uint8_t>(packet.front());
             const auto result = id == network::BuildPrefabActionPacket::id ||
                                         id == network::ErasePrefabActionPacket::id
-                                    ? apply_live_prefab_mutation(packet)
+                                    ? apply_live_prefab_mutation(packet, false)
                                 : id == network::PrefabCompletePacket::id
                                     ? complete_live_prefab(false)
                                     : live_terrain_replica->apply(packet);
@@ -9016,7 +11861,55 @@ struct NativeFrontendModule::Impl final {
      * thread. Collision is already authoritative; this lane only catches the
      * visible mesh up without allowing a reconnect burst to monopolize a tick.
      */
+    /**
+     * The live remesher's configuration. The Retail tier meshes as vxl.pyd
+     * did: no authored emissive palette (retail had no self-lit map voxels,
+     * so TokyoNeon/CityOfChicago signs keep their stored colour) and the
+     * recovered single-strongest static-light kernel (P3-13).
+     */
+    [[nodiscard]] world::ChunkMesherConfig live_chunk_mesher_config() const {
+        world::ChunkMesherConfig remesh_config;
+        remesh_config.bed_water_color = ugc_water_color();
+        const bool retail = retail_look_active();
+        if (!retail) {
+            remesh_config.emissive = world::emissive_palette_for(tutorial_map_name);
+        }
+        remesh_config.retail_static_light_kernel = retail;
+        if (tutorial_session != nullptr) {
+            remesh_config.static_lights = &tutorial_session->static_lights();
+        }
+        return remesh_config;
+    }
+
+    /** Tier the resident terrain meshes were built for. */
+    std::optional<bool> live_meshes_retail_look;
+
+    /**
+     * A tier switch changes what the mesher bakes (emissive palette, static
+     * light kernel), so re-mesh exactly the chunks that differ.
+     */
+    void requeue_chunks_for_tier_change() {
+        const bool retail = retail_look_active();
+        if (!live_meshes_retail_look.has_value()) {
+            live_meshes_retail_look = retail;
+            return;
+        }
+        if (*live_meshes_retail_look == retail || tutorial_session == nullptr) {
+            return;
+        }
+        live_meshes_retail_look = retail;
+        if (!world::palette_is_empty(world::emissive_palette_for(tutorial_map_name))) {
+            queue_all_live_chunks();
+            return;
+        }
+        const auto& lights = tutorial_session->static_lights();
+        for (const auto& light : lights.lights()) {
+            queue_live_chunk_remeshes(lights.affected_chunks(light, live_chunk_edge));
+        }
+    }
+
     void pump_live_chunk_remeshes(std::size_t budget) {
+        requeue_chunks_for_tier_change();
         if (live_chunk_remesh_queue.empty()) {
             if (live_catchup_render_sync) {
                 complete_live_map_loading();
@@ -9030,13 +11923,7 @@ struct NativeFrontendModule::Impl final {
         }
         const PerformanceScope performance{"terrain_remesh", std::chrono::microseconds{2'000}};
 
-        world::ChunkMesherConfig remesh_config;
-        remesh_config.bed_water_color = ugc_water_color();
-        remesh_config.emissive = world::emissive_palette_for(tutorial_map_name);
-        if (tutorial_session != nullptr) {
-            remesh_config.static_lights = &tutorial_session->static_lights();
-        }
-        const world::ChunkMesher remesher{remesh_config};
+        const world::ChunkMesher remesher{live_chunk_mesher_config()};
         // A chunk count alone is not a time budget: 24 dense slabs can consume
         // an entire simulation frame. Finish at least one chunk, then yield at
         // the deadline. FIFO prevents sustained nearby edits starving an older
@@ -9113,6 +12000,44 @@ struct NativeFrontendModule::Impl final {
         } catch (...) { /* Logging must never interrupt connection recovery. */ }
     }
 
+    /**
+     * loadingMenu.on_packet during the handshake: CHECKING_MAP with the map
+     * tabs at InitialInfo, LOADING_MAP at MapDataValidation, the UGC source
+     * download, then SYNCING_MAP with the MapSyncChunk percentage. The bar is
+     * part_percent * current_part + map_percentage * part_percent (3 parts).
+     */
+    void present_handshake_progress(const network::LiveProtocol168Status& status) {
+        if (status.initial_info != nullptr && !shown_loading_initial_info) {
+            const auto& info = *status.initial_info;
+            const auto map = info.map_name.empty() && active_match_request.has_value()
+                                 ? active_match_request->expected_map
+                                 : info.map_name;
+            const auto mode = resolve_protocol168_mode(info.mode_key, info.classic);
+            match_ui_skin = supported_ui_skin(info.texture_skin);
+            match_loading.initial_info(map, mode.title_key, mode.classic, match_ui_skin,
+                                       mode.code == "ugc", info.friendly_fire);
+            match_loading.set_infographic_captions(info.mode_infographic_text);
+            match_loading.set_custom_game_rules(custom_match_rules());
+            shown_loading_initial_info = true;
+        }
+        const auto& progress = status.loading;
+        if (progress == shown_loading_progress) return;
+        const auto& shown = shown_loading_progress;
+        if (progress.map_validated && !shown.map_validated && !progress.sync_started) {
+            match_loading.loading_map();
+        }
+        if (progress.receiving_map_data && !progress.sync_started) {
+            if (!shown.receiving_map_data) match_loading.receiving_map();
+            match_loading.map_progress(static_cast<double>(progress.map_data_percent) / 100.0);
+        }
+        if (progress.sync_started && !progress.sync_finished) {
+            if (!shown.sync_started) match_loading.map_sync_started();
+            match_loading.map_sync_progress(static_cast<double>(progress.sync_percent) / 100.0);
+        }
+        if (progress.sync_finished && !shown.sync_finished) match_loading.map_sync_finished();
+        shown_loading_progress = progress;
+    }
+
     void pump_match_connection() {
         if (map_transition_reconnecting) {
             pump_map_transition_reconnect();
@@ -9137,6 +12062,7 @@ struct NativeFrontendModule::Impl final {
             fail_match_connection(status);
             return;
         }
+        present_handshake_progress(status);
         auto bootstrap = match_connection->take_bootstrap();
         if (bootstrap == nullptr)
             return;
@@ -9154,11 +12080,17 @@ struct NativeFrontendModule::Impl final {
         const auto mode = resolve_protocol168_mode(bootstrap->initial_info.mode_key,
                                                    bootstrap->initial_info.classic);
         match_ui_skin = supported_ui_skin(bootstrap->initial_info.texture_skin);
-        match_loading.initial_info(
-            map, mode.title_key, mode.classic, match_ui_skin, mode.code == "ugc",
-            bootstrap->initial_info.friendly_fire);
-        match_loading.set_infographic_captions(bootstrap->initial_info.mode_infographic_text);
-        match_loading.receiving_map();
+        if (!shown_loading_initial_info) {
+            match_loading.initial_info(
+                map, mode.title_key, mode.classic, match_ui_skin, mode.code == "ugc",
+                bootstrap->initial_info.friendly_fire);
+            if (mode.code == "ugc") apply_ugc_loader_preview();
+            match_loading.set_infographic_captions(bootstrap->initial_info.mode_infographic_text);
+            match_loading.set_custom_game_rules(custom_match_rules());
+            shown_loading_initial_info = true;
+        }
+        // The network thirds are complete; the world build fills the last one.
+        match_loading.map_sync_finished();
         tutorial_roster = std::move(bootstrap->roster);
         match_initial_info = std::move(bootstrap->initial_info);
         match_state_info = std::move(bootstrap->state_info);
@@ -9217,6 +12149,7 @@ struct NativeFrontendModule::Impl final {
         latest_world_loop = 0;
         clock_sync_elapsed = 1.0;
         clock_sync_token = 0;
+        connection_watchdog.reset();
         played_hit_sound = false;
         pending_tool_selection.reset();
         last_sent_tool.reset();
@@ -9231,10 +12164,12 @@ struct NativeFrontendModule::Impl final {
         local_palette_color.reset();
         server_ugc_items.clear();
         server_ugc_objectives.reset();
+        ignored_ugc_entity_ids.clear();
         server_ugc_preview_png.clear();
         server_ground_colors = match_initial_info.ground_colors;
         ugc_initial_requests_sent = false;
         server_ambient_sounds.clear();
+        environment_audio = {};
         server_ambience_received = false;
         server_music_received = false;
         server_sound_variant = 0U;
@@ -9247,6 +12182,7 @@ struct NativeFrontendModule::Impl final {
         }
         block_line_start.reset();
         palette_selection = 16U;
+        palette_selector_active = false;
         prefab_yaw_override = 1U;
         preview_prefab_name.clear();
         preview_prefab_model.reset();
@@ -9323,7 +12259,8 @@ struct NativeFrontendModule::Impl final {
                 id == network::BlockBuildColoredPacket::id || id == network::BlockLinePacket::id ||
                 id == network::BlockBuildPacket::id || id == network::PaintBlockPacket::id ||
                 id == network::BuildPrefabActionPacket::id ||
-                id == network::ErasePrefabActionPacket::id) {
+                id == network::ErasePrefabActionPacket::id ||
+                id == network::BlockManagerStatePacket::id) {
                 std::optional<network::DamagePacket> terrain_damage;
                 std::optional<network::BlockBuildColoredPacket> colored_build;
                 if (id == network::DamagePacket::id || id == network::BlockBuildColoredPacket::id) {
@@ -9385,9 +12322,32 @@ struct NativeFrontendModule::Impl final {
                         static_cast<void>(
                             tutorial_session->spend_server_confirmed_blocks(block_cost));
                     }
+                    // BLOCK_GRANTING_DAMAGES: every cell the local player's
+                    // own Damage(37) destroyed credits one block (collapse
+                    // debris does not), exactly like the server's add_blocks.
+                    if (terrain_damage.has_value() &&
+                        terrain_damage->player_id == *local_player_id &&
+                        network::is_block_granting_damage(terrain_damage->type) &&
+                        result.mutation.destroyed_cells != 0U) {
+                        tutorial_session->grant_blocks(static_cast<std::uint16_t>(
+                            std::min<std::size_t>(result.mutation.destroyed_cells,
+                                                  std::numeric_limits<std::uint16_t>::max())));
+                    }
                 }
                 for (auto& component : live_terrain_replica->take_falling_components()) {
                     terrain_effects.spawn_falling(std::move(component));
+                }
+                // ExplosionDamageManager.handle_damage: every stock client
+                // pushes its own character while processing a blast's
+                // Damage(37); the server applies the same impulse on the
+                // matching third accepted input frame, so predicting it here
+                // keeps a nearby RPG/grenade/dynamite from snapping us back.
+                if (tutorial_session != nullptr && terrain_damage.has_value() &&
+                    local_spawn_confirmed && !death_camera.active()) {
+                    static_cast<void>(tutorial_session->apply_blast_push(
+                        terrain_damage->type,
+                        {terrain_damage->position[0U], terrain_damage->position[1U],
+                         terrain_damage->position[2U]}));
                 }
                 if (tutorial_session != nullptr && terrain_damage.has_value() &&
                     result.mutation.accepted &&
@@ -9438,10 +12398,8 @@ struct NativeFrontendModule::Impl final {
                             barrel,
                             static_cast<std::uint32_t>(terrain_damage->seed) ^
                                 (static_cast<std::uint32_t>(terrain_damage->player_id) << 16U));
-                        if (impact.destroyed && local_player_id == terrain_damage->player_id &&
-                            tutorial_session != nullptr) {
-                            tutorial_session->grant_blocks();
-                        }
+                        // The Block Sucker's wallet credit is the generic
+                        // BLOCK_GRANTING_DAMAGES path above (type 42).
                         if (audio_started) {
                             audio->play_weapon_cue(63U,
                                                    audio::WeaponCue::tool_extra,
@@ -9515,27 +12473,32 @@ struct NativeFrontendModule::Impl final {
                                               : nullptr;
                     const bool block_cannon = builder != nullptr &&
                                               (builder->tool_id == 29U || builder->tool_id == 48U);
-                    if (!block_cannon) {
-                        const auto color = tutorial_session->map().color(cell.x, cell.y, cell.z)
-                                               .value_or(world::VxlColor{176U, 176U, 176U, 255U});
-                        world::emit_block_placement(
+                    // GameScene.build_block (gameScene 0x1018AD60): add_block,
+                    // then create_snowke_ring only for BLOCK_TYPE_SNOW (1).
+                    // Ordinary blocks get no particles and no sound (the
+                    // `build` cue observers hear is the server's PlaySound 46).
+                    bool snow_block{};
+                    if (id == network::BlockBuildPacket::id) {
+                        const auto decoded_build = network::decode_tool_action_packet(packet);
+                        const auto* build =
+                            decoded_build
+                                ? std::get_if<network::BlockBuildPacket>(&*decoded_build.packet)
+                                : nullptr;
+                        snow_block = build != nullptr && build->block_type == 1U;
+                    }
+                    if (!block_cannon && snow_block) {
+                        // create_snowke_ring(position, colour): the new
+                        // block's own colour, six puffs around the cell.
+                        world::emit_snowke_ring(
                             particles,
-                            {static_cast<std::int32_t>(cell.x),
-                             static_cast<std::int32_t>(cell.y),
-                             static_cast<std::int32_t>(cell.z)},
-                            color,
+                            {static_cast<float>(cell.x) + 0.5F, static_cast<float>(cell.y) + 0.5F,
+                             static_cast<float>(cell.z) + 0.5F},
+                            tutorial_session->map()
+                                .color(cell.x, cell.y, cell.z)
+                                .value_or(world::VxlColor{255U, 255U, 255U, 255U}),
                             static_cast<std::uint32_t>(latest_world_loop) ^
                                 static_cast<std::uint32_t>(cell.x * 73856093U) ^
                                 static_cast<std::uint32_t>(cell.y * 19349663U));
-                        if (audio_started) {
-                            static_cast<void>(audio->play_named_one_shot(
-                                world::placement_sound_stem(
-                                    world::PlacementFeedbackKind::block),
-                                {static_cast<float>(cell.x) + 0.5F,
-                                 static_cast<float>(cell.y) + 0.5F,
-                                 static_cast<float>(cell.z) + 0.5F},
-                                1.0F));
-                        }
                     }
                 }
                 const auto dirty = live_terrain_replica->take_dirty_chunks();
@@ -9553,6 +12516,8 @@ struct NativeFrontendModule::Impl final {
                     continue;
                 }
                 latest_world_loop = update.loop_count;
+                // process_packet_world_update records last_world_update.
+                connection_watchdog.note_response();
                 for (const auto& row : update.rows) {
                     const world::Vec3 position{
                         row.position[0U], row.position[1U], row.position[2U]};
@@ -9614,15 +12579,9 @@ struct NativeFrontendModule::Impl final {
                             local));
                     }
                     if (tutorial_session != nullptr && local_player_id == row.player_id) {
-                        const bool was_alive = tutorial_session->alive();
-                        if (local_spawn_confirmed) {
-                            game_hud.set_health(row.health);
-                            tutorial_session->set_server_health(row.health);
-                            if (should_present_local_death(
-                                    local_spawn_confirmed, was_alive, row.health)) {
-                                begin_local_death(std::nullopt);
-                            }
-                        }
+                        // The retail owner-row handler skips health (and
+                        // orientation, input and tool): local health and
+                        // death come only from SetHP(5) and KillAction(46).
                         tutorial_session->note_authoritative_snapshot(row.acknowledged_client_loop,
                                                                       position);
                         tutorial_session->apply_server_jetpack_fuel(
@@ -9666,8 +12625,12 @@ struct NativeFrontendModule::Impl final {
                                     : std::max(1,
                                                latest_world_loop -
                                                    rig->second.last_snapshot_world_loop);
+                            // Retail snaps peers to the newest row and extrapolates
+                            // with their replicated buttons (P0-09, view_delay=0).
                             rig->second.motion.push(
-                                {replica->position, replica->orientation, replica->velocity},
+                                network::remote_motion_sample(
+                                    *replica, network::protocol168_movement_scale(
+                                                  match_initial_info, replica->class_id)),
                                 std::clamp(
                                     static_cast<double>(loop_delta) / 60.0, 1.0 / 120.0, 0.1));
                             rig->second.last_snapshot_world_loop = latest_world_loop;
@@ -9695,6 +12658,7 @@ struct NativeFrontendModule::Impl final {
                             update_remote_fire_loop(row, *replica);
                             update_remote_block_sucker_audio(row, *replica);
                             update_remote_block_cannon_audio(row, *replica);
+                            update_remote_paint_spray_audio(row, *replica);
                         }
                     }
                 }
@@ -9825,7 +12789,7 @@ struct NativeFrontendModule::Impl final {
                     bool friendly_hit{};
                     const auto* local = tutorial_roster.player(*local_player_id);
                     double nearest_squared{4.0};
-                    for (const auto& candidate : tutorial_roster.players()) {
+                    for (const auto& candidate : tutorial_roster.present_players()) {
                         if (candidate.dead || candidate.player_id == *local_player_id) {
                             continue;
                         }
@@ -9875,6 +12839,46 @@ struct NativeFrontendModule::Impl final {
                     // are intentionally silent at this packet boundary.
                     static_cast<void>(
                         audio->play_named_one_shot("hitplayer", {}, 1.0F, true));
+                }
+                if (health->damage_type == 2U && previous_health > 0) {
+                    // Character.heal_hp_added (character.pyd 0x10019fe0):
+                    // re-arm the 1 s healing window; reaching full health
+                    // plays medi_pack_healing_end (2D).
+                    medpack_heal_timer = 1.0;
+                    if (previous_health != 100 && health->health >= 100 && audio_started) {
+                        // zone=DEFAULT with pos=None resolves to HUD: dry.
+                        static_cast<void>(audio->play_named_one_shot(
+                            "AoS_soundfx_PLAYER_medic_item_medi_pack_healing_end_001",
+                            {},
+                            1.0F,
+                            true,
+                            0.0F,
+                            0.15F,
+                            false,
+                            1.0F,
+                            false));
+                    }
+                }
+                // gameScene.pyd process_packet_set_hp: type 3 also starts
+                // Character.burn_time and type 4 sudden_death_damage_time
+                // (both 1.2 s indicators); type 2 calls heal_hp_added.
+                switch (world::set_hp_feedback(health->damage_type,
+                                               previous_health,
+                                               health->health)) {
+                case world::SetHpFeedback::burn:
+                    burn_indicator_remaining = world::burn_indicator_time;
+                    break;
+                case world::SetHpFeedback::sudden_death:
+                    sudden_death_indicator_remaining = world::sudden_death_indicator_time;
+                    break;
+                case world::SetHpFeedback::heal:
+                    // Audit V5: heal_hp_added only re-arms last_healed_timer;
+                    // Character.update_sounds owns the A2908 loop (see
+                    // advance_medpack_heal_audio). No extra one-shot here.
+                    break;
+                case world::SetHpFeedback::hit:
+                case world::SetHpFeedback::none:
+                    break;
                 }
                 if (local_player_id.has_value()) {
                     static_cast<void>(
@@ -9946,6 +12950,10 @@ struct NativeFrontendModule::Impl final {
                     if (const auto* player = tutorial_roster.player(created.packet->player_id);
                         player != nullptr) {
                         reset_combat_tool_memory(*player);
+                    }
+                    // A local respawn releases the POIFocus LookAtController.
+                    if (local_player_id == created.packet->player_id) {
+                        poi_focus_target.reset();
                     }
                 }
                 if (roster_applied && created &&
@@ -10116,6 +13124,22 @@ struct NativeFrontendModule::Impl final {
                 }
                 static_cast<void>(
                     tutorial_roster.update_pickup(pickup->player_id, pickup->pickup_id));
+                // Player pickup setter (player.pyd 0x1000F150): the bomb and
+                // diamond carry cues are client-local; the server never
+                // sends them as PlaySound.
+                if (const auto cue = audio::pickup_carry_cue(pickup->pickup_id);
+                    cue.has_value() && audio_started) {
+                    const bool local_carrier = local_player_id == pickup->player_id;
+                    const auto* carrier = tutorial_roster.player(pickup->player_id);
+                    if (local_carrier || carrier != nullptr) {
+                        play_retail_cue(*cue,
+                                        local_carrier || carrier == nullptr
+                                            ? audio::SoundPosition{}
+                                            : remote_sound_position(*carrier),
+                                        local_carrier,
+                                        pickup->player_id);
+                    }
+                }
             } else if (id == network::DropPickupPacket::id) {
                 const auto decoded = network::decode_tool_action_packet(packet);
                 const auto* pickup =
@@ -10189,21 +13213,42 @@ struct NativeFrontendModule::Impl final {
                     settings_warning = decoded.error;
                     continue;
                 }
-                const auto found = std::ranges::find_if(
-                    server_ugc_items, [&](const network::InitialUgcItem& item) {
-                        return item.position == placement->position &&
-                               item.item_id == placement->ugc_item_id;
-                    });
+                // Packet 97 has no mode byte: the server authors it with the
+                // UGCEntity.get_ugc_mode rule for the mode being edited now.
+                const auto placed_mode = world::ugc_item_edit_mode(
+                    placement->ugc_item_id, match_initial_info.ugc_mode);
                 if (placement->placing) {
+                    const auto found = std::ranges::find_if(
+                        server_ugc_items, [&](const network::InitialUgcItem& item) {
+                            return item.position == placement->position &&
+                                   item.item_id == placement->ugc_item_id &&
+                                   item.mode == placed_mode;
+                        });
                     constexpr std::size_t maximum_ugc_items{65'536U};
                     if (found == server_ugc_items.end() &&
                         server_ugc_items.size() < maximum_ugc_items) {
-                        server_ugc_items.push_back({match_state_info.mode_type,
-                                                    placement->position,
-                                                    placement->ugc_item_id});
+                        server_ugc_items.push_back(
+                            {placed_mode, placement->position, placement->ugc_item_id});
                     }
-                } else if (found != server_ugc_items.end()) {
-                    server_ugc_items.erase(found);
+                } else {
+                    // Newest matching row, preferring one drawn in this mode.
+                    auto found = server_ugc_items.end();
+                    for (auto it = server_ugc_items.begin(); it != server_ugc_items.end(); ++it) {
+                        if (it->position != placement->position ||
+                            it->item_id != placement->ugc_item_id) {
+                            continue;
+                        }
+                        const bool visible = world::ugc_item_visible_in_mode(
+                            it->mode, match_initial_info.ugc_mode);
+                        if (found == server_ugc_items.end() || visible ||
+                            !world::ugc_item_visible_in_mode(found->mode,
+                                                             match_initial_info.ugc_mode)) {
+                            found = it;
+                        }
+                    }
+                    if (found != server_ugc_items.end()) {
+                        server_ugc_items.erase(found);
+                    }
                 }
                 sync_ugc_item_presentations();
             } else if (id == network::PlayerLeftPacket::id) {
@@ -10215,6 +13260,7 @@ struct NativeFrontendModule::Impl final {
                     continue;
                 }
                 remote_cosmetics.erase(left->player_id);
+                running_local_kills.forget(left->player_id);
                 if (const auto* player = tutorial_roster.player(left->player_id);
                     player != nullptr) {
                     const auto position = remote_sound_position(*player);
@@ -10286,7 +13332,8 @@ struct NativeFrontendModule::Impl final {
                        id == network::ForceShowScoresPacket::id ||
                        id == network::ShowTextMessagePacket::id ||
                        id == network::TeamProgressPacket::id ||
-                       id == network::TerritoryBaseStatePacket::id) {
+                       id == network::TerritoryBaseStatePacket::id ||
+                       id == network::PoiFocusPacket::id) {
                 // These packets now cross a strict framing/type boundary even
                 // where their presentation service is still being ported. A
                 // malformed server packet must never silently desynchronise
@@ -10303,11 +13350,20 @@ struct NativeFrontendModule::Impl final {
                         settings_warning = "ClockSync returned an invalid server loop";
                         continue;
                     }
-                    // Never reuse a ClientData label: the server drops a
-                    // repeated/older label as stale. A fresh server anchor may
-                    // advance this timeline, but cannot rewind already-sent
-                    // prediction history.
-                    client_loop_count = std::max(client_loop_count, clock->server_loop_count);
+                    // process_packet_clock_sync: estimate = server loop plus
+                    // the half-RTT lead, adopted only outside the +/-10 loop
+                    // dead band. Never reuse a ClientData label, though: the
+                    // server drops a repeated/older label as stale, so an
+                    // estimate behind us cannot rewind sent prediction history
+                    // (deliberate P3-04).
+                    const auto ping = network::clock_sync_ping_ms(
+                        monotonic_milliseconds(), clock->client_time);
+                    if (const auto relabel = network::clock_sync_relabel(
+                            client_loop_count, clock->server_loop_count, ping);
+                        relabel.has_value()) {
+                        client_loop_count = std::max(client_loop_count, *relabel);
+                    }
+                    connection_watchdog.note_response();
                 } else if (const auto* movement_lock =
                                std::get_if<network::LockToZonePacket>(&*decoded.packet);
                            movement_lock != nullptr) {
@@ -10329,10 +13385,11 @@ struct NativeFrontendModule::Impl final {
                     definition.name = ambient->name;
                     definition.points.reserve(ambient->points.size());
                     for (const auto& point : ambient->points) {
-                        // Retail GameSound centres voxel-space sources.
-                        definition.points.push_back({static_cast<float>(point[0U]) + 0.5F,
-                                                     static_cast<float>(point[1U]) + 0.5F,
-                                                     static_cast<float>(point[2U]) + 0.5F});
+                        // AmbientSound keeps the raw points; GameSound's
+                        // +0.5 set_position offset is applied by the mixer.
+                        definition.points.push_back({static_cast<float>(point[0U]),
+                                                     static_cast<float>(point[1U]),
+                                                     static_cast<float>(point[2U])});
                     }
                     server_ambient_sounds[ambient->loop_id] = std::move(definition);
                     server_ambience_received = true;
@@ -10361,13 +13418,19 @@ struct NativeFrontendModule::Impl final {
                                std::get_if<network::PlayMusicPacket>(&*decoded.packet);
                            music != nullptr) {
                     server_music_received = true;
+                    // process_packet_play_music ignores the packet while the
+                    // SelectTeam/SelectClass bed (secondary_menu_bed_001) plays.
                     if (audio_started &&
+                        retail_server_music_allowed(
+                            audio->is_playing_named_music("secondary_menu_bed_001")) &&
                         !audio->play_named_music(music->name, music->seconds_played)) {
                         settings_warning = std::string{audio->last_error()};
                     }
                 } else if (std::holds_alternative<network::StopMusicPacket>(*decoded.packet)) {
                     server_music_received = true;
-                    if (audio_started) {
+                    if (audio_started &&
+                        retail_server_music_allowed(
+                            audio->is_playing_named_music("secondary_menu_bed_001"))) {
                         audio->stop_menu_music();
                     }
                 } else if (const auto* entity_change =
@@ -10458,6 +13521,11 @@ struct NativeFrontendModule::Impl final {
                     }
                     const auto* victim = tutorial_roster.player(corpse->player_id);
                     const auto jetpack_corpse = jetpack_deaths.finish(corpse->player_id);
+                    if (victim != nullptr && victim->dead) {
+                        // Character.explode_corpse: exploded = True hides the
+                        // ClassicCorpse (and any pack) for the rest of the life.
+                        exploded_corpse_generations[corpse->player_id] = victim->generation;
+                    }
                     const auto retained = retained_corpse_positions[corpse->player_id];
                     const auto last_known = last_known_player_positions[corpse->player_id];
                     if (victim == nullptr && !jetpack_corpse.has_value() &&
@@ -10538,6 +13606,15 @@ struct NativeFrontendModule::Impl final {
                     if (tutorial_session == nullptr) {
                         continue;
                     }
+                    if (created->type == 29U) {
+                        // Stock-client copy of a Game Data marker (UGC-1).
+                        // Packets 97/98 own the native marker presentation.
+                        constexpr std::size_t maximum_ignored_ugc_entities{65'536U};
+                        if (ignored_ugc_entity_ids.size() < maximum_ignored_ugc_entities) {
+                            ignored_ugc_entity_ids.insert(created->entity_id);
+                        }
+                        continue;
+                    }
                     world::LocalEntity entity;
                     entity.id = created->entity_id;
                     entity.type = created->type;
@@ -10553,6 +13630,13 @@ struct NativeFrontendModule::Impl final {
                         launcher_muzzle_tracker.consume(entity, std::chrono::steady_clock::now());
                     entity.face = created->face;
                     entity.fuse = created->fuse;
+                    if (created->type == 14U) {
+                        // BombPickup.update ticks only while its wire fuse is
+                        // positive; the session substitutes the catalog fuse
+                        // for an unarmed (0) bomb, so keep the raw value.
+                        ground_bomb_fuses[created->entity_id] =
+                            GroundBombFuse{std::max(0.0F, created->fuse), 0.0};
+                    }
                     const auto channel = [](float value) {
                         return static_cast<std::uint8_t>(std::clamp(std::lround(value), 0L, 255L));
                     };
@@ -10570,6 +13654,9 @@ struct NativeFrontendModule::Impl final {
                 } else if (const auto* destroyed =
                                std::get_if<network::DestroyEntityPacket>(&*decoded.packet);
                            destroyed != nullptr) {
+                    if (ignored_ugc_entity_ids.erase(destroyed->entity_id) > 0U) {
+                        continue;
+                    }
                     if (tutorial_session != nullptr) {
                         const auto entity = std::ranges::find(
                             tutorial_session->entities(), destroyed->entity_id,
@@ -10587,14 +13674,54 @@ struct NativeFrontendModule::Impl final {
                                  static_cast<float>(entity->position.z)},
                                 static_cast<std::uint32_t>(destroyed->entity_id) ^
                                     0xC8A7E168U);
+                        } else if (entity != tutorial_session->entities().end() &&
+                                   entity->type == 15U) {
+                            // DiamondPickup.on_delete: particle_pickup_twinkle
+                            // burst from the DIAMOND_PICKUP_FX_* constants.
+                            world::emit_diamond_pickup(
+                                particles,
+                                {static_cast<float>(entity->position.x),
+                                 static_cast<float>(entity->position.y),
+                                 static_cast<float>(entity->position.z)},
+                                static_cast<std::uint32_t>(destroyed->entity_id) ^
+                                    0xD1A30D15U);
                         }
-                        static_cast<void>(
-                            tutorial_session->destroy_server_entity(destroyed->entity_id));
+                        // Rocket.delete: a turret-owned entity 21 explodes
+                        // with turr_rocketexplode, the RPG's with rocketexplode.
+                        std::optional<std::uint8_t> explosion_sound_tool;
+                        if (entity != tutorial_session->entities().end() &&
+                            (entity->type == 21U || entity->type == 22U)) {
+                            // Prefer the kind fixed at launch (Rocket.__init__);
+                            // the owner may have switched tools since.
+                            auto kind = audio::RocketFlightKind::none;
+                            if (const auto flight =
+                                    rocket_audio.find({true, destroyed->entity_id});
+                                flight != rocket_audio.end()) {
+                                kind = flight->second.kind;
+                            }
+                            if (kind == audio::RocketFlightKind::none) {
+                                std::optional<std::uint8_t> owner_tool;
+                                if (const auto* owner = tutorial_roster.player(entity->owner);
+                                    owner != nullptr) {
+                                    owner_tool = owner->tool_id;
+                                }
+                                kind = audio::rocket_flight_kind(entity->type, owner_tool);
+                            }
+                            explosion_sound_tool = audio::rocket_explosion_tool(kind);
+                        }
+                        static_cast<void>(tutorial_session->destroy_server_entity(
+                            destroyed->entity_id, explosion_sound_tool));
                     }
                 } else if (const auto* objectives =
                                std::get_if<network::UgcObjectivesPacket>(&*decoded.packet);
                            objectives != nullptr) {
                     server_ugc_objectives = *objectives;
+                    // Packet 68 is retail's only mode-change trigger (gs has
+                    // no packet-12 receive handler).
+                    if (match_initial_info.map_is_ugc() &&
+                        objectives->mode != match_initial_info.ugc_mode) {
+                        apply_ugc_mode_change(objectives->mode);
+                    }
                     if (ugc_loadout_active) {
                         ugc_loadout_menu.set_objectives(
                             ugc_loadout_objectives());
@@ -10602,7 +13729,10 @@ struct NativeFrontendModule::Impl final {
                 } else if (const auto* edit_mode =
                                std::get_if<network::SetUgcEditModePacket>(&*decoded.packet);
                            edit_mode != nullptr) {
-                    match_initial_info.ugc_mode = edit_mode->mode;
+                    // Retail GameScene ignores a received packet 12; the
+                    // following packet 68 carries the committed mode. Writing
+                    // ugc_mode here would hide the change from that compare.
+                    static_cast<void>(edit_mode);
                 } else if (const auto* loading =
                                std::get_if<network::UgcMapLoadingFromHostPacket>(&*decoded.packet);
                            loading != nullptr) {
@@ -10652,20 +13782,16 @@ struct NativeFrontendModule::Impl final {
                 } else if (const auto* help =
                                std::get_if<network::HelpMessagePacket>(&*decoded.packet);
                            help != nullptr) {
-                    const auto names = control_key_names();
-                    std::vector<std::string> lines;
-                    lines.reserve(help->message_ids.size());
-                    for (const auto& key : help->message_ids) {
-                        lines.push_back(resolve_control_placeholders(tutorial_string(key), names));
-                    }
-                    game_hud.set_help_messages(std::move(lines),
-                                               resolve_control_placeholders(
-                                                   tutorial_string("TOOL_HELP_PANEL_CLOSE"), names),
-                                               help->delay);
+                    // process_packet_help_message: ugc_help_panel.set_text(
+                    // message_ids, delay) resolves ANY id via get_by_id.
+                    show_retail_help(help->message_ids, help->delay);
                 } else if (const auto* ground =
                                std::get_if<network::SetGroundColorsPacket>(&*decoded.packet);
                            ground != nullptr) {
                     server_ground_colors = ground->colors;
+                    // process_packet_set_ground_colors -> refresh_ground_colors
+                    // regenerates the implicit-interior colour table.
+                    apply_ground_color_table();
                     queue_all_live_chunks();
                 } else if (const auto* billboard =
                                std::get_if<network::MinimapBillboardPacket>(&*decoded.packet);
@@ -10709,6 +13835,8 @@ struct NativeFrontendModule::Impl final {
                 } else if (const auto* visibility =
                                std::get_if<network::TeamMapVisibilityPacket>(&*decoded.packet);
                            visibility != nullptr) {
+                    // teams[team_id].can_see_other_team: keyed by the SEEING
+                    // team; the minimap consults the local team's entry.
                     server_team_map_visibility[visibility->team_id] = visibility->visible;
                 } else if (const auto* lock =
                                std::get_if<network::LockTeamPacket>(&*decoded.packet);
@@ -10827,7 +13955,16 @@ struct NativeFrontendModule::Impl final {
                     // SCORE.TEAM=0 uses wire team ids 2/3. SCORE.PLAYER=1
                     // names one roster id. The reason byte drives a separate
                     // score-reason feed and must not alter the value here.
-                    if (score->type == 0U) {
+                    // Retail ignores a team row while TeamLockScore(81) holds
+                    // that team's score (teams[id].locked_score); player rows
+                    // still apply (BS docs/PROTOCOL.md row 81, live 2026-09-26).
+                    const bool team_score_locked =
+                        score->type == 0U &&
+                        ((score->specifier == 2U && match_state_info.team1_locked_score) ||
+                         (score->specifier == 3U && match_state_info.team2_locked_score));
+                    if (team_score_locked) {
+                        // Dropped exactly like the stock handler.
+                    } else if (score->type == 0U) {
                         if (score->specifier == 2U) {
                             match_state_info.team1_score = score->value;
                         } else if (score->specifier == 3U) {
@@ -10952,20 +14089,38 @@ struct NativeFrontendModule::Impl final {
                                       kill->kill_type == 26U ? 256.0 : 330.0,
                                       victim->name,
                                       feed_color(*victim));
+                    announce_kill_action(*kill, *victim, killer);
                     if (local_player_id == kill->player_id && local_spawn_confirmed) {
-                        begin_local_death(kill->killer_id);
+                        begin_local_death(kill->killer_id, kill->kill_type,
+                                          kill->respawn_time == 0xFFU);
                         game_hud.set_respawn_time(kill->respawn_time);
+                        show_death_class_change_hint(kill->respawn_time);
                     }
                 } else if (const auto* vote =
                                std::get_if<network::GenericVoteMessagePacket>(&*decoded.packet);
                            vote != nullptr) {
+                    generic_vote.set_localizer(
+                        [this](std::string_view key) { return localized_text(key); });
                     generic_vote.apply(*vote);
                 } else if (const auto* message =
                                std::get_if<network::ChatMessagePacket>(&*decoded.packet);
                            message != nullptr) {
-                    if (message->chat_type == chat_big_type) {
+                    // gameScene.pyd process_packet_chat_message (0x1017cf90):
+                    // SYSTEM -> add_server_message (255,100,100); BIG -> big
+                    // text; ALL/TEAM from player -1 -> add_server_message(
+                    // value, True) (150,150,255); otherwise add_chat. Retail
+                    // plays no cue for a received line; only HUD submit does.
+                    switch (chat_message_lane(message->chat_type, message->player_id)) {
+                    case ChatMessageLane::big_message:
                         game_hud.set_big_message(message->value);
-                    } else {
+                        break;
+                    case ChatMessageLane::server_message:
+                        game_chat.add(message->value, retail_server_message_color);
+                        break;
+                    case ChatMessageLane::server_chat:
+                        game_chat.add(message->value, retail_server_chat_color);
+                        break;
+                    case ChatMessageLane::player_chat:
                         if (const auto* sender = tutorial_roster.player(message->player_id);
                             sender != nullptr) {
                             const auto color = remote_team_color(sender->team);
@@ -10976,19 +14131,28 @@ struct NativeFrontendModule::Impl final {
                                 message->chat_type ==
                                     static_cast<std::uint8_t>(ChatChannel::team),
                                 sender->local_language);
-                        } else if (message->chat_type == 2U) {
-                            game_chat.add(message->value,
-                                          {244U, 236U, 187U, 255U});
-                        } else {
-                            game_chat.add(message->value);
                         }
-                        if (audio_started) {
-                            static_cast<void>(audio->play_named_one_shot("chat", {}, 0.70F, true));
-                        }
+                        break;
+                    case ChatMessageLane::ignored:
+                        break;
                     }
                 } else if (const auto* localized_message =
                                std::get_if<network::LocalisedMessagePacket>(&*decoded.packet);
                            localized_message != nullptr) {
+                    // Map Creator flush answer (request_ugc_save). A pause
+                    // menu save shows it in its own message box instead.
+                    if (pending_ugc_save.has_value() &&
+                        (localized_message->string_id == "UGC_MAP_SAVE_SUCCESSFULLY" ||
+                         localized_message->string_id == "UGC_MAP_SAVE_ERROR")) {
+                        const bool quick =
+                            pending_ugc_save->origin == UgcSaveOrigin::quick_save;
+                        finish_ugc_save(localized_message->string_id ==
+                                        "UGC_MAP_SAVE_SUCCESSFULLY");
+                        if (!quick) continue;
+                    }
+                    // KickVotePlayerSelect.packet_received: a KICK_DENIED_*
+                    // answer schedules close_menu() after 0.5 s.
+                    kick_vote_select.notify_localised_message(localized_message->string_id);
                     if (localized_message->chat_type == chat_big_type) {
                         game_hud.set_big_message(
                             format_runtime_message(
@@ -10998,16 +14162,19 @@ struct NativeFrontendModule::Impl final {
                                 [this](std::string_view key) { return localized_text(key); }),
                             localized_message->override_previous_message);
                     } else {
+                        // Lane colours per gameScene.pyd 0x1017dda0: SYSTEM
+                        // (255,100,100), ALL white, TEAM blend(team, white, .4).
+                        const auto team_color = local_player_team_color();
                         game_chat.add(
                             format_runtime_message(
                                 localized_text(localized_message->string_id),
                                 localized_message->parameters,
                                 localized_message->localise_parameters,
                                 [this](std::string_view key) { return localized_text(key); }),
-                            {244U, 236U, 187U, 255U});
-                        if (audio_started) {
-                            static_cast<void>(audio->play_named_one_shot("chat", {}, 0.70F, true));
-                        }
+                            localised_message_lane_color(
+                                localized_message->chat_type,
+                                ui::ColorRgba8{team_color.red, team_color.green,
+                                               team_color.blue, 255U}));
                     }
                 } else if (std::holds_alternative<network::MapEndedPacket>(*decoded.packet)) {
                     // The retail GameScene only freezes here. Steam's lobby
@@ -11028,6 +14195,21 @@ struct NativeFrontendModule::Impl final {
                     match_result_camera_index = 0U;
                     scoreboard_forced = false;
                     static_cast<void>(window.set_text_input_enabled(false));
+                    // The maintained retail client opens LoadingMenu on packet
+                    // 52 itself (session_transition_patch); live A/B
+                    // 2026-09-29 showed it on the loader while this client
+                    // held ViewGameStats until the server's ack timeout closed
+                    // ENet. Show the loader now; the reconnect that follows
+                    // the close keeps owning teardown and the new bootstrap.
+                    if (network_match && active_match_request.has_value() &&
+                        screen() == FrontendScreen::tutorial_world) {
+                        const auto& request = *active_match_request;
+                        match_loading.begin(request.expected_map, request.expected_mode,
+                                            request.expected_classic, match_ui_skin);
+                        loading_scrollbar_dragging = false;
+                        static_cast<void>(navigation.replace(FrontendScreen::game_loading,
+                                                             NavigationDirection::forward));
+                    }
                 } else if (std::holds_alternative<network::ShowGameStatsPacket>(*decoded.packet)) {
                     match_results.show(match_result_winner_from_scores(
                         team_roster_state(false)));
@@ -11047,7 +14229,29 @@ struct NativeFrontendModule::Impl final {
                                std::get_if<network::ForceShowScoresPacket>(
                                    &*decoded.packet);
                            forced_scores != nullptr) {
+                    // GameScene.force_show_scores(True) opens ViewScores and
+                    // calls stop_movement: every held key is released, and
+                    // gameplay input stays locked until forced=0.
                     scoreboard_forced = forced_scores->forced;
+                    if (scoreboard_forced && tutorial_session != nullptr) {
+                        tutorial_session->clear_input();
+                    }
+                } else if (const auto* poi =
+                               std::get_if<network::PoiFocusPacket>(&*decoded.packet);
+                           poi != nullptr) {
+                    // process_packet_poi_focus starts the LookAtController only
+                    // for a local player; spectators are never locked.
+                    const auto* local = local_player_id.has_value()
+                                            ? tutorial_roster.player(*local_player_id)
+                                            : nullptr;
+                    if (tutorial_session != nullptr && local != nullptr && !local->dead &&
+                        !local_player_is_spectator(local->team,
+                                                   match_initial_info.enable_spectator)) {
+                        poi_focus_target = world::Vec3{static_cast<double>(poi->target[0U]),
+                                                       static_cast<double>(poi->target[1U]),
+                                                       static_cast<double>(poi->target[2U])};
+                        tutorial_session->clear_input();
+                    }
                 } else if (const auto* result_message =
                                std::get_if<network::ShowTextMessagePacket>(
                                    &*decoded.packet);
@@ -11167,7 +14371,7 @@ struct NativeFrontendModule::Impl final {
                 local_team = local->team;
             }
         }
-        const auto players = tutorial_roster.players();
+        const auto players = tutorial_roster.present_players();
         for (const bool same_team_only : {true, false}) {
             for (const auto& player : players) {
                 if (same_team_only && (!local_team.has_value() || player.team != *local_team)) {
@@ -11181,15 +14385,34 @@ struct NativeFrontendModule::Impl final {
         return std::nullopt;
     }
 
+    /**
+     * ChaseController.chase_next_player (gameScene.pyd 0x100346b0): LMB/RMB
+     * step through LIVING players on the owner's team -- everyone only for a
+     * spectator -- and only when the controller is not locked (retail locks
+     * it unless never_respawn, i.e. the dead VIP camera). A dead player never
+     * gets to watch the enemy team.
+     */
     void cycle_death_camera_target(int direction) {
+        if (!death_camera.can_cycle_targets()) {
+            return;
+        }
+        std::optional<std::uint8_t> local_team;
+        if (local_player_id.has_value()) {
+            if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr) {
+                local_team = local->team;
+            }
+        }
+        const bool spectator = death_camera.spectating();
         std::vector<DeathCameraTarget> targets;
-        for (const auto& player : tutorial_roster.players()) {
+        for (const auto& player : tutorial_roster.present_players()) {
+            if (!spectator && (!local_team.has_value() || player.team != *local_team)) {
+                continue;
+            }
             if (auto target = death_camera_target(player.player_id); target.has_value()) {
                 targets.push_back(*target);
             }
         }
         if (targets.empty()) {
-            death_camera.set_chase_target(std::nullopt);
             return;
         }
         const auto current = death_camera.chase_player_id();
@@ -11204,7 +14427,120 @@ struct NativeFrontendModule::Impl final {
             }
         }
         death_camera.set_chase_target(targets[index]);
-        death_camera.request_chase();
+    }
+
+    /** DeathController.set_killer_info for one KillAction naming a killer. */
+    [[nodiscard]] std::optional<DeathKillerInfo>
+    death_killer_info(std::optional<std::uint8_t> killer_id,
+                      std::optional<std::uint8_t> kill_type) const {
+        if (!killer_id.has_value() || !kill_type.has_value() || local_player_id == killer_id) {
+            return std::nullopt;
+        }
+        const auto* replica = tutorial_roster.player(*killer_id);
+        if (replica == nullptr) {
+            return std::nullopt;
+        }
+        const auto position = death_killer_position(*killer_id);
+        return DeathKillerInfo{*killer_id, position.value_or(replica->position), *kill_type,
+                               replica->running_local_player_kills};
+    }
+
+    /**
+     * GameScene.can_place_block_on_player, inverted: true when a living
+     * character (the local body included) occupies the cell.
+     */
+    [[nodiscard]] bool block_cell_blocked_by_player(const world::BlockTargetCell& cell) const {
+        if (tutorial_session != nullptr && tutorial_session->alive() && !death_camera.active() &&
+            world::block_cell_overlaps_body(cell, tutorial_session->player().position)) {
+            return true;
+        }
+        for (const auto& player : tutorial_roster.present_players()) {
+            if (player.dead || player.health <= 0 || local_player_id == player.player_id ||
+                (player.team != 2U && player.team != 3U)) {
+                continue;
+            }
+            auto position = player.position;
+            if (const auto rig = remote_player_rigs.find(player.player_id);
+                rig != remote_player_rigs.end()) {
+                position = rig->second.motion.sample().position;
+            }
+            if (world::block_cell_overlaps_body(cell, position)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** BlockToolCommon.draw_ghosting's hit cube, with the bridge fallback. */
+    [[nodiscard]] world::BlockTarget current_block_target() const {
+        if (tutorial_session == nullptr) {
+            return {};
+        }
+        const auto& player = tutorial_session->player();
+        auto orientation = player.orientation;
+        const double length = std::sqrt(orientation.x * orientation.x +
+                                        orientation.y * orientation.y +
+                                        orientation.z * orientation.z);
+        if (length > 1.0e-9) {
+            orientation = {orientation.x / length, orientation.y / length, orientation.z / length};
+        }
+        return world::resolve_block_target(
+            tutorial_session->map(), player.position, orientation,
+            match_initial_info.classic ? world::retail_classic_max_block_distance
+                                       : world::retail_max_block_distance,
+            [this](const world::BlockTargetCell& cell) {
+                return block_cell_blocked_by_player(cell);
+            },
+            live_max_modifiable_z());
+    }
+
+    /**
+     * BlockManager.is_space_to_add_blocks (gameScene 0x10075490): only the
+     * Map Creator asks the VXL capacity counters; every other scene has room.
+     */
+    static constexpr std::uint8_t ugc_snowblower_tool_id{48U};
+    [[nodiscard]] bool ugc_space_to_add_blocks() const noexcept {
+        if (tutorial_session == nullptr || !network_match || !match_initial_info.map_is_ugc()) {
+            return true;
+        }
+        return tutorial_session->map().is_space_to_add_blocks();
+    }
+
+    /** GameScene.on_connect's max_modifiable_z for the current match. */
+    [[nodiscard]] std::int32_t live_max_modifiable_z() const noexcept {
+        return network_match
+                   ? world::retail_max_modifiable_z_for(match_initial_info.beach_z_modifiable)
+                   : world::retail_max_modifiable_z;
+    }
+
+    /** The dragged line from old_hit_cube (block_line_start) to the hit cube. */
+    [[nodiscard]] world::BlockLineGhost current_block_ghost(const world::BlockTarget& target) const {
+        std::vector<world::VoxelCell> cells;
+        if (target.cell.has_value()) {
+            network::BlockLinePacket line;
+            line.start = block_line_start.value_or(*target.cell);
+            line.end = *target.cell;
+            cells = network::cube_line_cells(line, 65U);
+        }
+        return world::evaluate_block_line_ghost(
+            tutorial_session->map(), target, cells, tutorial_session->blocks_remaining(),
+            tutorial_session->infinite_blocks(), ugc_space_to_add_blocks(),
+            [this](const world::BlockTargetCell& cell) {
+                return block_cell_blocked_by_player(cell);
+            },
+            live_max_modifiable_z());
+    }
+
+    /** The killer's character.interpolated_position, alive or dead. */
+    [[nodiscard]] std::optional<world::Vec3> death_killer_position(std::uint8_t player_id) const {
+        const auto* replica = tutorial_roster.player(player_id);
+        if (replica == nullptr) {
+            return std::nullopt;
+        }
+        if (const auto rig = remote_player_rigs.find(player_id); rig != remote_player_rigs.end()) {
+            return rig->second.motion.sample().position;
+        }
+        return replica->position;
     }
 
     [[nodiscard]] const world::JetpackDeathSnapshot* local_jetpack_death_state() const noexcept {
@@ -11231,19 +14567,29 @@ struct NativeFrontendModule::Impl final {
             pending_local_jetpack_death->generation != corpse->generation) {
             return;
         }
-        const auto killer_id = pending_local_jetpack_death->killer_id;
+        const auto pending = *pending_local_jetpack_death;
         pending_local_jetpack_death.reset();
         if (tutorial_session == nullptr || death_camera.active()) {
             return;
         }
+        death_camera.set_terrain(&tutorial_session->map());
         death_camera.begin_death(corpse->position,
                                  tutorial_session->yaw(),
-                                 choose_death_camera_target(killer_id),
-                                 !network_match || match_initial_info.enable_deathcam);
+                                 tutorial_session->pitch(),
+                                 death_killer_info(pending.killer_id, pending.kill_type),
+                                 !network_match || match_initial_info.enable_deathcam,
+                                 pending.never_respawn);
         game_hud.set_crosshair_visible(false);
     }
 
-    void begin_local_death(std::optional<std::uint8_t> killer_id) {
+    /**
+     * Character.update_dead hands the local player to DEATH (enable_deathcam)
+     * or CHASE on its own body, `locked = not never_respawn`; the KillAction
+     * supplies set_killer_info (kill type, killer, running streak).
+     */
+    void begin_local_death(std::optional<std::uint8_t> killer_id,
+                           std::optional<std::uint8_t> kill_type = std::nullopt,
+                           bool never_respawn = false) {
         if (tutorial_session == nullptr) {
             return;
         }
@@ -11257,11 +14603,10 @@ struct NativeFrontendModule::Impl final {
         // same-class CreatePlayer still uses retail's normal 25/101 chance.
         local_spawn_voice.armed = false;
         if (death_camera.active()) {
-            if (killer_id.has_value()) {
-                if (auto target = death_camera_target(*killer_id); target.has_value()) {
-                    death_camera.set_chase_target(*target);
-                }
+            if (never_respawn) {
+                death_camera.set_never_respawn(true);
             }
+            death_camera.set_killer_info(death_killer_info(killer_id, kill_type));
             return;
         }
         const auto& player = tutorial_session->player();
@@ -11292,9 +14637,12 @@ struct NativeFrontendModule::Impl final {
                 if (!pending_local_jetpack_death.has_value() ||
                     pending_local_jetpack_death->generation != generation) {
                     pending_local_jetpack_death =
-                        PendingLocalJetpackDeath{generation, killer_id};
+                        PendingLocalJetpackDeath{generation, killer_id, kill_type, never_respawn};
                 } else if (killer_id.has_value()) {
                     pending_local_jetpack_death->killer_id = killer_id;
+                    pending_local_jetpack_death->kill_type = kill_type;
+                    pending_local_jetpack_death->never_respawn =
+                        pending_local_jetpack_death->never_respawn || never_respawn;
                 }
                 // Retail does not activate its death controller until
                 // Character.explode_corpse. Keeping this camera deferred lets
@@ -11302,10 +14650,13 @@ struct NativeFrontendModule::Impl final {
                 return;
             }
         }
+        death_camera.set_terrain(&tutorial_session->map());
         death_camera.begin_death(player.position,
                                  tutorial_session->yaw(),
-                                 choose_death_camera_target(killer_id),
-                                 !network_match || match_initial_info.enable_deathcam);
+                                 tutorial_session->pitch(),
+                                 death_killer_info(killer_id, kill_type),
+                                 !network_match || match_initial_info.enable_deathcam,
+                                 never_respawn);
     }
 
     void end_local_death(std::uint8_t team, bool dead) {
@@ -11323,6 +14674,7 @@ struct NativeFrontendModule::Impl final {
         game_hud.clear_respawn();
         if (spectator) {
             tutorial_session->clear_input();
+            death_camera.set_terrain(&tutorial_session->map());
             death_camera.enter_spectator(tutorial_session->player().position,
                                          tutorial_session->yaw(),
                                          choose_death_camera_target());
@@ -11346,13 +14698,22 @@ struct NativeFrontendModule::Impl final {
                 }
             }
         }
+        death_camera.set_terrain(&tutorial_session->map());
+        if (const auto killer = death_camera.killer_player_id(); killer.has_value()) {
+            death_camera.set_killer_position(death_killer_position(*killer));
+        }
+        // ChaseController.update: a followed player who died or left drops the
+        // camera back onto our own body. Only a spectator, who has no body,
+        // looks for a replacement (find_random_chase_player).
         const auto current = death_camera.chase_player_id();
         auto target = current.has_value() ? death_camera_target(*current)
                                           : std::optional<DeathCameraTarget>{};
-        if (!target.has_value()) {
+        if (!target.has_value() && death_camera.spectating()) {
             target = choose_death_camera_target();
         }
-        death_camera.set_chase_target(std::move(target));
+        if (current.has_value() || target.has_value()) {
+            death_camera.set_chase_target(std::move(target));
+        }
         death_camera.tick(dt);
     }
 
@@ -11365,7 +14726,14 @@ struct NativeFrontendModule::Impl final {
         const auto* local = tutorial_roster.player(*local_player_id);
         const bool spectator = local != nullptr && local_player_is_spectator(
             local->team, match_initial_info.enable_spectator);
-        if (spectator) {
+        // Retail keeps sending ClientData on the death screen too (the server
+        // discards those frames, BS player.record_input_frame). A dead body
+        // publishes the same neutral sample as a spectator: never prediction,
+        // movement or actions. Staying silent deadlocked a mid-round dead
+        // joiner (Arena): the first ClientData is the server's scene-ready
+        // boundary, so it never admitted the joiner to gameplay broadcasts
+        // and the round-start CreatePlayer never arrived.
+        if (spectator || !tutorial_session->alive() || death_camera.active()) {
             // First ClientData is the server's scene-ready boundary. Keep
             // neutral samples flowing during incremental roster/map reveal,
             // without recording character prediction or authorizing actions.
@@ -11380,7 +14748,6 @@ struct NativeFrontendModule::Impl final {
             }
             return;
         }
-        if (!tutorial_session->alive() || death_camera.active()) return;
         network::ClientDataPacket packet;
         packet.loop_count = client_loop_count++;
         tutorial_session->record_network_prediction(packet.loop_count);
@@ -11408,11 +14775,11 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
-     * Emit retail ClockSync(0) at a bounded one-hertz cadence.
+     * Emit retail ClockSync(0) once per CLOCK_SYNC_RATE (60) fixed loops.
      *
-     * The echoed token only pairs a response with this session. The response's
-     * loop anchor is applied in `pump_live_match_packets`; packet transport
-     * remains on the ENet worker and never blocks the fixed gameplay tick.
+     * send_clock_sync stamps client_time = enet.time_get() % MAX_PING; the
+     * echo yields the round trip for the half-RTT loop lead applied in
+     * `pump_live_match_packets`. The packet goes out unsequenced.
      */
     void send_live_clock_sync(double dt) {
         if (!network_match || match_connection == nullptr)
@@ -11421,19 +14788,46 @@ struct NativeFrontendModule::Impl final {
         if (clock_sync_elapsed < 1.0)
             return;
         clock_sync_elapsed = std::fmod(clock_sync_elapsed, 1.0);
-        if (clock_sync_token == std::numeric_limits<std::int32_t>::max()) {
-            clock_sync_token = 1;
-        } else {
-            ++clock_sync_token;
-        }
         const network::ClockSyncPacket packet{
-            clock_sync_token,
+            network::clock_sync_client_time(monotonic_milliseconds()),
             0,
         };
         if (!match_connection->send(network::encode_packet(packet))) {
             const auto status = match_connection->status();
             if (!status.error.empty())
                 settings_warning = status.error;
+        }
+    }
+
+    /**
+     * GameScene.update liveness check, once per fixed loop: after 5 s without a
+     * ClockSync reply or WorldUpdate, CONNECTION_PROBLEMS counts down in the
+     * big-text lane every frame (BIG_TEXT_TIME_1FRAME); past the 20/30/60 s
+     * limit retail shows ERROR_TIMEOUT, prints 'Connection to server lost'
+     * and disconnects.
+     */
+    void advance_connection_watchdog() {
+        if (!network_match || match_connection == nullptr) return;
+        const auto verdict = connection_watchdog.tick(match_initial_info.map_is_ugc());
+        if (verdict.timed_out) {
+            core::diagnostic("network", "Connection to server lost");
+            auto status = match_connection->status();
+            status.phase = network::LiveProtocol168Phase::failed;
+            status.disconnect_reason.reset();
+            status.error = "Connection to server lost";
+            status.failure_key = "ERROR_TIMEOUT";
+            record_connection_failure(status);
+            fail_match_connection(status);
+            return;
+        }
+        if (verdict.seconds_left.has_value()) {
+            std::array<char, 32U> seconds{};
+            static_cast<void>(std::snprintf(seconds.data(), seconds.size(), "%.1f",
+                                            *verdict.seconds_left));
+            game_hud.set_big_message(
+                format_retail_template(localized_text("CONNECTION_PROBLEMS"),
+                                       {std::string{seconds.data()}}),
+                true, 2.0 / 60.0);
         }
     }
 
@@ -11503,6 +14897,7 @@ struct NativeFrontendModule::Impl final {
                               static_cast<std::uint32_t>(color.blue);
         if (hide_selector) {
             palette_selection.reset();
+            palette_selector_active = false;
         }
         if (tutorial_session != nullptr) {
             tutorial_session->set_block_color(color);
@@ -11531,15 +14926,29 @@ struct NativeFrontendModule::Impl final {
         row = (row + vertical + static_cast<int>(rows)) % static_cast<int>(rows);
         index = static_cast<std::size_t>(row) * columns + static_cast<std::size_t>(column);
         palette_selection = index;
+        // Palette.set_selector -> show_selection: the highlight appears only
+        // after an arrow-key pick (selector_active starts False).
+        palette_selector_active = true;
         const auto selected = colors[index];
         apply_local_block_color(world::VxlColor{selected.red, selected.green, selected.blue, 255U});
+        if (network_match && match_initial_info.map_is_ugc() && audio_started) {
+            // Character.set_block_color (character.pyd 0x100263d0, L679-680)
+            // plays ugc_colour_select (2D) unless its caller suppresses it.
+            // Which callers pass the suppress flag is unrecovered; the cue is
+            // limited to UGC palette picks here (VERIFY).
+            static_cast<void>(audio->play_named_one_shot("ugc_colour_select", {}, 1.0F, true));
+        }
     }
 
     void sync_palette_hud() {
         const auto colors = retail_block_palette();
+        // Palette.draw outlines the selector cell only while selector_active
+        // (show_selection on arrow keys, hide_selection on a world colour
+        // pick); a fresh spawn shows no box (live A/B 2026-09-29).
         game_hud.set_palette_state(std::vector<ui::ColorRgba8>{colors.begin(), colors.end()},
                                    8U,
-                                   palette_selection,
+                                   palette_selector_active ? palette_selection
+                                                           : std::optional<std::size_t>{},
                                    palette_enabled(),
                                    network_match && match_initial_info.map_is_ugc());
     }
@@ -11617,7 +15026,7 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] network::TerrainReplicaResult
-    apply_live_prefab_mutation(std::span<const std::byte> payload) {
+    apply_live_prefab_mutation(std::span<const std::byte> payload, bool present_feedback = true) {
         network::TerrainReplicaResult result;
         result.recognized = true;
         if (live_terrain_replica == nullptr) {
@@ -11639,6 +15048,11 @@ struct NativeFrontendModule::Impl final {
         std::int32_t last{};
         std::array<std::int32_t, 3U> origin{};
         bool erase{};
+        // Competitive packet 30 (add_to_user_blocks): the whole model is
+        // expanded at once, blended with `color`; the index range is unused.
+        bool add_to_user_blocks{};
+        std::uint32_t blend_base{};
+        std::uint8_t builder_id{};
         if (const auto* build_packet =
                 std::get_if<network::BuildPrefabActionPacket>(&*decoded.packet);
             build_packet != nullptr) {
@@ -11648,6 +15062,9 @@ struct NativeFrontendModule::Impl final {
             roll = build_packet->roll;
             first = build_packet->from_block_index;
             last = build_packet->to_block_index;
+            add_to_user_blocks = build_packet->add_to_user_blocks;
+            blend_base = build_packet->color;
+            builder_id = build_packet->player_id;
             origin = {
                 build_packet->position[0U], build_packet->position[1U], build_packet->position[2U]};
         } else if (const auto* erase_packet =
@@ -11685,6 +15102,66 @@ struct NativeFrontendModule::Impl final {
             live_prefab_model_name = prefab_name;
         }
         const auto& model = live_prefab_model;
+        if (add_to_user_blocks && !erase) {
+            // PrefabManager.build_prefab with add_to_user_blocks: every model
+            // voxel goes through add_user_block(..., DEFAULT_PREFAB_HEALTH,
+            // replace_solids=True) with blend_color(color, voxel, 0.5), on
+            // every client and immediately (PrefabComplete(29) is a no-op).
+            const world::VxlColor base{static_cast<std::uint8_t>(blend_base >> 16U),
+                                       static_cast<std::uint8_t>(blend_base >> 8U),
+                                       static_cast<std::uint8_t>(blend_base), 255U};
+            std::vector<network::ColoredTerrainCell> cells;
+            std::vector<world::PrefabModelVoxel> authored;
+            cells.reserve(model->voxels().size());
+            authored.reserve(model->voxels().size());
+            for (const auto& voxel : model->voxels()) {
+                authored.push_back({static_cast<std::int32_t>(voxel.x),
+                                    static_cast<std::int32_t>(voxel.y),
+                                    static_cast<std::int32_t>(voxel.z)});
+                const auto rotated = rotate_prefab_xyz(static_cast<std::int32_t>(voxel.x),
+                                                       static_cast<std::int32_t>(voxel.y),
+                                                       static_cast<std::int32_t>(voxel.z),
+                                                       yaw,
+                                                       pitch,
+                                                       roll);
+                const std::array<std::int32_t, 3U> cell{origin[0U] + rotated[0U],
+                                                        origin[1U] + rotated[1U],
+                                                        origin[2U] + rotated[2U]};
+                if (cell[0U] < 0 || cell[1U] < 0 || cell[2U] < 0) continue;
+                cells.push_back({{static_cast<std::uint32_t>(cell[0U]),
+                                  static_cast<std::uint32_t>(cell[1U]),
+                                  static_cast<std::uint32_t>(cell[2U])},
+                                 world::retail_prefab_blend(base, voxel.color)});
+            }
+            result = live_terrain_replica->apply_prefab_user_blocks(cells);
+            if (present_feedback && result.mutation.accepted) {
+                const world::PrefabPlacementCell anchor{origin[0U], origin[1U], origin[2U]};
+                const auto rings = world::prefab_smoke_rings(
+                    authored, model->size_x(), anchor, yaw, pitch, roll);
+                const world::VxlMap* current_map = tutorial_session != nullptr
+                                                       ? &tutorial_session->map()
+                                                       : tutorial_ready_map.get();
+                if (current_map != nullptr) {
+                    std::uint32_t ring_seed = static_cast<std::uint32_t>(latest_world_loop);
+                    for (const auto& ring : rings) {
+                        world::emit_prefab_smoke_ring(particles, *current_map, ring, ring_seed);
+                        ring_seed = ring_seed * 1'664'525U + 1'013'904'223U;
+                    }
+                }
+                // The server plays prefabbuild to everyone except the builder.
+                if (audio_started && local_player_id == builder_id) {
+                    static_cast<void>(audio->play_named_one_shot(
+                        world::placement_sound_stem(world::PlacementFeedbackKind::prefab),
+                        {static_cast<float>(origin[0U]) + 0.5F,
+                         static_cast<float>(origin[1U]) + 0.5F,
+                         static_cast<float>(origin[2U]) + 0.5F},
+                        1.0F));
+                }
+            }
+            // A refused expansion is not a protocol error: the server may
+            // have committed cells this client cannot place (e.g. the bed).
+            return result;
+        }
         const auto count = static_cast<std::int32_t>(std::min<std::size_t>(
             model->voxels().size(),
             static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
@@ -11817,8 +15294,10 @@ struct NativeFrontendModule::Impl final {
         }
         const auto evaluation = preview_prefab_placement.evaluate(
             tutorial_session->map(), {origin[0U], origin[1U], origin[2U]}, yaw, pitch, roll);
+        // build_prefab refuses len(model_points) > wallet: the whole model
+        // costs, overlap included (replace_solids debits every voxel).
         required_blocks = static_cast<std::int32_t>(std::min<std::size_t>(
-            evaluation.required_blocks,
+            evaluation.model_blocks,
             static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
         valid = evaluation.all_in_bounds && evaluation.touches_world &&
                 evaluation.has_effect() &&
@@ -11831,6 +15310,7 @@ struct NativeFrontendModule::Impl final {
                      std::uint8_t yaw,
                      std::uint8_t pitch,
                      std::uint8_t roll,
+                     bool ugc_editor,
                      bool& valid,
                      std::int32_t& required_blocks,
                      std::array<double, 3U>& center) const {
@@ -11841,56 +15321,45 @@ struct NativeFrontendModule::Impl final {
             return std::nullopt;
         }
         const auto& player = tutorial_session->player();
-        const auto& footprint_bounds = preview_prefab_placement.bounds(yaw, pitch, roll);
-        const auto& minimum = footprint_bounds.minimum;
-        const auto& maximum = footprint_bounds.maximum;
-        const auto world_x = maximum[0U] - minimum[0U] + 1;
-        const auto world_y = maximum[1U] - minimum[1U] + 1;
-        const auto world_z = maximum[2U] - minimum[2U] + 1;
-        const auto radius = std::sqrt(static_cast<double>(world_x) * world_x +
-                                      static_cast<double>(world_y) * world_y +
-                                      static_cast<double>(world_z) * world_z) /
-                            2.0;
-        struct DistanceBand final {
-            double radius;
-            double factor;
-            double maximum;
-        };
-        static constexpr std::array<DistanceBand, 6U> bands{{
-            {0.0, 1.20, 12.0},
-            {10.0, 1.20, 999999.0},
-            {20.0, 1.15, 999999.0},
-            {70.0, 1.10, 999999.0},
-            {120.0, 1.05, 999999.0},
-            {1000.0, 1.00, 999999.0},
-        }};
-        const auto band = std::min_element(
-            bands.begin(), bands.end(), [radius](const auto& left, const auto& right) {
-                return std::abs(left.radius - radius) < std::abs(right.radius - radius);
-            });
-        const auto distance = std::clamp(radius * band->factor + 1.0, 7.0, band->maximum);
-        const std::array<double, 3U> footprint_center{
-            (static_cast<double>(minimum[0U]) + maximum[0U]) / 2.0,
-            (static_cast<double>(minimum[1U]) + maximum[1U]) / 2.0,
-            (static_cast<double>(minimum[2U]) + maximum[2U]) / 2.0};
-        // Packet 30 carries the prefab ANCHOR, not a rotated minimum corner.
-        // Centering by unrotated width/height worked only at yaw zero. At the
-        // other three facings it applied a second half-extent in the wrong
-        // direction, so the ghost wrapped around the camera while the server
-        // expanded the same anchor elsewhere.
-        std::array<std::int32_t, 3U> origin{
-            static_cast<std::int32_t>(std::floor(
-                player.position.x + distance * player.orientation.x - footprint_center[0U])),
-            static_cast<std::int32_t>(std::floor(
-                player.position.y + distance * player.orientation.y - footprint_center[1U])),
-            static_cast<std::int32_t>(
-                std::floor(player.position.z + distance * player.orientation.z -
-                           footprint_center[2U] - 0.4 * static_cast<double>(world_z))),
-        };
-        origin[2U] = std::min<std::int32_t>(origin[2U],
-                                            static_cast<std::int32_t>(world::VxlMap::height) - 1);
+        // Packet 30 carries the prefab ANCHOR, not a rotated minimum corner;
+        // the ghost is drawn at anchor + 0.5 + rotated voxel, exactly the
+        // cells the server expands. The anchor itself is retail
+        // PrefabManager.get_prefab_ghost_position: KV6 header sizes (not voxel
+        // bounds) rotated as signed values, the floored aim point minus
+        // int(size / 2) per axis, the even-size facing compensation and the
+        // FACE_BOTTOM intersect lift. PrefabTool passes check_world_intersect
+        // and use_player_orientation; UGCPrefabTool passes neither.
+        world::PrefabGhostRequest request;
+        request.position = {player.position.x, player.position.y, player.position.z};
+        request.orientation = {player.orientation.x, player.orientation.y, player.orientation.z};
+        request.crouching = player.crouch;
+        request.size = {static_cast<std::int32_t>(model.size_x()),
+                        static_cast<std::int32_t>(model.size_y()),
+                        static_cast<std::int32_t>(model.size_z())};
+        request.yaw = yaw;
+        request.pitch = pitch;
+        request.roll = roll;
+        request.player_direction = prefab_facing(player.orientation);
+        request.check_world_intersect = !ugc_editor;
+        request.use_player_orientation = !ugc_editor;
+        const auto ghost = world::prefab_ghost_position(
+            tutorial_session->map(), preview_prefab_placement.authored(), request);
+        std::array<std::int32_t, 3U> origin{ghost.anchor.x, ghost.anchor.y, ghost.anchor.z};
+        if (ugc_editor) {
+            // UGCPrefabTool.update: prefab_position =
+            // rotate_prefab_centered(prefab_center), the same recentering
+            // UgcPrefabControl::recenter_anchor applies while controlled.
+            const auto world_size = world::rotate_prefab_cell(
+                {request.size[0U], request.size[1U], request.size[2U]}, yaw, pitch, roll);
+            origin = {ghost.center[0U] - world_size.x / 2,
+                      ghost.center[1U] - world_size.y / 2,
+                      ghost.center[2U] - world_size.z / 2};
+            const auto facing = static_cast<std::uint8_t>(yaw & 3U);
+            if ((request.size[0U] & 1) == 0 && (facing == 1U || facing == 2U)) --origin[1U];
+            if ((request.size[1U] & 1) == 0 && (facing == 0U || facing == 1U)) ++origin[0U];
+        }
         for (std::size_t axis{}; axis < 3U; ++axis) {
-            center[axis] = static_cast<double>(origin[axis]) + footprint_center[axis];
+            center[axis] = static_cast<double>(ghost.center[axis]);
         }
         evaluate_prefab_candidate(
             model, origin, yaw, pitch, roll, valid, required_blocks);
@@ -11929,18 +15398,21 @@ struct NativeFrontendModule::Impl final {
             (prefab_facing(tutorial_session->player().orientation) + prefab_yaw_override) % 4U);
         preview_prefab_pitch = 0U;
         preview_prefab_roll = 0U;
+        const auto selected = tutorial_session->selected_tool_id();
+        const auto* selected_weapon =
+            selected.has_value() ? world::find_weapon_definition(*selected) : nullptr;
+        const bool ugc_editor =
+            selected_weapon != nullptr &&
+            selected_weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor;
         preview_prefab_position = prefab_candidate(*preview_prefab_model,
                                                    preview_prefab_yaw,
                                                    preview_prefab_pitch,
                                                    preview_prefab_roll,
+                                                   ugc_editor,
                                                    preview_prefab_valid,
                                                    preview_prefab_cost,
                                                    preview_prefab_center);
-        const auto selected = tutorial_session->selected_tool_id();
-        const auto* selected_weapon =
-            selected.has_value() ? world::find_weapon_definition(*selected) : nullptr;
-        if (preview_prefab_position.has_value() && selected_weapon != nullptr &&
-            selected_weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor) {
+        if (preview_prefab_position.has_value() && ugc_editor) {
             ugc_prefab_control.prime(world::UgcPrefabPlacement{
                 {(*preview_prefab_position)[0U],
                  (*preview_prefab_position)[1U],
@@ -12025,12 +15497,20 @@ struct NativeFrontendModule::Impl final {
                 played_hit_sound = false;
             }
             if (action.kind == world::WeaponActionKind::block_line_begin) {
-                block_line_start =
-                    tutorial_session->placement_cell(match_initial_info.classic ? 5.0 : 10.0);
+                // BlockTool.on_start_primary: old_hit_cube = hit_cube only
+                // while the ghost's valid_placement holds.
+                const auto target = current_block_target();
+                block_line_start = target.valid ? target.cell : std::nullopt;
                 continue;
             }
             if (action.kind == world::WeaponActionKind::block_line_cancel) {
                 block_line_start.reset();
+                continue;
+            }
+            if (action.kind == world::WeaponActionKind::oriented_item &&
+                action.tool_id == ugc_snowblower_tool_id && !ugc_space_to_add_blocks()) {
+                // UGCSnowBlowerWeapon.get_has_enough_ammo is the capacity
+                // test: a full Map Creator refuses the snowball outright.
                 continue;
             }
             if (action.kind == world::WeaponActionKind::prefab_rotate) {
@@ -12047,7 +15527,9 @@ struct NativeFrontendModule::Impl final {
                 continue;
             }
             if (action.kind == world::WeaponActionKind::color_pick) {
-                if ((!network_match || match_initial_info.enable_colour_picker) &&
+                // The offline session is Training, whose retail playlist sets
+                // RULE_ENABLE_COLOUR_PICKER OFF (playlists/tutorial.txt).
+                if (network_match && match_initial_info.enable_colour_picker &&
                     tutorial_session != nullptr) {
                     if (const auto color = tutorial_session->looked_at_block_color(
                             match_initial_info.classic ? 5.0 : 10.0);
@@ -12057,7 +15539,8 @@ struct NativeFrontendModule::Impl final {
                 }
                 continue;
             }
-            if (!network_match || match_connection == nullptr || !local_player_id.has_value()) {
+            if (!network_match || match_connection == nullptr || !local_player_id.has_value() ||
+                action.kind == world::WeaponActionKind::placement_rejected) {
                 continue;
             }
             network::WeaponActionWireContext wire;
@@ -12091,14 +15574,16 @@ struct NativeFrontendModule::Impl final {
                              static_cast<float>(launch.z)};
             if (const auto* weapon = world::find_weapon_definition(action.tool_id);
                 weapon != nullptr) {
+                // Retail ShootPacket fields (read_short, so Python truncates):
+                // guns send shoot_bullet(..., block_damage, block_penetration
+                // = 2.5); DiggingTool.use_spade sends self.damage (the block
+                // damage), penetration 0 and seed 0. The server ignores both.
+                const double block = weapon->retail.damage.block.value_or(weapon->block_damage);
                 wire.damage = static_cast<std::int16_t>(
-                    std::clamp(std::lround(weapon->base_damage),
-                               static_cast<long>(std::numeric_limits<std::int16_t>::min()),
-                               static_cast<long>(std::numeric_limits<std::int16_t>::max())));
+                    std::clamp(std::trunc(block), 0.0,
+                               static_cast<double>(std::numeric_limits<std::int16_t>::max())));
                 wire.penetration = static_cast<std::int16_t>(
-                    std::clamp(std::lround(weapon->block_damage),
-                               0L,
-                               static_cast<long>(std::numeric_limits<std::int16_t>::max())));
+                    action.kind == world::WeaponActionKind::melee ? 0 : 2);
             }
             // PlaceMG/PlaceRocketTurret store degree yaw directly. This is not
             // the radian angle used by ordinary C++ trigonometry; retail feeds
@@ -12110,15 +15595,27 @@ struct NativeFrontendModule::Impl final {
                 const auto target = tutorial_session->placement_cell(10.0);
                 if (!item.has_value() || !target.has_value()) {
                     settings_warning = "UGC Game Data placement is not valid here";
+                    play_build_error();
                     continue;
                 }
                 const auto pointed = std::ranges::find_if(
                     server_ugc_items, [&](const network::InitialUgcItem& retained) {
+                        if (!world::ugc_item_visible_in_mode(retained.mode,
+                                                             match_initial_info.ugc_mode)) {
+                            return false;
+                        }
                         const auto dx = static_cast<int>(retained.position[0U]) - (*target)[0U];
                         const auto dy = static_cast<int>(retained.position[1U]) - (*target)[1U];
                         const auto dz = static_cast<int>(retained.position[2U]) - (*target)[2U];
                         return dx * dx + dy * dy + dz * dz <= 1;
                     });
+                const auto marker_cell = tutorial_session->ugc_marker_cell(10.0);
+                if (!action.secondary && pointed == server_ugc_items.end() &&
+                    !marker_cell.has_value()) {
+                    // can_place_object refuses side and bottom faces.
+                    play_build_error();
+                    continue;
+                }
 
                 if (action.secondary) {
                     if (pointed == server_ugc_items.end()) {
@@ -12162,6 +15659,7 @@ struct NativeFrontendModule::Impl final {
                 const auto target = tutorial_session->deployable_target(action.tool_id);
                 if (!target.has_value()) {
                     settings_warning = "deployable placement is not valid here";
+                    play_build_error();
                     continue;
                 }
                 position = {static_cast<double>(target->cell[0U]),
@@ -12177,11 +15675,24 @@ struct NativeFrontendModule::Impl final {
                                              static_cast<std::int16_t>(std::lround(position.y)),
                                              static_cast<std::int16_t>(std::lround(position.z))};
             if (action.kind == world::WeaponActionKind::block_line_commit) {
-                const auto end =
-                    tutorial_session->placement_cell(match_initial_info.classic ? 5.0 : 10.0);
+                // blockTool.py:54-56 (on_stop_primary): the line is sent only
+                // when the ghost is valid, both ends exist, the wallet covers
+                // it and the first block is anchored -- the same test that
+                // tints the ghost. Anything else plays build_error.
+                const auto target = current_block_target();
+                const auto end = target.cell;
                 if (!block_line_start.has_value() || !end.has_value()) {
                     block_line_start.reset();
+                    play_build_error();
                     continue;
+                }
+                {
+                    const auto ghost = current_block_ghost(target);
+                    if (!ghost.valid || !ghost.first_adjacent) {
+                        block_line_start.reset();
+                        play_build_error();
+                        continue;
+                    }
                 }
                 wire.block_line_start = *block_line_start;
                 wire.block_line_end = *end;
@@ -12196,8 +15707,12 @@ struct NativeFrontendModule::Impl final {
             std::vector<network::ColoredTerrainCell> expected_prefab_colors;
             if (action.kind == world::WeaponActionKind::prefab_place) {
                 update_prefab_candidate();
-                if (!preview_prefab_position.has_value() || !preview_prefab_valid) {
+                // confirm_prefab_placement: `not scene.is_space_to_add_blocks()`
+                // plays build_error exactly like an invalid footprint.
+                if (!preview_prefab_position.has_value() || !preview_prefab_valid ||
+                    !ugc_space_to_add_blocks()) {
                     settings_warning = "prefab placement is not valid here";
+                    play_build_error();
                     continue;
                 }
                 wire.prefab_yaw = preview_prefab_yaw;
@@ -12286,6 +15801,15 @@ struct NativeFrontendModule::Impl final {
                     settings_warning = "failed to queue a weapon action packet";
                     return;
                 }
+            }
+            if (action.kind == world::WeaponActionKind::flare_place) {
+                // flareBlockTool.py:47: BUILD_LIGHT_SOUND at the placed cube
+                // once send_place_flare_block succeeded.
+                static_cast<void>(play_retail_cue(
+                    audio::build_light_cue,
+                    {wire.position[0U], wire.position[1U], wire.position[2U]},
+                    false,
+                    static_cast<std::uint32_t>(wire.loop_count)));
             }
             if (action.kind == world::WeaponActionKind::oriented_item) {
                 launcher_muzzle_tracker.remember(
@@ -12391,6 +15915,7 @@ struct NativeFrontendModule::Impl final {
                 const auto left = 61 + static_cast<std::int32_t>(index) * 120;
                 if (point.x >= left && point.x < left + 110) {
                     server_browser.set_region(regions[index]);
+                    save_server_region();
                     begin_server_browser_refresh();
                     play_scroll();
                     return;
@@ -12906,7 +16431,7 @@ struct NativeFrontendModule::Impl final {
                     }
                     handle_ugc_loadout_action(action);
                 } else {
-                    auto action = class_selection_menu.click(*raw);
+                    auto action = class_selection_menu.pointer_release(*raw);
                     if (action.has_value()) {
                         // Terminal paths already play their cue in the navigation
                         // handler; drain the model edge so it cannot leak into the
@@ -12917,6 +16442,8 @@ struct NativeFrontendModule::Impl final {
                     }
                     handle_class_selection_action(action);
                 }
+            } else if (!ugc_loadout_active) {
+                static_cast<void>(class_selection_menu.pointer_release(std::nullopt));
             }
             break;
         case FrontendScreen::pause_menu:
@@ -13011,6 +16538,7 @@ struct NativeFrontendModule::Impl final {
         direct_connect_menu.pointer_press(std::nullopt);
         static_cast<void>(direct_connect_menu.pointer_release(std::nullopt));
         class_selection_menu.pointer_move(std::nullopt);
+        class_selection_menu.cancel_pointer();
         ugc_loadout_menu.pointer_move(std::nullopt);
         change_team_menu.pointer_move(std::nullopt);
         change_team_menu.pointer_press(std::nullopt);
@@ -13053,6 +16581,10 @@ struct NativeFrontendModule::Impl final {
         if (boot_loading || !accepts_input()) {
             return false;
         }
+        if (screen() == FrontendScreen::game_loading) {
+            // loadingMenu.on_key_press also sets tab_timer_interupted.
+            match_loading.interrupt_tab_cycle();
+        }
         if (markup_inventory_active()) { inventory_view->input(event); consume_inventory_view(); return true; }
         if (event.action == ui::InputAction::cancel && event.phase == ui::InputPhase::pressed) {
             // Recovered EscapeMenu flow: Escape in the world opens the pause
@@ -13072,18 +16604,26 @@ struct NativeFrontendModule::Impl final {
                 return true;
             }
             if (screen() == FrontendScreen::pause_menu) {
+                // EscapeMenu.on_key_press: hide_message_box(), then resume().
+                pause_menu.hide_message();
                 send_client_in_menu(false);
                 static_cast<void>(navigation.pop_instant());
                 play_confirm();
                 return true;
             }
             if (screen() == FrontendScreen::change_team) {
-                consume_change_team_action(ChangeTeamAction::back);
+                if (in_game_selection_menu()) {
+                    close_selection_menu_to_world();
+                } else {
+                    consume_change_team_action(ChangeTeamAction::back);
+                }
                 return true;
             }
             if (screen() == FrontendScreen::class_selection) {
                 if (ugc_loadout_active) {
                     handle_ugc_loadout_action(UgcLoadoutAction::back);
+                } else if (in_game_selection_menu()) {
+                    close_selection_menu_to_world();
                 } else {
                     handle_class_selection_action(ClassSelectionAction::back);
                 }
@@ -13217,7 +16757,8 @@ struct NativeFrontendModule::Impl final {
             if (event.action == ui::InputAction::activate) {
                 if (ugc_loadout_active) {
                     handle_ugc_loadout_action(UgcLoadoutAction::submit);
-                } else {
+                } else if (class_selection_menu.select_enabled()) {
+                    // on_select_button_pressed returns while locked_class.
                     handle_class_selection_action(ClassSelectionAction::submit);
                 }
                 return true;
@@ -13236,11 +16777,9 @@ struct NativeFrontendModule::Impl final {
                         ugc_loadout_menu.select_tab(index);
                         play_scroll();
                     }
-                } else {
-                    class_selection_menu.cycle_class(
-                        event.action == ui::InputAction::navigate_right ? 1 : -1);
-                    consume_class_selection_audio();
                 }
+                // Retail SelectClass has no arrow-key navigation: classes
+                // are chosen by click or by their absolute number key.
                 return true;
             }
             return false;
@@ -13319,9 +16858,9 @@ struct NativeFrontendModule::Impl final {
             play_scroll();
             break;
         case FrontendScreen::class_selection:
-            // Retail routes vertical wheel motion into the horizontal class
-            // scrollbar. It moves the five-card viewport by one item and does
-            // not silently change the selected class.
+            // Native convenience: retail HorizontalScrollBar ignores the wheel
+            // (ScrollBar.on_mouse_scroll is a no-op). A notch steps the class
+            // viewport one card like an arrow click, never the selection.
             if (ugc_loadout_active) {
                 ugc_loadout_menu.scroll_rows(steps > 0 ? -1 : 1);
                 consume_ugc_loadout_audio();
@@ -13490,10 +17029,35 @@ struct NativeFrontendModule::Impl final {
             appearance.class_icons[classes[i]]=cosmetic_class_icon(classes[i],blue,false,klass->team_icon_assets[team]);
         if(const auto* klass=world::find_class_definition(class_selection_menu.selected_class())){
             appearance.class_portraits[klass->class_id]=cosmetic_class_icon(klass->class_id,blue,true,klass->team_portrait_assets[team]);
-            for(const auto group:klass->item_groups)for(const auto tool:group)if(tool<world::weapon_catalog().size())
-                appearance.weapon_icons[tool]=cosmetic_weapon_icon(static_cast<std::uint8_t>(tool),class_selection_item_icon(tool),blue);
+            for(const auto group:klass->item_groups)for(const auto tool:group)if(tool<world::weapon_catalog().size()){
+                // TOOL_IMAGES[SNIPER_TOOL][team_id - TEAM1] is team coloured.
+                const auto fallback = tool==18U ? std::string{blue?"png/ui/weapons/sniper_blue.png":"png/ui/weapons/sniper_green.png"}
+                                                : class_selection_item_icon(tool);
+                appearance.weapon_icons[tool]=cosmetic_weapon_icon(static_cast<std::uint8_t>(tool),fallback,blue);
+            }
         }
+        appearance.localize = [this](std::string_view key) { return localized_text(key); };
+        appearance.block_wallet_multiplier = match_initial_info.block_wallet_multiplier;
+        appearance.prefab_block_count = [this](std::string_view name) {
+            return class_popup_prefab_block_count(name);
+        };
         return appearance;
+    }
+
+    /** prefab_manager.get_prefab_block_count: the construct's KV6 voxel count (cached). */
+    [[nodiscard]] std::optional<std::size_t> class_popup_prefab_block_count(std::string_view name) {
+        if (const auto found = class_popup_prefab_blocks.find(name);
+            found != class_popup_prefab_blocks.end()) {
+            return found->second;
+        }
+        std::optional<std::size_t> count;
+        if (const auto path = resolve_prefab_asset(name); path.has_value()) {
+            if (const auto model = world::Kv6Model::load_file(*path, nullptr); model.has_value()) {
+                count = model->voxels().size();
+            }
+        }
+        class_popup_prefab_blocks.emplace(std::string{name}, count);
+        return count;
     }
 
     [[nodiscard]] std::optional<render::UiTextureInfo> image_texture(std::string_view asset,
@@ -13839,8 +17403,16 @@ struct NativeFrontendModule::Impl final {
                                                   : last_error;
                 return fitted;
             }
+            // text.py measures lines with Font.get_char_height, FTGL's
+            // FTSize::Height: the face's global glyph box, taller than the
+            // line height. The face line height kept two-line captions that
+            // retail shrinks onto one line.
+            const auto& metric = metric_raster.output->metrics;
             const auto char_height =
-                static_cast<double>(metric_raster.output->metrics.line_height_pixels) *
+                (command.layout == ui::TextLayout::retail_wrapped_lines &&
+                         metric.retail_char_height_pixels > 0.0
+                     ? metric.retail_char_height_pixels
+                     : static_cast<double>(metric.line_height_pixels)) *
                 rasterization.design_pixels_per_bitmap_pixel;
             const auto line_count = static_cast<double>(lines.size());
             const auto lines_height =
@@ -13935,7 +17507,10 @@ struct NativeFrontendModule::Impl final {
         const auto fitted = fitted_text(command);
         if (!fitted) {
             last_error = "failed to rasterize '" + command.localization_key + "': " +
-                         fitted.raster.error;
+                         fitted.raster.error + " [font " + command.preferred_font_asset +
+                         " at " + std::to_string(command.destination.x) + "," +
+                         std::to_string(command.destination.y) + " size " +
+                         std::to_string(command.requested_font_size_pixels) + "]";
             return false;
         }
         const auto& raster = fitted.raster;
@@ -14030,6 +17605,24 @@ struct NativeFrontendModule::Impl final {
             auto baseline_y = command.destination.y;
             if (command.layout == ui::TextLayout::bounded_wrapped_lines && !fitted.lines.empty())
                 baseline_y += static_cast<double>(fitted.lines.front().output->metrics.ascender_pixels) * bitmap_to_design;
+            if (command.layout == ui::TextLayout::retail_wrapped_lines &&
+                command.vertical_alignment == ui::VerticalTextAlignment::retail_center &&
+                !fitted.lines.empty()) {
+                // TextButton: draw_text_lines(..., 'center') centres the
+                // block of wrapped lines in the button's text box. Centre the
+                // ascender/descender span of the whole block, like the
+                // single-line retail_center path.
+                const auto& first = fitted.lines.front().output->metrics;
+                const auto ascender =
+                    static_cast<double>(first.ascender_pixels) * bitmap_to_design;
+                const auto descender =
+                    static_cast<double>(first.descender_pixels) * bitmap_to_design;
+                const auto block = fitted.line_advance_pixels *
+                                       static_cast<double>(fitted.lines.size() - 1U) +
+                                   ascender + descender;
+                baseline_y = command.destination.y +
+                             (command.destination.height - block) * 0.5 + ascender;
+            }
             for (const auto& line : fitted.lines) {
                 const auto& metrics = line.output->metrics;
                 const auto content_width =
@@ -14090,7 +17683,11 @@ struct NativeFrontendModule::Impl final {
             if (last_error.empty()) {
                 last_error =
                     "failed to rasterize '" + command.localization_key + "': " +
-                    fitted.raster.error;
+                    fitted.raster.error + " [draw font " + command.preferred_font_asset +
+                    " at " + std::to_string(command.destination.x) + "," +
+                    std::to_string(command.destination.y) + " size " +
+                    std::to_string(command.requested_font_size_pixels) + " w " +
+                    std::to_string(command.destination.width) + "]";
             }
             return false;
         }
@@ -14329,8 +17926,10 @@ struct NativeFrontendModule::Impl final {
         }
         if (target == FrontendScreen::server_browser) {
             auto status = server_browser_status;
-            if (server_browser.servers().empty() && status.empty()) {
-                status = server_browser.refreshing() ? "GETTING_SERVER_LIST" : "NO_SERVERS_FOUND";
+            // NO_SERVERS_FOUND is Quick Play's text; an empty browser keeps
+            // retail's status line (GETTING_SERVER_LIST, then the count).
+            if (status.empty() && server_browser.refreshing()) {
+                status = "GETTING_SERVER_LIST";
             }
             const auto* selected = server_browser.selected();
             const auto preview = selected == nullptr
@@ -14426,10 +18025,50 @@ struct NativeFrontendModule::Impl final {
             return list;
         }
         if (target == FrontendScreen::game_loading || target == FrontendScreen::startup_loading) {
-            // Recovered START glow toggles every 0.4 s = 24 frames at 60 Hz.
-            const bool glow_phase = ((text_cache_frame / 24U) % 2U) == 0U;
+            // aoslib.gui TextButton: set_glow(True) stamps glow_timer with
+            // add_glow still False, and update() flips add_glow on the first
+            // frame more than 0.4 s later, re-stamping the timer. So the
+            // glow starts OFF when START enables and toggles every 25 frames
+            // (0.4167 s) at 60 Hz, not on a free-running frame counter.
+            const auto loading_snapshot = match_loading.snapshot();
+            const auto glow_now = std::chrono::steady_clock::now();
+            if (!loading_snapshot.start_enabled) {
+                start_glow_since.reset();
+            } else if (!start_glow_since.has_value()) {
+                start_glow_since = glow_now;
+            }
+            bool glow_phase = false;
+            if (start_glow_since.has_value()) {
+                constexpr double glow_toggle_seconds{25.0 / 60.0};
+                const double glow_elapsed = std::chrono::duration<double>(
+                    glow_now - *start_glow_since).count();
+                glow_phase = (static_cast<std::uint64_t>(
+                                  std::max(0.0, glow_elapsed) / glow_toggle_seconds) %
+                              2U) == 1U;
+            }
+            // MenuScene: the splash covers the window until the map is shown,
+            // then background_alpha falls by dt (one second) over the world.
+            std::uint16_t splash_opacity{1'000U};
+            const auto* shown_map = target == FrontendScreen::game_loading &&
+                                            world_renderer.is_initialized()
+                                        ? tutorial_ready_map.get()
+                                        : nullptr;
+            if (shown_map != menu_backdrop_map) {
+                menu_backdrop_map = shown_map;
+                menu_backdrop_shown_at = std::chrono::steady_clock::now();
+            }
+            if (shown_map != nullptr) {
+                const double elapsed = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - menu_backdrop_shown_at).count();
+                splash_opacity = static_cast<std::uint16_t>(
+                    std::lround(std::clamp(1.0 - elapsed, 0.0, 1.0) * 1'000.0));
+            }
             return match_loading_presentation.build(
-                match_loading.snapshot(), LoadingPresentationContext{pixels, 1'000U, glow_phase});
+                loading_snapshot,
+                LoadingPresentationContext{pixels, splash_opacity, glow_phase,
+                                           [this](std::string_view key) {
+                                               return localized_text(key);
+                                           }});
         }
         if (target == FrontendScreen::class_selection) {
             if (ugc_loadout_active) {
@@ -14449,6 +18088,11 @@ struct NativeFrontendModule::Impl final {
             return pause_menu_presentation.build(pause_menu, PauseMenuPresentationContext{pixels});
         }
         if (target == FrontendScreen::change_team) {
+            if (!change_team_presentation.localize) {
+                change_team_presentation.localize = [this](std::string_view key) {
+                    return localized_text(key);
+                };
+            }
             return change_team_presentation.build(change_team_menu, pixels);
         }
         if (target == FrontendScreen::parity_debug) {
@@ -14488,6 +18132,7 @@ struct NativeFrontendModule::Impl final {
                                                       : SettingsPresentationVisualState::normal;
         } else {
             snapshot = presentation_snapshot(settings_menu->presentation());
+            apply_binding_conflict_text(snapshot);
             if (!settings_warning.empty() && snapshot.error_key.empty()) {
                 snapshot.error_key = settings_warning;
                 snapshot.tooltip_is_error = true;
@@ -14877,10 +18522,22 @@ struct NativeFrontendModule::Impl final {
         return false;
     }
 
-    /** Settings from the in-game pause menu returns there, not to Select. */
-    void close_settings() {
+    /**
+     * Settings from the in-game pause menu returns there (Cancel), or straight
+     * to the world (Done and the Menu key, settingsMenu.save_pressed /
+     * on_key_press), not to Select.
+     */
+    void close_settings(bool to_game = false) {
         if (screen() == FrontendScreen::settings && settings_opened_from_gameplay) {
             settings_opened_from_gameplay = false;
+            if (to_game) {
+                static_cast<void>(navigation.pop_instant());
+                if (screen() == FrontendScreen::pause_menu) {
+                    send_client_in_menu(false);
+                    static_cast<void>(navigation.pop_instant());
+                }
+                return;
+            }
             static_cast<void>(navigation.pop());
             return;
         }
@@ -14920,12 +18577,26 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] ChangeTeamServerState team_roster_state(bool initial_join) const {
         ChangeTeamServerState state;
-        state.team1_name = match_state_info.team1_name;
-        state.team2_name = match_state_info.team2_name;
-        if (state.team1_name == "TEAM1_COLOR")
-            state.team1_name = "Blue";
-        if (state.team2_name == "TEAM2_COLOR")
-            state.team2_name = "Green";
+        // StateData team names are string ids (TEAM1_COLOR, ZOMBIE_TEAM,
+        // SURVIVOR_TEAM); retail resolves them with strings.get_by_id before
+        // any use, including JOIN_TEAM.format(name) on the team buttons.
+        const auto team_name = [this](const std::string& raw,
+                                      std::string_view fallback) -> std::string {
+            const bool identifier =
+                !raw.empty() && std::ranges::all_of(raw, [](char c) {
+                    return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+                });
+            if (identifier) {
+                auto text = localized_text(raw);
+                if (!text.empty() && text != raw) return text;
+                if (!fallback.empty()) return std::string{fallback};
+            }
+            return raw;
+        };
+        state.team1_name = team_name(match_state_info.team1_name,
+                                     match_state_info.team1_name == "TEAM1_COLOR" ? "Blue" : "");
+        state.team2_name = team_name(match_state_info.team2_name,
+                                     match_state_info.team2_name == "TEAM2_COLOR" ? "Green" : "");
         state.team1_color = match_state_info.team1_color;
         state.team2_color = match_state_info.team2_color;
         state.team1_score = match_state_info.team1_score;
@@ -14949,7 +18620,7 @@ struct NativeFrontendModule::Impl final {
         state.lock_team_swap = match_state_info.lock_team_swap;
         state.lock_spectator_swap = match_state_info.lock_spectator_swap;
         state.initial_join = initial_join;
-        for (const auto& replica : tutorial_roster.players()) {
+        for (const auto& replica : tutorial_roster.present_players()) {
             TeamRosterPlayer row;
             row.name = replica.name;
             row.player_id = replica.player_id;
@@ -14990,7 +18661,15 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] MatchScreenshotPreview match_screenshot_preview() const {
         MatchScreenshotPreview preview{
             match_initial_info.map_name, match_result_camera_index, false};
-        if (match_state_info.screenshot_camera_points.empty()) {
+        // Live A/B 2026-09-29: against a server whose StateData cameras are
+        // the (0,0,0) placeholder, retail's ViewGameStats draws no framed
+        // level screenshot. Show it only for a real authored camera (the
+        // same test that drives the result camera pan).
+        if (match_state_info.screenshot_camera_points.empty() ||
+            !resolve_match_result_camera(match_state_info.screenshot_camera_points,
+                                         match_state_info.screenshot_camera_rotations,
+                                         match_result_camera_index, 0.0)
+                 .has_value()) {
             return preview;
         }
         const auto asset = retail_level_screenshot_asset(
@@ -15011,15 +18690,26 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         const auto* local = tutorial_roster.player(*local_player_id);
-        if (local == nullptr) {
+        if (local == nullptr || !match_results.visible()) {
             return;
         }
+        // ViewGameStats.on_start (hud.pyd 0x10066020, L65): stop the music
+        // and start SECONDARY_MENU_MUSIC2 two seconds in, once per screen.
+        audio->stop_menu_music();
+        if (!audio->play_named_music("secondary_menu_bed_002", 2.0F)) {
+            settings_warning = "end-of-match stats music could not start: " +
+                               std::string{audio->last_error()};
+        }
+        // play_win_loose_sound plays in MUSIC_AUDIO_ZONE (music-slider gain).
         const auto stem =
             match_result_audio_stem(match_results.winner_team(), local->team);
         if (stem.has_value() &&
-            audio->play_named_one_shot(*stem, {}, 1.0F, true)) {
-            match_result_audio_played = true;
+            !audio->play_named_one_shot(*stem, {}, audio->music_volume(), true, 0.0F,
+                                        0.15F, true)) {
+            settings_warning = "result sting " + std::string{*stem} +
+                               " could not play: " + std::string{audio->last_error()};
         }
+        match_result_audio_played = true;
     }
 
     /** Resolve packet-68 objective ids through retail UGC_OBJECTIVES_TYPES. */
@@ -15080,6 +18770,76 @@ struct NativeFrontendModule::Impl final {
         ugc_loadout_active = true;
     }
 
+    /** InitialInfo.disabled_tools plus the mafia/UGC mode SelectClass honours. */
+    [[nodiscard]] world::ClassSelectionRules class_selection_rules() const {
+        world::ClassSelectionRules rules;
+        rules.disabled_tools = match_initial_info.disabled_tools;
+        rules.mafia = match_initial_info.texture_skin == "mafia";
+        rules.ugc = match_initial_info.map_is_ugc() || match_state_info.mode_type == 12U;
+        return rules;
+    }
+
+    /** Team.class_list minus manager.disabled_classes (DEFAULT_CLASS if empty). */
+    [[nodiscard]] std::vector<std::uint8_t> available_team_classes(std::uint8_t team) const {
+        const auto& advertised =
+            team == 3U ? match_state_info.team2_classes : match_state_info.team1_classes;
+        std::vector<std::uint8_t> result;
+        for (const auto id : advertised) {
+            if (std::ranges::find(match_initial_info.disabled_classes, id) ==
+                match_initial_info.disabled_classes.end()) {
+                result.push_back(id);
+            }
+        }
+        if (result.empty()) result.push_back(0U);
+        return result;
+    }
+
+    /** TeamLockClass(80) / StateData locked_class for one wire team. */
+    [[nodiscard]] bool team_locked_class(std::uint8_t team) const noexcept {
+        return team == 3U ? match_state_info.team2_locked_class
+                          : team == 2U && match_state_info.team1_locked_class;
+    }
+
+    /**
+     * GameScene.class_selection_has_choices (IDA trace): never in mafia or
+     * UGC mode, or for a locked_class team; otherwise true when more than
+     * one enabled class exists or the class has a loadout row with choices
+     * (class_has_loadout_choices, VERIFY: rows only).
+     */
+    [[nodiscard]] bool class_selection_has_choices(std::uint8_t team) const {
+        const auto rules = class_selection_rules();
+        if (rules.mafia || rules.ugc || team_locked_class(team)) return false;
+        const auto classes = available_team_classes(team);
+        if (classes.size() > 1U) return true;
+        for (std::size_t group{}; group < 4U; ++group) {
+            if (world::class_row_options(classes.front(), group, rules).size() > 1U) return true;
+        }
+        // class_has_loadout_choices also counts constructs (IDA audit4): the
+        // prefab list, with the flare tile when enabled, is a choice when it
+        // is longer than the class's configured prefab entry.
+        if (world::class_construct_options(classes.front(), rules).size() >
+            world::default_class_constructs(classes.front(), rules).size()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * selectTeam/changeTeam.on_select without SelectClass: the only enabled
+     * class, else (mafia, or several classes on a locked team) a random
+     * entry of the team's class list.
+     */
+    [[nodiscard]] std::uint8_t automatic_team_class(std::uint8_t team) const {
+        const auto classes = available_team_classes(team);
+        if (classes.size() == 1U && !class_selection_rules().mafia) return classes.front();
+        const auto& list =
+            team == 3U ? match_state_info.team2_classes : match_state_info.team1_classes;
+        if (list.empty()) return classes.front();
+        static thread_local std::mt19937 generator{std::random_device{}()};
+        std::uniform_int_distribution<std::size_t> pick{0U, list.size() - 1U};
+        return list[pick(generator)];
+    }
+
     /** Rebuild pause and ChangeTeam gates from the latest server snapshot. */
     void refresh_pause_menu() {
         if (!network_match || !local_player_id.has_value()) {
@@ -15092,6 +18852,8 @@ struct NativeFrontendModule::Impl final {
         const bool on_team2 = local->team == 3U;
         const auto& classes =
             on_team2 ? match_state_info.team2_classes : match_state_info.team1_classes;
+        // A server update rebuilds the buttons; an open save/quit box stays.
+        const auto open_message = pause_menu.message();
         pause_menu = PauseMenuModel{pause_menu_environment_for({
             match_state_info.mode_type,
             local->team,
@@ -15105,7 +18867,11 @@ struct NativeFrontendModule::Impl final {
             match_initial_info.enable_spectator,
             match_state_info.has_map_ended,
             match_state_info.mode_type == 12U,
+            is_ugc_host(),
         })};
+        if (open_message.has_value() && pause_menu.environment().ugc_host) {
+            pause_menu.show_message(*open_message);
+        }
 
         const bool initial_join =
             screen() == FrontendScreen::change_team && change_team_menu.state().initial_join;
@@ -15124,6 +18890,7 @@ struct NativeFrontendModule::Impl final {
                     navigation.replace(FrontendScreen::game_loading, NavigationDirection::back));
             } else {
                 static_cast<void>(navigation.pop());
+                leave_selection_to_world();
             }
             play_back();
             return;
@@ -15132,7 +18899,18 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         const auto target_team = static_cast<std::uint8_t>(*action);
-        if (should_send_change_team(initial_join)) {
+        // Spectator -> team: retail ChangeTeam.on_select calls create_player,
+        // which re-sends SetClassLoadout(13) + NewPlayerConnection(15) after
+        // the class choice; it never sends ChangeTeam(77). The server routes
+        // that 15 as a team change (server/handlers/team.py
+        // handle_spectator_rejoin).
+        const auto* joining_spectator = tutorial_roster.player(*local_player_id);
+        spectator_rejoin_team.reset();
+        if (!initial_join && target_team != 0U && joining_spectator != nullptr &&
+            local_player_is_spectator(joining_spectator->team,
+                                      match_initial_info.enable_spectator)) {
+            spectator_rejoin_team = target_team;
+        } else if (should_send_change_team(initial_join)) {
             const std::array<std::byte, 3U> packet{std::byte{77U},
                                                    static_cast<std::byte>(*local_player_id),
                                                    static_cast<std::byte>(target_team)};
@@ -15150,15 +18928,18 @@ struct NativeFrontendModule::Impl final {
             class_selection_team_change.reset();
             class_selection_initial_join = false;
             ugc_loadout_active = false;
-            send_client_in_menu(false);
             if (audio_started) {
                 audio->stop_menu_music();
             }
             if (initial_join) {
-                if (!send_initial_player(0U, 0U)) {
-                    send_client_in_menu(true);
+                // selectTeam.on_select: create_player() (NewPlayerConnection,
+                // team 0) and only then set_scene(GameScene), whose
+                // ClientInMenu(0) is the server's spectator admission edge.
+                if (send_initial_player(0U, 0U)) {
+                    send_client_in_menu(false);
                 }
             } else {
+                send_client_in_menu(false);
                 static_cast<void>(
                     navigation.reset(FrontendScreen::tutorial_world, NavigationDirection::back));
             }
@@ -15171,17 +18952,34 @@ struct NativeFrontendModule::Impl final {
                                   target_team,
                                   !initial_join);
         } else {
-            const auto& advertised =
-                target_team == 3U ? match_state_info.team2_classes
-                                  : match_state_info.team1_classes;
+            const auto advertised = available_team_classes(target_team);
             const auto* current_player = !initial_join && local_player_id.has_value()
                                              ? tutorial_roster.player(*local_player_id)
                                              : nullptr;
+            if (team_locked_class(target_team) || !class_selection_has_choices(target_team)) {
+                // selectTeam/changeTeam.on_select: no SelectClass; the single
+                // class (or a random mafia/locked pick) spawns straight away.
+                ugc_loadout_active = false;
+                class_selection_from_pause = false;
+                class_selection_initial_join = initial_join;
+                if (initial_join) {
+                    class_selection_team_change.reset();
+                } else {
+                    class_selection_team_change = target_team;
+                }
+                const auto class_id = automatic_team_class(target_team);
+                submit_loadout_selection(
+                    world::automatic_class_selection(class_id, class_selection_rules()),
+                    target_team);
+                return;
+            }
             const auto initial_class =
                 current_player != nullptr ? current_player->class_id
                                           : advertised.empty() ? std::uint8_t{0U}
                                                                : advertised.front();
-            class_selection_menu.configure(advertised, target_team, initial_class);
+            class_selection_menu.configure(advertised, target_team, initial_class,
+                                           class_selection_rules(),
+                                           team_locked_class(target_team), !initial_join);
             if (current_player != nullptr &&
                 class_selection_menu.selected_class() == current_player->class_id) {
                 class_selection_menu.restore_loadout(current_player->loadout, current_player->prefabs);
@@ -15198,6 +18996,211 @@ struct NativeFrontendModule::Impl final {
         static_cast<void>(
             navigation.replace(FrontendScreen::class_selection, NavigationDirection::forward));
         start_secondary_selection_music();
+    }
+
+    /**
+     * Retail GameScene keys `change_class` (',') and `change_team` ('.') open
+     * SelectClass / SelectTeam straight from the world; the death hint
+     * (DEATH_CLASS_CHANGE_HINT) names the first. They reuse the pause-menu
+     * routes, and Back then lands on the world (leave_selection_to_world).
+     */
+    void open_selection_from_world(PauseMenuAction action) {
+        if (!network_match || screen() != FrontendScreen::tutorial_world) return;
+        if (tutorial_session != nullptr) tutorial_session->clear_input();
+        consume_pause_action(action);
+        if (screen() != FrontendScreen::tutorial_world) send_client_in_menu(true);
+    }
+
+    /**
+     * HUD.on_key_press(change_class) (IDA hud trace): UGC opens SelectPrefabs;
+     * a locked Zombie-mode team gets ZOMBIE_OUTBREAK_CLASS_SELECT; otherwise
+     * SelectClass opens only when class_selection_has_choices() (spectators
+     * go to ChangeTeam). VIP / Classic CTF / Territory Control do nothing.
+     */
+    void change_class_key() {
+        if (!network_match || !local_player_id.has_value()) return;
+        const auto* local = tutorial_roster.player(*local_player_id);
+        if (local == nullptr) return;
+        if (match_initial_info.map_is_ugc()) {
+            open_selection_from_world(PauseMenuAction::constructs);
+            return;
+        }
+        const auto team = forced_team.value_or(local->team);
+        if (match_state_info.mode_type == 2U && team_locked_class(team)) {
+            game_hud.set_big_message(localized_text("ZOMBIE_OUTBREAK_CLASS_SELECT"), true);
+            return;
+        }
+        if (local_player_is_spectator(local->team, match_initial_info.enable_spectator)) {
+            open_selection_from_world(PauseMenuAction::change_team);
+            return;
+        }
+        if (!class_selection_has_choices(team)) return;
+        open_selection_from_world(PauseMenuAction::change_class);
+    }
+
+    /** A selection menu backed out onto the world: leave the MenuScene. */
+    void leave_selection_to_world() {
+        if (screen() != FrontendScreen::tutorial_world) return;
+        send_client_in_menu(false);
+        if (audio_started) audio->stop_menu_music();
+    }
+
+    /** game_scene.is_ugc_host(): this client owns the Map Creator session. */
+    [[nodiscard]] bool is_ugc_host() const {
+        if (!network_match || !match_initial_info.map_is_ugc()) return false;
+        // A crash-safe dedicated editor advertises role 2 to every socket; the
+        // client that spawned it is still the owner (open_ugc_ingame_settings).
+        return match_initial_info.ugc_role == network::UgcRole::host ||
+               (owned_local_server != nullptr && owned_local_server->running());
+    }
+
+    /** One Map Creator flush waiting for the server's UGC_MAP_SAVE_* answer. */
+    struct PendingUgcSave final {
+        UgcSaveOrigin origin{UgcSaveOrigin::quick_save};
+        std::chrono::steady_clock::time_point deadline{};
+    };
+    std::optional<PendingUgcSave> pending_ugc_save;
+    /** Map Creator ScreenshotHud (map preview editor) state. */
+    bool ugc_screenshot_hud_active{};
+    enum class UgcPreviewCaptureState : std::uint8_t { idle, hide_frame, waiting };
+    UgcPreviewCaptureState ugc_preview_capture{UgcPreviewCaptureState::idle};
+    std::optional<UgcIngameSettingsDraft> ugc_screenshot_resume_draft;
+    std::vector<std::byte> ugc_pending_preview_png;
+    std::vector<std::uint8_t> ugc_pending_preview_rgba;
+    std::uint32_t ugc_pending_preview_extent{};
+    bool ugc_pending_preview_texture_dirty{};
+    static constexpr std::string_view ugc_preview_texture_asset{"runtime/ugc_map_preview"};
+    static constexpr auto ugc_save_timeout = std::chrono::seconds{20};
+
+    /** Sends the host's preview PNG (packet 102); the server persists it. */
+    bool upload_ugc_preview(std::span<const std::byte> png) {
+        if (match_connection == nullptr) return false;
+        const auto packet = network::encode_packet(
+            network::UgcMapInfoPacket{std::vector<std::byte>{png.begin(), png.end()}});
+        return !packet.empty() && match_connection->send(packet);
+    }
+
+    /** The overhead minimap as a 512-square PNG (retail use_overhead_image). */
+    [[nodiscard]] std::vector<std::byte> ugc_overhead_preview_png() {
+        std::vector<std::byte> png;
+        if (tutorial_session == nullptr) return png;
+        if (minimap_pixels.size() !=
+            static_cast<std::size_t>(world::VxlMap::width) * world::VxlMap::depth * 4U) {
+            minimap_pixels = world::build_minimap_overview_rgba(tutorial_session->map());
+        }
+        std::string error;
+        if (!encode_png_rgba8(minimap_pixels, world::VxlMap::width, world::VxlMap::depth, png,
+                              error)) {
+            settings_warning = "UGC overhead preview failed: " + error;
+            png.clear();
+        }
+        return png;
+    }
+
+    /**
+     * escapeMenu.save_button_pressed / GameScene quick_save -> save_ugc_map:
+     * retail wrote the .ugc/.vxl/.png from the lobby-owner client. The
+     * BattleSpades editor server owns the project, so the host asks it to
+     * flush with UGCMessage(100) UGC_CONVERT_TO_GAME (no stock sender) and the
+     * server answers the requester with LocalisedMessage UGC_MAP_SAVE_SUCCESSFULLY
+     * or UGC_MAP_SAVE_ERROR. A project without any preview yet gets the
+     * overhead map, as retail save_png falls back to it.
+     */
+    [[nodiscard]] bool request_ugc_save(UgcSaveOrigin origin) {
+        if (!is_ugc_host() || tutorial_session == nullptr || match_connection == nullptr) {
+            return false;
+        }
+        if (pending_ugc_save.has_value()) {
+            // One flush is in flight; a pause-menu request adopts its answer.
+            if (origin != UgcSaveOrigin::quick_save) pending_ugc_save->origin = origin;
+            return true;
+        }
+        if (server_ugc_preview_png.empty()) {
+            auto png = ugc_overhead_preview_png();
+            if (!png.empty() && upload_ugc_preview(png)) {
+                server_ugc_preview_png = std::move(png);
+            }
+        }
+        const auto flush = network::encode_packet(
+            network::UgcMessagePacket{network::UgcMessageCode::convert_to_game});
+        if (flush.empty() || !match_connection->send(flush)) {
+            return false;
+        }
+        pending_ugc_save =
+            PendingUgcSave{origin, std::chrono::steady_clock::now() + ugc_save_timeout};
+        return true;
+    }
+
+    /** The server's answer (or the timeout) completes the pending save. */
+    void finish_ugc_save(bool saved) {
+        if (!pending_ugc_save.has_value()) return;
+        const auto origin = pending_ugc_save->origin;
+        pending_ugc_save.reset();
+        if (origin == UgcSaveOrigin::quick_save) return;
+        if (screen() != FrontendScreen::pause_menu) return;
+        if (!saved) {
+            pause_menu.show_message(PauseMenuMessage::save_error);
+        } else {
+            pause_menu.show_message(origin == UgcSaveOrigin::pause_save_then_quit
+                                        ? PauseMenuMessage::saved_then_quit
+                                        : PauseMenuMessage::saved);
+        }
+    }
+
+    void pump_ugc_save(std::chrono::steady_clock::time_point now) {
+        if (!pending_ugc_save.has_value()) return;
+        if (match_connection == nullptr || !network_match) {
+            pending_ugc_save.reset();
+            return;
+        }
+        if (now >= pending_ugc_save->deadline) {
+            const bool quick = pending_ugc_save->origin == UgcSaveOrigin::quick_save;
+            finish_ugc_save(false);
+            if (quick) game_hud.set_big_message(localized_text("UGC_MAP_SAVE_ERROR"));
+        }
+    }
+
+    /** escapeMenu.disconnect_button_pressed: stop_sounds, then menu_backA. */
+    void disconnect_from_pause_menu() {
+        pause_menu.hide_message();
+        if (audio_started) {
+            // media.stop_sounds(): world one-shots end with the match instead
+            // of ringing on over the menu. The route exit hook tears down the
+            // loops and restarts the menu music.
+            audio->stop_all();
+        }
+        play_back();
+        return_to_select();
+    }
+
+    /** escapeMenu.message_box_button_one/two_pressed. */
+    void consume_pause_message_button(bool primary) {
+        const auto message = pause_menu.message();
+        pause_menu.hide_message();
+        if (!message.has_value()) return;
+        switch (*message) {
+        case PauseMenuMessage::saved:
+        case PauseMenuMessage::save_error:
+            // OK after a save, and both Retry and Cancel on the error box,
+            // resume: retail maps MESSAGE_ON_SAVE to resume() for either one.
+            send_client_in_menu(false);
+            static_cast<void>(navigation.pop_instant());
+            play_confirm();
+            break;
+        case PauseMenuMessage::saved_then_quit:
+            disconnect_from_pause_menu();
+            break;
+        case PauseMenuMessage::save_before_quit:
+            if (primary) {
+                // The server's UGC_MAP_SAVE_* reply opens saved_then_quit.
+                if (!request_ugc_save(UgcSaveOrigin::pause_save_then_quit)) {
+                    pause_menu.show_message(PauseMenuMessage::save_error);
+                }
+            } else {
+                disconnect_from_pause_menu();
+            }
+            break;
+        }
     }
 
     void consume_pause_action(std::optional<PauseMenuAction> action) {
@@ -15226,10 +19229,22 @@ struct NativeFrontendModule::Impl final {
             }
             break;
         case PauseMenuAction::disconnect:
-            // The route reset drops the tutorial from the stack; the route
-            // exit hook tears the world down and restores the menu music.
-            play_back();
-            return_to_select();
+            disconnect_from_pause_menu();
+            break;
+        case PauseMenuAction::save:
+            // escapeMenu.save_button_pressed(quit_on_save=False); the reply
+            // from the editor server opens the saved / error message box.
+            if (!request_ugc_save(UgcSaveOrigin::pause_save)) {
+                pause_menu.show_message(PauseMenuMessage::save_error);
+            }
+            break;
+        case PauseMenuAction::quit:
+            // on_quit_button_pressed: "Save before quitting?" Yes / No.
+            pause_menu.show_message(PauseMenuMessage::save_before_quit);
+            break;
+        case PauseMenuAction::message_primary:
+        case PauseMenuAction::message_secondary:
+            consume_pause_message_button(*action == PauseMenuAction::message_primary);
             break;
         case PauseMenuAction::change_class:
             if (network_match && local_player_id.has_value()) {
@@ -15239,14 +19254,16 @@ struct NativeFrontendModule::Impl final {
                     // the class catalog must belong to the forced team even
                     // if CreatePlayer for that transition has not arrived yet.
                     const auto selection_team = forced_team.value_or(replica->team);
-                    const auto& advertised = selection_team == 3U ? match_state_info.team2_classes
-                                                                  : match_state_info.team1_classes;
-                    class_selection_menu.configure(advertised, selection_team, replica->class_id);
+                    const auto advertised = available_team_classes(selection_team);
+                    class_selection_menu.configure(advertised, selection_team, replica->class_id,
+                                                   class_selection_rules(),
+                                                   team_locked_class(selection_team), true);
                     if (class_selection_menu.selected_class() == replica->class_id) {
                         class_selection_menu.restore_loadout(replica->loadout, replica->prefabs);
                     }
                     ugc_loadout_active = false;
                     class_selection_from_pause = true;
+                    spectator_rejoin_team.reset();
                     class_selection_initial_join = false;
                     class_selection_team_change.reset();
                     static_cast<void>(navigation.push(FrontendScreen::class_selection));
@@ -15259,7 +19276,8 @@ struct NativeFrontendModule::Impl final {
             refresh_pause_menu();
             static_cast<void>(navigation.push(FrontendScreen::change_team));
             play_confirm();
-            start_secondary_selection_music();
+            // In-game ChangeTeam (changeTeam.py) plays no stinger and no bed;
+            // only the initial SelectTeam does (MatchStartStingerGate).
             break;
         case PauseMenuAction::constructs:
         case PauseMenuAction::game_data:
@@ -15274,6 +19292,7 @@ struct NativeFrontendModule::Impl final {
                         replica->team,
                         true);
                     class_selection_from_pause = true;
+                    spectator_rejoin_team.reset();
                     class_selection_initial_join = false;
                     class_selection_team_change.reset();
                     static_cast<void>(navigation.push(FrontendScreen::class_selection));
@@ -15314,8 +19333,10 @@ struct NativeFrontendModule::Impl final {
      * ClientData cadence, and reconciliation.
      */
     [[nodiscard]] bool world_simulation_active() const {
-        return live_world_simulation_allowed(
-            tutorial_session != nullptr, tutorial_world_in_stack(), window_suspended);
+        // Minimise/alt-tab keeps simulating, sending ClientData/ClockSync and
+        // advancing the watchdog; only presentation stops (tick() tail).
+        return live_world_simulation_allowed(tutorial_session != nullptr,
+                                             tutorial_world_in_stack());
     }
 
     /**
@@ -15362,6 +19383,11 @@ struct NativeFrontendModule::Impl final {
         try {
             tutorial_bootstrap = std::make_unique<world::TutorialWorldBootstrap>(
                 std::forward<Arguments>(arguments)...);
+            // The live remesher already uses the server's ground colours; the
+            // initial mesh must agree or the water changes on the first edit.
+            tutorial_bootstrap->set_bed_water_color(ugc_water_color());
+            tutorial_bootstrap->set_retail_look(retail_look_active());
+            live_meshes_retail_look = retail_look_active();
             tutorial_bootstrap_cleanup = std::move(*cleanup);
             tutorial_bootstrap->start();
             return true;
@@ -15380,6 +19406,8 @@ struct NativeFrontendModule::Impl final {
      */
     void teardown_tutorial(bool keep_steam_tunnel = false) {
         initial_join_submitted = false;
+        offline_tutorial_exit_seconds.reset();
+        offline_tutorial_targets_announced = 0;
         // Keep an outstanding future drainable without blocking the UI. Its
         // response must never authorize a later host attempt at the same port.
         if (pending_match_identity) pending_match_identity->generation = 0U;
@@ -15403,6 +19431,9 @@ struct NativeFrontendModule::Impl final {
         latest_world_loop = 0;
         clock_sync_elapsed = 0.0;
         clock_sync_token = 0;
+        connection_watchdog.reset();
+        shown_loading_progress = {};
+        shown_loading_initial_info = false;
         pending_tool_selection.reset();
         last_sent_tool.reset();
         match_initial_info = {};
@@ -15411,6 +19442,11 @@ struct NativeFrontendModule::Impl final {
         server_player_scores.fill(0);
         server_player_score_valid.fill(false);
         combat_tool_memory.fill({});
+        // Colour/tint-keyed CPU model caches grew for the whole process
+        // (never cleared on map change); release them with the match.
+        clear_remote_model_caches();
+        camera_interpolator.reset();
+        interpolation_scene = {};
         live_official_environment.reset();
         live_skydome_name = "Classic_B.txt";
         server_minimap_billboards.clear();
@@ -15426,6 +19462,8 @@ struct NativeFrontendModule::Impl final {
         initial_join_team.reset();
         scoreboard_visible = false;
         scoreboard_forced = false;
+        poi_focus_target.reset();
+        kick_vote_select.close();
         generic_vote.clear();
         match_results.clear();
         match_result_camera_timer = 0.0;
@@ -15446,11 +19484,13 @@ struct NativeFrontendModule::Impl final {
         local_palette_color.reset();
         server_ugc_items.clear();
         server_ugc_objectives.reset();
+        ignored_ugc_entity_ids.clear();
         server_ugc_preview_png.clear();
         server_ground_colors.clear();
         ugc_ingame_settings = UgcIngameSettingsModel{};
         ugc_initial_requests_sent = false;
         server_ambient_sounds.clear();
+        environment_audio = {};
         server_ambience_received = false;
         server_music_received = false;
         server_sound_variant = 0U;
@@ -15461,14 +19501,24 @@ struct NativeFrontendModule::Impl final {
         stop_all_remote_fire_loops();
         stop_all_block_sucker_audio();
         stop_all_block_cannon_audio();
+        stop_all_paint_spray_audio();
         stop_all_drill_audio();
+        stop_all_rocket_audio();
+        stop_all_turret_aim_audio();
+        stop_all_airstrike_audio();
+        stop_all_character_equipment_audio();
+        stop_all_world_entity_audio();
+        ground_bomb_fuses.clear();
         stop_all_jetpack_flight();
+        stop_all_retail_status_effects();
         stop_all_entity_effect_loops();
         if (audio_started) {
             audio->stop_named_loops();
         }
         retire_world_bootstrap();
         tutorial_ready_map.reset();
+        // The renderer holds a non-owning pointer to the session's lights.
+        world_renderer.set_model_light_sources(nullptr, nullptr);
         tutorial_session.reset();
         clear_scripted_weapon();
         advance_minimap_texture_generation();
@@ -15511,10 +19561,19 @@ struct NativeFrontendModule::Impl final {
         tutorial_roster.clear();
         remote_cosmetics.clear();
         remote_player_rigs.clear();
+        character_accessory_slots.clear();
+        spawn_blinks.clear();
+        exploded_corpse_generations.fill(std::nullopt);
         remote_character_audio = {};
         pending_remote_mesh_clears.clear();
         retained_corpse_positions.fill(std::nullopt);
         last_known_player_positions.fill(std::nullopt);
+        running_local_kills.clear();
+        team_select_entry.new_match();
+        displayed_hover_help = false;
+        ugc_tips_tool.reset();
+        ugc_tips_toggled_closed = false;
+        ugc_welcome_shown = false;
         jetpack_deaths.clear();
         pending_local_jetpack_death.reset();
         local_death_announced = false;
@@ -15522,6 +19581,8 @@ struct NativeFrontendModule::Impl final {
         preview_deployable_minimum_y.clear();
         parachute_mesh_attempted.fill(false);
         parachute_mesh_uploaded.fill(false);
+        effect_model_slots.clear();
+        next_effect_model_slot = render::WorldRenderer::effect_model_slot_base;
         if (world_renderer.is_initialized()) {
             world_renderer.clear_chunks();
             world_renderer.clear_view_model();
@@ -15608,8 +19669,9 @@ struct NativeFrontendModule::Impl final {
             }
         }
         match_ui_skin = supported_ui_skin("classic");
-        match_loading.begin("Training", "TUTORIAL", false, match_ui_skin);
-        match_loading.initial_info("Training", "TUTORIAL", false, match_ui_skin);
+        // loadingMenu: the tutorial's mode is strings.TUTORIAL_MODE_TITLE.
+        match_loading.begin("Training", "TUTORIAL_MODE_TITLE", false, match_ui_skin);
+        match_loading.initial_info("Training", "TUTORIAL_MODE_TITLE", false, match_ui_skin);
         match_loading.receiving_map();
         static_cast<void>(navigation.push(FrontendScreen::game_loading));
         static_cast<void>(start_world_bootstrap(tutorial_path));
@@ -15649,7 +19711,13 @@ struct NativeFrontendModule::Impl final {
                                 0.25 + 0.75 * static_cast<double>(tutorial_chunks_uploaded) /
                                            static_cast<double>(progress.chunks_total));
         }
-        match_loading.map_progress(fraction);
+        // A live match already filled the two network thirds of the bar; its
+        // world build is the last (INITIALISING_MAP) third.
+        if (network_match || match_connection != nullptr) {
+            match_loading.world_build_progress(fraction);
+        } else {
+            match_loading.map_progress(fraction);
+        }
         if (progress.stage != world::BootstrapStage::ready || uploads_pending) {
             return;
         }
@@ -15677,6 +19745,8 @@ struct NativeFrontendModule::Impl final {
                                                world::EmissiveVolume::depth,
                                                world::EmissiveVolume::height);
             world_renderer.set_skylight_horizon(skylight.data(), world::SkylightMap::edge);
+            world_renderer.set_retail_sea_color(
+                render::retail_sea_color_for(*shared_map, ugc_water_color()));
             skylight.clear_dirty();
         }
         // Decode the shared block/spade/pistol meshes while the loading gate
@@ -15693,9 +19763,13 @@ struct NativeFrontendModule::Impl final {
         // its arc (sync + initialise), pins the bar at 100%%, empties the
         // status line and waits for the glowing START button.
         tutorial_ready_map = std::move(shared_map);
+        // Gamescene feeds InitialInfo ground_colors into
+        // generate_ground_color_table before any dig can expose the interior.
+        apply_ground_color_table();
         if (network_match) {
-            live_terrain_replica =
-                std::make_unique<network::Protocol168TerrainReplica>(*tutorial_ready_map);
+            live_terrain_replica = std::make_unique<network::Protocol168TerrainReplica>(
+                *tutorial_ready_map, match_initial_info.block_health_multiplier,
+                match_initial_info.classic, match_initial_info.map_is_ugc());
             if (!deferred_terrain_packets.empty()) {
                 live_catchup_packet_sync = true;
                 deferred_terrain_cursor = 0U;
@@ -15737,7 +19811,11 @@ struct NativeFrontendModule::Impl final {
         if (network_match && screen() == FrontendScreen::game_loading &&
             local_player_id.has_value()) {
             send_client_in_menu(true);
-            start_secondary_selection_music();
+            // Classic SelectTeam plays only its stinger (selectTeam.py:27);
+            // the bed starts when SelectClass opens (selectClass.py:54).
+            if (!match_initial_info.classic || forced_team == 2U || forced_team == 3U) {
+                start_secondary_selection_music();
+            }
             class_selection_from_pause = false;
             class_selection_team_change.reset();
             class_selection_initial_join = false;
@@ -15750,11 +19828,21 @@ struct NativeFrontendModule::Impl final {
                 if (match_initial_info.map_is_ugc()) {
                     configure_ugc_loadout(UgcLoadoutLibrary::constructs, team, false);
                 } else {
-                    const auto& advertised = team == 3U ? match_state_info.team2_classes
-                                                        : match_state_info.team1_classes;
-                    const auto initial_class =
-                        advertised.empty() ? std::uint8_t{0U} : advertised.front();
-                    class_selection_menu.configure(advertised, team, initial_class);
+                    if (team_locked_class(team) || !class_selection_has_choices(team)) {
+                        // No SelectClass for a locked/single-choice team.
+                        class_selection_initial_join = true;
+                        initial_join_team = team;
+                        submit_loadout_selection(
+                            world::automatic_class_selection(automatic_team_class(team),
+                                                             class_selection_rules()),
+                            team);
+                        return;
+                    }
+                    const auto advertised = available_team_classes(team);
+                    const auto initial_class = advertised.front();
+                    class_selection_menu.configure(advertised, team, initial_class,
+                                                   class_selection_rules(),
+                                                   team_locked_class(team), false);
                     ugc_loadout_active = false;
                 }
                 class_selection_initial_join = true;
@@ -15772,6 +19860,8 @@ struct NativeFrontendModule::Impl final {
         world::TutorialSessionConfig session_config;
         session_config.flight_profile = network_match ? match_initial_info.flight_profile
                                                        : world::balanced_flight_profile();
+        session_config.fall_on_water_damage =
+            !network_match || match_initial_info.enable_fall_on_water_damage;
         session_config.mouse_sensitivity = applied_settings.controls.mouse_sensitivity;
         session_config.invert_mouse = applied_settings.main.invert_mouse;
         if (network_match) {
@@ -15829,11 +19919,14 @@ struct NativeFrontendModule::Impl final {
                 return;
             }
             session_config.network_authoritative = true;
+            session_config.block_wallet_multiplier = match_initial_info.block_wallet_multiplier;
             session_config.initial_position = replica->position;
             session_config.initial_orientation = replica->orientation;
             session_config.initial_velocity = replica->velocity;
             session_config.initial_crouch = (replica->input_flags & 0x20U) != 0U;
-            session_config.initial_wade = (replica->state_flags & 0x08U) != 0U;
+            // State bit 0x08 is set_touching_goo, not wade; wade follows the
+            // water plane like the remote collision bodies (origin z > 237).
+            session_config.initial_wade = replica->position.z > 237.0;
             if (pending_class_selection.has_value()) {
                 session_config.initial_class_id = pending_class_selection->class_id;
                 session_config.initial_loadout = pending_class_selection->loadout;
@@ -15861,6 +19954,7 @@ struct NativeFrontendModule::Impl final {
         }
         {
             const PerformanceScope stage{"enter_session", std::chrono::microseconds{1'000}};
+            world_renderer.set_model_light_sources(nullptr, nullptr);
             tutorial_session = std::make_unique<world::TutorialWorldSession>(
                 std::move(tutorial_ready_map), session_config);
         }
@@ -15973,7 +20067,11 @@ struct NativeFrontendModule::Impl final {
                 const PerformanceScope stage{"enter_audio", std::chrono::microseconds{1'000}};
                 // Main-menu music must never leak into the match. The server's
                 // PlayMusic packet replaces this silence when it owns a track.
-                if (!server_music_received) {
+                // The selection bed always stops here: retail's class pick
+                // calls stop_music (selectClass.py:275), and any PlayMusic that
+                // arrived under the bed was ignored (process_packet_play_music).
+                if (!server_music_received ||
+                    audio->is_playing_named_music("secondary_menu_bed_001")) {
                     audio->stop_menu_music();
                 }
                 if (!server_ambience_received &&
@@ -16087,7 +20185,8 @@ struct NativeFrontendModule::Impl final {
         const bool in_game_change =
             !class_selection_initial_join &&
             (class_selection_from_pause || class_selection_team_change.has_value());
-        packet.instant = !in_game_change;
+        // A spectator's create_player join is instant, like the first join.
+        packet.instant = !in_game_change || spectator_rejoin_team.has_value();
         packet.loadout = selection.loadout;
         packet.prefabs = selection.prefabs;
         packet.ugc_tools = selection.ugc_tools;
@@ -16103,13 +20202,26 @@ struct NativeFrontendModule::Impl final {
                                                          selection.ugc_tools));
         pending_class_selection = std::move(selection);
         play_confirm();
-        if (in_game_change) {
+        if (in_game_change && spectator_rejoin_team.has_value()) {
+            network::Protocol168SessionConfig join;
+            join.player_name =
+                active_join_wire_name.empty() ? config.player_name : active_join_wire_name;
+            join.team = *spectator_rejoin_team;
+            join.class_id = packet.class_id;
+            join.auto_join = false;
+            if (!match_connection->send(network::encode_protocol168_new_player_connection(join))) {
+                settings_warning = "failed to queue NewPlayerConnection(15)";
+            }
+            spectator_rejoin_team.reset();
+        } else if (in_game_change) {
             const std::array<std::byte, 3U> change_class{
                 std::byte{78U}, static_cast<std::byte>(*local_player_id),
                 static_cast<std::byte>(packet.class_id)};
             if (!match_connection->send(change_class)) {
                 settings_warning = "failed to queue ChangeClass(78)";
             }
+        }
+        if (in_game_change) {
             class_selection_from_pause = false;
             class_selection_team_change.reset();
             class_selection_initial_join = false;
@@ -16121,15 +20233,16 @@ struct NativeFrontendModule::Impl final {
             return;
         }
 
-        send_client_in_menu(false);
+        // SelectClass: create_player() sends 13 + 15, then set_scene(GameScene)
+        // reports ClientInMenu(0). Keep that order on the wire.
         const auto join_team = initial_join_team.value_or(fallback_team);
         if (!initial_join || !send_initial_player(join_team, packet.class_id)) {
             settings_warning = !initial_join
                                    ? "initial class selection lost its team transaction"
                                    : settings_warning;
-            send_client_in_menu(true);
             return;
         }
+        send_client_in_menu(false);
         class_selection_initial_join = false;
         initial_join_team.reset();
         initial_join_submitted = true;
@@ -16150,6 +20263,7 @@ struct NativeFrontendModule::Impl final {
             } else if (class_selection_from_pause) {
                 class_selection_from_pause = false;
                 static_cast<void>(navigation.pop());
+                leave_selection_to_world();
             } else if (class_selection_team_change.has_value()) {
                 class_selection_team_change.reset();
                 refresh_pause_menu();
@@ -16178,6 +20292,7 @@ struct NativeFrontendModule::Impl final {
             } else if (class_selection_from_pause) {
                 class_selection_from_pause = false;
                 static_cast<void>(navigation.pop());
+                leave_selection_to_world();
             } else if (class_selection_team_change.has_value()) {
                 class_selection_team_change.reset();
                 refresh_pause_menu();
@@ -16194,7 +20309,72 @@ struct NativeFrontendModule::Impl final {
                                  class_selection_menu.team());
     }
 
+    /**
+     * In-game SelectClass / ChangeTeam: the menu key (Esc) or the menu's own
+     * key (',' change_class, '.' change_team) sets GameScene directly with
+     * menu_backA (selectClass.py:357-363, changeTeam.py:113-119), even when
+     * the menu was reached through the pause menu or ChangeTeam.
+     */
+    void close_selection_menu_to_world() {
+        class_selection_from_pause = false;
+        class_selection_team_change.reset();
+        spectator_rejoin_team.reset();
+        ugc_loadout_active = false;
+        static_cast<void>(navigation.pop());
+        if (screen() == FrontendScreen::pause_menu) static_cast<void>(navigation.pop_instant());
+        leave_selection_to_world();
+        play_back();
+    }
+
+    /**
+     * controlsTab.on_change: ERROR_CONTROL_ALREADY_BOUND (A959) "{0} is
+     * already bound to {1}" with translate_key(value) and the owning row's
+     * label (INVENTORY_SLOTS for the fixed digit keys), localized.
+     */
+    void apply_binding_conflict_text(SettingsPresentationSnapshot& snapshot) const {
+        if (settings_menu == nullptr) return;
+        const auto view = settings_menu->presentation();
+        if (!view.binding_capture.has_value() || !view.binding_capture->rejection.has_value())
+            return;
+        const auto& rejection = *view.binding_capture->rejection;
+        std::string_view label;
+        if (rejection.status == settings::BindingAssignmentStatus::reserved_inventory_key) {
+            label = "INVENTORY_SLOTS";
+        } else if (rejection.conflicting_action.has_value()) {
+            label = settings_control_action_label(*rejection.conflicting_action);
+        }
+        if (label.empty() || !view.binding_capture->rejected_binding.has_value()) return;
+        snapshot.error_key = format_retail_template(
+            localized_text("A959"),
+            {settings::retail_binding_name(*view.binding_capture->rejected_binding,
+                                           key_name_catalogue_lookup()),
+             localized_text(label)});
+        snapshot.tooltip_is_error = true;
+    }
+
+    /** strings.get_by_id without the English humaniser: nullopt when absent. */
+    [[nodiscard]] settings::RetailStringLookup key_name_catalogue_lookup() const {
+        return [this](std::string_view id) -> std::optional<std::string> {
+            if (const auto translated = localization.lookup(id); translated.has_value()) {
+                return std::string{*translated};
+            }
+            return std::nullopt;
+        };
+    }
+
+    /** True while SelectClass/ChangeTeam is the in-match variant (not the join gate). */
+    [[nodiscard]] bool in_game_selection_menu() const {
+        if (screen() == FrontendScreen::class_selection)
+            return !class_selection_initial_join &&
+                   (class_selection_from_pause || class_selection_team_change.has_value());
+        if (screen() == FrontendScreen::change_team)
+            return !change_team_menu.state().initial_join;
+        return false;
+    }
+
     void handle_loading_click(ui::Point point) {
+        // loadingMenu.on_mouse_press: any press stops the 3 s tab cycle.
+        match_loading.interrupt_tab_cycle();
         // Retail large navbar BACK strip, bottom-left.
         if (loading_layout::contains(loading_layout::back, point.x, point.y)) {
             if (navigation.pop()) {
@@ -16222,82 +20402,241 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    /** Display names for common SDL scancodes, retail bracket style. */
-    [[nodiscard]] static std::string scancode_display_name(std::uint32_t scancode) {
-        if (scancode >= 4U && scancode <= 29U) {
-            return std::string{static_cast<char>('A' + (scancode - 4U))};
-        }
-        if (scancode >= 30U && scancode <= 38U) {
-            return std::string{static_cast<char>('1' + (scancode - 30U))};
-        }
-        switch (scancode) {
-        case 39U:
-            return "0";
-        case scancode_space:
-            return "SPACE";
-        case scancode_return:
-            return "ENTER";
-        case scancode_tab:
-            return "TAB";
-        case 224U:
-            return "LCTRL";
-        case 225U:
-            return "LSHIFT";
-        case 226U:
-            return "LALT";
-        case 228U:
-            return "RCTRL";
-        case 229U:
-            return "RSHIFT";
-        default:
-            // SDL reserves one contiguous scancode range for F1..F12.
-            // Retail's voting HUD prints these actual bindings; omitting the
-            // range made the correctly-bound F1/F2/F3 actions fall back to the
-            // misleading labels "1", "2" and "3".
-            if (scancode >= 58U && scancode <= 69U) {
-                return "F" + std::to_string(scancode - 57U);
+    /** strings.get_by_id against the active catalogue (no English humanizing). */
+    [[nodiscard]] settings::RetailStringLookup retail_string_lookup() const {
+        return [this](std::string_view id) -> std::optional<std::string> {
+            if (const auto text = localization.lookup(id); text.has_value()) {
+                return std::string{*text};
             }
-            return "?";
-        }
+            return std::nullopt;
+        };
+    }
+
+    /** gui.translate_key for one action's live binding (shared with Settings). */
+    [[nodiscard]] std::string retail_key_name_for(settings::ControlAction action) const {
+        return settings::retail_binding_name(applied_settings.controls.binding(action),
+                                             retail_string_lookup());
     }
 
     [[nodiscard]] ControlKeyNames control_key_names() const {
-        const auto name_for = [&](settings::ControlAction action, std::string fallback) {
-            const auto binding = applied_settings.controls.binding(action);
-            if (binding.kind != settings::BindingKind::keyboard_scancode) {
-                return fallback;
-            }
-            auto name = scancode_display_name(binding.code);
-            return name == "?" ? fallback : name;
-        };
-        ControlKeyNames names;
-        names.forward = name_for(settings::ControlAction::forward, "W");
-        names.backward = name_for(settings::ControlAction::backward, "S");
-        names.left = name_for(settings::ControlAction::left, "A");
-        names.right = name_for(settings::ControlAction::right, "D");
-        names.jump = name_for(settings::ControlAction::jump, "SPACE");
-        names.crouch = name_for(settings::ControlAction::crouch, "LCTRL");
-        names.tool_help = name_for(settings::ControlAction::tool_help, "H");
-        return names;
+        return retail_control_key_names(applied_settings.controls, retail_string_lookup());
+    }
+
+    /**
+     * HelpPanel.set_text(message_ids, delay): every id through get_by_id and
+     * translate_controls_in_message, plus the localized "{key_tool_help}
+     * Close" footer (helpPanel.py:99-110).
+     */
+    template <typename Ids>
+    void show_retail_help(const Ids& message_ids, double delay_seconds) {
+        const auto names = control_key_names();
+        const auto lookup = retail_string_lookup();
+        std::vector<std::string> lines;
+        for (const auto& key : message_ids) {
+            lines.push_back(
+                resolve_control_placeholders(retail_help_string(std::string_view{key}, lookup),
+                                             names));
+        }
+        game_hud.set_help_messages(
+            std::move(lines),
+            resolve_control_placeholders(retail_help_string("TOOL_HELP_PANEL_CLOSE", lookup),
+                                         names),
+            delay_seconds);
     }
 
     /** Shows one lesson stage's recovered help copy with retail pacing. */
     void show_lesson_help(world::TutorialLessonStage stage) {
-        const auto names = control_key_names();
-        std::vector<std::string> lines;
-        for (const auto key : world::TutorialLessons::message_keys(stage)) {
-            lines.push_back(resolve_control_placeholders(tutorial_string(key), names));
+        show_retail_help(world::TutorialLessons::message_keys(stage),
+                         world::TutorialLessons::help_transition_delay);
+        // Offline stand-in for the reconstructed tutorial server's COMPLETE
+        // transition: PlaySound 27 (tutorial_complete) and a 10 s
+        // DisplayCountdown whose end disconnects (COMPLETE_3).
+        if (!network_match && stage == world::TutorialLessonStage::complete) {
+            network::PlaySoundPacket cue;
+            cue.sound_id = 27U;
+            cue.volume = 1.0F;
+            play_server_sound(cue);
+            offline_tutorial_exit_seconds = world::TutorialLessons::completion_seconds;
         }
-        game_hud.set_help_messages(
-            std::move(lines),
-            resolve_control_placeholders(tutorial_string("TOOL_HELP_PANEL_CLOSE"), names),
-            world::TutorialLessons::help_transition_delay);
+    }
+
+    /**
+     * Per-tick offline tutorial duties the server performs online: the
+     * TUTORIAL_DESTROY_TARGET "{0} left" overlay (override=1) for each new
+     * target, and the completion countdown. Returns true when the countdown
+     * reached zero and the session returned to the main menu.
+     */
+    [[nodiscard]] bool pump_offline_tutorial(double dt) {
+        if (network_match || tutorial_session == nullptr) return false;
+        const int destroyed = tutorial_session->targets_destroyed();
+        if (destroyed > offline_tutorial_targets_announced) {
+            offline_tutorial_targets_announced = destroyed;
+            const int remaining =
+                std::max(0, world::TutorialLessons::target_count - destroyed);
+            game_hud.set_big_message(
+                format_retail_template(localized_text("TUTORIAL_DESTROY_TARGET"),
+                                       {std::to_string(remaining)}),
+                true);
+        }
+        if (!offline_tutorial_exit_seconds.has_value()) return false;
+        *offline_tutorial_exit_seconds -= dt;
+        if (*offline_tutorial_exit_seconds > 0.0) return false;
+        offline_tutorial_exit_seconds.reset();
+        // Same exit as Esc > Disconnect: stop world sounds, back to the menu.
+        if (audio_started) audio->stop_all();
+        return_to_select();
+        return true;
+    }
+
+    /**
+     * character.pyd (0x100462d0), once when the dead camera starts: if
+     * scene.class_selection_has_choices(): d = respawn_time - 2.0; if d > 0:
+     * hud.add_big_message(strings.DEATH_CLASS_CHANGE_HINT, d). add_big_message
+     * runs translate_controls_in_message, so {key_change_class} becomes the
+     * bracketed binding. NEVER_RESPAWN (255) has no timed respawn to wait out.
+     */
+    void show_death_class_change_hint(std::uint8_t respawn_time) {
+        if (!network_match || !local_player_id.has_value() || respawn_time == 0xFFU) return;
+        const auto* local = tutorial_roster.player(*local_player_id);
+        if (local == nullptr || (local->team != 2U && local->team != 3U)) return;
+        const bool team2 = local->team == 3U;
+        const bool locked = team2 ? match_state_info.team2_locked_class
+                                  : match_state_info.team1_locked_class;
+        const auto& classes =
+            team2 ? match_state_info.team2_classes : match_state_info.team1_classes;
+        if (locked || classes.size() < 2U) return;
+        const double duration = static_cast<double>(respawn_time) - 2.0;
+        if (duration <= 0.0) return;
+        game_hud.set_big_message(
+            resolve_control_placeholders(localized_text("DEATH_CLASS_CHANGE_HINT"),
+                                         control_key_names()),
+            false, duration);
     }
 
     [[nodiscard]] bool binding_matches(settings::ControlAction action,
                                        std::uint32_t scancode) const noexcept {
-        const auto binding = applied_settings.controls.binding(action);
-        return binding.kind == settings::BindingKind::keyboard_scancode && binding.code == scancode;
+        // Retail aliases right Ctrl/Shift onto the left keys (aosKeys.py).
+        return settings::retail_key_matches(applied_settings.controls, action, scancode);
+    }
+
+    /** GameScene `aim` -> set_secondary_shoot(1), with the zoom-toggle cue. */
+    void press_aim() {
+        if (tutorial_session == nullptr) return;
+        const bool was_zoomed = tutorial_session->zoomed();
+        tutorial_session->set_secondary_held(true);
+        const bool zoomed = tutorial_session->zoomed();
+        if (audio_started && was_zoomed != zoomed) {
+            audio->play_zoom_toggle(zoomed);
+        }
+    }
+
+    /**
+     * ViewGameStats.on_key_press `screenshot` (F11): take_screenshot(
+     * current_screenshot_camera) then advance the index. Retail binds it only
+     * on the end-of-match statistics screen.
+     */
+    void request_retail_screenshot() {
+        if (screenshot_requested) return;
+        if (!renderer.request_backbuffer_capture()) {
+            settings_warning = "screenshot failed: " + std::string{renderer.last_error()};
+            return;
+        }
+        screenshot_requested = true;
+        // The file is named after the camera being shown; retail then steps
+        // current_screenshot_camera to the next StateData camera.
+        screenshot_index = static_cast<std::uint32_t>(match_result_camera_index);
+        const auto cameras = std::min(match_state_info.screenshot_camera_points.size(),
+                                      match_state_info.screenshot_camera_rotations.size());
+        if (cameras != 0U) {
+            match_result_camera_index = (match_result_camera_index + 1U) % cameras;
+        }
+    }
+
+    /** GameScene.take_screenshot: C:\AoS_Screenshots\<map><index>.png. */
+    void save_pending_screenshot() {
+        if (!screenshot_requested) return;
+        auto capture = renderer.take_backbuffer_capture();
+        if (!capture.has_value()) return;
+        screenshot_requested = false;
+#if defined(_WIN32)
+        const std::filesystem::path directory{std::string{retail_screenshot_directory}};
+#else
+        const auto directory = config.settings_path.parent_path() / "AoS_Screenshots";
+#endif
+        const auto path = retail_screenshot_path(directory, tutorial_map_name, screenshot_index);
+        std::string error;
+        if (!write_screenshot_png(path, capture->rgba, capture->width, capture->height, error)) {
+            settings_warning = "screenshot failed: " + error;
+            return;
+        }
+        std::fprintf(stderr, "Taking screenshot: %s\n", path.string().c_str());
+    }
+
+    /** HelpPanel.set_text(..., override=True): tool tips wait for H. */
+    bool ugc_help_override{};
+    /** Continuous jetpack time for GameScene's get_jetpack_active_time(). */
+    double ugc_jetpack_active_seconds{};
+
+    /**
+     * UGC map-creator help (hud.pyd ToolsHelpPanel, gameScene.pyd update):
+     * UGC_HELP_WELCOME on entering the editor, the equipped tool's
+     * UGC_TOOL_HELP_TIPS on every tool/prefab-control change, and the
+     * one-shot UGC_HELP_HOVER after a builder's first second of jetpack.
+     */
+    void sync_ugc_editor_help(double dt) {
+        if (!network_match || !match_initial_info.map_is_ugc() || tutorial_session == nullptr ||
+            screen() != FrontendScreen::tutorial_world) {
+            return;
+        }
+        if (!ugc_welcome_shown) {
+            ugc_welcome_shown = true;
+            show_retail_help(std::array<std::string_view, 1U>{"UGC_HELP_WELCOME"}, 0.0);
+            ugc_help_override = true;
+            ugc_tips_toggled_closed = false;
+        }
+        const bool builder = tutorial_session->debug_class_id() ==
+                             static_cast<std::uint8_t>(retail::CLASS_UGCBUILDER);
+        const auto& movement = tutorial_session->player();
+        ugc_jetpack_active_seconds =
+            builder && movement.jetpack_active ? ugc_jetpack_active_seconds + dt : 0.0;
+        if (builder && !displayed_hover_help &&
+            ugc_jetpack_active_seconds > ugc_hover_help_jetpack_seconds) {
+            displayed_hover_help = true;
+            show_retail_help(std::array<std::string_view, 1U>{"UGC_HELP_HOVER"}, 0.0);
+            ugc_help_override = true;
+            ugc_tips_toggled_closed = false;
+        }
+        const auto tool = tutorial_session->selected_tool_id();
+        if (!tool.has_value()) return;
+        const std::pair<std::uint8_t, bool> key{*tool, ugc_prefab_control.active()};
+        if (ugc_tips_tool == key) return;
+        ugc_tips_tool = key;
+        if (ugc_help_override) return;
+        const auto ids = ugc_tool_help_ids(key.first, key.second);
+        if (ids.empty()) {
+            game_hud.set_help_open(false);
+            return;
+        }
+        show_retail_help(ids, 0.0);
+        if (ugc_tips_toggled_closed) game_hud.set_help_open(false);
+    }
+
+    /** tool_help: HUD.on_key_press -> ugc_help_panel.toggle_show(). */
+    void toggle_tool_help() {
+        if (!network_match || !match_initial_info.map_is_ugc()) {
+            game_hud.toggle_help();
+            return;
+        }
+        if (game_hud.help_open()) {
+            game_hud.set_help_open(false);
+            ugc_help_override = false;
+            ugc_tips_toggled_closed = true;
+            // Re-evaluate the equipped tool so its tips replace the welcome.
+            ugc_tips_tool.reset();
+            return;
+        }
+        ugc_tips_toggled_closed = false;
+        game_hud.set_help_open(true);
     }
 
     void begin_chat(ChatChannel channel) {
@@ -16310,10 +20649,36 @@ struct NativeFrontendModule::Impl final {
             static_cast<void>(window.set_relative_mouse_mode(false));
             mouse_captured = false;
         }
+        // HUD.input: chat_label = '%s:' % strings.TEAM_CHAT / GLOBAL_CHAT, and
+        // on_text keeps only characters the chat font can draw.
+        game_chat_presentation.set_channel_labels(localized_text("TEAM_CHAT") + ":",
+                                                  localized_text("GLOBAL_CHAT") + ":");
+        game_chat.set_glyph_filter(
+            [this](std::string_view character) { return chat_glyph_supported(character); });
         game_chat.begin(channel);
         if (!window.set_text_input_enabled(true)) {
             settings_warning = "platform text input could not be enabled";
         }
+    }
+
+    /** chat_font.contains_character across the faces the chat line can use. */
+    [[nodiscard]] bool chat_glyph_supported(std::string_view character) noexcept {
+        const std::array<text::TextRasterizer*, 6U> candidates{
+            locale_font(settings_standard_font),
+            configured_font(settings_standard_font),
+            configured_font(localization.active_font_asset()),
+            tuffy_font.get(),
+            noto_japanese_font.get(),
+            mplus_font.get(),
+        };
+        bool any_ready{};
+        for (auto* font : candidates) {
+            if (font == nullptr || !font->ready()) continue;
+            any_ready = true;
+            if (font->supports_text(character)) return true;
+        }
+        // No face loaded (headless runs): never swallow what the player types.
+        return !any_ready;
     }
 
     void close_chat(bool submit) {
@@ -16324,6 +20689,11 @@ struct NativeFrontendModule::Impl final {
             game_chat.cancel();
         }
         static_cast<void>(window.set_text_input_enabled(false));
+        if (outgoing.has_value() && !outgoing->second.empty() && audio_started) {
+            // HUD.on_key_press (hud.pyd L210-213) is retail's only in-game
+            // `chat` cue: the local player submitting a non-empty line.
+            static_cast<void>(audio->play_named_one_shot("chat", {}, 1.0F, true));
+        }
         if (!outgoing.has_value() || match_connection == nullptr || !local_player_id.has_value()) {
             return;
         }
@@ -16338,18 +20708,11 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] std::array<std::string, 3U> vote_key_names() const {
-        const auto key = [this](settings::ControlAction action, std::string fallback) {
-            const auto binding = applied_settings.controls.binding(action);
-            if (binding.kind != settings::BindingKind::keyboard_scancode) {
-                return fallback;
-            }
-            auto name = scancode_display_name(binding.code);
-            return name == "?" ? fallback : name;
-        };
+        // GenericVotingHUD.reset: keys_to_vote = translate_key(config.map_vote_N).
         return {
-            key(settings::ControlAction::map_vote_1, "F1"),
-            key(settings::ControlAction::map_vote_2, "F2"),
-            key(settings::ControlAction::map_vote_3, "F3"),
+            retail_key_name_for(settings::ControlAction::map_vote_1),
+            retail_key_name_for(settings::ControlAction::map_vote_2),
+            retail_key_name_for(settings::ControlAction::map_vote_3),
         };
     }
 
@@ -16364,6 +20727,122 @@ struct NativeFrontendModule::Impl final {
         if (encoded.empty() || !match_connection->send(encoded)) {
             settings_warning = "failed to queue GenericVoteMessage(47) CAST";
         }
+    }
+
+    /**
+     * KickVotePlayerSelect.update: both team rosters plus spectators, which
+     * the menu splits into the spare rows exactly like ViewScores.
+     */
+    [[nodiscard]] ChangeTeamServerState kick_vote_roster_state() const {
+        auto state = team_roster_state(false);
+        for (const auto& replica : tutorial_roster.present_players()) {
+            if (replica.team == 2U || replica.team == 3U) continue;
+            TeamRosterPlayer row;
+            row.name = replica.name;
+            row.player_id = replica.player_id;
+            row.class_id = replica.class_id;
+            row.dead = replica.dead;
+            row.local_language = replica.local_language;
+            if (server_player_score_valid[replica.player_id]) {
+                row.score = server_player_scores[replica.player_id];
+            }
+            row.ping = static_cast<std::uint16_t>(std::max<std::int32_t>(0, replica.ping));
+            state.spectator_players.push_back(std::move(row));
+        }
+        return state;
+    }
+
+    /**
+     * HUD.on_key_press(kick_player): opens KickVotePlayerSelect whenever the
+     * scene has a player and the mode is not the tutorial. Retail validates
+     * nothing locally; the server answers a refused InitiateKick(48) with a
+     * KICK_DENIED_* LocalisedMessage that closes the menu 0.5 s later.
+     */
+    void open_kick_vote_select() {
+        if (!network_match || match_connection == nullptr || !local_player_id.has_value())
+            return;
+        if (tutorial_roster.player(*local_player_id) == nullptr ||
+            match_state_info.mode_type == 10U)
+            return;
+        kick_vote_select.open(kick_vote_roster_state());
+        kick_vote_last_tick = std::chrono::steady_clock::now();
+        if (tutorial_session != nullptr) tutorial_session->clear_input();
+        cancel_pointer_capture();
+        play_confirm();
+    }
+
+    void close_kick_vote_select() {
+        if (!kick_vote_select.visible()) return;
+        kick_vote_select.close();
+        play_back();
+    }
+
+    /** K (kick_player) or Esc (menu) closes the whole menu; nothing else. */
+    void handle_kick_vote_key(std::uint32_t scancode) {
+        if (scancode == scancode_escape ||
+            binding_matches(settings::ControlAction::kick_player, scancode) ||
+            binding_matches(settings::ControlAction::menu, scancode)) {
+            close_kick_vote_select();
+        }
+    }
+
+    void kick_vote_pointer_move(std::optional<ui::Point> point) {
+        if (!kick_vote_select.visible()) return;
+        kick_vote_select.set_roster(kick_vote_roster_state());
+        kick_vote_select.pointer_move(settings_point(point));
+    }
+
+    void kick_vote_pointer_press(std::optional<ui::Point> point) {
+        if (!kick_vote_select.visible()) return;
+        kick_vote_select.set_roster(kick_vote_roster_state());
+        const bool was_open = kick_vote_select.dropdown_open();
+        kick_vote_select.pointer_press(settings_point(point));
+        if (was_open != kick_vote_select.dropdown_open()) play_scroll();
+    }
+
+    /** KICK PLAYER: initiate_kick(selection, reason), cue, close_menu(). */
+    void kick_vote_pointer_release(std::optional<ui::Point> point) {
+        if (!kick_vote_select.visible()) return;
+        const bool was_open = kick_vote_select.dropdown_open();
+        const auto reason = kick_vote_select.reason();
+        const auto selection = kick_vote_select.pointer_release(settings_point(point));
+        if (was_open != kick_vote_select.dropdown_open() || reason != kick_vote_select.reason()) {
+            play_scroll();
+        }
+        if (!selection.has_value() || match_connection == nullptr || !local_player_id.has_value())
+            return;
+        const auto packet = encode_initiate_kick(*local_player_id, selection->target_id,
+                                                 selection->reason);
+        if (!match_connection->send(packet)) {
+            settings_warning = "failed to queue InitiateKickMessage(48)";
+            return;
+        }
+        play_confirm();
+        kick_vote_select.close();
+    }
+
+    /** Per-frame KickVotePlayerSelect.update: roster refresh + denial countdown. */
+    void tick_kick_vote_select() {
+        const auto now = std::chrono::steady_clock::now();
+        const auto previous = std::exchange(kick_vote_last_tick, now);
+        if (!kick_vote_select.visible()) return;
+        if (!network_match || screen() != FrontendScreen::tutorial_world) {
+            kick_vote_select.close();
+            return;
+        }
+        kick_vote_select.set_roster(kick_vote_roster_state());
+        if (previous.has_value()) {
+            static_cast<void>(kick_vote_select.tick(
+                std::chrono::duration<double>(now - *previous).count()));
+        }
+    }
+
+    void append_kick_vote_overlay(ui::DrawList& list) {
+        tick_kick_vote_select();
+        if (!kick_vote_select.visible())
+            return;
+        const auto overlay = kick_vote_presentation.build(kick_vote_select);
+        for (const auto& command : overlay.commands()) list.push(command);
     }
 
     void route_tutorial_key(std::uint32_t scancode, bool pressed) {
@@ -16421,6 +20900,21 @@ struct NativeFrontendModule::Impl final {
         if (death_camera.active()) {
             // Death/chase cameras consume look and target-selection input, but
             // never leak W/A/S/D/jump/tool state into the dead player object.
+            // The spectator FlyController reads the same movement bindings.
+            static constexpr std::array<std::pair<settings::ControlAction, FlyCameraKey>, 6U>
+                fly_bindings{{
+                    {settings::ControlAction::forward, FlyCameraKey::forward},
+                    {settings::ControlAction::backward, FlyCameraKey::backward},
+                    {settings::ControlAction::left, FlyCameraKey::left},
+                    {settings::ControlAction::right, FlyCameraKey::right},
+                    {settings::ControlAction::jump, FlyCameraKey::jump},
+                    {settings::ControlAction::crouch, FlyCameraKey::crouch},
+                }};
+            for (const auto& [setting, key] : fly_bindings) {
+                if (binding_matches(setting, scancode)) {
+                    death_camera.set_fly_key(key, pressed);
+                }
+            }
             return;
         }
         static constexpr std::array<std::pair<settings::ControlAction, world::TutorialAction>, 9U>
@@ -16721,19 +21215,27 @@ struct NativeFrontendModule::Impl final {
             (static_cast<std::uint32_t>(tutorial_session->block_color().red) << 16U) |
             (static_cast<std::uint32_t>(tutorial_session->block_color().green) << 8U) |
             tutorial_session->block_color().blue);
-        if (!placement_cube_meshes_uploaded || preview_prefab_color != selected_color) {
+        const bool classic_ghost = match_initial_info.classic;
+        if (!placement_cube_meshes_uploaded || preview_prefab_color != selected_color ||
+            placement_cube_meshes_classic != classic_ghost) {
             const world::VxlColor color{static_cast<std::uint8_t>(selected_color >> 16U),
                                         static_cast<std::uint8_t>(selected_color >> 8U),
                                         static_cast<std::uint8_t>(selected_color),
                                         255U};
-            if (!world_renderer.set_world_model_mesh(placement_block_valid_slot,
-                                                     world::placement_preview_cube(color)) ||
-                !world_renderer.set_world_model_mesh(
-                    placement_block_invalid_slot,
-                    world::placement_preview_cube(world::VxlColor{255U, 32U, 32U, 255U}))) {
+            // draw_ghosting: an invalid or unattached ghost is (255, 0, 0);
+            // classic draws it with textured_wireframe=True.
+            const world::VxlColor invalid{255U, 0U, 0U, 255U};
+            const auto cube = [classic_ghost](world::VxlColor tint) {
+                return classic_ghost ? world::placement_preview_wire_cube(tint)
+                                     : world::placement_preview_cube(tint);
+            };
+            if (!world_renderer.set_world_model_mesh(placement_block_valid_slot, cube(color)) ||
+                !world_renderer.set_world_model_mesh(placement_block_invalid_slot,
+                                                     cube(invalid))) {
                 return false;
             }
             placement_cube_meshes_uploaded = true;
+            placement_cube_meshes_classic = classic_ghost;
             preview_prefab_color = selected_color;
             preview_prefab_meshes_uploaded = false;
         }
@@ -16903,12 +21405,17 @@ struct NativeFrontendModule::Impl final {
             // variant instead.
             const bool marker_under_cursor = std::ranges::any_of(
                 server_ugc_items, [&](const network::InitialUgcItem& retained) {
+                    if (!world::ugc_item_visible_in_mode(retained.mode,
+                                                         match_initial_info.ugc_mode)) {
+                        return false;
+                    }
                     const auto dx = static_cast<int>(retained.position[0U]) - (*target)[0U];
                     const auto dy = static_cast<int>(retained.position[1U]) - (*target)[1U];
                     const auto dz = static_cast<int>(retained.position[2U]) - (*target)[2U];
                     return dx * dx + dy * dy + dz * dz <= 1;
                 });
-            if (marker_under_cursor) {
+            // can_place_vertical=False: no ghost off a wall or ceiling face.
+            if (marker_under_cursor || !tutorial_session->ugc_marker_cell(10.0).has_value()) {
                 return draws;
             }
             const auto* definition = world::find_entity_definition(29U);
@@ -16941,30 +21448,27 @@ struct NativeFrontendModule::Impl final {
         }
 
         if (weapon->mechanism == world::WeaponMechanism::block_builder) {
-            const auto current =
-                tutorial_session->placement_cell(match_initial_info.classic ? 5.0 : 10.0);
-            if (!current.has_value())
+            // BlockToolCommon.draw_ghosting: the hit cube (bridge fallback
+            // included) and the dragged line, every cube at alpha 80. The
+            // player's colour only when the placement is valid AND the first
+            // block is attached; otherwise (255, 0, 0). Classic draws the
+            // same cubes as textured wireframes (sync_placement_preview_meshes).
+            const auto target = current_block_target();
+            if (!target.cell.has_value())
                 return draws;
-            network::BlockLinePacket line;
-            line.start = block_line_start.value_or(*current);
-            line.end = *current;
-            const auto cells = network::cube_line_cells(line, 65U);
-            const auto placement = world::evaluate_block_line_placement(
-                tutorial_session->map(), cells);
-            const bool valid = placement.can_place(tutorial_session->blocks_remaining(),
-                                                   tutorial_session->infinite_blocks());
-            for (const auto& cell : cells) {
+            const auto ghost = current_block_ghost(target);
+            const bool red = ghost.draw_red();
+            for (const auto& cell : ghost.cells) {
                 if (cell.x >= world::VxlMap::width || cell.y >= world::VxlMap::depth ||
-                    cell.z >= world::VxlMap::height ||
-                    tutorial_session->map().solid(cell.x, cell.y, cell.z)) {
+                    cell.z >= world::VxlMap::height) {
                     continue;
                 }
-                draws.push_back(render::WorldModelDraw{valid ? placement_block_valid_slot
-                                                             : placement_block_invalid_slot,
+                draws.push_back(render::WorldModelDraw{red ? placement_block_invalid_slot
+                                                           : placement_block_valid_slot,
                                                        mat_translate(static_cast<float>(cell.x),
                                                                      static_cast<float>(cell.y),
                                                                      static_cast<float>(cell.z)),
-                                                       valid ? 80.0F / 255.0F : 0.4F});
+                                                       world::retail_block_ghost_alpha});
             }
             return draws;
         }
@@ -16980,16 +21484,43 @@ struct NativeFrontendModule::Impl final {
                 {(*preview_prefab_position)[0U], (*preview_prefab_position)[1U],
                  (*preview_prefab_position)[2U]},
                 preview_prefab_yaw, preview_prefab_pitch, preview_prefab_roll);
+            // UGCPrefabTool.draw_ghosting tints red while the map is full too.
+            const bool ghost_valid = preview_prefab_valid && ugc_space_to_add_blocks();
             draws.push_back(render::WorldModelDraw{
-                preview_prefab_valid ? placement_prefab_valid_slot : placement_prefab_invalid_slot,
+                ghost_valid ? placement_prefab_valid_slot : placement_prefab_invalid_slot,
                 model,
-                preview_prefab_valid ? 0.5F : 0.4F,
-                preview_prefab_valid &&
+                ghost_valid ? 0.5F : 0.4F,
+                ghost_valid &&
                         weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor
                     ? static_cast<float>(ugc_prefab_control.color_animation())
                     : 1.0F});
         }
         return draws;
+    }
+
+    /** A player's current block colour: local selection or the SetColor replica. */
+    [[nodiscard]] std::optional<world::VxlColor>
+    player_block_color(std::optional<std::uint8_t> player_id) const {
+        if (tutorial_session != nullptr &&
+            (!network_match || !player_id.has_value() || local_player_id == player_id)) {
+            return tutorial_session->block_color();
+        }
+        if (player_id.has_value() && live_terrain_replica != nullptr) {
+            if (const auto packed = live_terrain_replica->player_color(*player_id);
+                packed.has_value()) {
+                return world::VxlColor{static_cast<std::uint8_t>(*packed >> 16U),
+                                       static_cast<std::uint8_t>(*packed >> 8U),
+                                       static_cast<std::uint8_t>(*packed), 255U};
+            }
+        }
+        return std::nullopt;
+    }
+
+    /** Snowball.__init__: the thrower's block colour at the moment of the throw. */
+    [[nodiscard]] world::VxlColor
+    projectile_thrower_block_color(const world::TutorialProjectile& projectile) const {
+        return player_block_color(projectile.source_player)
+            .value_or(world::VxlColor{255U, 255U, 255U, 255U});
     }
 
     /** Uploads projectile KV6s into the dedicated bounded world-model range. */
@@ -17036,6 +21567,12 @@ struct NativeFrontendModule::Impl final {
             const auto asset =
                 config.asset_root / "kv6" / projectile_model_asset(projectile.tool_id);
             auto model = load_runtime_model(asset, &error);
+            if (model.has_value() && (projectile.tool_id == 29U || projectile.tool_id == 48U)) {
+                // Snowball.__init__ keeps player.character.block_color and
+                // Snowball.draw makes it the KV6 default colour; every voxel
+                // of snowball.kv6 is default magenta.
+                model->apply_default_color(projectile_thrower_block_color(projectile));
+            }
             if (!model.has_value() ||
                 !world_renderer.set_world_model_mesh(*free_slot, model->mesh())) {
                 settings_warning = "projectile model failed: " +
@@ -17184,6 +21721,13 @@ struct NativeFrontendModule::Impl final {
                 } else if (definition->team_tinted) {
                     tint = remote_team_color(entity.team);
                 }
+                if (entity.type == 24U) {
+                    // Snowball.draw replaces Entity.draw's colour with the
+                    // thrower's block_color captured at creation.
+                    if (const auto thrower = player_block_color(entity.owner); thrower.has_value())
+                        tint = *thrower;
+                    team_material = false;
+                }
 
                 const auto tint_key =
                     tint.has_value()
@@ -17308,6 +21852,30 @@ struct NativeFrontendModule::Impl final {
         if (tutorial_session == nullptr) {
             return draws;
         }
+        // GameScene.update also feeds every live, non-spectator character --
+        // the local player included -- into spot_shadow_pos_list, so retail
+        // draws a soft contact disc under each player (tdm_blobshadow A/B).
+        // Character.spot_shadow_size is clamped to one block by vxl.pyd.
+        const auto add_character = [&](const world::Vec3& position) {
+            if (const auto shadow = world::character_spot_shadow(position, tutorial_session->map());
+                shadow.has_value()) {
+                draws.push_back({{static_cast<float>(shadow->position.x),
+                                  static_cast<float>(shadow->position.y),
+                                  static_cast<float>(shadow->position.z)},
+                                 1.0F,
+                                 static_cast<float>(shadow->fade)});
+            }
+        };
+        if (tutorial_session->alive()) {
+            add_character(tutorial_session->player().position);
+        }
+        for (const auto& replica : tutorial_roster.present_players()) {
+            if (replica.dead || (replica.team != 2U && replica.team != 3U) ||
+                (local_player_id.has_value() && replica.player_id == *local_player_id)) {
+                continue;
+            }
+            add_character(replica.position);
+        }
         for (const auto& entity : tutorial_session->entities()) {
             const auto position = world::health_crate_spot_shadow_position(
                 entity, tutorial_session->map());
@@ -17324,6 +21892,64 @@ struct NativeFrontendModule::Impl final {
     }
 
     /** Retail's additive 3D packet-43 objective/base boundaries. */
+    /**
+     * BlockFireEntity (28) and BlockGooEntity (31) surface patches.
+     *
+     * Retail draws each patch as a colour-ramped display on the voxel it
+     * affects, with a BLOCKFIRE_LIGHT_RADIUS point light whose colour follows
+     * calculate_colour (update_static_light_colour). The display is drawn here
+     * as an additive cube hugging the voxel and the light as a dynamic light;
+     * the exact display geometry is VERIFY (BlockFireEntity.create_display).
+     */
+    void append_surface_patch_presentation(std::vector<render::ZoneVolumeDraw>& zones,
+                                           std::vector<world::DynamicLight>& lights) const {
+        if (tutorial_session == nullptr) {
+            return;
+        }
+        for (const auto& entity : tutorial_session->entities()) {
+            if (!entity.alive || (entity.type != 28U && entity.type != 31U)) {
+                continue;
+            }
+            // BlockFireEntity.initialize (gameScene 0x100E72F0) sets
+            // display = [Vector3()]: retail fire has no model, only its
+            // ramped static light and smoke. The cube stays an enhanced extra.
+            if (entity.type == 28U && retail_look_active()) {
+                continue;
+            }
+            const auto colour = entity.type == 28U ? world::block_fire_colour(entity.fuse)
+                                                   : world::block_goo_colour(entity.fuse);
+            const auto voxel = world::surface_patch_voxel(tutorial_session->map(), entity.position);
+            std::array<float, 3U> minimum{};
+            std::array<float, 3U> maximum{};
+            if (voxel.has_value()) {
+                constexpr float inflate{0.02F};
+                minimum = {static_cast<float>(voxel->x) - inflate,
+                           static_cast<float>(voxel->y) - inflate,
+                           static_cast<float>(voxel->z) - inflate};
+                maximum = {static_cast<float>(voxel->x) + 1.0F + inflate,
+                           static_cast<float>(voxel->y) + 1.0F + inflate,
+                           static_cast<float>(voxel->z) + 1.0F + inflate};
+            } else {
+                const auto x = static_cast<float>(entity.position.x);
+                const auto y = static_cast<float>(entity.position.y);
+                const auto z = static_cast<float>(entity.position.z);
+                minimum = {x - 0.5F, y - 0.5F, z - 0.1F};
+                maximum = {x + 0.5F, y + 0.5F, z + 0.1F};
+            }
+            // Fire flickers like a flame; goo stays steady.
+            const float flicker =
+                entity.type == 28U
+                    ? 0.85F + 0.15F * static_cast<float>(std::sin(
+                                          retail_effect_clock * 23.0 +
+                                          static_cast<double>(entity.id % 97U)))
+                    : 1.0F;
+            zones.push_back(render::ZoneVolumeDraw{minimum, maximum, colour, 0.55F * flicker, false});
+        }
+        // The patch light itself is a baked static point light owned by the
+        // session (update_static_light_colour), so it shows in every tier.
+        static_cast<void>(lights);
+    }
+
     [[nodiscard]] std::vector<render::ZoneVolumeDraw> objective_zone_draws() const {
         std::vector<render::ZoneVolumeDraw> draws;
         std::uint8_t local_team{};
@@ -17545,6 +22171,37 @@ struct NativeFrontendModule::Impl final {
                 style.has_value() ? style->authored_size_pixels : 0.0,
                 static_cast<double>(zone.icon_scale)});
         }
+        // UGCEntity.create_zone (gameScene 0x100a4660): every spawn/base
+        // marker drawn in the edited mode adds a minimap zone of its
+        // UGC_ZONE_SIZES footprint, tinted TEAM_COLOURS[UGC_ENTITY_TEAMS]
+        // and marked ZONE_ICON_SPAWN (17) or ZONE_ICON_DEMOLITION (1).
+        if (network_match && match_initial_info.map_is_ugc()) {
+            for (const auto& item : server_ugc_items) {
+                if (item.item_id < 4U || item.item_id > 18U ||
+                    !world::ugc_item_visible_in_mode(item.mode, match_initial_info.ugc_mode)) {
+                    continue;
+                }
+                constexpr std::array<double, 3U> half_extent{5.0, 12.0, 20.0};
+                const double half = half_extent[static_cast<std::size_t>((item.item_id - 4U) % 3U)];
+                const auto zone_team = world::ugc_entity_team(item.item_id);
+                const ui::ColorRgba8 color =
+                    zone_team == 3U   ? ui::ColorRgba8{137U, 179U, 44U, 255U}
+                    : zone_team == 2U ? ui::ColorRgba8{44U, 117U, 179U, 255U}
+                                      : ui::ColorRgba8{128U, 128U, 128U, 255U};
+                const auto style = minimap_zone_icon_style(item.item_id <= 9U ? 17U : 1U);
+                const auto x = static_cast<double>(item.position[0U]);
+                const auto y = static_cast<double>(item.position[1U]);
+                state.zones.push_back(GameHudMinimapZone{
+                    x - half,
+                    y - half,
+                    x + half,
+                    y + half,
+                    color,
+                    style.has_value() ? std::string{style->icon_asset} : std::string{},
+                    style.has_value() ? style->authored_size_pixels : 0.0,
+                    1.0});
+            }
+        }
         if (local_alive) {
             const auto map_rotation = minimap_marker_rotation_degrees(local_motion.orientation.x,
                                                                       local_motion.orientation.y);
@@ -17618,6 +22275,30 @@ struct NativeFrontendModule::Impl final {
             }
         }
 
+        // minimap.add_billboard draws a minimap icon as well as the world
+        // marker; a tracking billboard follows its CreateEntity.
+        for (const auto& [billboard_id, billboard] : server_minimap_billboards) {
+            static_cast<void>(billboard_id);
+            const auto asset = objective_packet_billboard_asset(billboard.icon_name);
+            if (!asset.has_value())
+                continue;
+            double x = billboard.position[0U];
+            double y = billboard.position[1U];
+            if (billboard.tracking) {
+                const auto tracked = std::ranges::find(tutorial_session->entities(),
+                                                       billboard.entity_id,
+                                                       &world::LocalEntity::id);
+                if (tracked != tutorial_session->entities().end() && tracked->alive) {
+                    x = tracked->position.x;
+                    y = tracked->position.y;
+                }
+            }
+            state.markers.push_back(GameHudMinimapMarker{
+                *asset, x, y, 16.0, 0.0,
+                ui::ColorRgba8{billboard.color[0U], billboard.color[1U], billboard.color[2U], 255U},
+                false});
+        }
+
         if (network_match && local_player_id.has_value()) {
             const auto is_zombie_class = [](std::uint8_t class_id) noexcept {
                 return class_id == 4U || class_id == 14U || class_id == 15U;
@@ -17626,17 +22307,40 @@ struct NativeFrontendModule::Impl final {
                 local_replica != nullptr && is_zombie_class(local_replica->class_id);
             const double heartbeat_size = zombie_heartbeat_marker_size(
                 character_animation_timer_ms / 1000.0);
-            for (const auto& player : tutorial_roster.players()) {
+            // hud.Minimap.draw gathers the viewer team's live RADAR_STATION
+            // entities (type 36) and shows every enemy one of them can detect
+            // (RadarStationEntity.can_detect_player: 3D distance < A1900=250
+            // to the network position). The server sends no packet for it.
+            constexpr std::uint8_t radar_station_entity_type{36U};
+            std::vector<world::Vec3> friendly_radars;
+            if (local_team == 2U || local_team == 3U) {
+                for (const auto& entity : tutorial_session->entities()) {
+                    if (entity.alive && entity.type == radar_station_entity_type &&
+                        entity.team == local_team) {
+                        friendly_radars.push_back(entity.position);
+                    }
+                }
+            }
+            for (const auto& player : tutorial_roster.present_players()) {
                 const bool state_data_reveals_enemy =
                     (local_team == 2U && player.team == 3U &&
                      match_state_info.team1_can_see_team2) ||
                     (local_team == 3U && player.team == 2U &&
                      match_state_info.team2_can_see_team1);
+                const bool radar_reveals_enemy = std::any_of(
+                    friendly_radars.begin(), friendly_radars.end(),
+                    [&player](const world::Vec3& radar) {
+                        return retail_radar_detects(radar.x, radar.y, radar.z,
+                                                    player.position.x, player.position.y,
+                                                    player.position.z);
+                    });
+                // TeamMapVisibility(83) is teams[seeing].can_see_other_team:
+                // it is keyed by the local (seeing) team, not the seen one.
                 if (player.player_id == *local_player_id || player.dead ||
                     (player.team != local_team &&
                      !match_initial_info.exposed_teams_always_on_minimap &&
-                     !state_data_reveals_enemy &&
-                     !server_team_map_visibility[player.team] && !player.high_minimap_visibility)) {
+                     !state_data_reveals_enemy && !radar_reveals_enemy &&
+                     !server_team_map_visibility[local_team] && !player.high_minimap_visibility)) {
                     continue;
                 }
                 const auto color = remote_team_color(player.team);
@@ -17692,7 +22396,9 @@ struct NativeFrontendModule::Impl final {
         // A first-person client never renders its own third-person body.
         if (network_match && local_player_id == replica.player_id)
             return true;
-        const auto color = remote_team_color(replica.team);
+        // Character.set_team: every character-owned model uses the team
+        // colour at half intensity; entities keep the full colour.
+        const auto color = world::retail_character_color(remote_team_color(replica.team));
         const bool disguised = (replica.state_flags & 0x02U) != 0U;
         world::VxlColor disguise_color{96U, 96U, 96U, 255U};
         bool has_disguise_color{};
@@ -17739,11 +22445,42 @@ struct NativeFrontendModule::Impl final {
             }
         }
         auto found = remote_player_rigs.find(replica.player_id);
-        const auto* body_cosmetic = equipped_cosmetic(replica.player_id,"class:"+std::to_string(replica.class_id)+":body");
-        const auto* hat_cosmetic = equipped_cosmetic(replica.player_id,"class:"+std::to_string(replica.class_id)+":hat");
-        const auto* held_cosmetic = equipped_cosmetic(replica.player_id,"weapon:"+std::to_string(replica.tool_id)+":world");
+        const auto* body_cosmetic = equipped_cosmetic(
+            replica.player_id, cosmetic_slot_key(CosmeticSlotKey::class_body, replica.class_id));
+        const auto* hat_cosmetic = equipped_cosmetic(
+            replica.player_id, cosmetic_slot_key(CosmeticSlotKey::class_hat, replica.class_id));
+        const auto* held_cosmetic = equipped_cosmetic(
+            replica.player_id, cosmetic_slot_key(CosmeticSlotKey::weapon_world, replica.tool_id));
         const auto body_appearance = (body_cosmetic ? body_cosmetic->id : "") + std::string{"/"} + (hat_cosmetic ? hat_cosmetic->id : "");
         const auto weapon_appearance = held_cosmetic ? held_cosmetic->id : std::string{};
+        // Character.draw 2020/2052: use_color tools are multiplied by the
+        // holder's block colour, use_other_team_color (the intel flag) takes
+        // the other team's character colour.
+        const auto* tool_definition = world::find_weapon_definition(replica.tool_id);
+        const auto tool_path = world::retail_tool_color_path(
+            replica.tool_id,
+            tool_definition != nullptr && tool_definition->retail.use.use_team_color);
+        std::array<float, 3U> tool_tint{1.0F, 1.0F, 1.0F};
+        auto tool_default_color = color;
+        bool tool_forces_default_color{};
+        std::uint32_t tool_color_key{};
+        if (tool_path == world::RetailToolColorPath::block_color) {
+            const auto block = player_block_color(replica.player_id)
+                                   .value_or(world::VxlColor{255U, 255U, 255U, 255U});
+            tool_tint = {static_cast<float>(block.red) / 255.0F,
+                         static_cast<float>(block.green) / 255.0F,
+                         static_cast<float>(block.blue) / 255.0F};
+            tool_color_key = 0x01000000U | (static_cast<std::uint32_t>(block.red) << 16U) |
+                             (static_cast<std::uint32_t>(block.green) << 8U) | block.blue;
+        } else if (tool_path == world::RetailToolColorPath::other_team_color) {
+            tool_default_color = world::retail_character_color(
+                remote_team_color(replica.team == 2U ? std::uint8_t{3U} : std::uint8_t{2U}));
+            tool_forces_default_color = true;
+            tool_color_key = 0x02000000U |
+                             (static_cast<std::uint32_t>(tool_default_color.red) << 16U) |
+                             (static_cast<std::uint32_t>(tool_default_color.green) << 8U) |
+                             tool_default_color.blue;
+        }
         const auto corpse_jetpack_id =
             replica.dead
                 ? world::retail_jetpack_id(replica.loadout, replica.ugc_tools)
@@ -17759,7 +22496,8 @@ struct NativeFrontendModule::Impl final {
             return true;
         }
         if (body_matches && !corpse_jetpack_id.has_value() &&
-            found->second.tool_id == replica.tool_id && found->second.weapon_appearance == weapon_appearance) {
+            found->second.tool_id == replica.tool_id && found->second.weapon_appearance == weapon_appearance &&
+            found->second.tool_color_key == tool_color_key) {
             found->second.pending_tool_id.reset();
             found->second.pending_tool_snapshots = 0U;
             return true;
@@ -17820,6 +22558,7 @@ struct NativeFrontendModule::Impl final {
         rig.class_id = replica.class_id;
         rig.team = replica.team;
         rig.tool_id = replica.tool_id;
+        rig.tool_color_key = tool_color_key;
         rig.resolved_team_color = color;
         rig.disguised = disguised;
         rig.disguise_color = disguise_color;
@@ -17832,7 +22571,9 @@ struct NativeFrontendModule::Impl final {
             pending_remote_mesh_clears.erase(slot);
         }
         if (!body_matches) {
-            rig.motion.reset({replica.position, replica.orientation, replica.velocity});
+            rig.motion.reset(network::remote_motion_sample(
+                replica, network::protocol168_movement_scale(match_initial_info,
+                                                             replica.class_id)));
         }
         if (!body_matches && found != remote_player_rigs.end() &&
             found->second.generation == replica.generation) {
@@ -17842,6 +22583,7 @@ struct NativeFrontendModule::Impl final {
             rig.action_serial = found->second.action_serial;
             rig.block_sucker_state = found->second.block_sucker_state;
             rig.block_sucker_state_world_loop = found->second.block_sucker_state_world_loop;
+            rig.minigun_spin = found->second.minigun_spin;
             rig.motion = found->second.motion;
         }
 
@@ -17996,22 +22738,41 @@ struct NativeFrontendModule::Impl final {
             return true;
         }
 
-        const auto weapon_key = std::pair{(static_cast<std::uint64_t>(replica.tool_id) << 32U) | color_key, weapon_appearance};
-        auto cached_weapon = remote_weapon_model_cache.find(weapon_key);
-        if (cached_weapon == remote_weapon_model_cache.end()) {
-            const auto finish=inventory_weapon_finish(held_cosmetic,config.asset_root,replica.tool_id);
-            auto loaded = world::load_weapon_models(
-                config.asset_root, replica.tool_id, {1.0F, 1.0F, 1.0F}, color,
-                model_inverse_scale, finish?&*finish:nullptr);
-            if (!loaded) {
-                settings_warning =
-                    "remote held-tool art unavailable; body retained: " + loaded.error;
-                return true;
-            }
-            cached_weapon =
-                remote_weapon_model_cache.emplace(weapon_key, std::move(*loaded.models)).first;
+        const bool block_colour_tool = tool_path == world::RetailToolColorPath::block_color;
+        const RemoteWeaponModelKey weapon_key{
+            replica.tool_id,
+            static_cast<std::uint8_t>(tool_color_key >> 24U),
+            // The block colour is applied in memory below, never keyed.
+            block_colour_tool ? 0U : (tool_color_key & 0x00FFFFFFU),
+            color_key,
+            weapon_appearance};
+        std::string weapon_error;
+        const auto* cached_weapon = cached_remote_weapon_models(
+            weapon_key,
+            [&]() {
+                const auto finish =
+                    inventory_weapon_finish(held_cosmetic, config.asset_root, replica.tool_id);
+                return world::load_weapon_models(
+                    config.asset_root, replica.tool_id,
+                    block_colour_tool ? std::array<float, 3U>{1.0F, 1.0F, 1.0F} : tool_tint,
+                    tool_default_color, model_inverse_scale, finish ? &*finish : nullptr,
+                    tool_forces_default_color);
+            },
+            &weapon_error);
+        if (cached_weapon == nullptr) {
+            settings_warning =
+                "remote held-tool art unavailable; body retained: " + weapon_error +
+                " (player " + std::to_string(replica.player_id) + ", tool " +
+                std::to_string(replica.tool_id) + ")";
+            return true;
         }
-        const auto& weapon = cached_weapon->second;
+        // Character.draw multiplies use_color tools by the holder's block
+        // colour: recolour the cached untinted set instead of reloading KV6.
+        std::optional<world::WeaponModelSet> recoloured;
+        if (block_colour_tool) {
+            recoloured = world::tinted_weapon_models(*cached_weapon, tool_tint);
+        }
+        const auto& weapon = recoloured.has_value() ? *recoloured : *cached_weapon;
         rig.tool_part_count =
             std::min<std::size_t>(weapon.third_person_parts.size(), rig.tool_slots.size());
         for (std::size_t part{}; part < rig.tool_part_count; ++part) {
@@ -18055,7 +22816,7 @@ struct NativeFrontendModule::Impl final {
             }
             iterator = remote_player_rigs.erase(iterator);
         }
-        for (const auto& replica : tutorial_roster.players()) {
+        for (const auto& replica : tutorial_roster.present_players()) {
             if (!sync_remote_player_rig(replica))
                 return false;
         }
@@ -18114,27 +22875,291 @@ struct NativeFrontendModule::Impl final {
             world::retail_parachute_world_transform(tutorial_session->eye_position(), yaw, true)};
     }
 
+    [[nodiscard]] static std::uint32_t character_color_key(world::VxlColor color) noexcept {
+        return (static_cast<std::uint32_t>(color.red) << 24U) |
+               (static_cast<std::uint32_t>(color.green) << 16U) |
+               (static_cast<std::uint32_t>(color.blue) << 8U) | color.alpha;
+    }
+
+    /**
+     * Shared accessory slot for `key`, uploading `build()`'s CPU mesh on first
+     * use. Least-recently drawn entries are recycled; a full band or the
+     * per-frame upload budget simply defers the draw to a later frame.
+     */
+    template <class Build>
+    [[nodiscard]] std::optional<std::uint32_t> character_accessory_slot(const std::string& key,
+                                                                        Build&& build) {
+        if (const auto found = character_accessory_slots.find(key);
+            found != character_accessory_slots.end()) {
+            found->second.last_frame = character_accessory_frame;
+            return found->second.slot;
+        }
+        constexpr std::size_t uploads_per_frame{4U};
+        if (character_accessory_builds_this_frame >= uploads_per_frame)
+            return std::nullopt;
+        const world::ChunkMesh* mesh = build();
+        if (mesh == nullptr || mesh->empty())
+            return std::nullopt;
+        ++character_accessory_builds_this_frame;
+        std::optional<std::uint32_t> slot;
+        constexpr auto base = render::WorldRenderer::character_accessory_slot_base;
+        constexpr auto count = render::WorldRenderer::character_accessory_slot_count;
+        if (character_accessory_slots.size() < count) {
+            for (std::uint32_t candidate = base; candidate < base + count; ++candidate) {
+                if (std::ranges::none_of(character_accessory_slots, [candidate](const auto& entry) {
+                        return entry.second.slot == candidate;
+                    })) {
+                    slot = candidate;
+                    break;
+                }
+            }
+        }
+        if (!slot.has_value()) {
+            auto oldest = character_accessory_slots.end();
+            for (auto entry = character_accessory_slots.begin();
+                 entry != character_accessory_slots.end(); ++entry) {
+                if (entry->second.last_frame + 1U < character_accessory_frame &&
+                    (oldest == character_accessory_slots.end() ||
+                     entry->second.last_frame < oldest->second.last_frame)) {
+                    oldest = entry;
+                }
+            }
+            if (oldest == character_accessory_slots.end())
+                return std::nullopt;
+            slot = oldest->second.slot;
+            character_accessory_slots.erase(oldest);
+        }
+        if (!world_renderer.set_world_model_mesh(*slot, *mesh)) {
+            settings_warning = "character accessory upload failed: " +
+                               std::string{world_renderer.last_error()};
+            return std::nullopt;
+        }
+        character_accessory_slots.insert_or_assign(
+            key, CharacterAccessorySlot{*slot, character_accessory_frame});
+        return slot;
+    }
+
+    /**
+     * A DisplayList(model, z_offset=6) character child (jetpack, back intel,
+     * ClassicCorpse) with its KV6 default colour resolved. Shares the jetpack
+     * corpse cache: `kind` is the pack id, or 0x100 intel / 0x101 corpse.
+     */
+    [[nodiscard]] const world::ChunkMesh* character_attachment_mesh(std::string_view stem,
+                                                                   std::uint64_t kind,
+                                                                   world::VxlColor color) {
+        const auto key = (kind << 32U) | character_color_key(color);
+        auto cached = remote_jetpack_model_cache.find(key);
+        if (cached == remote_jetpack_model_cache.end()) {
+            std::string load_error;
+            auto model = load_runtime_model(
+                config.asset_root / "kv6" / (std::string{stem} + ".kv6"), &load_error);
+            if (!model.has_value()) {
+                settings_warning = "character attachment art unavailable: " + load_error;
+                // Remember the failure so a missing asset is not re-read per frame.
+                remote_jetpack_model_cache.emplace(key, world::ChunkMesh{});
+                return nullptr;
+            }
+            model->offset_pivots(
+                {0.0F, 0.0F, static_cast<float>(world::retail_jetpack_attachment().z_offset)});
+            model->apply_default_color(color);
+            cached = remote_jetpack_model_cache.emplace(key, model->mesh()).first;
+        }
+        return cached->second.empty() ? nullptr : &cached->second;
+    }
+
+    /** Class meshes for one replica in `color`, shared with the rig upload cache. */
+    [[nodiscard]] const world::ClassModelSet*
+    remote_class_models_for(const network::RemotePlayerReplica& replica, world::VxlColor color) {
+        const auto* body_cosmetic = equipped_cosmetic(
+            replica.player_id, cosmetic_slot_key(CosmeticSlotKey::class_body, replica.class_id));
+        const auto* hat_cosmetic = equipped_cosmetic(
+            replica.player_id, cosmetic_slot_key(CosmeticSlotKey::class_hat, replica.class_id));
+        const auto body_appearance = (body_cosmetic ? body_cosmetic->id : "") + std::string{"/"} +
+                                     (hat_cosmetic ? hat_cosmetic->id : "");
+        const auto class_key =
+            std::pair{(static_cast<std::uint64_t>(replica.class_id) << 32U) |
+                          character_color_key(color),
+                      body_appearance};
+        auto cached = remote_class_model_cache.find(class_key);
+        if (cached == remote_class_model_cache.end()) {
+            const auto palette =
+                body_cosmetic ? std::optional{body_cosmetic->palette} : std::nullopt;
+            const auto head =
+                hat_cosmetic ? inventory_verified_model(*hat_cosmetic, config.asset_root) : nullptr;
+            const auto parts = inventory_character_parts(body_cosmetic, config.asset_root);
+            auto loaded = world::load_class_models(config.asset_root, replica.class_id, color,
+                                                   model_inverse_scale, palette, head.get(),
+                                                   &parts);
+            if (!loaded)
+                return nullptr;
+            cached = remote_class_model_cache.emplace(class_key, std::move(*loaded.models)).first;
+        }
+        return &cached->second;
+    }
+
+    /** Pool slots of one character's body at SPAWN_COLOR_MULTIPLIER colour. */
+    struct CharacterFlashSlots final {
+        std::uint32_t standing{};
+        std::uint32_t crouching{};
+        std::uint32_t head{};
+        std::uint32_t left_leg{};
+        std::uint32_t right_leg{};
+        std::uint32_t crouching_left_leg{};
+        std::uint32_t crouching_right_leg{};
+        std::uint32_t arm_upper{};
+        std::uint32_t arm_lower{};
+    };
+
+    [[nodiscard]] std::optional<CharacterFlashSlots>
+    character_flash_slots(const network::RemotePlayerReplica& replica,
+                          const RemotePlayerRenderRig& rig) {
+        const auto flash_color = world::retail_spawn_flash_color(rig.resolved_team_color);
+        const auto prefix = "flash:" + std::to_string(replica.class_id) + ":" +
+                            std::to_string(character_color_key(flash_color)) + ":" +
+                            rig.body_appearance + ":";
+        const world::ClassModelSet* models{};
+        const auto part_slot = [&](std::string_view part,
+                                   auto select) -> std::optional<std::uint32_t> {
+            return character_accessory_slot(prefix + std::string{part},
+                                            [&]() -> const world::ChunkMesh* {
+                                                if (models == nullptr)
+                                                    models = remote_class_models_for(replica,
+                                                                                     flash_color);
+                                                return models != nullptr ? select(*models)
+                                                                         : nullptr;
+                                            });
+        };
+        CharacterFlashSlots slots;
+        bool complete{true};
+        const auto take = [&](std::uint32_t& out, std::optional<std::uint32_t> slot) {
+            if (slot.has_value())
+                out = *slot;
+            else
+                complete = false;
+        };
+        take(slots.standing, part_slot("st", [](const auto& m) { return &m.standing_torso_preview; }));
+        take(slots.crouching, part_slot("ct", [](const auto& m) { return &m.crouching_torso_preview; }));
+        take(slots.head, part_slot("hd", [](const auto& m) { return &m.head_preview; }));
+        take(slots.left_leg, part_slot("ll", [](const auto& m) { return &m.left_leg_preview; }));
+        take(slots.right_leg, part_slot("rl", [](const auto& m) { return &m.right_leg_preview; }));
+        take(slots.crouching_left_leg,
+             part_slot("cl", [](const auto& m) { return &m.crouching_left_leg_preview; }));
+        take(slots.crouching_right_leg,
+             part_slot("cr", [](const auto& m) { return &m.crouching_right_leg_preview; }));
+        if (rig.combined_arms) {
+            take(slots.arm_upper, part_slot("ca", [](const auto& m) -> const world::ChunkMesh* {
+                     return m.combined_arms.has_value() ? &*m.combined_arms : nullptr;
+                 }));
+            slots.arm_lower = slots.arm_upper;
+        } else if (rig.arm_meshes_available) {
+            take(slots.arm_upper, part_slot("au", [](const auto& m) -> const world::ChunkMesh* {
+                     return m.first_person_arms.size() >= 2U ? &m.first_person_arms[0U] : nullptr;
+                 }));
+            take(slots.arm_lower, part_slot("al", [](const auto& m) -> const world::ChunkMesh* {
+                     return m.first_person_arms.size() >= 2U ? &m.first_person_arms[1U] : nullptr;
+                 }));
+        }
+        if (!complete)
+            return std::nullopt;
+        return slots;
+    }
+
+    /** Held-tool parts at the flashed colour (Tool.flash_with_spawn_protection). */
+    [[nodiscard]] std::optional<std::array<std::uint32_t, 3U>>
+    character_flash_tool_slots(std::uint8_t tool_id, std::size_t part_count,
+                               world::VxlColor flash_color) {
+        const RemoteWeaponModelKey weapon_key{
+            tool_id, 3U, character_color_key(flash_color), 0U, std::string{}};
+        std::array<std::uint32_t, 3U> slots{};
+        for (std::size_t part{}; part < std::min<std::size_t>(part_count, slots.size()); ++part) {
+            const auto slot = character_accessory_slot(
+                "flashtool:" + std::to_string(tool_id) + ":" +
+                    std::to_string(character_color_key(flash_color)) + ":" + std::to_string(part),
+                [&]() -> const world::ChunkMesh* {
+                    const auto* cached = cached_remote_weapon_models(weapon_key, [&]() {
+                        return world::load_weapon_models(config.asset_root, tool_id,
+                                                         {1.0F, 1.0F, 1.0F}, flash_color,
+                                                         model_inverse_scale);
+                    });
+                    return cached != nullptr && part < cached->third_person_parts.size()
+                               ? &cached->third_person_parts[part]
+                               : nullptr;
+                });
+            if (!slot.has_value())
+                return std::nullopt;
+            slots[part] = *slot;
+        }
+        return slots;
+    }
+
     [[nodiscard]] std::vector<render::WorldModelDraw> tutorial_player_draws() {
         std::vector<render::WorldModelDraw> draws;
-        const auto tune_character_draws = [&draws](std::size_t first) {
-            for (std::size_t index{first}; index < draws.size(); ++index) {
-                // Retail characters used their own model shader. A slight
-                // darkening plus local contrast keeps team colours distinct
-                // from equally coloured terrain without turning them neon.
-                draws[index].albedo_gain = 0.90F;
-                draws[index].albedo_contrast = 1.08F;
-            }
-        };
-        const auto players = tutorial_roster.players();
+        ++character_accessory_frame;
+        character_accessory_builds_this_frame = 0U;
+        // Retail characters are drawn exactly as kv6.pyd shades them: the
+        // default colour is the half-intensity team colour (Character.set_team)
+        // and no extra albedo gain/contrast is applied.
+        const auto players = tutorial_roster.present_players();
         draws.reserve(players.size() * 8U);
+        std::erase_if(spawn_blinks, [&players](const auto& entry) {
+            return std::ranges::none_of(players, [&entry](const auto& player) {
+                return player.player_id == entry.first;
+            });
+        });
+        // DisplayList(model, z_offset=6) children of the character root.
+        const auto character_child = [](const world::RetailJetpackAttachment& attachment,
+                                        const std::array<float, 16U>& root) {
+            const auto display_position =
+                world::retail_display_vector({0.0, attachment.y, attachment.z});
+            auto child = mat_scale(static_cast<float>(attachment.size));
+            child = mat_mul(child, mat_translate(static_cast<float>(display_position.x),
+                                                 static_cast<float>(display_position.y),
+                                                 static_cast<float>(display_position.z)));
+            child = mat_mul(child, mat_rotate_x(-90.0F));
+            return mat_mul(child, root);
+        };
         for (const auto& player : players) {
             const auto rig = remote_player_rigs.find(player.player_id);
             const auto* jetpack_corpse = jetpack_deaths.state(player.player_id);
             const bool draws_jetpack_corpse =
                 player.dead && jetpack_corpse != nullptr &&
                 jetpack_corpse->generation == player.generation;
-            if (rig == remote_player_rigs.end() || (player.dead && !draws_jetpack_corpse))
+            const auto equipped_jetpack = world::retail_jetpack_id(player.loadout, player.ugc_tools);
+            // Character.draw pyx 2058-2059: a dead character without a pack
+            // leaves ClassicCorpse in classic matches until explode_corpse.
+            const bool draws_classic_corpse =
+                player.dead && !draws_jetpack_corpse && !equipped_jetpack.has_value() &&
+                match_initial_info.classic &&
+                exploded_corpse_generations[player.player_id & 0x7FU] != player.generation;
+            if (rig == remote_player_rigs.end() ||
+                (player.dead && !draws_jetpack_corpse && !draws_classic_corpse))
                 continue;
+            if (draws_classic_corpse) {
+                if (rig->second.disguised)
+                    continue;
+                const auto& corpse_motion = rig->second.motion.sample();
+                auto corpse_root = mat_rotate_z(static_cast<float>(
+                    world::retail_character_root_yaw_degrees({corpse_motion.orientation.x,
+                                                              corpse_motion.orientation.y,
+                                                              corpse_motion.orientation.z})));
+                corpse_root = mat_mul(
+                    corpse_root, mat_translate(static_cast<float>(corpse_motion.position.x),
+                                               static_cast<float>(corpse_motion.position.y),
+                                               static_cast<float>(corpse_motion.position.z)));
+                const auto corpse_color = rig->second.resolved_team_color;
+                const auto slot = character_accessory_slot(
+                    "corpse:" + std::to_string(character_color_key(corpse_color)),
+                    [&]() {
+                        return character_attachment_mesh(world::retail_classic_corpse_model,
+                                                         0x101U, corpse_color);
+                    });
+                if (slot.has_value()) {
+                    draws.push_back(
+                        {*slot, character_child(world::retail_classic_corpse_attachment(),
+                                                corpse_root)});
+                }
+                continue;
+            }
             const auto& motion = rig->second.motion.sample();
             const float yaw = static_cast<float>(world::retail_character_root_yaw_degrees(
                 {motion.orientation.x, motion.orientation.y, motion.orientation.z}));
@@ -18177,25 +23202,56 @@ struct NativeFrontendModule::Impl final {
                                          ? 0.0
                                          : std::asin(std::clamp(motion.orientation.z, -1.0, 1.0)) *
                                                180.0 / std::numbers::pi;
-            const auto first_character_draw = draws.size();
+            // Character.draw pyx 1873-1877: while spawn protected the default
+            // (team) colour is doubled on every frame except the one where
+            // spawn_color_blink_timer ran out. Only team-colour voxels change.
+            bool spawn_flash{};
+            if (!player.dead) {
+                auto& blink = spawn_blinks[player.player_id];
+                if (blink.generation != player.generation ||
+                    player.spawn_protection > blink.last_protection + 0.25F) {
+                    blink = SpawnBlinkState{player.generation, player.spawn_protection,
+                                            retail_effect_clock, {}};
+                    world::retail_spawn_blink_reset(blink.blink);
+                }
+                world::retail_spawn_blink_update(blink.blink,
+                                                 retail_effect_clock - blink.last_clock);
+                blink.last_clock = retail_effect_clock;
+                blink.last_protection = player.spawn_protection;
+                spawn_flash = world::retail_spawn_blink_draw(
+                    blink.blink, static_cast<double>(player.spawn_protection));
+            }
+            const auto flash_slots =
+                spawn_flash ? character_flash_slots(player, rig->second)
+                            : std::optional<CharacterFlashSlots>{};
+            const auto body_slot = [&flash_slots](std::uint32_t normal,
+                                                  std::uint32_t CharacterFlashSlots::*flashed) {
+                return flash_slots.has_value() ? (*flash_slots).*flashed : normal;
+            };
 
             // Retail draws the torso, head and both legs as separate
             // DisplayLists. Pitching the old combined body either left the
             // head rigid or rotated the entire player around their feet.
             draws.push_back(
-                {crouching ? rig->second.crouching_slot : rig->second.standing_body_slot, root});
-            const float head_pivot_z = crouching ? 0.3F : 0.2F;
-            auto head = mat_translate(0.0F, 0.0F, crouching ? 0.1F : 0.0F);
-            head = mat_mul(head, mat_translate(0.0F, 0.0F, -head_pivot_z));
+                {crouching ? body_slot(rig->second.crouching_slot, &CharacterFlashSlots::crouching)
+                           : body_slot(rig->second.standing_body_slot,
+                                       &CharacterFlashSlots::standing),
+                 root});
+            // set_crouch keeps the head at BODY_PARTS_Z 0.3 in both poses (no
+            // invented standing lift); the head pitches about that anchor.
+            constexpr float head_pivot_z{0.3F};
+            auto head = mat_translate(0.0F, 0.0F, -head_pivot_z);
             head = mat_mul(head, mat_rotate_x(static_cast<float>(aim_pitch)));
             head = mat_mul(head, mat_translate(0.0F, 0.0F, head_pivot_z));
             head = mat_mul(head, root);
-            draws.push_back({rig->second.head_slot, head});
+            draws.push_back({body_slot(rig->second.head_slot, &CharacterFlashSlots::head), head});
             if(rig->second.combined_arms){
                 auto arms=mat_translate(0.F,0.F,-.25F);
                 arms=mat_mul(arms,mat_rotate_x(static_cast<float>(aim_pitch)));
                 arms=mat_mul(arms,mat_translate(0.F,crouching?-.3F:0.F,crouching?.35F:.25F));
-                draws.push_back({rig->second.arm_upper_slot,mat_mul(arms,root)});
+                draws.push_back({body_slot(rig->second.arm_upper_slot,
+                                           &CharacterFlashSlots::arm_upper),
+                                 mat_mul(arms,root)});
             }
 
             const auto walk_pose = world::evaluate_retail_walk_pose(
@@ -18219,10 +23275,15 @@ struct NativeFrontendModule::Impl final {
                 return mat_mul(model, root);
             };
             draws.push_back(
-                {crouching ? rig->second.crouching_left_leg_slot : rig->second.left_leg_slot,
+                {crouching ? body_slot(rig->second.crouching_left_leg_slot,
+                                       &CharacterFlashSlots::crouching_left_leg)
+                           : body_slot(rig->second.left_leg_slot, &CharacterFlashSlots::left_leg),
                  animated_leg(0.25F, walk_pose.left)});
             draws.push_back(
-                {crouching ? rig->second.crouching_right_leg_slot : rig->second.right_leg_slot,
+                {crouching ? body_slot(rig->second.crouching_right_leg_slot,
+                                       &CharacterFlashSlots::crouching_right_leg)
+                           : body_slot(rig->second.right_leg_slot,
+                                       &CharacterFlashSlots::right_leg),
                  animated_leg(-0.25F, walk_pose.right)});
 
             // Character.set_jetpack_model keeps this exact child attached
@@ -18232,21 +23293,49 @@ struct NativeFrontendModule::Impl final {
             if (draws_jetpack_corpse) {
                 if (rig->second.attached_jetpack_id ==
                     std::optional<std::uint8_t>{jetpack_corpse->jetpack_id}) {
-                    constexpr auto attachment = world::retail_jetpack_attachment();
-                    const auto display_position = world::retail_display_vector(
-                        {0.0, attachment.y, attachment.z});
-                    auto pack = mat_scale(static_cast<float>(attachment.size));
-                    pack = mat_mul(
-                        pack,
-                        mat_translate(static_cast<float>(display_position.x),
-                                      static_cast<float>(display_position.y),
-                                      static_cast<float>(display_position.z)));
-                    pack = mat_mul(pack, mat_rotate_x(-90.0F));
-                    pack = mat_mul(pack, root);
-                    draws.push_back({rig->second.tool_slots[0U], pack});
+                    draws.push_back({rig->second.tool_slots[0U],
+                                     character_child(world::retail_jetpack_attachment(), root)});
                 }
-                tune_character_draws(first_character_draw);
                 continue;
+            }
+
+            // Character.draw pyx 1896-1898: Classic CTF carriers keep a gun
+            // out, so the intel rides on their back in other_color.
+            const bool back_intel = match_initial_info.allow_shooting_holding_intel &&
+                                    player.pickup_id == 16U && !rig->second.disguised;
+            const auto other_color = world::retail_character_color(remote_team_color(
+                player.team == 2U ? std::uint8_t{3U} : std::uint8_t{2U}));
+            if (back_intel) {
+                const auto slot = character_accessory_slot(
+                    "intel:" + std::to_string(character_color_key(other_color)), [&]() {
+                        return character_attachment_mesh(world::retail_back_intel_model, 0x100U,
+                                                         other_color);
+                    });
+                if (slot.has_value()) {
+                    draws.push_back(
+                        {*slot, character_child(world::retail_back_intel_attachment(
+                                                    crouching, equipped_jetpack),
+                                                root)});
+                }
+            }
+            // Character.draw pyx 1899-1900: every living pack wearer draws the
+            // pack in the current default colour (flashed with the body, or
+            // other_color right after the back intel).
+            if (equipped_jetpack.has_value() && !rig->second.disguised) {
+                const auto pack_color =
+                    back_intel ? other_color
+                    : flash_slots.has_value()
+                        ? world::retail_spawn_flash_color(rig->second.resolved_team_color)
+                        : rig->second.resolved_team_color;
+                const auto stem = world::retail_jetpack_model(*equipped_jetpack);
+                const auto slot = character_accessory_slot(
+                    "jet:" + std::to_string(*equipped_jetpack) + ":" +
+                        std::to_string(character_color_key(pack_color)),
+                    [&]() { return character_attachment_mesh(stem, *equipped_jetpack, pack_color); });
+                if (slot.has_value()) {
+                    draws.push_back(
+                        {*slot, character_child(world::retail_jetpack_attachment(), root)});
+                }
             }
 
             // Character.draw draws the canopy independently of its held tool
@@ -18271,7 +23360,18 @@ struct NativeFrontendModule::Impl final {
                                                                        elapsed,
                                                                        rig->second.action_serial,
                                                                        aim_pitch,
-                                                                       (player.action_flags & 0x10U) != 0U);
+                                                                       (player.action_flags & 0x10U) != 0U,
+                                                                       rig->second.minigun_spin.phase);
+            // Only Tool.flash_with_spawn_protection (ZombieHandTool) keeps the
+            // doubled default colour; every other tool is reset to color.
+            const auto flash_tool_slots =
+                flash_slots.has_value() &&
+                        world::retail_tool_flashes_with_spawn_protection(player.tool_id) &&
+                        rig->second.weapon_appearance.empty()
+                    ? character_flash_tool_slots(
+                          player.tool_id, pose.tool_part_count,
+                          world::retail_spawn_flash_color(rig->second.resolved_team_color))
+                    : std::optional<std::array<std::uint32_t, 3U>>{};
             world::ViewModelVector sucker_shake{};
             if (player.tool_id == 63U && rig->second.block_sucker_state != 0U) {
                 const double sucker_elapsed =
@@ -18329,7 +23429,9 @@ struct NativeFrontendModule::Impl final {
                                              static_cast<float>(sucker_shake.y),
                                              static_cast<float>(sucker_shake.z)));
                 held = mat_mul(held, root);
-                draws.push_back({rig->second.tool_slots[part], held});
+                draws.push_back({flash_tool_slots.has_value() ? (*flash_tool_slots)[part]
+                                                              : rig->second.tool_slots[part],
+                                 held});
             }
             const auto arm_draw = [&](std::uint32_t slot,
                                       const world::RetailThirdPersonArmPose& part) {
@@ -18359,20 +23461,23 @@ struct NativeFrontendModule::Impl final {
             };
             if (rig->second.draws_arms && pose.draws_player_arms) {
                 const auto& arms = pose.arms;
+                const auto upper =
+                    body_slot(rig->second.arm_upper_slot, &CharacterFlashSlots::arm_upper);
+                const auto lower =
+                    body_slot(rig->second.arm_lower_slot, &CharacterFlashSlots::arm_lower);
                 arm_draw(
-                    rig->second.arm_upper_slot,
+                    upper,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::right_upper)]);
                 arm_draw(
-                    rig->second.arm_lower_slot,
+                    lower,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::right_lower)]);
                 arm_draw(
-                    rig->second.arm_upper_slot,
+                    upper,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::left_upper)]);
                 arm_draw(
-                    rig->second.arm_lower_slot,
+                    lower,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::left_lower)]);
             }
-            tune_character_draws(first_character_draw);
         }
         return draws;
     }
@@ -18385,7 +23490,7 @@ struct NativeFrontendModule::Impl final {
             return draws;
         }
 
-        const auto players = tutorial_roster.players();
+        const auto players = tutorial_roster.present_players();
         std::vector<world::SniperLaserTarget> targets;
         targets.reserve(players.size());
         for (const auto& player : players) {
@@ -18572,7 +23677,6 @@ struct NativeFrontendModule::Impl final {
                            mat_translate(static_cast<float>(part_pose.position.x),
                                          static_cast<float>(part_pose.position.y),
                                          static_cast<float>(part_pose.position.z)));
-            tool = mat_mul(tool, mat_rotate_x(static_cast<float>(pose.digging_pitch_degrees)));
             // Tool and hands must consume the same Character.draw_fps sway.
             // Omitting this here made the all-weapons gun appear immediately
             // while its hands arrived later through the pullout animation.
@@ -18594,7 +23698,8 @@ struct NativeFrontendModule::Impl final {
             }
         }
         const auto append_arm = [&](std::uint32_t slot, const world::RetailArmPartPose& part) {
-            Mat4 model = mat_scale(static_cast<float>(pose.model_scale));
+            // fps arms keep BODY_PARTS_SIZE whatever the tool's view size.
+            Mat4 model = mat_scale(static_cast<float>(pose.arm_model_scale));
             model = mat_mul(model, mat_rotate_y(static_cast<float>(part.yaw_degrees)));
             model = mat_mul(model,
                             mat_translate(static_cast<float>(part.position.x),
@@ -18755,7 +23860,11 @@ struct NativeFrontendModule::Impl final {
 
     /** Keep retail poses, using the equipped character's authored arm pair. */
     [[nodiscard]] bool load_tutorial_class_arms(std::uint8_t class_id) {
-        const auto team_color = local_player_team_color();
+        // Character.draw_fps (character.pyd 0x1005F76C, pyx 2164) calls
+        // set_kv6_default_color(*self.color) before drawing the FPS arms, and
+        // Character.set_team (0x10025F37, pyx 671) stores color = team * 0.5.
+        // The full team colour made the sleeve band twice as bright as retail.
+        const auto team_color = world::retail_character_color(local_player_team_color());
         if (loaded_tutorial_arm_class == class_id && loaded_tutorial_arm_color == team_color) {
             return true;
         }
@@ -18862,7 +23971,9 @@ struct NativeFrontendModule::Impl final {
             tool_meshes.emplace(world::TutorialTool::spade, model->mesh());
         }
         if (auto model = load_model("pistol.kv6"); model.has_value()) {
-            tool_meshes.emplace(world::TutorialTool::pistol, model->mesh());
+            auto mesh = model->mesh();
+            tutorial_pistol_muzzle_tip = world::view_model_muzzle_tip(mesh);
+            tool_meshes.emplace(world::TutorialTool::pistol, std::move(mesh));
         }
         // The pistol is the only tutorial tool that aims, and Character.
         // draw_sight draws its own models rather than the held weapon. Both
@@ -18902,7 +24013,8 @@ struct NativeFrontendModule::Impl final {
         world_renderer.clear_view_model();std::uint32_t slot=0;
         for(std::size_t id=0;id<skin->resources().size();++id){const auto& r=skin->resources()[id];
             if(r.path.empty())continue;
-            if(r.kind==0){auto mesh=skin->model_mesh(id,local_player_team_color(),arms);
+            // draw_fps default colour is Character.color (team * 0.5).
+            if(r.kind==0){auto mesh=skin->model_mesh(id,world::retail_character_color(local_player_team_color()),arms);
                 if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
                     settings_warning="Skin model failed: "+r.name;clear_scripted_weapon();return false;
                 }scripted_model_slots[id]=slot++;
@@ -18990,10 +24102,15 @@ struct NativeFrontendModule::Impl final {
         if (applied_settings.main.show_skins && !network_match && developer_tools_allowed() && config.tutorial_debug_cosmetic)
             cosmetic=find_inventory_cosmetic(*config.tutorial_debug_cosmetic);
         clear_scripted_weapon();
+        local_view_muzzle_point.reset();
+        sandbox_part_muzzle_tips.clear();
         if(load_scripted_weapon(cosmetic,*selected))return true;
         const auto finish=inventory_weapon_finish(cosmetic,config.asset_root,*selected);
+        // draw_fps sets set_kv6_default_color(*self.color) before the view
+        // weapon too (character.pyd 0x10060BB1, pyx 2194): team * 0.5.
         const auto loaded = world::load_weapon_models(
-            config.asset_root, *selected, tint, local_player_team_color(),
+            config.asset_root, *selected, tint,
+            world::retail_character_color(local_player_team_color()),
             model_inverse_scale, finish?&*finish:nullptr);
         if (!loaded) {
             settings_warning = "sandbox weapon model failed: " + loaded.error;
@@ -19011,6 +24128,7 @@ struct NativeFrontendModule::Impl final {
                 settings_warning = "sandbox weapon exceeds viewmodel slots";
                 return false;
             }
+            sandbox_part_muzzle_tips.push_back(world::view_model_muzzle_tip(mesh));
             ++sandbox_tool_part_count;
         }
         if (loaded.models->sight.has_value()) {
@@ -19109,7 +24227,14 @@ struct NativeFrontendModule::Impl final {
         if (tutorial_session == nullptr || !uploaded_sandbox_tool.has_value()) {
             return draws;
         }
-        if(scripted_weapon)return scripted_weapon_draws();
+        if(scripted_weapon){
+            auto scripted=scripted_weapon_draws();
+            // Skins that author their own flash sprites keep them; others get
+            // the retail KV6 flash at the same view offsets as the stock gun.
+            if(!scripted.empty()&&!scripted_images.has_muzzle_images())
+                append_local_view_muzzle_flash(scripted,*uploaded_sandbox_tool,tutorial_session->zoomed(),first_person_sway());
+            return scripted;
+        }
         if (!tutorial_session->weapon_view_model_visible()) {
             return draws;
         }
@@ -19139,7 +24264,6 @@ struct NativeFrontendModule::Impl final {
                            mat_translate(static_cast<float>(part_pose.position.x),
                                          static_cast<float>(part_pose.position.y),
                                          static_cast<float>(part_pose.position.z)));
-            tool = mat_mul(tool, mat_rotate_x(static_cast<float>(pose.digging_pitch_degrees)));
             // Character.draw_fps owns one root translation for both the
             // selected tool and its arm hierarchy.  F4 exposes enough tools
             // to make any split obvious: the weapon used to render at its
@@ -19175,8 +24299,13 @@ struct NativeFrontendModule::Impl final {
             if (sight.has_pin && sandbox_pin_slot.has_value()) {
                 draws.push_back({*sandbox_pin_slot, sight_pin_matrix(sight)});
             }
+            // character.pyx:2092 weapon_object.draw_sight(view_weapon):
+            // the flash at muzzle_flash_zoomed_view_offset, no sway.
+            record_zoomed_view_muzzle(*uploaded_sandbox_tool);
+            append_local_view_muzzle_flash(draws, *uploaded_sandbox_tool, true, {});
             return draws;
         }
+        std::vector<ViewMuzzleAnchor> muzzle_candidates;
         for (std::uint32_t slot{}; slot < sandbox_tool_part_count; ++slot) {
             if (sandbox_sight_slot == slot || sandbox_pin_slot == slot ||
                 sandbox_arm_upper_slot == slot || sandbox_arm_lower_slot == slot) {
@@ -19184,10 +24313,17 @@ struct NativeFrontendModule::Impl final {
             }
             const auto part = static_cast<std::size_t>(slot);
             const auto& part_pose = part < pose.tool_part_count ? pose.tool_parts[part] : pose.tool;
-            draws.push_back({slot, tool_matrix(part_pose)});
+            const auto matrix = tool_matrix(part_pose);
+            draws.push_back({slot, matrix});
+            if (part < sandbox_part_muzzle_tips.size() &&
+                sandbox_part_muzzle_tips[part].has_value()) {
+                muzzle_candidates.push_back({matrix, *sandbox_part_muzzle_tips[part]});
+            }
         }
+        const auto muzzle_anchor = record_view_muzzle_anchor(muzzle_candidates);
         const auto append_arm = [&](std::uint32_t slot, const world::RetailArmPartPose& part) {
-            Mat4 model = mat_scale(static_cast<float>(pose.model_scale));
+            // fps arms keep BODY_PARTS_SIZE whatever the tool's view size.
+            Mat4 model = mat_scale(static_cast<float>(pose.arm_model_scale));
             model = mat_mul(model, mat_rotate_y(static_cast<float>(part.yaw_degrees)));
             model = mat_mul(model,
                             mat_translate(static_cast<float>(part.position.x),
@@ -19218,6 +24354,10 @@ struct NativeFrontendModule::Impl final {
             append_arm(*sandbox_arm_upper_slot,
                        parts[static_cast<std::size_t>(world::RetailArmPart::left_upper)]);
         }
+        // Character.draw_fps ends with weapon_object.draw_fps(view_weapon)
+        // under the shared sway root: the flash at muzzle_flash_view_offset.
+        append_local_view_muzzle_flash(draws, *uploaded_sandbox_tool, false, pose.tool_sway,
+                                       muzzle_anchor);
         return draws;
     }
 
@@ -19234,6 +24374,7 @@ struct NativeFrontendModule::Impl final {
                 game_hud.set_numeric_health_visible(false);
                 game_hud.set_jetpack_fuel(0.0, false);
                 game_hud.set_ability_hint({});
+                game_hud.set_death_hints({}, false);
                 game_hud.set_disguise_active(false);
                 game_hud.set_parachute_active(false);
                 game_hud.set_team_scores({}, {}, false);
@@ -19247,13 +24388,14 @@ struct NativeFrontendModule::Impl final {
 
             // InitialInfo owns both presentation switches. The score flag also
             // gates the class portrait, while CLASS_UGCBUILDER suppresses the
-            // SCORE box even when a host enables it. Tutorial has no remote
-            // InitialInfo and retains its local numeric readout/target score.
+            // SCORE box even when a host enables it. The offline tutorial has
+            // no retail score (the reconstructed server hides it), so it shows
+            // no SCORE box; it keeps only its local numeric readout.
             const auto local_class_id = tutorial_session->debug_class_id();
             const bool player_score_visible =
                 local_class_id !=
                     static_cast<std::uint8_t>(retail::CLASS_UGCBUILDER) &&
-                (!network_match || match_initial_info.enable_player_score);
+                network_match && match_initial_info.enable_player_score;
             game_hud.set_numeric_health_visible(
                 !network_match || match_initial_info.enable_numeric_hp);
             game_hud.set_player_score(
@@ -19297,6 +24439,8 @@ struct NativeFrontendModule::Impl final {
                                        local_replica != nullptr &&
                                            local_replica->pickup_id == 16U &&
                                            match_initial_info.allow_shooting_holding_intel);
+            tutorial_session->set_can_shoot_holding_intel(
+                match_initial_info.allow_shooting_holding_intel);
             const auto& movement = tutorial_session->player();
             if (local_replica != nullptr) {
                 tutorial_session->set_infinite_blocks(
@@ -19314,29 +24458,49 @@ struct NativeFrontendModule::Impl final {
                              [](std::uint8_t item) { return item >= 66U && item <= 69U; }));
             game_hud.set_jetpack_fuel(
                 retail_jetpack_fuel_fraction(tutorial_session->jetpack_fuel()), has_jetpack);
-            const auto key_name = [&](settings::ControlAction action, std::string_view fallback) {
-                const auto binding = applied_settings.controls.binding(action);
-                if (binding.kind == settings::BindingKind::keyboard_scancode) {
-                    const auto value = scancode_display_name(binding.code);
-                    if (value != "?") return value;
-                }
-                return std::string{fallback};
+            const auto key_name = [&](settings::ControlAction action, std::string_view) {
+                return retail_key_name_for(action);
             };
+            // Retail shows only the parachute/disguise status icons. These
+            // native key hints are an option, off by default (decision D4).
             std::string ability_hint;
-            if (tutorial_session->alive() && movement.parachute) {
-                ability_hint = movement.parachute_active ? "Parachute deployed"
-                    : movement.parachute_pending ? "Parachute opens on descent"
-                    : key_name(settings::ControlAction::hover, "Z") + ": deploy parachute in air";
+            if (!applied_settings.main.ability_hints) {
+                // No hint: the retail HUD.
+            } else if (tutorial_session->alive() && movement.parachute) {
+                ability_hint = movement.parachute_active
+                    ? localized_text("ABILITY_HINT_PARACHUTE_DEPLOYED")
+                    : movement.parachute_pending
+                    ? localized_text("ABILITY_HINT_PARACHUTE_PENDING")
+                    : format_retail_template(localized_text("ABILITY_HINT_PARACHUTE_DEPLOY"),
+                                             {key_name(settings::ControlAction::hover, "Z")});
             } else if (tutorial_session->alive() && has_jetpack) {
-                ability_hint = key_name(movement.jetpack == 4U ? settings::ControlAction::hover
-                                                              : settings::ControlAction::jump,
-                                        movement.jetpack == 4U ? "Z" : "SPACE") + ": thrust";
-                if (movement.jetpack != 4U &&
-                    (!network_match || match_initial_info.flight_profile.grounded_refill_only)) {
-                    ability_hint += "; release + land to recharge";
-                }
+                const bool recharge_hint =
+                    movement.jetpack != 4U &&
+                    (!network_match || match_initial_info.flight_profile.grounded_refill_only);
+                ability_hint = format_retail_template(
+                    localized_text(recharge_hint ? "ABILITY_HINT_JETPACK_RECHARGE"
+                                                 : "ABILITY_HINT_JETPACK"),
+                    {key_name(movement.jetpack == 4U ? settings::ControlAction::hover
+                                                     : settings::ControlAction::jump,
+                              movement.jetpack == 4U ? "Z" : "SPACE")});
             }
             game_hud.set_ability_hint(std::move(ability_hint));
+            {
+                // Neither dead-screen hint is a separate label in retail.
+                // DEATH_CLASS_CHANGE_HINT is one big message posted at death
+                // (show_death_class_change_hint). Character.update_respawn_time
+                // posts VIP_DEAD_CAM_INSTRUCTION every frame through
+                // hud.add_big_messageBackGround while never_respawn is set;
+                // GameScene hides big_text once it no longer applies.
+                game_hud.set_death_hints({}, false);
+                const auto dead_cam_text = localized_text("VIP_DEAD_CAM_INSTRUCTION");
+                if (network_match && !tutorial_session->alive() &&
+                    game_hud.respawn().visible && game_hud.respawn().never_respawn) {
+                    game_hud.set_background_big_message(dead_cam_text);
+                } else {
+                    game_hud.hide_big_message_if(dead_cam_text);
+                }
+            }
             game_hud.set_disguise_active(local_replica != nullptr &&
                                          (local_replica->state_flags & 0x02U) != 0U);
             game_hud.set_parachute_active(local_replica != nullptr
@@ -19346,7 +24510,7 @@ struct NativeFrontendModule::Impl final {
             if (network_match) {
                 std::int32_t team1_players{};
                 std::int32_t team2_players{};
-                for (const auto& player : tutorial_roster.players()) {
+                for (const auto& player : tutorial_roster.present_players()) {
                     team1_players += player.team == 2U ? 1 : 0;
                     team2_players += player.team == 3U ? 1 : 0;
                 }
@@ -19398,6 +24562,16 @@ struct NativeFrontendModule::Impl final {
                 return;
             }
 
+            // UGCPrefabTool.draw_ghosting / UGCSnowBlowerWeapon.draw_fps post
+            // BLOCK_PLACE_UGC_CAPACITY for one frame while the Map Creator is
+            // full (the block tool reports it through its ghost hint).
+            if (tutorial_session->alive() && !ugc_space_to_add_blocks() &&
+                (weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor ||
+                 *selected == ugc_snowblower_tool_id)) {
+                game_hud.set_background_big_message(localized_text("BLOCK_PLACE_UGC_CAPACITY"),
+                                                    2.0 / 60.0);
+            }
+
             const bool prefab_tool = weapon->mechanism == world::WeaponMechanism::prefab_builder ||
                                      weapon->mechanism == world::WeaponMechanism::ugc_prefab_editor;
             if (prefab_tool) {
@@ -19409,6 +24583,22 @@ struct NativeFrontendModule::Impl final {
                                             prefab_name == preview_prefab_name &&
                                             preview_prefab_model.has_value();
                 const auto cost = matching_model ? preview_prefab_cost : 0;
+                // GameScene.get_prefab_ghost_position(check_world_touch=True)
+                // posts the one-frame BLOCK_PLACE_FAIL_NOT_ATTACHED banner for a
+                // floating ghost, exactly like BlockTool.draw_ghosting.
+                if (matching_model && preview_prefab_position.has_value() &&
+                    tutorial_session->alive()) {
+                    const auto& origin = *preview_prefab_position;
+                    const auto evaluation = preview_prefab_placement.evaluate(
+                        tutorial_session->map(), {origin[0U], origin[1U], origin[2U]},
+                        preview_prefab_yaw, preview_prefab_pitch, preview_prefab_roll);
+                    if (evaluation.all_in_bounds && !evaluation.touches_world) {
+                        game_hud.set_background_big_message(
+                            localized_text(world::block_place_hint_key(
+                                world::BlockPlaceHint::not_attached)),
+                            2.0 / 60.0);
+                    }
+                }
                 game_hud.set_prefab_cost_state(preview_prefab_icon,
                                                cost,
                                                matching_model &&
@@ -19423,20 +24613,26 @@ struct NativeFrontendModule::Impl final {
                 // Retail BlockTool's upper row is placement cost, even though
                 // blocks have no magazine. Keep this before sandbox/live ammo
                 // handling so it cannot disappear as a non-ammunition tool.
-                const auto current = tutorial_session->placement_cell(
-                    match_initial_info.classic ? 5.0 : 10.0);
+                const auto target = current_block_target();
                 std::int32_t cost{1};
                 bool can_place = false;
-                if (current.has_value()) {
-                    network::BlockLinePacket line;
-                    line.start = block_line_start.value_or(*current);
-                    line.end = *current;
-                    const auto cells = network::cube_line_cells(line, 65U);
-                    const auto placement = world::evaluate_block_line_placement(
-                        tutorial_session->map(), cells);
-                    cost = static_cast<std::int32_t>(placement.required_blocks);
-                    can_place = placement.can_place(tutorial_session->blocks_remaining(),
-                                                     tutorial_session->infinite_blocks());
+                if (target.cell.has_value()) {
+                    const auto ghost = current_block_ghost(target);
+                    // BlockTool.get_block_cost = len(get_block_line(False, False)).
+                    cost = static_cast<std::int32_t>(ghost.cells.size());
+                    can_place = ghost.valid && ghost.first_adjacent;
+                    // draw_ghosting's one-frame add_big_messageBackGround
+                    // refusal (BIG_TEXT_TIME_1FRAME), re-posted every frame
+                    // while it applies.
+                    if (tutorial_session->alive() && ghost.hint != world::BlockPlaceHint::none) {
+                        game_hud.set_background_big_message(
+                            localized_text(world::block_place_hint_key(ghost.hint)),
+                            2.0 / 60.0);
+                    }
+                } else if (target.hint != world::BlockPlaceHint::none &&
+                           tutorial_session->alive()) {
+                    game_hud.set_background_big_message(
+                        localized_text(world::block_place_hint_key(target.hint)), 2.0 / 60.0);
                 }
                 game_hud.set_block_cost_state(
                     cost, can_place, game_hud.team_color(), true);
@@ -19527,22 +24723,37 @@ struct NativeFrontendModule::Impl final {
             const auto selected = tutorial_session->selected_tool_id();
             const auto* weapon =
                 selected.has_value() ? world::find_weapon_definition(*selected) : nullptr;
-            // Retail drives the reticle from the weapon's own show_crosshair
-            // ordinal (constants.py:846), never from whether the player is
-            // aiming. Exactly one class asks to lose it in the sights: the
-            // classic rifle's UNZOOMED_CROSSHAIR. Both snipers inherit
-            // HAS_AMMO_CROSSHAIR and keep their reticle over the scope, so
-            // hiding on every zoom got the two most visible weapons in the
-            // game backwards. The remaining ordinals stay visible here: which
-            // of them carries an ammo predicate was never recovered from the
-            // shipped client, and a name alone is not enough to start hiding
-            // reticles on thirty tools.
-            constexpr std::int16_t unzoomed_crosshair{2};
-            const bool hidden_while_aimed =
-                weapon != nullptr && weapon->retail.use.crosshair_mode == unzoomed_crosshair &&
-                tutorial_session->zoomed();
+            // GameScene.draw (gameScene.pyd 0x10138b70) draws the reticle from
+            // the tool's show_crosshair ordinal: ALWAYS, ZOOMED/UNZOOMED on
+            // the aim flag, HAS_AMMO on get_has_enough_ammo(), NEVER for the
+            // bomb, diamond, intel, fake pistol and null tool. Snipers inherit
+            // HAS_AMMO and keep the reticle over the scope until the magazine
+            // runs dry. get_has_enough_ammo: Weapon/GrenadeTool/DisguiseTool
+            // test the magazine (count), the block sucker is always true, the
+            // snow blower spends the block wallet, and a plain Tool without
+            // ammunition (count >= 0) is always true.
+            const bool has_enough_ammo = [&]() {
+                if (weapon == nullptr || !selected.has_value()) return false;
+                if (weapon->mechanism == world::WeaponMechanism::block_sucker) return true;
+                if (*selected == 29U || *selected == 48U) {
+                    return tutorial_session->infinite_blocks() ||
+                           tutorial_session->blocks_remaining() > 0;
+                }
+                const bool finite = weapon->clip_size != 0U ||
+                                    weapon->retail.ammo.maximum_count.value_or(0U) != 0U ||
+                                    weapon->retail.ammo.magazine_capacity.has_value();
+                const auto* ammo = tutorial_session->selected_ammo();
+                return !finite || ammo == nullptr || ammo->magazine > 0U;
+            }();
+            const bool retail_reticle =
+                weapon != nullptr &&
+                retail_crosshair_visible(
+                    weapon->retail.use.crosshair_mode.has_value()
+                        ? std::optional<int>{*weapon->retail.use.crosshair_mode}
+                        : std::nullopt,
+                    tutorial_session->zoomed(), has_enough_ammo);
             const bool skin_crosshair=scripted_weapon&&scripted_images.has_screen_image(scripted_weapon->frame());
-            game_hud.set_crosshair_visible(weapon!=nullptr&&!hidden_while_aimed&&
+            game_hud.set_crosshair_visible(retail_reticle &&
                 (!scripted_weapon||(!tutorial_session->zoomed()&&!skin_crosshair)));
             game_hud.set_crosshair_geometry(tutorial_session->weapon_crosshair_radius_pixels(
                                                 static_cast<double>(drawable_extent.height)),
@@ -19707,9 +24918,12 @@ struct NativeFrontendModule::Impl final {
             if (sight.has_pin && tutorial_pin_slot.has_value()) {
                 draws.push_back(render::ViewModelDraw{*tutorial_pin_slot, sight_pin_matrix(sight)});
             }
+            record_zoomed_view_muzzle(tutorial_pistol_tool_id);
+            append_local_view_muzzle_flash(draws, tutorial_pistol_tool_id, true, {});
             return draws;
         }
 
+        std::optional<ViewMuzzleAnchor> tutorial_pistol_anchor;
         // Tool chain: glRotatef(180,0,1,0); glTranslatef(x-0.4, y-0.55,
         // z+0.9); apply_transform = T(position) R_x(ori.x) R_y(ori.y);
         // draw_scaled(0.05).
@@ -19722,8 +24936,6 @@ struct NativeFrontendModule::Impl final {
                         mat_translate(static_cast<float>(pose.tool.position.x),
                                       static_cast<float>(pose.tool.position.y),
                                       static_cast<float>(pose.tool.position.z)));
-            // DiggingTool.pitch is separate from Tool.apply_transform.
-            m = mat_mul(m, mat_rotate_x(static_cast<float>(pose.digging_pitch_degrees)));
             m = mat_mul(
                 m,
                 mat_translate(static_cast<float>(pose.tool_sway.x + pose.character_offset.x),
@@ -19731,13 +24943,19 @@ struct NativeFrontendModule::Impl final {
                               static_cast<float>(pose.tool_sway.z + pose.character_offset.z)));
             m = mat_mul(m, mat_rotate_y(static_cast<float>(pose.character_yaw_degrees)));
             draws.push_back(render::ViewModelDraw{tool_slot, m});
+            if (*uploaded_tool == world::TutorialTool::pistol &&
+                tutorial_pistol_muzzle_tip.has_value()) {
+                const std::array<ViewMuzzleAnchor, 1U> candidate{
+                    ViewMuzzleAnchor{m, *tutorial_pistol_muzzle_tip}};
+                tutorial_pistol_anchor = record_view_muzzle_anchor(candidate);
+            }
         }
 
         // Exact character.pyd draw_fps arm hierarchy: shared weapon/sway
         // translation, animated x rotation, fixed anchor, then the three
         // recovered local part transforms. No screen-fitted pivots remain.
         const auto arm_part = [&](std::uint32_t slot, const world::RetailArmPartPose& part) {
-            Mat4 m = mat_scale(static_cast<float>(pose.model_scale));
+            Mat4 m = mat_scale(static_cast<float>(pose.arm_model_scale));
             m = mat_mul(m, mat_rotate_y(static_cast<float>(part.yaw_degrees)));
             m = mat_mul(m,
                         mat_translate(static_cast<float>(part.position.x),
@@ -19768,6 +24986,10 @@ struct NativeFrontendModule::Impl final {
                  part(world::RetailArmPart::right_lower));
         arm_part(color_parts ? view_model_slot_debug_upper : view_model_slot_arms_upper,
                  part(world::RetailArmPart::left_upper));
+        if (*uploaded_tool == world::TutorialTool::pistol) {
+            append_local_view_muzzle_flash(draws, tutorial_pistol_tool_id, false, pose.tool_sway,
+                                           tutorial_pistol_anchor);
+        }
         return draws;
     }
 
@@ -19776,7 +24998,8 @@ struct NativeFrontendModule::Impl final {
         const bool want_capture =
             tutorial_session != nullptr && screen() == FrontendScreen::tutorial_world &&
             window_focused && !window_suspended && !game_chat.active() &&
-            !ugc_ingame_settings.visible() && !match_results.visible();
+            !ugc_ingame_settings.visible() && !match_results.visible() &&
+            !kick_vote_select.visible();
         if (want_capture == mouse_captured) {
             return;
         }
@@ -20047,11 +25270,12 @@ struct NativeFrontendModule::Impl final {
 
         const auto append = [&](std::string_view icon_asset,
                                 world::Vec3 position,
-                                double world_scale,
+                                double scale,
+                                double initial_scale,
                                 ui::ColorRgba8 color) {
             const auto projection = project_objective_indicator(
                 eye, position, yaw, pitch, fov_y, drawable_extent.width,
-                drawable_extent.height, world_scale);
+                drawable_extent.height, scale, initial_scale);
             if (!projection.has_value())
                 return;
             ui::SpriteDrawCommand command;
@@ -20067,6 +25291,16 @@ struct NativeFrontendModule::Impl final {
             command.retail_source_anchor = ui::TextureAnchor::center;
             command.modulation = ui::ColorModulation{color, 1'000U, 900U};
             command.rotation_degrees = projection->rotation_degrees;
+            if (projection->pointer) {
+                // MinimapBillboard.render draws the objective billboard and
+                // its pointer_billboard together at the cone-clamped point.
+                auto icon = command;
+                icon.asset_id = std::string{icon_asset};
+                icon.rotation_degrees = 0.0;
+                list.push(std::move(command));
+                list.push(std::move(icon));
+                return;
+            }
             list.push(std::move(command));
         };
 
@@ -20089,15 +25323,16 @@ struct NativeFrontendModule::Impl final {
                     0.5};
             append(style->icon_asset,
                    centre,
-                   style->world_scale,
+                   style->scale,
+                   style->initial_scale,
                    ui::ColorRgba8{
                        zone.color[0U], zone.color[1U], zone.color[2U], 255U});
         }
 
         for (const auto& [entity_id, billboard] : server_minimap_billboards) {
             static_cast<void>(entity_id);
-            if (!objective_visible_to_team(billboard.key, local_team))
-                continue;
+            // The retail packet-41 handler never reads `key`: every client
+            // shows the billboard (PROTOCOL.md row 41).
             const auto asset =
                 objective_packet_billboard_asset(billboard.icon_name);
             if (!asset.has_value())
@@ -20114,9 +25349,12 @@ struct NativeFrontendModule::Impl final {
                     position = tracked->position;
                 }
             }
+            // Minimap.add_billboard passes no scale: MinimapBillboard's
+            // default 1.8 becomes both scale and initial_scale.
             append(*asset,
                    position,
-                   1.0,
+                   1.8,
+                   1.8,
                    ui::ColorRgba8{billboard.color[0U],
                                   billboard.color[1U],
                                   billboard.color[2U],
@@ -20146,8 +25384,15 @@ struct NativeFrontendModule::Impl final {
         const double fov_y = death_camera.active()
                                  ? world::hip_fov_y_degrees
                                  : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+        // Entity.create_3dText: Text3D('.', position, 0.005,
+        // disable_depth_test=True) with the default white colour and
+        // text3d_font (Edo 22). Text3DRenderer draws it through walls, scaled
+        // by 0.005 * d^0.7, only while d < TEXT_DISPLAY_RANGE (80).
         const auto modulation =
-            ui::ColorModulation{ui::ColorRgba8{255U, 230U, 96U, 255U}, 1'000U, 1'000U};
+            ui::ColorModulation{ui::ColorRgba8{255U, 255U, 255U, 255U}, 1'000U, 1'000U};
+        const double focal_pixels =
+            static_cast<double>(drawable_extent.height) /
+            (2.0 * std::tan(fov_y * std::numbers::pi / 360.0));
         for (const auto& entity : tutorial_session->entities()) {
             const auto timer = world::timed_explosive_presentation(entity);
             if (!timer.visible) {
@@ -20159,9 +25404,6 @@ struct NativeFrontendModule::Impl final {
             const world::Vec3 anchor{timer.label_position.x,
                                      timer.label_position.y,
                                      timer.label_position.z + 1.0};
-            if (!retail_player_name_has_line_of_sight(tutorial_session->map(), eye, anchor)) {
-                continue;
-            }
             const auto projected = project_retail_player_name(eye,
                                                                anchor,
                                                                yaw,
@@ -20172,16 +25414,23 @@ struct NativeFrontendModule::Impl final {
             if (!projected.has_value()) {
                 continue;
             }
-            constexpr double width{96.0};
-            constexpr double height{36.0};
+            constexpr double text3d_font_pixels{22.0};
+            constexpr double text3d_scale{0.005};
+            const double font_pixels = std::clamp(
+                text3d_font_pixels * text3d_scale *
+                    std::pow(projected->distance, 0.7) * focal_pixels /
+                    projected->distance,
+                4.0, 96.0);
+            const double width = font_pixels * 4.0;
+            const double height = font_pixels * 1.5;
             list.push(ui::TextDrawCommand{std::to_string(timer.seconds),
-                                          std::string{settings_standard_font},
+                                          std::string{settings_edo_font},
                                           ui::DrawRect{projected->x_pixels - width * 0.5,
                                                        projected->y_pixels - height * 0.5,
                                                        width,
                                                        height},
                                           ui::DrawSpace::window_pixels,
-                                          24.0,
+                                          font_pixels,
                                           0.0,
                                           1U,
                                           ui::HorizontalTextAlignment::center,
@@ -20189,6 +25438,65 @@ struct NativeFrontendModule::Impl final {
                                           ui::TextTransform::preserve,
                                           ui::TextFit::shrink_to_fit,
                                           modulation});
+        }
+
+        // The other Entity.create_3dText users: dropped intel return timer,
+        // diamond lifetime, armed bomb fuse, radar lifetime and the friendly
+        // rocket turret's ammo. Same Text3D projection and through-wall draw.
+        std::optional<std::uint8_t> local_team;
+        if (network_match && local_player_id.has_value()) {
+            if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr)
+                local_team = local->team;
+        } else if (!network_match) {
+            local_team = std::uint8_t{2U};
+        }
+        std::optional<world::Vec3> local_position;
+        if (tutorial_session->alive())
+            local_position = tutorial_session->player().position;
+        for (const auto& entity : tutorial_session->entities()) {
+            const auto* definition = world::find_entity_definition(entity.type);
+            if (definition == nullptr || definition->parts.empty())
+                continue;
+            auto display = world::entity_presentation_position(entity, definition->parts[0U]);
+            display.z -= entity.floating_offset;
+            const auto label =
+                world::entity_world_label(entity, display, local_team, local_position);
+            if (!label.visible)
+                continue;
+            const world::Vec3 anchor{label.position.x, label.position.y, label.position.z + 1.0};
+            const auto projected = project_retail_player_name(
+                eye, anchor, yaw, pitch, fov_y, drawable_extent.width, drawable_extent.height);
+            if (!projected.has_value())
+                continue;
+            const bool ammo = label.style == world::EntityWorldLabelStyle::turret_ammo;
+            // text3d_font is Edo 22; RocketTurret.set_ammo swaps to ammo_font
+            // (ALDO_FONT 26) coloured A47 / A48 (out of ammo).
+            const double base_pixels = ammo ? 26.0 : 22.0;
+            const double font_pixels =
+                std::clamp(base_pixels * 0.005 * std::pow(projected->distance, 0.7) *
+                               focal_pixels / projected->distance,
+                           4.0, 96.0);
+            const double width = font_pixels * 4.0;
+            const double height = font_pixels * 1.5;
+            const auto colour = !ammo ? ui::ColorRgba8{255U, 255U, 255U, 255U}
+                                : label.value > 0U ? ui::ColorRgba8{255U, 228U, 0U, 255U}
+                                                   : ui::ColorRgba8{204U, 28U, 24U, 255U};
+            list.push(ui::TextDrawCommand{std::to_string(label.value),
+                                          std::string{ammo ? std::string_view{"fonts/Spades.ttf"}
+                                                           : settings_edo_font},
+                                          ui::DrawRect{projected->x_pixels - width * 0.5,
+                                                       projected->y_pixels - height * 0.5,
+                                                       width,
+                                                       height},
+                                          ui::DrawSpace::window_pixels,
+                                          font_pixels,
+                                          0.0,
+                                          1U,
+                                          ui::HorizontalTextAlignment::center,
+                                          ui::VerticalTextAlignment::center,
+                                          ui::TextTransform::preserve,
+                                          ui::TextFit::shrink_to_fit,
+                                          ui::ColorModulation{colour, 1'000U, 1'000U}});
         }
     }
 
@@ -20234,7 +25542,7 @@ struct NativeFrontendModule::Impl final {
             std::optional<double> nearest_hit;
             std::string aimed_name;
             std::uint8_t aimed_team{};
-            for (const auto& player : tutorial_roster.players()) {
+            for (const auto& player : tutorial_roster.present_players()) {
                 if (player.dead || player.name.empty() || local_player_id == player.player_id)
                     continue;
                 const auto position = smoothed_position(player);
@@ -20280,7 +25588,7 @@ struct NativeFrontendModule::Impl final {
             return;
         }
 
-        for (const auto& player : tutorial_roster.players()) {
+        for (const auto& player : tutorial_roster.present_players()) {
             if (player.dead || player.name.empty() || local_player_id == player.player_id)
                 continue;
             // Nameplates belong to the rendered character, not to the newest
@@ -20305,6 +25613,17 @@ struct NativeFrontendModule::Impl final {
                 continue;
             constexpr double maximum_label_width{360.0};
             const double height = projected->font_pixels * 1.35;
+            // draw_player_names_above_players: big_name_font (STANDARD_FONT
+            // 20 px) in UI_TEAM_COLOURS[get_team_id()] (TEAM1 blue, TEAM2
+            // green), not white.
+            const auto name_color =
+                player.team == 2U || player.team == 3U
+                    ? ui::ColorModulation{hud_layout::team_color(player.team == 2U
+                                                                     ? hud_layout::Team::team1
+                                                                     : hud_layout::Team::team2),
+                                          1'000U,
+                                          1'000U}
+                    : white;
             list.push(ui::TextDrawCommand{
                 player.name,
                 std::string{settings_standard_font},
@@ -20320,7 +25639,7 @@ struct NativeFrontendModule::Impl final {
                 ui::VerticalTextAlignment::center,
                 ui::TextTransform::preserve,
                 ui::TextFit::shrink_to_fit,
-                white});
+                name_color});
         }
     }
 
@@ -20329,12 +25648,119 @@ struct NativeFrontendModule::Impl final {
         for (const auto& command : overlay.commands()) list.push(command);
     }
 
+    /**
+     * UGCObjectivesListPanel.draw (show_game_settings_text): for the editor
+     * host, "Press [X] to open additional map settings." under the top-left
+     * objectives panel at x=10, 25 px below its frame (hud.pyd builds that
+     * panel at (10, height-10) with frame_padding_height 30). VERIFY: native
+     * has no in-game objectives list yet, so the line sits where retail puts
+     * it for an empty list.
+     */
+    void append_ugc_game_settings_hint(ui::DrawList& list) const {
+        if (!network_match || !match_initial_info.map_is_ugc() ||
+            ugc_ingame_settings.visible()) {
+            return;
+        }
+        // HUD's UGCObjectivesListPanel (hud.pyd 0x1007d940): incomplete rows
+        // only, at (10, height - 10) with frame_padding_height 0.
+        const auto objectives = ugc_loadout_objectives();
+        const double panel_height = append_ugc_incomplete_objectives(list, objectives);
+        const bool host = match_initial_info.ugc_role == network::UgcRole::host ||
+                          (owned_local_server != nullptr && owned_local_server->running());
+        if (!host) return;
+        constexpr double left{10.0};
+        // UGCObjectivesListPanel.draw: y = panel.y - frame_padding_height / 2
+        // - panel_height - 25, a 20 px left/centre box (bottom-left origin).
+        const double centre_y = 25.0 + panel_height;
+        list.push(ui::TextDrawCommand{
+            resolve_control_placeholders(localized_text("UGC_GAME_SETTINGS_HINT"),
+                                         control_key_names()),
+            std::string{settings_standard_font},
+            ui::DrawRect{left, centre_y - 10.0, 300.0, 20.0},
+            ui::DrawSpace::window_pixels,
+            16.0,
+            0.0,
+            1U,
+            ui::HorizontalTextAlignment::left,
+            ui::VerticalTextAlignment::center,
+            ui::TextTransform::preserve,
+            ui::TextFit::shrink_to_fit,
+            ui::ColorModulation{ui::ColorRgba8{244U, 236U, 187U, 255U}, 1'000U, 1'000U},
+            1.0,
+            ui::TextLayout::single_line,
+            true});
+    }
+
+    /**
+     * settings.toml `hud_scale`: 1.0 is retail's raw window-pixel HUD, larger
+     * values magnify it for 4K/Retina, 0 picks max(1, floor(height / 1080)).
+     */
+    [[nodiscard]] double effective_hud_scale() const noexcept {
+        const auto configured = applied_settings.graphics.hud_scale;
+        if (!std::isfinite(configured)) return 1.0;
+        if (configured == 0.0) {
+            return std::max(
+                1.0, std::floor(static_cast<double>(drawable_extent.height) / 1080.0));
+        }
+        return std::clamp(configured, 1.0, 4.0);
+    }
+
+    [[nodiscard]] static ui::PixelExtent scaled_hud_extent(ui::PixelExtent window,
+                                                           double scale) noexcept {
+        if (!(scale > 1.0)) return window;
+        return ui::PixelExtent{
+            std::max<std::int32_t>(
+                1, static_cast<std::int32_t>(std::lround(window.width / scale))),
+            std::max<std::int32_t>(
+                1, static_cast<std::int32_t>(std::lround(window.height / scale)))};
+    }
+
+    /**
+     * Append a HUD layer laid out in a `scale`-times smaller window, magnifying
+     * its window-pixel commands back to the real window. Proportions and the
+     * retail layout are unchanged; glyphs are rasterised at the larger size.
+     */
+    static void append_scaled_window_commands(ui::DrawList& list, const ui::DrawList& layer,
+                                              double scale) {
+        if (!(scale > 1.0)) {
+            for (const auto& command : layer.commands()) list.push(command);
+            return;
+        }
+        const auto scale_rect = [scale](ui::DrawRect& rect) {
+            rect.x *= scale;
+            rect.y *= scale;
+            rect.width *= scale;
+            rect.height *= scale;
+        };
+        for (auto command : layer.commands()) {
+            if (auto* sprite = std::get_if<ui::SpriteDrawCommand>(&command);
+                sprite != nullptr && sprite->space == ui::DrawSpace::window_pixels) {
+                scale_rect(sprite->destination);
+                if (sprite->clip_pixels.has_value()) scale_rect(*sprite->clip_pixels);
+            } else if (auto* text = std::get_if<ui::TextDrawCommand>(&command);
+                       text != nullptr && text->space == ui::DrawSpace::window_pixels) {
+                scale_rect(text->destination);
+                text->requested_font_size_pixels *= scale;
+                text->line_spacing_pixels *= scale;
+            }
+            list.push(std::move(command));
+        }
+    }
+
     [[nodiscard]] ui::DrawList tutorial_world_draw_list() {
+        if (ugc_screenshot_hud_active) {
+            return ugc_screenshot_hud_draw_list();
+        }
         GameHudPresentationContext hud_context;
         if (network_match && local_player_id.has_value()) {
             const auto* local = tutorial_roster.player(*local_player_id);
             hud_context.player_widgets_visible = local == nullptr ||
                 !local_player_is_spectator(local->team, match_initial_info.enable_spectator);
+            // Retail's death screen keeps only score/HeadCount/minimap/feeds.
+            hud_context.character_widgets_visible = local == nullptr || !local->dead;
+        }
+        if (death_camera.active() || local_jetpack_death_state() != nullptr) {
+            hud_context.character_widgets_visible = false;
         }
         hud_context.window = ui::PixelExtent{static_cast<std::int32_t>(drawable_extent.width),
                                              static_cast<std::int32_t>(drawable_extent.height)};
@@ -20347,6 +25773,36 @@ struct NativeFrontendModule::Impl final {
         hud_context.measure_big_text = [this](std::string_view line, double font_pixels) {
             return measure_big_message_line(line, font_pixels);
         };
+        hud_context.localize = [this](std::string_view key) { return localized_text(key); };
+        // ViewScores/ViewGameStats read their headline, LEVEL and SHOW_SCORES
+        // footer through `strings` + translate_controls_in_message.
+        scoreboard_presentation.localize = hud_context.localize;
+        match_results_presentation.localize = hud_context.localize;
+        match_results_presentation.show_scores_text = resolve_control_placeholders(
+            localized_text("SHOW_SCORES"), control_key_names());
+        if ((scoreboard_visible || scoreboard_forced) && network_match &&
+            match_initial_info.map_is_ugc() && !match_results.visible()) {
+            // The Map Creator's Tab is ObjectivesPlayersList, not ViewScores.
+            UgcStatusTabState status;
+            for (const auto& player : tutorial_roster.present_players()) {
+                status.player_names.push_back(player.name);
+            }
+            status.mode_title =
+                localized_text(retail_scoreboard_mode_title(match_initial_info.ugc_mode, false));
+            status.map_title = ugc_map_title;
+            status.objectives = ugc_loadout_objectives();
+            auto tab = build_ugc_status_tab(status);
+            const auto chat = game_chat_presentation.build(
+                game_chat, hud_context.window,
+                [this](std::string_view line, double font_pixels,
+                       std::string_view font_asset) {
+                    return measure_chat_text(line, font_pixels, font_asset);
+                });
+            for (const auto& command : chat.commands()) {
+                tab.push(command);
+            }
+            return tab;
+        }
         if ((scoreboard_visible || scoreboard_forced) &&
             (network_match || parity_endgame_fixture)) {
             auto scoreboard = scoreboard_presentation.build(
@@ -20372,9 +25828,13 @@ struct NativeFrontendModule::Impl final {
         const bool showing_results =
             match_results.visible() && (network_match || parity_endgame_fixture);
         auto list = showing_results
+                        // ViewGameStats.draw: `mode_text` if set, else
+                        // title.upper() with class title 'GameStats'.
+                        // per_game_initilize (ShowGameStats) clears
+                        // mode_text, so retail shows GAMESTATS (live A/B).
                         ? match_results_presentation.build(match_results,
                                                            team_roster_state(false),
-                                                           scoreboard_mode_title(),
+                                                           std::string{"GameStats"},
                                                            tutorial_roster,
                                                            hud_context.window,
                                                            match_screenshot_preview())
@@ -20385,9 +25845,13 @@ struct NativeFrontendModule::Impl final {
             // over them merely because our projection pass is renderer-neutral.
             append_objective_indicators(list);
             append_timed_explosive_labels(list);
-            const auto hud = game_hud_presentation.build(game_hud, hud_context);
-            for (const auto& command : hud.commands())
-                list.push(command);
+            // settings.toml hud_scale: lay the retail raw-pixel HUD out in a
+            // window `scale` times smaller, then magnify it back (1.0 = retail).
+            const auto scale = effective_hud_scale();
+            auto scaled_context = hud_context;
+            scaled_context.window = scaled_hud_extent(hud_context.window, scale);
+            const auto hud = game_hud_presentation.build(game_hud, scaled_context);
+            append_scaled_window_commands(list, hud, scale);
         }
         if (!showing_results) {
             // Retail ViewGameStats owns the captured world image. Live name
@@ -20395,19 +25859,21 @@ struct NativeFrontendModule::Impl final {
             // across, or paint over, the authored result frame.
             append_player_name_labels(list);
         }
+        const auto hud_layer_scale = effective_hud_scale();
+        const auto hud_layer_window = scaled_hud_extent(hud_context.window, hud_layer_scale);
         const auto vote =
-            generic_vote_presentation.build(generic_vote, hud_context.window, vote_key_names());
-        for (const auto& command : vote.commands())
-            list.push(command);
+            generic_vote_presentation.build(generic_vote, hud_layer_window, vote_key_names());
+        append_scaled_window_commands(list, vote, hud_layer_scale);
+        append_kick_vote_overlay(list);
         const auto chat = game_chat_presentation.build(
-            game_chat, hud_context.window,
+            game_chat, hud_layer_window,
             [this](std::string_view line, double font_pixels,
                    std::string_view font_asset) {
                 return measure_chat_text(line, font_pixels, font_asset);
             });
-        for (const auto& command : chat.commands())
-            list.push(command);
+        append_scaled_window_commands(list, chat, hud_layer_scale);
         if (!showing_results) {
+            append_ugc_game_settings_hint(list);
             append_ugc_settings_overlay(list);
         }
         if (developer_tools_allowed() && tutorial_session != nullptr &&
@@ -20515,7 +25981,7 @@ struct NativeFrontendModule::Impl final {
                     world_renderer.atmosphere().source,
             };
             if (network_match) {
-                const auto roster_players = tutorial_roster.players();
+                const auto roster_players = tutorial_roster.present_players();
                 std::string remote_line = "REMOTE ROSTER " + std::to_string(roster_players.size()) +
                                           " RIGS " + std::to_string(remote_player_rigs.size());
                 const network::RemotePlayerReplica* nearest_remote = nullptr;
@@ -20567,8 +26033,83 @@ struct NativeFrontendModule::Impl final {
         return list;
     }
 
+    /**
+     * Period of render-only frames between fixed ticks; zero keeps the retail
+     * one-frame-per-tick presentation (setting off, <=75 Hz display, no live
+     * world on screen, minimised).
+     */
+    [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const {
+        if (window_suspended || tutorial_session == nullptr ||
+            screen() != FrontendScreen::tutorial_world || !world_renderer.is_initialized()) {
+            return std::chrono::nanoseconds::zero();
+        }
+        return render_interpolation_period(applied_settings.graphics.render_interpolation,
+                                           window.current_refresh_rate_millihertz());
+    }
+
+    /**
+     * Re-presents the last live-world tick frame with the camera eye `alpha`
+     * of the way between the last two ticks. No draw list is rebuilt and no
+     * simulation, input, audio or network state is touched.
+     */
+    [[nodiscard]] bool render_intermediate_frame(double alpha) {
+        const auto extent = window.drawable_extent();
+        if (!interpolation_scene.valid || window_suspended || extent != drawable_extent ||
+            extent.width == 0U || extent.height == 0U || !world_renderer.is_initialized()) {
+            return true;
+        }
+        if (!renderer.begin_frame()) {
+            last_error = "renderer begin-frame failed: " + std::string{renderer.last_error()};
+            return false;
+        }
+        auto camera = interpolation_scene.camera;
+        camera.eye = camera_interpolator.sample(alpha);
+        if (!world_renderer.submit(camera, {extent.width, extent.height},
+                                   interpolation_scene.tool_draws,
+                                   interpolation_scene.world_draws,
+                                   particles.instances(),
+                                   particles.batches(),
+                                   interpolation_scene.lights,
+                                   interpolation_scene.lasers,
+                                   interpolation_scene.spot_shadows,
+                                   interpolation_scene.zones)) {
+            last_error = "interpolated world pass submit failed: " +
+                         std::string{world_renderer.last_error()};
+            static_cast<void>(renderer.end_frame());
+            return false;
+        }
+        if (interpolation_scene.scripted_images) {
+            draw_scripted_images();
+        }
+        for (const auto& command : interpolation_scene.ui.commands()) {
+            const bool drawn = std::visit(
+                [this](const auto& payload) {
+                    using Payload = std::decay_t<decltype(payload)>;
+                    if constexpr (std::is_same_v<Payload, ui::SpriteDrawCommand>) {
+                        return draw_sprite(payload);
+                    } else if constexpr (std::is_same_v<Payload, ui::TextDrawCommand>) {
+                        return draw_text(payload);
+                    } else {
+                        return draw_name_plate(payload);
+                    }
+                },
+                command);
+            if (!drawn) {
+                // Stop presenting stale UI; the next tick frame reports it.
+                break;
+            }
+        }
+        if (!renderer.end_frame()) {
+            last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool render_frame() {
         const PerformanceScope performance{"render_frame", std::chrono::microseconds{8'000}};
+        // Only a live-world tick frame below re-arms render-only frames.
+        interpolation_scene.valid = false;
         const auto extent = window.drawable_extent();
         if (extent != drawable_extent) {
             drawable_extent = extent;
@@ -20610,7 +26151,7 @@ struct NativeFrontendModule::Impl final {
                 consume_inventory_view();
             }
         }
-        const auto list = build_active_draw_list(extent);
+        auto list = build_active_draw_list(extent);
         if (!prepare_resources(list)) {
             return false;
         }
@@ -20689,6 +26230,33 @@ struct NativeFrontendModule::Impl final {
             // Even an empty frustum compiles the skydome pass. Keep warming
             // until terrain was submitted as well.
             world_loading_warmup_complete = world_renderer.last_frame_stats().chunks_submitted > 0U;
+        } else if (tutorial_session == nullptr && tutorial_ready_map != nullptr &&
+                   world_renderer.is_initialized() &&
+                   (screen() == FrontendScreen::game_loading ||
+                    (network_match && (screen() == FrontendScreen::change_team ||
+                                       screen() == FrontendScreen::class_selection)))) {
+            // LoadingMenu/SelectTeam/SelectClass are menus over the live
+            // GameScene (MenuScene.draw calls game_scene.draw once the map is
+            // shown and fades its splash out). Before create_player no
+            // controller is active and CameraManager's camera keeps its
+            // constructor pose: position (256, 256, 0), orientation (0, 0, 0)
+            // (retail tracer console, 2026-09-29). Retail therefore shows the
+            // map from the top of its centre column, not a flat colour.
+            world_renderer.set_quality_profile(render::profile_for(
+                effective_shader_quality(), applied_settings.graphics.effect_quality));
+            render::WorldCamera camera;
+            camera.eye = {256.0, 256.0, 0.05};
+            // Retail yaw 0 is native yaw -90 (see resolve_match_result_camera).
+            camera.yaw_degrees = -90.0;
+            camera.pitch_degrees = 0.0;
+            camera.fog_distance = static_cast<double>(
+                static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
+            if (!world_renderer.submit(camera, {extent.width, extent.height})) {
+                last_error =
+                    "menu world backdrop failed: " + std::string{world_renderer.last_error()};
+                static_cast<void>(renderer.end_frame());
+                return false;
+            }
         } else if (tutorial_session != nullptr && tutorial_world_in_stack() &&
                    world_renderer.is_initialized()) {
             render::WorldCamera camera;
@@ -20744,6 +26312,15 @@ struct NativeFrontendModule::Impl final {
                 camera.yaw_degrees = tutorial_session->yaw();
                 camera.pitch_degrees = tutorial_session->pitch();
             }
+            // Render-only interpolation on high-refresh displays: the tick
+            // frame shows the eye one tick behind, and render_intermediate_frame
+            // moves it smoothly to this tick's eye. Look angles stay current.
+            camera_interpolator.record(camera.eye, current_tick_index);
+            const bool interpolating =
+                intermediate_frame_period() > std::chrono::nanoseconds::zero();
+            if (interpolating) {
+                camera.eye = camera_interpolator.sample(0.0);
+            }
             // Retail subtracts; it does not divide. See world/weapon_zoom.hpp.
             camera.fov_y_degrees =
                 (result_camera.has_value() || death_camera.active() ||
@@ -20766,6 +26343,7 @@ struct NativeFrontendModule::Impl final {
             auto placement_draws = placement_preview_draws();
             auto moving_projectiles = projectile_draws();
             auto placed_entities = entity_draws();
+            auto retail_effect_models = retail_effect_model_draws();
             auto packet_players = tutorial_player_draws();
             auto sniper_lasers = sniper_laser_draws();
             auto entity_spot_shadows = entity_spot_shadow_draws();
@@ -20776,6 +26354,8 @@ struct NativeFrontendModule::Impl final {
                 terrain_draws.end(), placement_draws.begin(), placement_draws.end());
             terrain_draws.insert(
                 terrain_draws.end(), placed_entities.begin(), placed_entities.end());
+            terrain_draws.insert(terrain_draws.end(), retail_effect_models.begin(),
+                                 retail_effect_models.end());
             terrain_draws.insert(terrain_draws.end(), packet_players.begin(), packet_players.end());
             // One resolve drives both the renderer and the particle budget.
             // Re-applying every frame keeps them in sync with any settings path
@@ -20808,6 +26388,12 @@ struct NativeFrontendModule::Impl final {
                 world_renderer.set_viewmodel_skylight(
                     static_cast<float>(1.0 - smooth * (1.0 - 0.45)));
             }
+            // Placed flare/fire lights and emissive spill for the hands and
+            // player models (enhanced tiers; the renderer ignores them in
+            // Retail). Both outlive this frame's submit.
+            world_renderer.set_model_light_sources(
+                tutorial_session != nullptr ? &tutorial_session->static_lights() : nullptr,
+                &emissive_volume);
             particles.build_draw_list({static_cast<float>(camera.eye[0U]),
                                        static_cast<float>(camera.eye[1U]),
                                        static_cast<float>(camera.eye[2U])},
@@ -20818,6 +26404,7 @@ struct NativeFrontendModule::Impl final {
                 const auto muzzle_lights=scripted_images.muzzle_lights(scripted_weapon->frame(),camera);
                 frame_lights.insert(frame_lights.end(),muzzle_lights.begin(),muzzle_lights.end());
             }
+            append_surface_patch_presentation(objective_zones, frame_lights);
             if (!world_renderer.submit(camera,
                                        {extent.width, extent.height},
                                        tool_draws,
@@ -20833,9 +26420,24 @@ struct NativeFrontendModule::Impl final {
                 static_cast<void>(renderer.end_frame());
                 return false;
             }
+            if (interpolating) {
+                // Retain this tick's scene for the render-only frames.
+                interpolation_scene.camera = camera;
+                interpolation_scene.tool_draws = tool_draws;
+                interpolation_scene.world_draws = std::move(terrain_draws);
+                interpolation_scene.lights = std::move(frame_lights);
+                interpolation_scene.lasers = std::move(sniper_lasers);
+                interpolation_scene.spot_shadows = std::move(entity_spot_shadows);
+                interpolation_scene.zones = std::move(objective_zones);
+                interpolation_scene.valid = true;
+            }
         }
 
-        if(tutorial_session&&!match_results.visible()&&!ugc_prefab_control.active())draw_scripted_images();
+        const bool draw_scripted_overlay =
+            tutorial_session && !match_results.visible() && !ugc_prefab_control.active();
+        if (draw_scripted_overlay) {
+            draw_scripted_images();
+        }
         bool success{true};
         for (const auto& command : list.commands()) {
             success = std::visit(
@@ -20882,6 +26484,8 @@ struct NativeFrontendModule::Impl final {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
+        save_pending_screenshot();
+        consume_ugc_preview_capture();
         if (renderer.last_frame_dropped_draws() != 0U &&
             (last_ui_budget_warning_frame == 0U || text_cache_frame - last_ui_budget_warning_frame >= 600U)) {
             std::fprintf(stderr, "[renderer] UI transient capacity exceeded; skipped %zu draws this frame\n",
@@ -20890,6 +26494,14 @@ struct NativeFrontendModule::Impl final {
         }
         if (!success && last_error.empty()) {
             last_error = "an active frontend draw command was rejected";
+        }
+        if (interpolation_scene.valid) {
+            if (success && !markup_inventory_active()) {
+                interpolation_scene.ui = std::move(list);
+                interpolation_scene.scripted_images = draw_scripted_overlay;
+            } else {
+                interpolation_scene.valid = false;
+            }
         }
         return success;
     }
@@ -20919,6 +26531,8 @@ struct NativeFrontendModule::Impl final {
             social_leave_after_create = false;
             create_match_menu.set_host_authority(true);
             create_match_menu.set_match_join_available(false);
+            // mapsPanel.populate (non-UGC): SAVED_MAPS and SUBSCRIBED_MAPS.
+            create_match_menu.set_custom_maps(scan_create_match_custom_maps());
             create_match_menu.set_players(
                 {CreateMatchPlayer{0U, config.player_name, "TEAM_NEUTRAL", true, true, false}});
             reset_create_match_page_transition();
@@ -21006,10 +26620,12 @@ bool NativeFrontendModule::start() {
     }
 
     try {
-        if (impl_->native_steam != nullptr && !impl_->native_steam->start()) {
+        if (impl_->native_steam != nullptr && !impl_->native_steam->begin_start()) {
             // Native Steam is optional for offline/AoSPlay accounts. Preserve
             // its precise diagnostic for the identity screen without making
-            // the renderer fail to boot.
+            // the renderer fail to boot. SteamAPI_Init itself is waited for a
+            // frame at a time by pump_steam_integration(); the identity
+            // screen shows the Steam button as connecting meanwhile.
             impl_->settings_warning = std::string{impl_->native_steam->last_error()};
         }
         if (impl_->social_client == nullptr ||
@@ -21217,7 +26833,7 @@ bool NativeFrontendModule::start() {
             impl_->audio =
                 std::make_unique<audio::OpenAlFrontendAudio>(audio::OpenAlFrontendAudioConfig{
                     impl_->config.asset_root,
-                    48U,
+                    audio::retail_one_shot_voices,
                     static_cast<float>(startup_settings.main.music_volume),
                     1.0F,
                     false,
@@ -21226,8 +26842,7 @@ bool NativeFrontendModule::start() {
             // prevent the graphical client from opening.
             impl_->audio_started = impl_->audio->start();
             if (impl_->audio_started) {
-                impl_->audio->set_spatial_gain_resolver(
-                    impl_.get(), &Impl::spatial_sound_gain_callback);
+                // Retail never occludes audio: no VXL spatial-gain resolver.
                 static_cast<void>(impl_->audio->set_master_volume(
                     static_cast<float>(startup_settings.main.master_volume)));
             } else {
@@ -21416,23 +27031,37 @@ bool NativeFrontendModule::start() {
         // Attach to Steam while the boot loader runs so the player shows as
         // in-game and a later match reuses the session instead of waiting.
         impl_->attach_steam_for_presence();
+        if (impl_->config.startup_steam_lobby.has_value()) {
+            // "+connect_lobby <id>": a lobby invite accepted while the game
+            // was closed. Its connect value is read once Steam is attached.
+            impl_->queue_steam_join(
+                platform::SteamJoinTarget{platform::SteamJoinTargetKind::lobby,
+                                          *impl_->config.startup_steam_lobby, {}},
+                "the Steam launch command line");
+        }
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (!impl_->config.startup_endpoint.has_value() &&
+            !impl_->config.startup_steam_lobby.has_value() && impl_->steam_runtime.ready()) {
+            // steam://run/224540//+connect%20… passes its arguments here
+            // rather than on the process command line.
+            if (const auto launch = impl_->steam_runtime.launch_command_line(); !launch.empty()) {
+                impl_->queue_steam_join(platform::parse_steam_join_target(launch),
+                                        "the Steam launch parameters");
+            }
+        }
+#endif
         if (impl_->config.startup_endpoint.has_value()) {
             // steam:<id> joins a player-hosted match over Valve's relays, so a
-            // two-machine check needs no menu navigation.
+            // two-machine check needs no menu navigation. It is what Steam
+            // launches a friend's closed game with when they click Join Game,
+            // so it waits for sign-in like any other Steam join: opening the
+            // tunnel here blocked the first frame for up to 45 s.
             if (const auto steam_id = parse_steam_endpoint(*impl_->config.startup_endpoint);
                 steam_id != 0U) {
-                std::string steam_error;
-                const auto port = impl_->start_steam_client(steam_id, steam_error);
-                if (port == 0U) {
-                    impl_->last_error = "could not join steam:" + std::to_string(steam_id) + ": " +
-                                        steam_error;
-                    stop();
-                    return false;
-                }
-                impl_->pending_startup_connection =
-                    ServerConnectRequest{"steam:" + std::to_string(steam_id), "127.0.0.1", port,
-                                         {}, {}, {}, false, impl_->steam_join_server_id,
-                                         impl_->steam_join_wants_ticket()};
+                impl_->queue_steam_join(
+                    platform::SteamJoinTarget{platform::SteamJoinTargetKind::steam_host,
+                                              steam_id, {}},
+                    "the launch command line");
                 return true;
             }
             network::ServerEndpoint endpoint;
@@ -21465,12 +27094,28 @@ bool NativeFrontendModule::start() {
     }
 }
 
+std::chrono::nanoseconds NativeFrontendModule::intermediate_frame_period() const noexcept {
+    if (impl_ == nullptr || !impl_->started) {
+        return std::chrono::nanoseconds::zero();
+    }
+    return impl_->intermediate_frame_period();
+}
+
+core::TickDecision NativeFrontendModule::present_intermediate(double alpha) {
+    if (impl_ == nullptr || !impl_->started || impl_->stop_requested) {
+        return core::TickDecision::continue_running;
+    }
+    return impl_->render_intermediate_frame(alpha) ? core::TickDecision::continue_running
+                                                   : core::TickDecision::stop;
+}
+
 core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) {
     const PerformanceScope performance{"frontend_tick", std::chrono::microseconds{16'667}};
     if (!impl_->started) {
         impl_->last_error = "native frontend ticked while stopped";
         return core::TickDecision::stop;
     }
+    impl_->current_tick_index = context.index;
 
     const auto external_now = std::chrono::steady_clock::now();
     if (external_now >= impl_->external_ui_files_next_check) {
@@ -21520,13 +27165,14 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->cosmetic_icons->pump(impl_->renderer);
     }
     impl_->pump_local_match_start();
-    impl_->pump_server_browser_auto_refresh();
     impl_->pump_steam_lobby();
+    impl_->pump_steam_integration();
     impl_->pump_match_identity();
     impl_->pump_join_ticket_refresh();
     impl_->pump_match_connection();
     impl_->enforce_developer_access();
     impl_->prime_audio_listener();
+    impl_->trim_remote_model_caches();
     impl_->remote_rig_uploads_remaining = 1U;
     impl_->remote_rig_uploaded_this_tick = false;
     impl_->pump_live_match_packets();
@@ -21537,7 +27183,9 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             impl_->pending_remote_mesh_clears.erase(slot);
         }
     }
-    if (!impl_->window_suspended) {
+    // Remote rigs keep moving while minimised; freezing them made every
+    // restore snap each observer to its latest row (retail keeps updating).
+    {
         const auto dt = std::chrono::duration<double>{context.fixed_delta}.count();
         impl_->character_animation_timer_ms += dt * 1000.0;
         // Scene timers are only consumed through 10-bit masks. Bounding the
@@ -21548,9 +27196,22 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 std::fmod(impl_->character_animation_timer_ms, 1024.0);
         }
         impl_->jetpack_deaths.tick(dt);
+        // Retail keeps simulating each remote world object between rows with
+        // the same native mover and terrain as the local player (P0-09).
+        const world::VxlMap* remote_motion_map =
+            impl_->tutorial_session != nullptr ? &impl_->tutorial_session->map() : nullptr;
+        const double remote_motion_gravity =
+            impl_->network_match ? impl_->match_state_info.gravity : 1.0;
         for (auto& [player_id, rig] : impl_->remote_player_rigs) {
-            static_cast<void>(player_id);
-            rig.motion.tick(dt);
+            rig.motion.tick(dt, remote_motion_map, remote_motion_gravity);
+            // MinigunWeapon.update for observers: the barrel spools while the
+            // replicated primary trigger (WorldUpdate action bit 0x01) is held.
+            const auto* replica = impl_->tutorial_roster.player(player_id);
+            const bool minigun = replica != nullptr && !replica->dead && replica->tool_id == 8U;
+            rig.minigun_spin =
+                minigun ? world::advance_retail_remote_minigun_spin(
+                              rig.minigun_spin, dt, (replica->action_flags & 0x01U) != 0U)
+                        : world::RetailRemoteMinigunSpin{};
         }
         // Protocol 168 carries motion/input state, not explicit character-foley
         // packets. Advance each observer's bounded cadence beside the same
@@ -21566,6 +27227,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->active_local_host_generation == 0U && !impl_->social_pending_owner_connect &&
         !(impl_->config.debug_ui && impl_->config.debug_ui->starts_with("loading/"))) {
         impl_->match_loading.tick(std::chrono::duration<double>{context.fixed_delta}.count());
+        impl_->leave_timed_out_loading();
     }
     const auto fixed_seconds =
         std::chrono::duration<double>{context.fixed_delta}.count();
@@ -21610,7 +27272,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     // the three-round recording three times over.
                     if (!action.burst_follow_up) {
                         impl_->audio->play_weapon_shoot(
-                            action.tool_id, action.seed, centered, 1.0F, true);
+                            action.tool_id, action.seed, centered,
+                            audio::local_weapon_report_gain(), true);
                     }
                     break;
                 case world::WeaponActionKind::oriented_item:
@@ -21630,16 +27293,18 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                       audio::WeaponCue::throw_release,
                                                       action.seed,
                                                       centered,
-                                                      1.0F,
+                                                      audio::retail_tool_sound_volume,
                                                       true);
                     } else {
                         impl_->audio->play_weapon_shoot(
-                            action.tool_id, action.seed, centered, 1.0F, true);
+                            action.tool_id, action.seed, centered,
+                            audio::local_weapon_report_gain(), true);
                     }
                     break;
                 case world::WeaponActionKind::throwable_primed:
                     impl_->audio->play_weapon_cue(
-                        action.tool_id, audio::WeaponCue::pin, action.seed, centered, 0.7F, true);
+                        action.tool_id, audio::WeaponCue::pin, action.seed, centered,
+                        audio::retail_tool_sound_volume, true);
                     break;
                 case world::WeaponActionKind::reload_started:
                     impl_->audio->play_weapon_reload(
@@ -21659,7 +27324,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                   audio::WeaponCue::melee_miss,
                                                   action.seed,
                                                   centered,
-                                                  1.0F,
+                                                  audio::retail_tool_sound_volume,
                                                   true);
                     break;
                 case world::WeaponActionKind::dry_fire:
@@ -21667,7 +27332,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                   audio::WeaponCue::empty_fire,
                                                   action.seed,
                                                   centered,
-                                                  1.0F,
+                                                  audio::retail_tool_sound_volume,
                                                   true);
                     break;
                 default:
@@ -21690,9 +27355,16 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         const auto create_page_before_event = impl_->create_match_page_shell.active();
         if (event.type == platform::WindowEventType::key_pressed &&
             event.scancode == scancode_f11 && !event.repeated && !impl_->boot_loading) {
-            if (!impl_->developer_tools_allowed()) {
+            if (!developer_chord(event.modifiers)) {
+                // Retail F11 is `screenshot`, bound only on ViewGameStats.
+                if (impl_->screen() == FrontendScreen::tutorial_world &&
+                    impl_->match_results.visible()) {
+                    impl_->request_retail_screenshot();
+                }
+            } else if (!impl_->developer_tools_allowed()) {
                 impl_->deny_developer_action();
             } else {
+                // Developer UI layout editor: Ctrl+Shift+F11.
                 impl_->cancel_pointer_capture();
                 impl_->ui_layout_editor.set_active(!impl_->ui_layout_editor.active());
                 impl_->play_confirm();
@@ -21757,16 +27429,24 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         case platform::WindowEventType::resized:
         case platform::WindowEventType::drawable_resized:
         case platform::WindowEventType::restored:
+        case platform::WindowEventType::maximized:
         case platform::WindowEventType::focus_gained:
         case platform::WindowEventType::mouse_entered:
             // A stationary cursor can map to a different design-space point
             // after resize/DPI/restore. Re-hit-test instead of waiting for the
             // operating system to deliver another motion event.
-            if (event.type == platform::WindowEventType::restored) {
+            // Minimise-while-maximised can come back as MAXIMIZED or a plain
+            // focus/pixel-size change without RESTORED; any of them means the
+            // window is visible again, so presentation must resume.
+            if (event.type == platform::WindowEventType::restored ||
+                event.type == platform::WindowEventType::maximized ||
+                event.type == platform::WindowEventType::focus_gained ||
+                event.type == platform::WindowEventType::drawable_resized) {
                 impl_->window_suspended = false;
             }
             if (event.type == platform::WindowEventType::focus_gained ||
-                event.type == platform::WindowEventType::restored) {
+                event.type == platform::WindowEventType::restored ||
+                event.type == platform::WindowEventType::maximized) {
                 impl_->window_focused = true;
             }
             refresh_pointer_hover();
@@ -21795,6 +27475,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 impl_->screen() == FrontendScreen::tutorial_world) {
                 if (impl_->death_camera.active()) {
                     impl_->death_camera.on_mouse_move(event.mouse_delta_x, event.mouse_delta_y);
+                } else if (impl_->retail_gameplay_input_locked()) {
+                    // The LookAtController / forced ViewScores owns the view.
                 } else {
                     impl_->tutorial_session->apply_look_delta(event.mouse_delta_x,
                                                               event.mouse_delta_y);
@@ -21851,15 +27533,28 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             // Captured gameplay routes the primary attack; the click never
             // doubles as a UI press.
             if (impl_->mouse_captured && impl_->tutorial_session != nullptr &&
+                impl_->screen() == FrontendScreen::tutorial_world &&
+                impl_->ugc_screenshot_hud_active) {
+                if (event.mouse_button == platform::MouseButton::left ||
+                    event.mouse_button == platform::MouseButton::right) {
+                    impl_->ugc_screenshot_mouse_press(event.mouse_button ==
+                                                      platform::MouseButton::left);
+                }
+                break;
+            }
+            if (impl_->mouse_captured && impl_->tutorial_session != nullptr &&
                 impl_->screen() == FrontendScreen::tutorial_world) {
                 if (impl_->death_camera.active()) {
-                    if (impl_->death_camera.mode() == DeathCameraMode::grave) {
+                    if (impl_->death_camera.mode() == DeathCameraMode::killer_view) {
                         impl_->death_camera.on_mouse_press();
                     } else if (event.mouse_button == platform::MouseButton::left) {
                         impl_->cycle_death_camera_target(1);
                     } else if (event.mouse_button == platform::MouseButton::right) {
                         impl_->cycle_death_camera_target(-1);
                     }
+                } else if (impl_->retail_gameplay_input_locked() ||
+                           impl_->kick_vote_select.visible()) {
+                    // stop_movement: no fire, zoom or tool custom while locked.
                 } else if (event.mouse_button == platform::MouseButton::left) {
                     if (impl_->ugc_prefab_selected()) {
                         if (impl_->ugc_prefab_control.active()) {
@@ -21875,17 +27570,12 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     } else {
                         impl_->tutorial_session->set_primary_held(true);
                     }
-                } else if (event.mouse_button == platform::MouseButton::right) {
-                    const bool was_zoomed = impl_->tutorial_session->zoomed();
-                    impl_->tutorial_session->set_secondary_held(true);
-                    const bool zoomed = impl_->tutorial_session->zoomed();
-                    if (impl_->audio_started && was_zoomed != zoomed) {
-                        impl_->audio->play_zoom_toggle(zoomed);
-                    }
-                } else if (event.mouse_button == platform::MouseButton::middle) {
-                    // Retail weapon-custom defaults to E. Middle mouse remains
-                    // a convenient alias for tools with that separate input.
-                    impl_->tutorial_session->set_weapon_custom_held(true);
+                } else if (const auto button = binding_mouse_button(event.mouse_button);
+                           button.has_value() &&
+                           retail_aim_mouse_button(impl_->applied_settings.controls, *button)) {
+                    // RMB is always ADS; a mouse button bound to Aim adds one.
+                    // Pick Colour is only its bound key (E), as in retail.
+                    impl_->press_aim();
                 }
                 break;
             }
@@ -21915,18 +27605,22 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 }
                 break;
             }
+            if (impl_->screen() == FrontendScreen::tutorial_world &&
+                impl_->kick_vote_select.visible() && !impl_->mouse_captured) {
+                if (event.mouse_button == platform::MouseButton::left) {
+                    impl_->kick_vote_pointer_release(mapped_point(event.mouse_x, event.mouse_y));
+                }
+                break;
+            }
             if (event.mouse_button == platform::MouseButton::left &&
                 impl_->tutorial_session != nullptr) {
                 // Release always clears the attack, captured or not.
                 impl_->tutorial_session->set_primary_held(false);
             }
-            if (event.mouse_button == platform::MouseButton::right &&
-                impl_->tutorial_session != nullptr) {
+            if (const auto button = binding_mouse_button(event.mouse_button);
+                button.has_value() && impl_->tutorial_session != nullptr &&
+                retail_aim_mouse_button(impl_->applied_settings.controls, *button)) {
                 impl_->tutorial_session->set_secondary_held(false);
-            }
-            if (event.mouse_button == platform::MouseButton::middle &&
-                impl_->tutorial_session != nullptr) {
-                impl_->tutorial_session->set_weapon_custom_held(false);
             }
             if (event.mouse_button == platform::MouseButton::left) {
                 impl_->pointer_release(mapped_point(event.mouse_x, event.mouse_y),
@@ -22001,12 +27695,24 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             } else if (impl_->screen() == FrontendScreen::tutorial_world &&
                        impl_->ugc_ingame_settings.title_editing()) {
                 static_cast<void>(impl_->ugc_ingame_settings.append_title_text(event.text));
+            } else if (impl_->screen() == FrontendScreen::settings &&
+                       impl_->settings_menu != nullptr &&
+                       impl_->settings_menu->text_editing()) {
+                static_cast<void>(impl_->settings_menu->text_input(event.text));
             }
             break;
         case platform::WindowEventType::key_released:
             if (impl_->screen() == FrontendScreen::tutorial_world && impl_->game_chat.active()) {
                 // Chat activation clears held gameplay input. Key-up events
                 // during text entry must not leak back into movement state.
+                break;
+            }
+            if (impl_->screen() == FrontendScreen::class_selection &&
+                !impl_->ugc_loadout_active && event.scancode >= 30U && event.scancode <= 39U) {
+                // KeyDisplay.on_key_release: select absolute class n-1 (0 = 10th).
+                impl_->class_selection_menu.class_key_release(
+                    static_cast<std::size_t>(event.scancode - 30U));
+                impl_->consume_class_selection_audio();
                 break;
             }
             if (impl_->screen() == FrontendScreen::tutorial_world &&
@@ -22025,19 +27731,33 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     impl_->scoreboard_visible = false;
                     break;
                 }
-                if (event.scancode == 8U && impl_->tutorial_session != nullptr) { // E
+                if (impl_->tutorial_session != nullptr &&
+                    impl_->binding_matches(settings::ControlAction::weapon_custom,
+                                           event.scancode)) {
                     impl_->tutorial_session->set_weapon_custom_held(false);
+                }
+                if (impl_->tutorial_session != nullptr &&
+                    impl_->binding_matches(settings::ControlAction::aim, event.scancode)) {
+                    impl_->tutorial_session->set_secondary_held(false);
                 }
                 impl_->route_tutorial_key(event.scancode, false);
             }
             break;
         case platform::WindowEventType::key_pressed: {
             if (impl_->screen() == FrontendScreen::tutorial_world &&
+                impl_->ugc_screenshot_hud_active &&
+                (event.scancode == scancode_escape ||
+                 impl_->binding_matches(settings::ControlAction::menu, event.scancode))) {
+                if (!event.repeated) impl_->close_ugc_screenshot_hud();
+                break;
+            }
+            if (impl_->screen() == FrontendScreen::tutorial_world &&
                 impl_->ugc_ingame_settings.visible()) {
                 if (event.scancode == scancode_escape ||
                     impl_->binding_matches(settings::ControlAction::ugc_settings,
                                            event.scancode)) {
                     impl_->ugc_ingame_settings.cancel();
+                    impl_->discard_pending_ugc_preview();
                     impl_->play_back();
                 } else if (event.scancode == scancode_backspace &&
                            impl_->ugc_ingame_settings.title_editing()) {
@@ -22115,7 +27835,9 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     impl_->close_chat(true);
                 } else if (event.scancode == scancode_escape) {
                     impl_->close_chat(false);
-                } else if (event.scancode == scancode_backspace) {
+                } else if (event.scancode == scancode_backspace ||
+                           event.scancode == scancode_delete) {
+                    // HUD.on_text_motion treats MOTION_DELETE like Backspace.
                     static_cast<void>(impl_->game_chat.erase_code_point());
                 }
                 // Printable text arrives through SDL_EVENT_TEXT_INPUT. Swallow
@@ -22132,17 +27854,30 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 }
                 break;
             }
-            if (impl_->screen() == FrontendScreen::class_selection && !event.repeated &&
+            if (!event.repeated && impl_->in_game_selection_menu() &&
                 !impl_->ugc_loadout_active &&
-                event.scancode >= 30U && event.scancode <= 38U) {
-                const auto visible_index = static_cast<std::size_t>(event.scancode - 30U);
-                if (visible_index < impl_->class_selection_menu.classes_per_page()) {
-                    impl_->class_selection_menu.select_visible_class(visible_index);
-                    impl_->consume_class_selection_audio();
-                }
+                impl_->binding_matches(impl_->screen() == FrontendScreen::class_selection
+                                           ? settings::ControlAction::change_class
+                                           : settings::ControlAction::change_team,
+                                       event.scancode)) {
+                // selectClass.py:359 / changeTeam.py:118: the key that opened
+                // the menu closes it back to GameScene.
+                impl_->close_selection_menu_to_world();
                 break;
             }
-            if (event.scancode == scancode_f10 && !event.repeated && !impl_->boot_loading) {
+            if (impl_->screen() == FrontendScreen::class_selection && !event.repeated &&
+                !impl_->ugc_loadout_active &&
+                event.scancode >= 30U && event.scancode <= 39U) {
+                // KeyDisplay: absolute class numbers; key_press art while held,
+                // the selection happens on release (key_released above).
+                impl_->class_selection_menu.class_key_press(
+                    static_cast<std::size_t>(event.scancode - 30U));
+                break;
+            }
+            // Retail F10 is the map editor's quick_save; the developer
+            // gameplay lab lives on Ctrl+Shift+F10.
+            if (event.scancode == scancode_f10 && !event.repeated && !impl_->boot_loading &&
+                developer_chord(event.modifiers)) {
                 if (impl_->screen() == FrontendScreen::gameplay_debug) {
                     impl_->cancel_pointer_capture();
                     impl_->gameplay_debug_lab.set_primary(false);
@@ -22266,6 +28001,17 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     impl_->open_ugc_ingame_settings();
                     break;
                 }
+                // GameScene.on_key_press quick_save: `if is_ugc_host():
+                // save_ugc_map()`. The editor server owns the files, so this
+                // asks it to flush; its UGC_MAP_SAVE_* message is the result.
+                if (impl_->binding_matches(settings::ControlAction::quick_save, event.scancode) &&
+                    impl_->is_ugc_host()) {
+                    if (!impl_->request_ugc_save(UgcSaveOrigin::quick_save)) {
+                        impl_->game_hud.set_big_message(
+                            impl_->localized_text("UGC_MAP_SAVE_ERROR"));
+                    }
+                    break;
+                }
                 if (impl_->binding_matches(settings::ControlAction::global_chat, event.scancode)) {
                     impl_->begin_chat(ChatChannel::global);
                     break;
@@ -22289,6 +28035,15 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 }
                 if (vote_key && impl_->generic_vote.visible())
                     break;
+                if (impl_->kick_vote_select.visible()) {
+                    impl_->handle_kick_vote_key(event.scancode);
+                    break;
+                }
+                if (impl_->binding_matches(settings::ControlAction::kick_player,
+                                           event.scancode)) {
+                    impl_->open_kick_vote_select();
+                    break;
+                }
                 if (impl_->binding_matches(settings::ControlAction::view_scores, event.scancode)) {
                     impl_->scoreboard_visible = true;
                     break;
@@ -22298,8 +28053,40 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     // available for the complete roster; gameplay does not.
                     break;
                 }
+                if (impl_->retail_gameplay_input_locked()) {
+                    // ForceShowScores(72) stop_movement / POIFocus(18)
+                    // LookAtController: no movement, tool or developer keys.
+                    break;
+                }
+                if (impl_->network_match &&
+                    impl_->binding_matches(settings::ControlAction::change_class,
+                                           event.scancode)) {
+                    impl_->change_class_key();
+                    break;
+                }
+                if (impl_->network_match &&
+                    impl_->binding_matches(settings::ControlAction::change_team,
+                                           event.scancode)) {
+                    impl_->open_selection_from_world(PauseMenuAction::change_team);
+                    break;
+                }
+                // GameScene.on_key_press: config.menu opens the EscapeMenu.
+                // Escape is only special while it is the bound menu key.
+                if (impl_->binding_matches(settings::ControlAction::menu, event.scancode)) {
+                    static_cast<void>(impl_->handle_input(
+                        ui::InputEvent{ui::InputAction::cancel, ui::InputPhase::pressed}));
+                    break;
+                }
+                if (event.scancode == scancode_escape) {
+                    break;
+                }
+                // F3 is retail Vote 3; the diagnostics overlay moved to the
+                // Ctrl+Shift developer chord so the key does nothing without
+                // a vote on screen.
+                const bool diagnostics_chord =
+                    event.scancode == scancode_f3 && developer_chord(event.modifiers);
                 const bool developer_world_key =
-                    event.scancode == scancode_f3 || event.scancode == scancode_f4 ||
+                    diagnostics_chord || event.scancode == scancode_f4 ||
                     event.scancode == scancode_f5 || event.scancode == scancode_f6 ||
                     event.scancode == scancode_f7 || event.scancode == scancode_f8 ||
                     event.scancode == scancode_f9;
@@ -22307,8 +28094,11 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     impl_->deny_developer_action();
                     break;
                 }
+                if (event.scancode == scancode_f3 && !diagnostics_chord) {
+                    break;
+                }
                 impl_->route_tutorial_key(event.scancode, true);
-                if (event.scancode == scancode_f3) {
+                if (diagnostics_chord) {
                     impl_->tutorial_diagnostics_visible = !impl_->tutorial_diagnostics_visible;
                     break;
                 }
@@ -22329,13 +28119,20 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     break;
                 }
                 if (impl_->tutorial_session != nullptr && !impl_->death_camera.active() &&
-                    event.scancode == 21U) { // R
+                    impl_->binding_matches(settings::ControlAction::reload, event.scancode)) {
                     static_cast<void>(impl_->tutorial_session->request_reload());
                     break;
                 }
                 if (impl_->tutorial_session != nullptr && !impl_->death_camera.active() &&
-                    event.scancode == 8U) { // E
+                    impl_->binding_matches(settings::ControlAction::weapon_custom,
+                                           event.scancode)) {
                     impl_->tutorial_session->set_weapon_custom_held(true);
+                    break;
+                }
+                if (impl_->tutorial_session != nullptr && !impl_->death_camera.active() &&
+                    impl_->binding_matches(settings::ControlAction::aim, event.scancode)) {
+                    // A key bound to Aim is ADS in addition to the fixed RMB.
+                    impl_->press_aim();
                     break;
                 }
                 if (event.scancode == scancode_f6) {
@@ -22393,7 +28190,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     }
                 }
                 if (impl_->binding_matches(settings::ControlAction::tool_help, event.scancode)) {
-                    impl_->game_hud.toggle_help();
+                    impl_->toggle_tool_help();
                     break;
                 }
                 if (impl_->binding_matches(settings::ControlAction::toggle_hud, event.scancode)) {
@@ -22471,6 +28268,12 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     !event.repeated) {
                     static_cast<void>(impl_->settings_menu->capture_scancode(event.scancode));
                     impl_->consume_settings_effects();
+                    break;
+                }
+                if (impl_->settings_menu->text_editing() &&
+                    (event.scancode == scancode_backspace || event.scancode == scancode_delete)) {
+                    static_cast<void>(impl_->settings_menu->text_erase(
+                        event.scancode == scancode_delete));
                     break;
                 }
             }
@@ -22573,7 +28376,23 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->tutorial_session->tick();
         impl_->send_live_client_data();
         impl_->send_live_clock_sync(std::chrono::duration<double>{context.fixed_delta}.count());
+        impl_->advance_connection_watchdog();
         impl_->advance_drill_audio();
+        impl_->advance_rocket_audio();
+        impl_->advance_airstrike_audio();
+        impl_->advance_turret_aim_audio(std::chrono::duration<double>{context.fixed_delta}.count());
+        for (const auto& bounce : impl_->tutorial_session->take_projectile_bounces()) {
+            // Grenade.update L54-55: GRENADE_BOUNCE_SOUND on a sound bounce.
+            if (audio::grenade_bounce_audible(bounce.impact_speed)) {
+                static_cast<void>(impl_->play_retail_cue(
+                    audio::grenade_bounce_cue,
+                    {static_cast<float>(bounce.position.x),
+                     static_cast<float>(bounce.position.y),
+                     static_cast<float>(bounce.position.z)},
+                    false,
+                    static_cast<std::uint32_t>(bounce.projectile_id)));
+            }
+        }
         for (auto& component : impl_->tutorial_session->take_falling_components()) {
             impl_->terrain_effects.spawn_falling(std::move(component));
         }
@@ -22584,8 +28403,15 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         }
         const auto effect_delta = std::chrono::duration<double>{context.fixed_delta}.count();
         impl_->refresh_death_camera(effect_delta);
+        // FallingBlocks falls under the StateData world gravity (sub_10007DC0).
+        impl_->terrain_effects.set_gravity(static_cast<float>(
+            impl_->network_match ? impl_->match_state_info.gravity : 1.0));
         impl_->terrain_effects.tick(effect_delta, impl_->tutorial_session->map());
         impl_->advance_jetpack_flight(effect_delta);
+        impl_->advance_character_equipment_audio();
+        impl_->advance_medpack_heal_audio(effect_delta);
+        impl_->advance_world_entity_audio(effect_delta);
+        impl_->advance_retail_status_effects(effect_delta);
         // Retail emits one smoke puff per tick behind RPG/RPG2 even though both
         // have a small non-zero gravity multiplier. Gating on gravity==0 made
         // every real rocket trail disappear while a synthetic zero-gravity
@@ -22600,11 +28426,15 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 projectile.position.x, projectile.position.y, projectile.position.z};
             const std::array<double, 3U> velocity{
                 projectile.velocity.x, projectile.velocity.y, projectile.velocity.z};
+            // Rocket.update (rocket.py) emits the puff at the rocket's own
+            // position + (0, 0, 0.5), not at the rendered exhaust: the first
+            // puffs sit on the line of fire right in front of the eye, which is
+            // the large back-blast cloud retail shows left of the launcher.
             world::emit_projectile_trail(
                 impl_->particles,
-                world::projectile_exhaust_position(
-                    position, velocity, projectile.roll,
-                    projectile_model_scale(projectile.tool_id)),
+                {static_cast<float>(position[0U]),
+                 static_cast<float>(position[1U]),
+                 static_cast<float>(position[2U] + 0.5)},
                 {static_cast<float>(velocity[0U]),
                  static_cast<float>(velocity[1U]),
                  static_cast<float>(velocity[2U])},
@@ -22629,14 +28459,9 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             if (entity.type == 24U) {
                 world::emit_block_cannon_trail(impl_->particles, position, velocity, seed);
             } else if (entity.type == 21U || entity.type == 22U) {
-                const auto* definition = world::find_entity_definition(entity.type);
-                const float scale = definition != nullptr ? definition->model_size : 0.02F;
                 world::emit_projectile_trail(
                     impl_->particles,
-                    world::projectile_exhaust_position(
-                        {entity.position.x, entity.position.y, entity.position.z},
-                        {entity.velocity.x, entity.velocity.y, entity.velocity.z},
-                        entity.accumulators[0U], scale),
+                    {position[0U], position[1U], position[2U] + 0.5F},
                     velocity, seed);
             }
         }
@@ -22665,6 +28490,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     static_cast<std::uint32_t>(impl_->particles.live_count()));
         }
         impl_->advance_timed_explosive_audio();
+        impl_->particles.set_gravity(static_cast<float>(
+            impl_->network_match ? impl_->match_state_info.gravity : 1.0));
         impl_->particles.tick(effect_delta, impl_->tutorial_session->map());
         if (impl_->world_renderer.is_initialized() && !impl_->sync_terrain_effect_meshes()) {
             impl_->last_error = "terrain effect mesh synchronization failed: " +
@@ -22683,6 +28510,10 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->consume_entity_events(effect_delta);
         if (const auto stage = impl_->tutorial_session->take_entered_stage(); stage.has_value()) {
             impl_->show_lesson_help(*stage);
+        }
+        if (impl_->pump_offline_tutorial(effect_delta)) {
+            // The route exit tears the session down at the next tick.
+            return core::TickDecision::continue_running;
         }
         const auto attack_events = impl_->tutorial_session->take_attack_events();
         const auto weapon_actions = impl_->tutorial_session->take_weapon_actions();
@@ -22715,7 +28546,18 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                         {static_cast<float>(player.orientation.x),
                          static_cast<float>(player.orientation.y),
                          static_cast<float>(player.orientation.z)},
-                        impl_->tutorial_session->zoomed());
+                        impl_->tutorial_session->zoomed(),
+                        action.accuracy,
+                        impl_->local_muzzle_point());
+                }
+            }
+            // Weapon.shot_weapon: timer = muzzle_flash_duration, rotation =
+            // random()*360. The local flash is drawn by draw_fps/draw_sight in
+            // the viewmodel pass at the weapon's view offsets, not in world
+            // space in front of the eye.
+            for (const auto& action : weapon_actions) {
+                if (action.kind == world::WeaponActionKind::hitscan) {
+                    impl_->arm_local_view_muzzle_flash(action.tool_id, action.seed);
                 }
             }
         }
@@ -22749,11 +28591,16 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                              static_cast<float>(basis.up[1U]),
                                              static_cast<float>(basis.up[2U])});
             impl_->refresh_server_ambient_positions(listener_position);
+            impl_->update_environment_audio(listener_position);
             if (local_alive && attack_events.pistol_fired &&
                 !has_weapon_action(world::WeaponActionKind::hitscan, std::uint8_t{17U})) {
                 impl_->audio->play_head_relative_one_shot(
                     audio::OpenAlFrontendAudio::pistol_shoot_sound,
                     audio::local_weapon_report_gain());
+            }
+            if (local_alive && attack_events.zoom_dropped) {
+                // Character.shoot's set_zoom(0) on an emptied magazine.
+                impl_->audio->play_zoom_toggle(false);
             }
             if (local_alive && attack_events.reload_started &&
                 !has_weapon_action(world::WeaponActionKind::reload_started)) {
@@ -22782,16 +28629,14 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 for (const auto& action : weapon_actions) {
                     switch (action.kind) {
                     case world::WeaponActionKind::hitscan: {
-                        const auto& player = impl_->tutorial_session->player();
-                        const auto forward = std::array<float, 3U>{
-                            static_cast<float>(player.orientation.x),
-                            static_cast<float>(player.orientation.y),
-                            static_cast<float>(player.orientation.z)};
-                        if(!impl_->scripted_weapon||!impl_->scripted_images.has_muzzle_images())impl_->terrain_effects.spawn_weapon_flash(
-                            {static_cast<float>(eye[0U]) + forward[0U] * 0.72F,
-                             static_cast<float>(eye[1U]) + forward[1U] * 0.72F,
-                             static_cast<float>(eye[2U]) + forward[2U] * 0.72F},
-                            action.tool_id);
+                        // Enhanced tiers: a short warm light at the real muzzle
+                        // (the drawn barrel mouth), lighting terrain and models.
+                        // Retail has no shot light.
+                        if ((!impl_->scripted_weapon || !impl_->scripted_images.has_muzzle_images()) &&
+                            world::muzzle_light_enabled(impl_->retail_look_active(), action.tool_id)) {
+                            impl_->terrain_effects.spawn_weapon_flash(impl_->local_muzzle_point(),
+                                                                      action.tool_id);
+                        }
                         const auto cosmetic_id = impl_->local_weapon_sound_cosmetic(action.tool_id);
                         if(impl_->scripted_weapon)break;
                         if (impl_->audio->has_cosmetic_fire(cosmetic_id)) {
@@ -22817,6 +28662,19 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                             impl_->begin_fire_loop(action.tool_id, local_position);
                             break;
                         case world::FireSoundShape::one_shot_per_round:
+                            if (action.tool_id == audio::double_shotgun_tool_id) {
+                                // update_ammo picks the barrel from the clip
+                                // left after the previous shot: two rounds
+                                // -> first barrel, one -> second.
+                                const auto* ammo = impl_->tutorial_session->selected_ammo();
+                                impl_->audio->play_double_shotgun_barrel(
+                                    ammo != nullptr &&
+                                        audio::double_shotgun_second_barrel(ammo->magazine),
+                                    local_position,
+                                    audio::local_weapon_report_gain(),
+                                    true);
+                                break;
+                            }
                             impl_->audio->play_weapon_shoot(
                                 action.tool_id, action.seed, local_position,
                                 audio::local_weapon_report_gain(), true);
@@ -22827,12 +28685,13 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     case world::WeaponActionKind::melee:
                         // Retail plays the swing on every swing; the block/player
                         // impact cues are driven separately by what was struck.
-                        if(impl_->audio->play_cosmetic_cue(impl_->local_weapon_sound_cosmetic(action.tool_id),"melee-miss",action.seed,local_position,1.F,true))break;
+                        // Tool.play_sound: volume 0.5.
+                        if(impl_->audio->play_cosmetic_cue(impl_->local_weapon_sound_cosmetic(action.tool_id),"melee-miss",action.seed,local_position,audio::retail_tool_sound_volume,true))break;
                         impl_->audio->play_weapon_cue(action.tool_id,
                                                       audio::WeaponCue::melee_miss,
                                                       action.seed,
                                                       local_position,
-                                                      1.0F,
+                                                      audio::retail_tool_sound_volume,
                                                       true);
                         break;
                     case world::WeaponActionKind::oriented_item:
@@ -22852,7 +28711,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                           audio::WeaponCue::throw_release,
                                                           action.seed,
                                                           local_position,
-                                                          1.0F,
+                                                          audio::retail_tool_sound_volume,
                                                           true);
                         } else {
                             impl_->audio->play_weapon_shoot(
@@ -22865,7 +28724,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                       audio::WeaponCue::pin,
                                                       action.seed,
                                                       local_position,
-                                                      0.7F,
+                                                      audio::retail_tool_sound_volume,
                                                       true);
                         break;
                     case world::WeaponActionKind::reload_started:
@@ -22887,8 +28746,11 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                       audio::WeaponCue::empty_fire,
                                                       action.seed,
                                                       local_position,
-                                                      1.0F,
+                                                      audio::retail_tool_sound_volume,
                                                       true);
+                        break;
+                    case world::WeaponActionKind::placement_rejected:
+                        impl_->play_build_error();
                         break;
                     case world::WeaponActionKind::block_sucker_state:
                         impl_->set_block_sucker_audio(
@@ -22912,6 +28774,19 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                                                       : std::optional<std::uint8_t>{},
                                           local_position,
                                           true);
+            {
+                const bool brush = local_alive &&
+                                   impl_->tutorial_session->selected_tool_id() ==
+                                       std::optional<std::uint8_t>{Impl::paintbrush_tool_id};
+                const double step = std::chrono::duration<double>{context.fixed_delta}.count();
+                impl_->advance_paint_spray_audio(impl_->local_paint_spray_audio,
+                                                 brush,
+                                                 brush && impl_->tutorial_session->secondary_held(),
+                                                 local_position,
+                                                 true,
+                                                 step);
+                impl_->advance_remote_paint_spray_audio(step);
+            }
             impl_->advance_fire_loop(std::chrono::duration<double>{context.fixed_delta}.count(),
                                      local_alive && impl_->tutorial_session->weapon_trigger_live(),
                                      local_position);
@@ -22980,12 +28855,9 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     const auto authored =
                         audio::retail_explosion_sound(sound.source_tool, submerged);
                     const auto stems = audio::sound_group_stems(authored.group);
-                    // Explosions carry much further than gunfire in retail,
-                    // and ours were mixed at the same level as a footstep --
-                    // a blast 30 blocks away, which is where a rocket usually
-                    // lands, attenuated to almost nothing.
-                    constexpr float explosion_gain{1.6F};
-                    const auto gain = sound.gain * explosion_gain;
+                    // play_pitched(..., volume=1.0) with DEFAULT_ATTENUATION;
+                    // retail applies no extra explosion gain.
+                    const auto gain = sound.gain;
                     // Detonations are world events even when the local player
                     // fired the projectile. Head-relative playback erased the
                     // server position, produced no left/right cue and made a
@@ -23013,8 +28885,20 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                     const bool submerged =
                         sound.position[2U] >= static_cast<float>(world::VxlMap::height) - 2.0F;
                     const auto stem = submerged ? "death_explode_water" : "death_explode";
+                    // explode_corpse: play_pitched(DEATH_EXPLODE_SOUND) at
+                    // 1.0 with +-0.8 semitones.
                     if (!impl_->audio->play_named_one_shot(
-                            stem, position, sound.gain * 1.25F, false)) {
+                            stem,
+                            position,
+                            sound.gain,
+                            false,
+                            0.0F,
+                            0.15F,
+                            false,
+                            audio::retail_sound_pitch_ratio(
+                                audio::retail_death_explode_pitch.minimum,
+                                audio::retail_death_explode_pitch.maximum,
+                                static_cast<std::uint32_t>(sound.variant) * 2654435761U))) {
                         impl_->audio->play_one_shot(
                             audio::OpenAlFrontendAudio::explosion_sound, position, sound.gain);
                     }
@@ -23066,6 +28950,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         // within the bounded next-frame budget.
         const auto dirty = impl_->tutorial_session->take_dirty_chunks();
         impl_->queue_live_chunk_remeshes(dirty);
+        impl_->sync_ugc_preview_texture();
         if (context.present && !impl_->sync_minimap_texture()) {
             // Keep gameplay alive if a dynamic HUD upload fails. The prior
             // texture remains valid and the warning identifies the failure.
@@ -23114,15 +28999,25 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     if (impl_->death_camera.active()) {
         impl_->game_hud.set_crosshair_visible(false);
     }
+    // SelectTeam.on_start plays the retail match-start stinger
+    // (selectTeam.py:21-27); the in-game ChangeTeam menu (`.`) does not.
+    if (impl_->team_select_entry.update(
+            impl_->network_match && impl_->screen() == FrontendScreen::change_team,
+            impl_->network_match && impl_->screen() == FrontendScreen::tutorial_world)) {
+        impl_->play_match_start_stinger();
+    }
+    impl_->sync_ugc_editor_help(std::chrono::duration<double>{context.fixed_delta}.count());
+    impl_->apply_poi_focus_lock();
     impl_->update_mouse_capture();
 
     if (impl_->stop_requested) {
         return core::TickDecision::stop;
     }
-    if (impl_->window_suspended || !context.present) {
+    if (!live_world_presentation_allowed(impl_->window_suspended, context.present)) {
         // Input, network and fixed-step simulation above still run during
-        // catch-up. Presenting every overdue step would let VSync prevent the
-        // simulation from ever recovering after a slow frame.
+        // catch-up and while minimised. Presenting every overdue step would
+        // let VSync prevent the simulation from ever recovering after a slow
+        // frame, and a minimised swap chain has nothing to show.
         return core::TickDecision::continue_running;
     }
     return impl_->render_frame() ? core::TickDecision::continue_running : core::TickDecision::stop;

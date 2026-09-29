@@ -1,8 +1,9 @@
 #include "battlespades/world/vxl_map.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <cmath>
+#include <tuple>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -61,7 +62,10 @@ struct SourceShape final {
                 return std::nullopt;
             }
             position += advance;
-            if (position >= bytes.size()) {
+            // The next span header reads four bytes. A non-terminal span that
+            // left only 1..3 bytes used to over-read the heap buffer (fuzz
+            // audit 2026-09-29, payload 01 f9 03 00 0a 00).
+            if (bytes.size() - position < 4U) {
                 return std::nullopt;
             }
         }
@@ -95,7 +99,9 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
     VxlMap map;
     map.solid_bits_.assign((voxel_count + 7U) / 8U, 0U);
     map.colors_.assign(voxel_count, 0U);
+    map.implicit_bits_.assign((voxel_count + 7U) / 8U, 0U);
     map.surfaces_.assign(area, no_surface);
+    map.chunk_solids_.assign(std::size_t{(width / 16U) * (depth / 16U) * (height / 16U)}, 0U);
     map.source_edge_ = edge;
     // Some canonical 240-high columns legally reference sentinel z=240 in
     // the fourth span-header byte. The server clamps their legacy-map shift
@@ -105,6 +111,15 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
         shape->maximum_z < 239U ? 239U - shape->maximum_z : 0U;
     const auto offset = (width - edge) / 2U;
     std::size_t position{};
+    // Explicit colour words only: vxl.pyd matches chroma markers against the
+    // stored colour records, never against implicit interior voxels.
+    std::vector<std::uint32_t> marker_candidates;
+    const auto note_marker = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                                 std::uint32_t color_value) {
+        if (z <= max_damageable_z && is_vxl_chroma_marker(color_value)) {
+            marker_candidates.push_back(static_cast<std::uint32_t>(index(x, y, z)));
+        }
+    };
 
     for (std::uint32_t source_y{}; source_y < edge; ++source_y) {
         for (std::uint32_t source_x{}; source_x < edge; ++source_x) {
@@ -127,6 +142,7 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
                 for (std::uint32_t item{}; item < top_length; ++item) {
                     inherited_color = read_u32(bytes, position + item * 4U);
                     map.put(x, y, top_start + map.source_z_shift_ + item, inherited_color);
+                    note_marker(x, y, top_start + map.source_z_shift_ + item, inherited_color);
                 }
                 position += top_length * 4U;
                 has_surface = has_surface || top_length != 0U;
@@ -134,7 +150,7 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
                     if (has_surface) {
                         for (std::uint32_t z = top_end + 1U;
                              z + map.source_z_shift_ < height; ++z) {
-                            map.put(x, y, z + map.source_z_shift_, inherited_color);
+                            map.put_implicit(x, y, z + map.source_z_shift_, inherited_color);
                         }
                     }
                     break;
@@ -156,11 +172,12 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
                     return {std::nullopt, "overlapping VXL spans"};
                 }
                 for (std::uint32_t z = top_end + 1U; z < bottom_start; ++z) {
-                    map.put(x, y, z + map.source_z_shift_, inherited_color);
+                    map.put_implicit(x, y, z + map.source_z_shift_, inherited_color);
                 }
                 for (std::uint32_t item{}; item < bottom_length; ++item) {
                     const auto color = read_u32(bytes, position + item * 4U);
                     map.put(x, y, bottom_start + map.source_z_shift_ + item, color);
+                    note_marker(x, y, bottom_start + map.source_z_shift_ + item, color);
                 }
                 position += bottom_length * 4U;
             }
@@ -170,11 +187,16 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
         return {std::nullopt, "VXL stream has trailing columns"};
     }
     // Retail always installs a collision bed, including empty water columns.
+    // vxl.pyd sub_10029900 (map finaliser 0x1002A380) sets every z=239 cell
+    // solid AND overwrites its colour with one map-wide value, so authored
+    // z=239 colours are intentionally discarded here as well.
     for (std::uint32_t y{}; y < depth; ++y) {
         for (std::uint32_t x{}; x < width; ++x) {
             map.put(x, y, height - 1U, 0U);
         }
     }
+    // The finaliser runs the chroma-marker cleanup right after the bed.
+    map.remove_chroma_markers(marker_candidates);
     return {std::move(map), {}};
 }
 
@@ -188,10 +210,120 @@ void VxlMap::put(std::uint32_t x, std::uint32_t y, std::uint32_t z,
     if ((solid_bits_[voxel >> 3U] & mask) == 0U) {
         solid_bits_[voxel >> 3U] |= mask;
         ++solid_voxels_;
+        count_chunk_solid(x, y, z, true);
     }
     colors_[voxel] = color_value;
+    clear_implicit(voxel);
     auto& surface = surfaces_[x + y * width];
     surface = std::min(surface, static_cast<std::uint16_t>(z));
+}
+
+void VxlMap::put_implicit(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                          std::uint32_t color_value) noexcept {
+    put(x, y, z, color_value);
+    if (x < width && y < depth && z < height && !implicit_bits_.empty()) {
+        const auto voxel = index(x, y, z);
+        implicit_bits_[voxel >> 3U] |= static_cast<std::uint8_t>(1U << (voxel & 7U));
+    }
+}
+
+void VxlMap::clear_implicit(std::size_t voxel) noexcept {
+    if (!implicit_bits_.empty()) {
+        implicit_bits_[voxel >> 3U] &= static_cast<std::uint8_t>(~(1U << (voxel & 7U)));
+    }
+}
+
+bool VxlMap::implicit_interior(std::uint32_t x, std::uint32_t y,
+                               std::uint32_t z) const noexcept {
+    if (x >= width || y >= depth || z >= height || implicit_bits_.empty()) {
+        return false;
+    }
+    const auto voxel = index(x, y, z);
+    return (implicit_bits_[voxel >> 3U] & (1U << (voxel & 7U))) != 0U;
+}
+
+std::uint32_t VxlMap::color_word(std::size_t voxel, std::uint32_t x, std::uint32_t y,
+                                 std::uint32_t z) const noexcept {
+    const auto stored = colors_[voxel];
+    if (!ground_table_set_ || implicit_bits_.empty() ||
+        (implicit_bits_[voxel >> 3U] & (1U << (voxel & 7U))) == 0U) {
+        return stored;
+    }
+    // vxl.pyd 0x10029C80 / 0x10003390: table[z] + 0x010101 * (rand() & 3),
+    // skipped on the x == 0 / y == 0 edges and the z == 239 bed. The add is
+    // unclamped, so a channel at 253..255 carries into its neighbour exactly
+    // as retail's does. A position hash stands in for rand(): stable across
+    // re-meshes, same 0..3 distribution.
+    std::uint32_t rgb = ground_table_[z];
+    if (x != 0U && y != 0U && z != height - 1U) {
+        auto hash = (x * 73856093U) ^ (y * 19349663U) ^ (z * 83492791U);
+        hash ^= hash >> 13U;
+        hash *= 0x5bd1e995U;
+        hash ^= hash >> 15U;
+        rgb += 0x010101U * (hash & 3U);
+    }
+    return (stored & 0xFF000000U) | (rgb & 0x00FFFFFFU);
+}
+
+std::array<std::uint32_t, VxlMap::height> VxlMap::generate_ground_color_table(
+    std::span<const std::array<std::uint8_t, 4U>> rows) noexcept {
+    std::array<std::uint32_t, height> table{};
+    const auto pack = [](const std::array<std::uint8_t, 4U>& row) {
+        return (static_cast<std::uint32_t>(row[0U]) << 16U) |
+               (static_cast<std::uint32_t>(row[1U]) << 8U) |
+               static_cast<std::uint32_t>(row[2U]);
+    };
+    // The binary's cursor walks an int and writes table[cursor]; bound it to
+    // the table (retail itself overruns for z >= 240 rows).
+    std::int32_t cursor{};
+    const std::array<std::uint8_t, 4U>* previous = nullptr;
+    for (const auto& row : rows) {
+        const auto target = static_cast<std::int32_t>(row[3U]);
+        if (previous == nullptr) {
+            for (; cursor <= target; ++cursor) {
+                if (cursor < static_cast<std::int32_t>(height)) {
+                    table[static_cast<std::size_t>(cursor)] = pack(row);
+                }
+            }
+        } else {
+            const auto previous_z = static_cast<std::int32_t>((*previous)[3U]);
+            for (; cursor <= target; ++cursor) {
+                const double t = static_cast<double>(target - cursor) /
+                                 static_cast<double>(target - previous_z);
+                const double u = 1.0 - t;
+                const auto channel = [&](std::size_t c) {
+                    return static_cast<std::uint32_t>(static_cast<std::int32_t>(
+                               t * static_cast<double>((*previous)[c]) +
+                               u * static_cast<double>(row[c]))) &
+                           0xFFU;
+                };
+                if (cursor < static_cast<std::int32_t>(height)) {
+                    table[static_cast<std::size_t>(cursor)] =
+                        (channel(0U) << 16U) | (channel(1U) << 8U) | channel(2U);
+                }
+            }
+        }
+        previous = &row;
+    }
+    if (previous != nullptr) {
+        // The tail loop writes table[cursor - 1 .. 238] with the last row;
+        // 239 keeps its earlier value.
+        for (auto z = std::max<std::int32_t>(cursor - 1, 0);
+             z < static_cast<std::int32_t>(height) - 1; ++z) {
+            table[static_cast<std::size_t>(z)] = pack(*previous);
+        }
+    }
+    return table;
+}
+
+void VxlMap::set_ground_colors(std::span<const std::array<std::uint8_t, 4U>> rows) noexcept {
+    if (rows.empty()) {
+        ground_table_set_ = false;
+        ground_table_ = {};
+    } else {
+        ground_table_ = generate_ground_color_table(rows);
+        ground_table_set_ = true;
+    }
 }
 
 bool VxlMap::solid(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept {
@@ -207,7 +339,7 @@ std::optional<VxlColor> VxlMap::color(std::uint32_t x, std::uint32_t y,
     if (!solid(x, y, z)) {
         return std::nullopt;
     }
-    const auto value = colors_[index(x, y, z)];
+    const auto value = color_word(index(x, y, z), x, y, z);
     const auto alpha_byte = static_cast<std::uint8_t>(value >> 24U);
     return VxlColor{static_cast<std::uint8_t>(value >> 16U),
                     static_cast<std::uint8_t>(value >> 8U),
@@ -219,6 +351,20 @@ std::optional<VxlColor> VxlMap::color(std::uint32_t x, std::uint32_t y,
 
 std::uint16_t VxlMap::surface_z(std::uint32_t x, std::uint32_t y) const noexcept {
     return x < width && y < depth ? surfaces_[x + y * width] : no_surface;
+}
+
+void VxlMap::write_rgb(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                       VxlColor color_value) noexcept {
+    const auto voxel = index(x, y, z);
+    // Writing a colour makes the cell explicit (retail colours it on exposure).
+    clear_implicit(voxel);
+    auto& stored = colors_[voxel];
+    // Keep the stored alpha byte: it is baked VXL lighting, not part of the
+    // RGB that damage and paint rewrite.
+    stored = (stored & 0xFF000000U) |
+             (static_cast<std::uint32_t>(color_value.red) << 16U) |
+             (static_cast<std::uint32_t>(color_value.green) << 8U) |
+             static_cast<std::uint32_t>(color_value.blue);
 }
 
 bool VxlMap::set_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z,
@@ -233,20 +379,22 @@ bool VxlMap::set_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z,
         (alpha_byte << 24U) | (static_cast<std::uint32_t>(color_value.red) << 16U) |
             (static_cast<std::uint32_t>(color_value.green) << 8U) |
             static_cast<std::uint32_t>(color_value.blue));
-    damage_.erase(static_cast<std::uint32_t>(index(x, y, z)));
+    const auto key = static_cast<std::uint32_t>(index(x, y, z));
+    damaged_.erase(key);
+    user_health_.erase(key);
     ++revision_;
     return true;
 }
 
-bool VxlMap::clear_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
-    if (x >= width || y >= depth || z + 1U >= height || !solid(x, y, z)) {
-        return false;
-    }
+void VxlMap::remove_voxel_bits(std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
     const auto voxel = index(x, y, z);
     solid_bits_[voxel >> 3U] &= static_cast<std::uint8_t>(~(1U << (voxel & 7U)));
     colors_[voxel] = 0U;
-    damage_.erase(static_cast<std::uint32_t>(voxel));
+    clear_implicit(voxel);
+    damaged_.erase(static_cast<std::uint32_t>(voxel));
+    user_health_.erase(static_cast<std::uint32_t>(voxel));
     --solid_voxels_;
+    count_chunk_solid(x, y, z, false);
     auto& surface = surfaces_[x + y * width];
     if (surface == z) {
         surface = no_surface;
@@ -257,19 +405,83 @@ bool VxlMap::clear_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) noex
             }
         }
     }
+}
+
+bool VxlMap::clear_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
+    if (x >= width || y >= depth || z + 1U >= height || !solid(x, y, z)) {
+        return false;
+    }
+    remove_voxel_bits(x, y, z);
     ++revision_;
     return true;
+}
+
+void VxlMap::remove_chroma_markers(std::vector<std::uint32_t>& candidates) noexcept {
+    // vxl.pyd sub_10029FD0 walks y, then x, then z (ascending) and edits in
+    // place. Visit the recorded explicit words in exactly that order.
+    const auto coordinates = [](std::uint32_t voxel) {
+        const auto x = voxel % width;
+        const auto y = (voxel / width) % depth;
+        const auto z = voxel / static_cast<std::uint32_t>(area);
+        return std::array<std::uint32_t, 3U>{x, y, z};
+    };
+    std::sort(candidates.begin(), candidates.end(),
+              [&](std::uint32_t left, std::uint32_t right) {
+                  const auto a = coordinates(left);
+                  const auto b = coordinates(right);
+                  return std::tie(a[1U], a[0U], a[2U]) < std::tie(b[1U], b[0U], b[2U]);
+              });
+    constexpr std::array<std::array<std::int32_t, 2U>, 4U> neighbour_order{{
+        {{0, 1}}, {{0, -1}}, {{1, 0}}, {{-1, 0}},
+    }};
+    for (const auto voxel : candidates) {
+        const auto cell = coordinates(voxel);
+        const auto x = cell[0U];
+        const auto y = cell[1U];
+        const auto z = cell[2U];
+        // The colour must still be a marker when the walk reaches it: an
+        // earlier removal may have repainted this cell from a neighbour.
+        if (!solid(x, y, z) || !is_vxl_chroma_marker(colors_[voxel])) continue;
+        // Both cells above must be air (cells above the map count as air).
+        if (z >= 1U && solid(x, y, z - 1U)) continue;
+        if (z >= 2U && solid(x, y, z - 2U)) continue;
+        remove_voxel_bits(x, y, z);
+        const auto below = z + 1U;
+        if (below >= height || !solid(x, y, below)) continue;
+        // The newly exposed voxel below takes the first solid neighbour
+        // colour at its own height, in the binary's +y, -y, +x, -x order.
+        for (const auto& offset : neighbour_order) {
+            const auto nx = static_cast<std::int64_t>(x) + offset[0U];
+            const auto ny = static_cast<std::int64_t>(y) + offset[1U];
+            if (nx < 0 || ny < 0 || nx >= static_cast<std::int64_t>(width) ||
+                ny >= static_cast<std::int64_t>(depth)) {
+                continue;
+            }
+            const auto ux = static_cast<std::uint32_t>(nx);
+            const auto uy = static_cast<std::uint32_t>(ny);
+            if (!solid(ux, uy, below)) continue;
+            const auto target = index(x, y, below);
+            colors_[target] = color_word(index(ux, uy, below), ux, uy, below);
+            clear_implicit(target);
+            break;
+        }
+    }
 }
 
 std::uint64_t VxlMap::revision() const noexcept { return revision_; }
 
 float VxlMap::damage_fraction(std::uint32_t x, std::uint32_t y,
                               std::uint32_t z) const noexcept {
-    if (!solid(x, y, z)) {
+    const auto damaged = damaged_block(x, y, z);
+    if (!damaged.has_value()) {
         return 0.0F;
     }
-    const auto found = damage_.find(static_cast<std::uint32_t>(index(x, y, z)));
-    return found == damage_.end() ? 0.0F : found->second;
+    const auto initial = initial_health(x, y, z);
+    if (!(initial > 0.0F)) {
+        return 0.0F;
+    }
+    const auto fraction = 1.0F - damaged->health / initial;
+    return std::clamp(fraction, 0.0F, std::nextafter(1.0F, 0.0F));
 }
 
 bool VxlMap::set_damage_fraction(std::uint32_t x, std::uint32_t y,
@@ -283,11 +495,14 @@ bool VxlMap::set_damage_fraction(std::uint32_t x, std::uint32_t y,
     }
     const float bounded = std::min(fraction, std::nextafter(1.0F, 0.0F));
     const auto key = static_cast<std::uint32_t>(index(x, y, z));
-    const auto found = damage_.find(key);
-    if (found != damage_.end() && found->second == bounded) {
+    const auto health = initial_health(x, y, z) * (1.0F - bounded);
+    const auto found = damaged_.find(key);
+    if (found != damaged_.end() && found->second.health == health) {
         return false;
     }
-    damage_[key] = bounded;
+    const auto original = found != damaged_.end() ? found->second.original_color
+                                                  : color(x, y, z).value_or(VxlColor{});
+    damaged_[key] = DamagedBlock{health, original};
     ++revision_;
     return true;
 }
@@ -297,15 +512,168 @@ bool VxlMap::clear_damage(std::uint32_t x, std::uint32_t y,
     if (x >= width || y >= depth || z >= height) {
         return false;
     }
-    if (damage_.erase(static_cast<std::uint32_t>(index(x, y, z))) == 0U) {
+    if (damaged_.erase(static_cast<std::uint32_t>(index(x, y, z))) == 0U) {
         return false;
     }
     ++revision_;
     return true;
 }
 
+void VxlMap::set_health_multiplier(float multiplier) noexcept {
+    health_multiplier_ = std::isfinite(multiplier) && multiplier > 0.0F ? multiplier : 1.0F;
+}
+
+float VxlMap::health_multiplier() const noexcept { return health_multiplier_; }
+
+float VxlMap::initial_health(std::uint32_t x, std::uint32_t y,
+                             std::uint32_t z) const noexcept {
+    if (const auto user = user_block_health(x, y, z); user.has_value()) {
+        return *user;
+    }
+    return default_block_health * health_multiplier_;
+}
+
+std::optional<float> VxlMap::user_block_health(std::uint32_t x, std::uint32_t y,
+                                               std::uint32_t z) const noexcept {
+    if (x >= width || y >= depth || z >= height) {
+        return std::nullopt;
+    }
+    const auto found = user_health_.find(static_cast<std::uint32_t>(index(x, y, z)));
+    return found == user_health_.end() ? std::nullopt : std::optional<float>{found->second};
+}
+
+bool VxlMap::set_user_block_health(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                                   float health) noexcept {
+    if (x >= width || y >= depth || z >= height || !std::isfinite(health)) {
+        return false;
+    }
+    user_health_[static_cast<std::uint32_t>(index(x, y, z))] = health;
+    return true;
+}
+
+bool VxlMap::add_user_block(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                            VxlColor color_value, float health,
+                            bool replace_solids) noexcept {
+    if (x >= width || y >= depth || z > max_damageable_z || !std::isfinite(health)) {
+        return false;
+    }
+    if (!replace_solids && solid(x, y, z)) {
+        return false;
+    }
+    if (!set_voxel(x, y, z, color_value)) {
+        return false;
+    }
+    const auto cell = static_cast<std::uint32_t>(index(x, y, z));
+    if (ugc_user_blocks_) {
+        // is_in_ugc_mode(): user_blocks.pop(key) -- the block is untracked.
+        user_health_.erase(cell);
+        return true;
+    }
+    // is_in_classic_mode(): health = DEFAULT_BLOCK_HEALTH, then the multiplier.
+    const float initial = classic_user_blocks_ ? default_block_health : health;
+    user_health_[cell] = initial * health_multiplier_;
+    return true;
+}
+
+std::optional<DamagedBlock> VxlMap::damaged_block(std::uint32_t x, std::uint32_t y,
+                                                  std::uint32_t z) const noexcept {
+    if (!solid(x, y, z)) {
+        return std::nullopt;
+    }
+    const auto found = damaged_.find(static_cast<std::uint32_t>(index(x, y, z)));
+    return found == damaged_.end() ? std::nullopt : std::optional<DamagedBlock>{found->second};
+}
+
+BlockDamageOutcome VxlMap::add_damage(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                                      float amount) noexcept {
+    if (x >= width || y >= depth || z > max_damageable_z || !std::isfinite(amount) ||
+        amount <= 0.0F || !solid(x, y, z)) {
+        return BlockDamageOutcome::ignored;
+    }
+    const auto key = static_cast<std::uint32_t>(index(x, y, z));
+    auto found = damaged_.find(key);
+    if (found == damaged_.end()) {
+        found = damaged_
+                    .emplace(key, DamagedBlock{initial_health(x, y, z),
+                                               color(x, y, z).value_or(VxlColor{})})
+                    .first;
+    }
+    found->second.health -= amount;
+    if (found->second.health <= 0.0F) {
+        remove_voxel_bits(x, y, z);
+        ++revision_;
+        return BlockDamageOutcome::destroyed;
+    }
+    write_rgb(x, y, z, retail_dim(color(x, y, z).value_or(VxlColor{}), amount));
+    ++revision_;
+    return BlockDamageOutcome::damaged;
+}
+
+bool VxlMap::set_damaged_block(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                               float remaining, VxlColor original) noexcept {
+    if (x >= width || y >= depth || z >= height || !solid(x, y, z) ||
+        !std::isfinite(remaining)) {
+        return false;
+    }
+    damaged_[static_cast<std::uint32_t>(index(x, y, z))] = DamagedBlock{remaining, original};
+    write_rgb(x, y, z, retail_dim(original, initial_health(x, y, z) - remaining));
+    ++revision_;
+    return true;
+}
+
+bool VxlMap::recolor_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                           VxlColor color_value) noexcept {
+    if (x >= width || y >= depth || z >= height || !solid(x, y, z)) {
+        return false;
+    }
+    write_rgb(x, y, z, color_value);
+    ++revision_;
+    return true;
+}
+
 std::uint64_t VxlMap::solid_voxels() const noexcept { return solid_voxels_; }
+
+void VxlMap::count_chunk_solid(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                               bool added) noexcept {
+    // vxl.pyd sub_10003D10: word_13CC4AD8[(x>>4) + 32*((y>>4) + 32*(z>>4))]
+    // counts solids per 16-cube; the +0x3EB34D0 total moves on 0 <-> 1.
+    const auto chunk = static_cast<std::size_t>((x >> 4U) + (width / 16U) *
+                                                ((y >> 4U) + (depth / 16U) * (z >> 4U)));
+    if (chunk >= chunk_solids_.size()) {
+        return;
+    }
+    auto& count = chunk_solids_[chunk];
+    if (added) {
+        if (count++ == 0U) ++non_empty_chunks_;
+    } else if (count > 0U) {
+        if (--count == 0U && non_empty_chunks_ > 0U) --non_empty_chunks_;
+    }
+}
 std::uint32_t VxlMap::source_edge() const noexcept { return source_edge_; }
 std::uint32_t VxlMap::source_z_shift() const noexcept { return source_z_shift_; }
+
+std::uint8_t retail_dim(std::uint8_t value, float damage) noexcept {
+    if (!std::isfinite(damage)) {
+        return value;
+    }
+    // Python 2 round(): halves away from zero, then int().
+    const auto magnitude = static_cast<std::int64_t>(std::floor(std::fabs(damage) + 0.5F));
+    const auto rounded = damage >= 0.0F ? magnitude : -magnitude;
+    const auto channel = static_cast<std::int64_t>(value);
+    // Python's >> floors toward negative infinity.
+    const auto product = channel * rounded;
+    const auto shifted = product >= 0 ? (product >> 3) : -((-product + 7) >> 3);
+    return static_cast<std::uint8_t>(std::clamp<std::int64_t>(channel - shifted, 0, 255));
+}
+
+VxlColor retail_dim(VxlColor color_value, float damage) noexcept {
+    return {retail_dim(color_value.red, damage), retail_dim(color_value.green, damage),
+            retail_dim(color_value.blue, damage), color_value.alpha};
+}
+
+bool is_vxl_chroma_marker(std::uint32_t color_value) noexcept {
+    const auto masked = color_value & 0x00F0F0F0U;
+    return masked == 0x0000F000U || masked == 0x000000F0U;
+}
 
 } // namespace battlespades::world

@@ -278,4 +278,78 @@ std::array<float, 3U> EmissiveVolume::sample(float x, float y, float z) const no
             channel(cells_[index + 2U])};
 }
 
+std::array<float, 3U> EmissiveVolume::sample_filtered(float x, float y,
+                                                      float z) const noexcept {
+    std::array<float, 3U> result{};
+    if (sources_ == 0U || cells_.empty() || !std::isfinite(x) || !std::isfinite(y) ||
+        !std::isfinite(z)) {
+        return result;
+    }
+    // GL_LINEAR with clamp-to-edge: texel centres sit at (i + 0.5) cells.
+    struct Axis final {
+        std::uint32_t low{};
+        std::uint32_t high{};
+        float weight{};
+    };
+    const auto axis = [](float value, std::uint32_t limit) {
+        const float texel = std::clamp(value / static_cast<float>(cell_size) - 0.5F, 0.0F,
+                                       static_cast<float>(limit) - 1.0F);
+        Axis sampled;
+        sampled.low = static_cast<std::uint32_t>(std::floor(texel));
+        sampled.high = std::min(sampled.low + 1U, limit - 1U);
+        sampled.weight = texel - static_cast<float>(sampled.low);
+        return sampled;
+    };
+    const auto ax = axis(x, width);
+    const auto ay = axis(y, depth);
+    const auto az = axis(z, height);
+    for (std::uint32_t corner{}; corner < 8U; ++corner) {
+        const bool hx = (corner & 1U) != 0U;
+        const bool hy = (corner & 2U) != 0U;
+        const bool hz = (corner & 4U) != 0U;
+        const float weight = (hx ? ax.weight : 1.0F - ax.weight) *
+                             (hy ? ay.weight : 1.0F - ay.weight) *
+                             (hz ? az.weight : 1.0F - az.weight);
+        if (weight <= 0.0F) {
+            continue;
+        }
+        const auto index = cell_index(hx ? ax.high : ax.low, hy ? ay.high : ay.low,
+                                      hz ? az.high : az.low) *
+                           4U;
+        for (std::size_t channel_index{}; channel_index < 3U; ++channel_index) {
+            result[channel_index] += weight * channel(cells_[index + channel_index]);
+        }
+    }
+    return result;
+}
+
+ModelLightSample sample_model_light(const StaticLightField* placed,
+                                    const EmissiveVolume* cast,
+                                    std::array<float, 3U> position) noexcept {
+    ModelLightSample result;
+    if (!std::isfinite(position[0U]) || !std::isfinite(position[1U]) ||
+        !std::isfinite(position[2U])) {
+        return result;
+    }
+    if (placed != nullptr && !placed->empty()) {
+        result.placed = placed->sample(position[0U], position[1U], position[2U]);
+    }
+    if (cast != nullptr && !cast->empty()) {
+        result.cast = cast->sample_filtered(position[0U], position[1U], position[2U]);
+    }
+    return result;
+}
+
+std::array<float, 3U> model_light_rgb(const ModelLightSample& sample, float placed_gain,
+                                      float cast_gain) noexcept {
+    std::array<float, 3U> result{};
+    const float placed_scale = std::isfinite(placed_gain) ? std::max(placed_gain, 0.0F) : 0.0F;
+    const float cast_scale = std::isfinite(cast_gain) ? std::max(cast_gain, 0.0F) : 0.0F;
+    for (std::size_t channel_index{}; channel_index < 3U; ++channel_index) {
+        result[channel_index] = sample.placed[channel_index] * placed_scale +
+                                sample.cast[channel_index] * cast_scale;
+    }
+    return result;
+}
+
 } // namespace battlespades::world

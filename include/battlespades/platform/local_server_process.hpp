@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace battlespades::platform {
 
@@ -58,11 +59,43 @@ struct LocalServerLaunchConfig final {
     /** Allowlisted child-only environment used for public relay registration. */
     std::map<std::string, std::string, std::less<>> environment_overrides;
     std::optional<LocalMapCreatorLaunchConfig> map_creator{};
+    /**
+     * Authored Map Creator triplet (`<map_name>.vxl/.txt/.ugc`, optional
+     * `.png`) hosted from Create Match's Saved/Subscribed Maps. start()
+     * copies the regular, non-symlink files into `<session>/maps` and points
+     * the child's `[world] maps_path` at it; stock maps leave this empty.
+     */
+    std::vector<std::filesystem::path> custom_map_files{};
+    /** `[world] maps_path` written into the TOML; start() fills it for custom maps. */
+    std::filesystem::path maps_path{};
 };
+
+/**
+ * Validates an authored map's source files: 3-4 distinct regular,
+ * non-symlink files whose stem equals `map_name`, drawn from .vxl/.txt/.ugc
+ * (all required) and .png (optional). Returns an empty string when valid.
+ */
+[[nodiscard]] std::string validate_custom_map_files(
+    std::string_view map_name, const std::vector<std::filesystem::path>& files);
 
 /** Resolve an explicit bundle or the newest complete staged release by executable age. */
 [[nodiscard]] std::optional<std::filesystem::path>
 find_local_server_bundle(const std::filesystem::path& root);
+
+/** Address allocate_local_server_port() binds when it probes a port. */
+enum class LocalServerPortProbe : std::uint8_t {
+    /** Default and product behaviour: probe 0.0.0.0, the address the hosted server binds. */
+    all_interfaces,
+    /**
+     * Test-only: probe 127.0.0.1. A loopback bind never raises the Windows
+     * Firewall prompt, so tests that only need a free port for an owned
+     * child use this. It can miss a conflict on another interface.
+     */
+    loopback_only,
+};
+
+/** Process-wide; call it before any start(). The product never calls it. */
+void set_local_server_port_probe(LocalServerPortProbe probe) noexcept;
 
 /** Returns the first exclusively bindable UDP port at or after `preferred`. */
 [[nodiscard]] std::uint16_t allocate_local_server_port(std::uint16_t preferred,

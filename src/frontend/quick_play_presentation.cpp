@@ -159,7 +159,9 @@ void append_back(ui::DrawList& list, WidgetVisualState state) {
                      TextureFilter::linear,
                      UiTextureAnchor::center,
                      global_scale,
-                     color(white, intensity)));
+                     // NavigationBar.draw_item tints the icon with the
+                     // label's MENU_FONT_COLOR2 glColor.
+                     color(navigation_text, intensity)));
     list.push(text("BACK",
                    main_menu_assets::button_font,
                    DrawRect{84.0, 541.0, 48.0, 32.0},

@@ -1,5 +1,6 @@
 #include "battlespades/frontend/match_overlays.hpp"
 #include "battlespades/frontend/player_progression.hpp"
+#include "battlespades/frontend/retail_hud_rules.hpp"
 #include "battlespades/world/map_catalog.hpp"
 
 #include <algorithm>
@@ -16,13 +17,16 @@ namespace battlespades::frontend {
 
 std::optional<std::string_view> match_result_audio_stem(
     std::int32_t winner_team, std::uint8_t local_team) noexcept {
-    if ((winner_team != 2U && winner_team != 3U) ||
-        (local_team != 2U && local_team != 3U)) {
-        return std::nullopt;
+    // ViewGameStats.play_win_loose_sound (hud.pyd 0x10070c00, L330-351):
+    // win/lose come from the team scores (TEAM_NEUTRAL for both on a draw);
+    // the local team hears mu_lose_game only when it is the losing team, and
+    // every other case -- winner, draw, spectator -- falls to mu_win_game.
+    const bool decided = winner_team == 2 || winner_team == 3;
+    const std::int32_t loser_team = winner_team == 2 ? 3 : 2;
+    if (decided && static_cast<std::int32_t>(local_team) == loser_team) {
+        return std::optional<std::string_view>{"mu_lose_game"};
     }
-    return winner_team == local_team
-               ? std::optional<std::string_view>{"mu_win_game"}
-               : std::optional<std::string_view>{"mu_lose_game"};
+    return std::optional<std::string_view>{"mu_win_game"};
 }
 
 std::int32_t match_result_winner_from_scores(
@@ -66,6 +70,40 @@ void truncate_utf8_bytes(std::string& text, std::size_t limit) {
     return static_cast<std::size_t>(std::ranges::count_if(text, [](char character) {
         return (static_cast<unsigned char>(character) & 0xC0U) != 0x80U;
     }));
+}
+
+/** Byte length of the UTF-8 sequence starting at `offset`. */
+[[nodiscard]] std::size_t utf8_sequence_length(std::string_view text,
+                                               std::size_t offset) noexcept {
+    auto end = offset + 1U;
+    while (end < text.size() && (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U) {
+        ++end;
+    }
+    return end - offset;
+}
+
+/**
+ * Byte offsets that wrap `text` into lines of at most `width` characters,
+ * breaking after the last space that fits and hard-cutting a longer word.
+ */
+[[nodiscard]] std::vector<std::size_t> wrap_offsets(std::string_view text, std::size_t width) {
+    std::vector<std::size_t> cuts;
+    std::size_t line_start{};
+    while (utf8_code_points(text.substr(line_start)) > width) {
+        std::size_t offset{line_start};
+        std::size_t characters{};
+        std::size_t last_space_end{};
+        while (offset < text.size() && characters < width) {
+            const auto length = utf8_sequence_length(text, offset);
+            if (text[offset] == ' ') last_space_end = offset + length;
+            offset += length;
+            ++characters;
+        }
+        const auto cut = last_space_end > line_start ? last_space_end : offset;
+        cuts.push_back(cut);
+        line_start = cut;
+    }
+    return cuts;
 }
 
 /** Exact ViewGameStats.draw_rank_ups Font.scale curve (A1075..A1078). */
@@ -552,49 +590,109 @@ std::string_view retail_game_stat_award_label(
 
 std::string_view retail_scoreboard_mode_title(std::uint8_t mode_type,
                                               bool classic) noexcept {
-    // shared.constants_gamemode.MODE_TITLE owns ordinals 1..10/12. Classic
-    // CTF is the deliberate exception: retail reconstructs it from the
-    // InitialInfo.classic byte because MODE_MODE_IDS aliases cctf to CTF.
+    // ViewScores/ViewGameStats.set_mode_text (hud.pyd 0x1005e080 /
+    // 0x10066870): `for k, v in MODE_TITLE.iteritems(): if k == current_mode:
+    // mode_text = strings.get_by_id(v)`. MODE_TITLE (constants_gamemode.py)
+    // has no MODE_CCTF entry and never reads InitialInfo.classic, so Classic
+    // CTF (wire mode 8) shows CTF_TITLE. MODE_NORMAL (None), 11 and unknown
+    // ids keep the menu's own title (SCORES). The returned value is a string
+    // table key; the text pass localises it.
+    static_cast<void>(classic);
     switch (mode_type) {
     case 1U:
-        return "Demolition!";
+        return "DEMOLITION_TITLE";
     case 2U:
-        return "Zombie!";
+        return "ZOMBIE_MODE_TITLE";
     case 3U:
-        return "Multi-Hill!";
+        return "MULTIHILL_TITLE";
     case 4U:
-        return "Occupation!";
+        return "OCCUPATION_MODE_TITLE";
     case 5U:
-        return "Diamond Mine!";
+        return "DIAMOND_MINE_TITLE";
     case 6U:
-        return "Team Deathmatch!";
+        return "TDM_TITLE";
     case 7U:
-        return "VIP";
+        return "VIP_MODE_TITLE";
     case 8U:
-        return classic ? "Classic CTF" : "Capture the Flag";
+        return "CTF_TITLE";
     case 9U:
-        return "Territory Control";
+        return "TC_TITLE";
     case 10U:
-        return "Tutorial";
-    case 11U:
-        // MODE_CCTF exists in frontend tables even though the stock wire map
-        // normally represents it as MODE_CTF + InitialInfo.classic.
-        return "Classic CTF";
+        return "TUTORIAL_MODE_TITLE";
     case 12U:
-        return "Map Creator";
+        return "MAP_CREATOR";
     default:
-        return "Scores";
+        return "SCORES";
     }
+}
+
+ui::ColorRgba8 localised_message_lane_color(
+    std::uint8_t chat_type, ui::ColorRgba8 local_team_color) noexcept {
+    constexpr ui::ColorRgba8 white{255U, 255U, 255U, 255U};
+    switch (static_cast<RetailChatType>(chat_type)) {
+    case RetailChatType::system:
+        return retail_server_message_color;
+    case RetailChatType::team:
+        return retail_blend_color(local_team_color, white, 0.4);
+    default:
+        return white;
+    }
+}
+
+ChatMessageLane chat_message_lane(std::uint8_t chat_type,
+                                  std::uint8_t player_id) noexcept {
+    switch (static_cast<RetailChatType>(chat_type)) {
+    case RetailChatType::system:
+        return ChatMessageLane::server_message;
+    case RetailChatType::big:
+        return ChatMessageLane::big_message;
+    case RetailChatType::all:
+    case RetailChatType::team:
+        // The wire byte is compared with -1: 0xFF is the server itself.
+        return player_id == 0xFFU ? ChatMessageLane::server_chat
+                                  : ChatMessageLane::player_chat;
+    }
+    return ChatMessageLane::ignored;
 }
 
 void GameChatModel::add(std::string message, ui::ColorRgba8 color) {
     if (message.empty()) return;
-    truncate_utf8_bytes(message, 200U);
-    if (entries_.size() == maximum_entries) entries_.pop_back();
-    // Retail inserts at zero: index zero is always the newest chat line.
-    entries_.insert(entries_.begin(),
-                    ChatFeedEntry{std::move(message), color,
-                                  entry_lifetime_seconds, {}, false});
+    // The server accepts 200 UTF-8 characters per line (up to 800 bytes);
+    // bound bytes at that worst case instead of cutting non-Latin text.
+    truncate_utf8_bytes(message, 800U);
+    push_entry(ChatFeedEntry{std::move(message), color, entry_lifetime_seconds, {}, false});
+}
+
+void GameChatModel::push_entry(ChatFeedEntry entry) {
+    // MAX_CHAT_SIZE wraps a long line onto further feed lines. The first
+    // piece is inserted first so it sits above its continuation.
+    const auto cuts = wrap_offsets(entry.text, wrap_code_points);
+    std::vector<ChatFeedEntry> lines;
+    lines.reserve(cuts.size() + 1U);
+    std::size_t start{};
+    for (std::size_t index{}; index <= cuts.size(); ++index) {
+        const auto end = index < cuts.size() ? cuts[index] : entry.text.size();
+        ChatFeedEntry line{entry.text.substr(start, end - start), entry.color,
+                           entry.time_to_live_seconds, {}, entry.use_tuffy_font};
+        // Keep each run's colour for the bytes that landed on this line.
+        std::size_t run_start{};
+        for (const auto& run : entry.runs) {
+            const auto run_end = run_start + run.text.size();
+            const auto from = std::max(run_start, start);
+            const auto to = std::min(run_end, end);
+            if (from < to) {
+                line.runs.push_back({run.text.substr(from - run_start, to - from), run.color});
+            }
+            run_start = run_end;
+        }
+        lines.push_back(std::move(line));
+        start = end;
+    }
+    for (auto& line : lines) {
+        if (entries_.size() == maximum_entries) entries_.pop_back();
+        // Retail inserts at zero: index zero is always the newest chat line.
+        entries_.insert(entries_.begin(), std::move(line));
+    }
 }
 
 void GameChatModel::add_player_message(std::string sender,
@@ -604,21 +702,18 @@ void GameChatModel::add_player_message(std::string sender,
                                        std::uint8_t local_language) {
     if (sender.empty() || message.empty()) return;
     truncate_utf8_bytes(sender, 64U);
-    truncate_utf8_bytes(message, 200U);
+    truncate_utf8_bytes(message, 800U);
     const auto prefix = sender + ": ";
     const auto body_color = team_message
                                 ? retail_blend_color(
                                       sender_color,
                                       {255U, 255U, 255U, 255U}, 0.4)
                                 : ui::ColorRgba8{255U, 255U, 255U, 255U};
-    if (entries_.size() == maximum_entries) entries_.pop_back();
-    entries_.insert(entries_.begin(),
-                    ChatFeedEntry{prefix + message,
-                                  body_color,
-                                  entry_lifetime_seconds,
-                                  {{prefix, sender_color},
-                                   {std::move(message), body_color}},
-                                  chat_language_requires_tuffy(local_language)});
+    push_entry(ChatFeedEntry{prefix + message,
+                             body_color,
+                             entry_lifetime_seconds,
+                             {{prefix, sender_color}, {std::move(message), body_color}},
+                             chat_language_requires_tuffy(local_language)});
 }
 
 void GameChatModel::tick(double elapsed_seconds) noexcept {
@@ -640,16 +735,33 @@ void GameChatModel::cancel() noexcept {
 }
 
 bool GameChatModel::append_text(std::string_view utf8) {
-    if (!active_ || utf8.empty() ||
-        input_.size() + utf8.size() > maximum_input_bytes ||
-        utf8_code_points(input_) + utf8_code_points(utf8) > maximum_input_code_points ||
-        utf8.find('\0') != std::string_view::npos ||
-        utf8.find('\r') != std::string_view::npos ||
-        utf8.find('\n') != std::string_view::npos) {
+    if (!active_ || utf8.empty()) {
         return false;
     }
-    input_.append(utf8);
-    return true;
+    // HUD.on_text: one character at a time, while the text is shorter than
+    // MAX_CHAT_MESSAGE_LENGTH and chat_font.contains_character accepts it.
+    bool appended{};
+    auto characters = utf8_code_points(input_);
+    for (std::size_t offset{}; offset < utf8.size();) {
+        const auto length = utf8_sequence_length(utf8, offset);
+        const auto character = utf8.substr(offset, length);
+        offset += length;
+        if (character.front() == '\0' || character.front() == '\r' ||
+            character.front() == '\n') {
+            continue;
+        }
+        if (characters >= maximum_input_code_points ||
+            input_.size() + character.size() > maximum_input_bytes) {
+            break;
+        }
+        if (glyph_filter_ && !glyph_filter_(character)) {
+            continue;
+        }
+        input_.append(character);
+        ++characters;
+        appended = true;
+    }
+    return appended;
 }
 
 bool GameChatModel::erase_code_point() noexcept {
@@ -747,8 +859,8 @@ ui::DrawList GameChatPresentation::build(
                             ui::HorizontalTextAlignment::left,
                             ui::VerticalTextAlignment::baseline);
         const auto channel = model.channel() == ChatChannel::team
-                                 ? std::string_view{"Team chat:"}
-                                 : std::string_view{"Global chat:"};
+                                 ? std::string_view{team_label_}
+                                 : std::string_view{global_label_};
         append_stroked_text(list, channel,
                             {left, channel_baseline, width, line_height},
                             {255U, 255U, 255U, 255U}, standard_font, 12.0,
@@ -760,6 +872,20 @@ ui::DrawList GameChatPresentation::build(
 
 std::string GenericVotingModel::decode_retail_literal(
     std::string_view encoded) {
+    return decode_retail_literal(encoded, {});
+}
+
+std::string GenericVotingModel::decode_retail_literal(
+    std::string_view encoded, const RetailStringLookup& localize) {
+    // GenericVotingHUD.decode_string resolves ids through strings.get_by_id;
+    // the English table is only the fallback when no language pack is bound.
+    const auto resolve = [&localize](std::string_view id) -> std::string {
+        if (localize) {
+            auto value = localize(id);
+            if (!value.empty() && value != id) return value;
+        }
+        return std::string{retail_english_string(id)};
+    };
     encoded = trim(encoded);
     if (encoded.empty()) return {};
     const auto literal = RetailLiteralParser{encoded}.parse();
@@ -794,12 +920,11 @@ std::string GenericVotingModel::decode_retail_literal(
                 auto argument =
                     literal_argument(literal->children[1U].children[index]);
                 if (localized_argument_indexes.contains(index)) {
-                    argument = retail_english_string(argument);
+                    argument = resolve(argument);
                 }
                 arguments.push_back(std::move(argument));
             }
-            return format_retail_string(retail_english_string(identifier),
-                                        arguments);
+            return format_retail_string(resolve(identifier), arguments);
         }
     }
     // Retail raised here. The port preserves printable operator text as inert
@@ -826,7 +951,7 @@ void GenericVotingModel::apply(
         for (const auto& candidate : packet.candidates) {
             if (replacement.size() == 3U) break;
             replacement.push_back(
-                {candidate.name, decode_retail_literal(candidate.name),
+                {candidate.name, decode_retail_literal(candidate.name, localize_),
                  candidate.votes});
         }
         choices_ = std::move(replacement);
@@ -850,8 +975,8 @@ void GenericVotingModel::apply(
         // show(True) in this exact order before saving the scene-level flags.
         clear();
         can_vote_ = packet.can_vote;
-        title_ = decode_retail_literal(packet.title);
-        description_ = decode_retail_literal(packet.description);
+        title_ = decode_retail_literal(packet.title, localize_);
+        description_ = decode_retail_literal(packet.description, localize_);
         replace_candidates();
         allow_revote_ = packet.allow_revote;
         hide_after_vote_ = packet.hide_after_vote;
@@ -869,7 +994,7 @@ void GenericVotingModel::apply(
         visible_ = false;
         // CLOSED immediately replaces show(False) with a six-second,
         // server-authored result message. It does not clear the candidate list.
-        result_text_ = decode_retail_literal(packet.title);
+        result_text_ = decode_retail_literal(packet.title, localize_);
         voted_message_seconds_ = closed_result_seconds;
         visible_ = true;
         break;
@@ -936,6 +1061,9 @@ ui::DrawList GenericVotingPresentation::build(
     const GenericVotingModel& model, ui::PixelExtent window,
     const std::array<std::string, 3U>& keys) const {
     ui::DrawList list;
+    // GenericVotingHUD draws the title, description, keys, candidates and
+    // tallies in MENU_FONT_COLOR cream (244,236,187), not white (live A/B).
+    constexpr ui::ColorRgba8 ballot_text_color{244U, 236U, 187U, 255U};
     if (!model.visible()) return list;
     list.reserve(16U);
     constexpr ui::DrawSpace space{ui::DrawSpace::window_pixels};
@@ -961,7 +1089,7 @@ ui::DrawList GenericVotingPresentation::build(
                             result_height},
                            26.0,
                            space, ui::HorizontalTextAlignment::center,
-                           {255U, 255U, 255U, 255U}, "fonts/Spades.ttf",
+                           ballot_text_color, "fonts/Spades.ttf",
                            ui::TextTransform::preserve,
                            ui::TextFit::retail_width_scale,
                            ui::VerticalTextAlignment::baseline);
@@ -978,7 +1106,7 @@ ui::DrawList GenericVotingPresentation::build(
     list.push(text(std::string{model.title()},
                    {x, top_baseline(title_y + 70.0 / 3.0), width - 10.0, 70.0},
                    26.0, space, ui::HorizontalTextAlignment::center,
-                   {255U, 255U, 255U, 255U}, "fonts/Spades.ttf",
+                   ballot_text_color, "fonts/Spades.ttf",
                    ui::TextTransform::preserve,
                    ui::TextFit::retail_width_scale,
                    ui::VerticalTextAlignment::baseline));
@@ -987,7 +1115,7 @@ ui::DrawList GenericVotingPresentation::build(
         std::string{model.description()},
         {x + 5.0, top_baseline(description_y), width - 5.0, 80.0}, 26.0,
         space, ui::HorizontalTextAlignment::center,
-        {255U, 255U, 255U, 255U}, "fonts/Spades.ttf",
+        ballot_text_color, "fonts/Spades.ttf",
         ui::TextTransform::preserve, ui::TextFit::retail_width_scale,
         ui::VerticalTextAlignment::baseline);
     description.maximum_lines = 0U;
@@ -1012,7 +1140,7 @@ ui::DrawList GenericVotingPresentation::build(
             list.push(text("[" + keys[index] + "] ",
                            {candidate_x, row_baseline, 25.0, 30.0}, 26.0,
                            space, ui::HorizontalTextAlignment::left,
-                           {255U, 255U, 255U, 255U}, "fonts/Spades.ttf",
+                           ballot_text_color, "fonts/Spades.ttf",
                            ui::TextTransform::preserve,
                            ui::TextFit::retail_width_scale,
                            ui::VerticalTextAlignment::baseline));
@@ -1022,14 +1150,14 @@ ui::DrawList GenericVotingPresentation::build(
                        {candidate_x + candidate_offset, row_baseline,
                         candidate_text_width, 30.0},
                        26.0, space, ui::HorizontalTextAlignment::left,
-                       {255U, 255U, 255U, 255U}, "fonts/Spades.ttf",
+                       ballot_text_color, "fonts/Spades.ttf",
                        ui::TextTransform::preserve,
                        ui::TextFit::retail_width_scale,
                        ui::VerticalTextAlignment::baseline));
         const auto count_color =
             model.voted_index().has_value() && *model.voted_index() == index
                 ? ui::ColorRgba8{0U, 255U, 0U, 255U}
-                : ui::ColorRgba8{255U, 255U, 255U, 255U};
+                : ballot_text_color;
         list.push(text("[" + std::to_string(model.choices()[index].votes) + "]",
                        {width - 50.0, row_baseline, 25.0, 30.0}, 26.0,
                        space, ui::HorizontalTextAlignment::left, count_color,
@@ -1417,7 +1545,7 @@ ui::DrawList MatchResultsPresentation::build(
     // ViewGameStats.draw is composited over the live GameScene. Retail does
     // not add the fabricated full-screen black veil that used to live here.
     std::string result_title = retail_match_result_message(
-        state, model.message_id(), model.winner_team());
+        state, model.message_id(), model.winner_team(), localize);
     // The 1098x344 frame is loaded at int(source * 0.64), centre anchored,
     // then blitted at retail bottom-left point (400, 110).
     constexpr double frame_x{49.0};
@@ -1552,8 +1680,13 @@ ui::DrawList MatchResultsPresentation::build(
                            ui::TextTransform::preserve,
                            ui::TextFit::retail_width_scale,
                            ui::VerticalTextAlignment::baseline));
-            list.push(text(std::string{retail_game_stat_award_label(
-                               awards[index].stat_type)},
+            // GAME_STAT_TYPES identifier: the text pass resolves it through
+            // the active language pack (English falls back to the label).
+            const auto award_key = retail_game_stat_award_key(awards[index].stat_type);
+            list.push(text(award_key.empty()
+                               ? std::string{retail_game_stat_award_label(
+                                     awards[index].stat_type)}
+                               : std::string{award_key},
                            {x + 104.2, text_baseline, 204.8, 0.0}, 11.0,
                            ui::DrawSpace::design_pixels,
                            ui::HorizontalTextAlignment::left, player_tint,
@@ -1591,7 +1724,12 @@ ui::DrawList MatchResultsPresentation::build(
 
     const auto rank_up = model.rank_up_frame();
     if (!rank_up.has_value()) {
-        list.push(text("Press TAB to show scores",
+        // ViewGameStats.draw: draw_text_with_alignment_and_size_validation(
+        //   translate_controls_in_message(strings.SHOW_SCORES), 300, 25, 200,
+        //   18, MENU_FONT_COLOR, big_aldo_ui_font, center, center).
+        list.push(text(show_scores_text.empty()
+                           ? std::string{retail_default_show_scores_text}
+                           : show_scores_text,
                        {300.0, 557.0, 200.0, 18.0}, 18.0,
                        ui::DrawSpace::design_pixels,
                        ui::HorizontalTextAlignment::center,
@@ -1664,7 +1802,13 @@ ui::DrawList MatchResultsPresentation::build(
 
     // Retail builds this label from strings.LEVEL (English: "Level") and
     // right-aligns it inside draw_progress_bar's 150 px label box.
-    auto level = text("Level " + std::to_string(rank_up->level),
+    std::string level_label{"Level"};
+    if (localize) {
+        if (auto value = localize("LEVEL"); !value.empty() && value != "LEVEL") {
+            level_label = std::move(value);
+        }
+    }
+    auto level = text(level_label + " " + std::to_string(rank_up->level),
                       {567.0, 553.0, 150.0, 20.0}, 14.0,
                        ui::DrawSpace::design_pixels,
                        ui::HorizontalTextAlignment::right, rank_text_color,

@@ -109,6 +109,15 @@ struct ChunkMesherConfig final {
      */
     const StaticLightField* static_lights{};
     /**
+     * Bake `static_lights` with retail's vertex kernel (vxl.pyd 0x10022360):
+     * the single strongest light, `att = 1 - d^2/r^2` from the light voxel's
+     * centre, times max(0, N.L) against retail's own face-normal codes, into
+     * `static_light` RGB, with `directional_influence = att` (0 when N.L <= 0)
+     * so map_frag fades the two directional lights out at a lit vertex.
+     * Off for the enhanced tiers, whose shader adds the older summed field.
+     */
+    bool retail_static_light_kernel{false};
+    /**
      * Indexed by ChunkVertex::face for optional baked model/effect shading.
      */
     std::array<float, 6U> face_shade{0.85F, 0.85F, 0.75F, 0.75F, 1.00F, 0.60F};

@@ -166,10 +166,12 @@ void append_back(ui::DrawList& list, DrawRect bounds, WidgetVisualState state) {
         state == WidgetVisualState::hovered || state == WidgetVisualState::pressed;
     const auto intensity = highlighted ? std::uint16_t{1'000U} : std::uint16_t{700U};
     const auto pressed_offset = state == WidgetVisualState::pressed ? 1.0 : 0.0;
+    // NavigationBar.draw_item: the label sits PAD/2 after the icon (x+30),
+    // and the icon shares its MENU_FONT_COLOR2 glColor.
     list.push(text("BACK",
-                   {bounds.x + 35.0,
+                   {bounds.x + 30.0,
                     bounds.y + pressed_offset,
-                    bounds.width - 35.0,
+                    bounds.width - 30.0,
                     bounds.height},
                    24.0,
                    gold,
@@ -185,7 +187,7 @@ void append_back(ui::DrawList& list, DrawRect bounds, WidgetVisualState state) {
                      TextureFilter::linear,
                      UiTextureAnchor::center,
                      global_scale,
-                     color(white, intensity)));
+                     color(gold, intensity)));
 }
 
 void append_panel(ui::DrawList& list,

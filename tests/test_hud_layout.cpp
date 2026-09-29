@@ -1080,8 +1080,10 @@ void test_new_widgets_reach_the_draw_list() {
     const auto* parachute = find_sprite("png/ui/weapons/parachute.png");
     expect(disguise != nullptr && parachute != nullptr,
            "active disguise and parachute status icons reach the draw list");
-    expect_near(disguise->destination.width, 211.0 * 0.15,
-                "status tool uses truncated global image scale before draw scale");
+    // TOOL_IMAGES load at scale 1.0: glScalef(0.15) on the 330 px art
+    // (live A/B 2026-09-29: the 0.64-shrunk 31 px chute was ~60% of retail).
+    expect_near(disguise->destination.width, 330.0 * 0.15,
+                "status tool draws the unshrunk 330 px TOOL_IMAGES art at 0.15");
     expect(disguise->destination == parachute->destination,
            "the two active-equipment icons intentionally share retail geometry");
     const auto* fuel = find_sprite("png/ui/jetpack_fuel/jetpack_fuel_bar.png");
@@ -1191,8 +1193,8 @@ void test_new_widgets_reach_the_draw_list() {
     expect_near(big_frame->destination.width,
                 40.0 + std::string_view{"Blue took the intel"}.size() * 10.0,
                 "big-text frame follows shaped content width plus forty");
-    expect_near(big_frame->destination.height, 58.0,
-                "one big-text line keeps the authored frame height");
+    expect_near(big_frame->destination.height, 58.0 * 0.64,
+                "one big-text line keeps the frame's global_scale load height");
     std::vector<const battlespades::ui::TextDrawCommand*> big_text_draws;
     for (const auto& command : list.commands()) {
         const auto* draw =
@@ -1264,10 +1266,16 @@ void test_new_widgets_reach_the_draw_list() {
            "rotated minimap overlays retain the retail 128px raster clip");
     expect(zone_icon != nullptr,
            "server-authored objective zone icon reaches the minimap");
-    expect(zone_icon->clip_pixels == expected_minimap_clip,
-           "objective icons cannot bleed outside the minimap viewport");
-    expect_near(zone_icon->destination.width, 16.0 * 0.6,
-                "zone icon starts at the recovered sin phase scale");
+    // Live retail captures (Diamond Mine drop-off, TC letters, 2026-09-27)
+    // show zone icons spilling over the minimap frame: they are not clipped.
+    expect(!zone_icon->clip_pixels.has_value(),
+           "objective zone icons draw unclipped, like retail");
+    // MinimapZone.draw keeps icon.scale and pulses icon.opacity:
+    // int((sin(phase) * 0.4 + 0.6) * 255), 0.6 at phase 0.
+    expect_near(zone_icon->destination.width, 16.0,
+                "zone icon keeps its packet icon_scale (no size pulse)");
+    expect(zone_icon->modulation.opacity_per_mille == 600U,
+           "zone icon opacity starts at the recovered sin phase 0.6");
     expect(intel_corner != nullptr,
            "green carrier receives the opposing blue intel corner icon");
     expect_near(intel_corner->destination.x, 1600.0 - 80.0 - 45.0,
@@ -1377,12 +1385,28 @@ void test_new_widgets_reach_the_draw_list() {
                queued_messages.big_message().pending.size() == 1U &&
                queued_messages.big_message().pending.front().text == "second",
            "a burst preserves the current big message and queues the next one");
-    for (int tick{}; tick < 239; ++tick) queued_messages.tick();
+    for (int tick{}; tick < 89; ++tick) queued_messages.tick();
     expect(queued_messages.big_message().text == "first",
-           "a queued CHAT_BIG message must not truncate retail's four-second display");
+           "a queued CHAT_BIG line keeps BIG_TEXT_MIN_DURATION (1.5 s) of dwell");
     queued_messages.tick();
     expect(queued_messages.big_message().text == "second",
-           "the deferred big message promotes when the current duration ends");
+           "HUD.update swaps to the queued line once big_text_time > 1.5 s");
+    for (int tick{}; tick < 239; ++tick) queued_messages.tick();
+    expect(queued_messages.big_message().text == "second",
+           "with nothing queued a line runs its full four-second duration");
+    queued_messages.tick();
+    expect(queued_messages.big_message().text.empty(),
+           "the big text clears when its own duration ends");
+
+    GameHudModel short_message;
+    short_message.set_big_message("short", false, 1.0);
+    short_message.set_big_message("next");
+    for (int tick{}; tick < 59; ++tick) short_message.tick();
+    expect(short_message.big_message().text == "short",
+           "min dwell is min(duration, 1.5)");
+    short_message.tick();
+    expect(short_message.big_message().text == "next",
+           "a one-second line yields after one second");
 
     GameHudModel bounded_messages;
     bounded_messages.set_big_message("active");
@@ -1390,9 +1414,12 @@ void test_new_widgets_reach_the_draw_list() {
         bounded_messages.set_big_message("queued" + std::to_string(index));
     }
     expect(bounded_messages.big_message().pending.size() == 6U &&
-               bounded_messages.big_message().pending.front().text == "queued2" &&
+               bounded_messages.big_message().pending.front().text == "queued0" &&
                bounded_messages.big_message().pending.back().text == "queued7",
-           "CHAT_BIG must retain hud.pyd's six-row bounded FIFO under bursts");
+           "CHAT_BIG overflow pops the newest queued row (list.pop()) before appending");
+    for (int tick{}; tick < 90; ++tick) bounded_messages.tick();
+    expect(bounded_messages.big_message().text == "queued7",
+           "retail list.pop() shows the newest queued row next");
 
     bounded_messages.set_big_message("override", true);
     expect(bounded_messages.big_message().text == "override" &&
@@ -1541,8 +1568,8 @@ void test_vip_banner_uses_retail_big_text_independently_from_score() {
     expect(frame->destination == battlespades::ui::DrawRect{
                                      400.0 -
                                          (40.0 + vip_text.size() * 10.0) * 0.5,
-                                     490.5,
-                                     40.0 + vip_text.size() * 10.0, 58.0},
+                                     519.5 - 58.0 * 0.64 * 0.5,
+                                     40.0 + vip_text.size() * 10.0, 58.0 * 0.64},
            "VIP frame uses draw_big_text at bottom-origin W/2, 90");
     expect(text_draws.size() == 2U,
            "VIP label emits source Label.draw_shadowed and foreground draws");

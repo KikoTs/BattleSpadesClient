@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
         expect(ui.initialize(config), std::string{ui.last_error()});
         render::WorldRenderer scene;
         expect(scene.initialize(config.shader_root, config.asset_root), std::string{scene.last_error()});
+        scene.set_model_culling(false); // views are overridden after submit
         auto profile = render::profile_for(settings::ShaderQuality::compatibility, settings::QualityLevel::high);
         scene.set_quality_profile(profile);
         world::MapAtmosphere atmosphere;

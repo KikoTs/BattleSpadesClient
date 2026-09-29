@@ -692,6 +692,32 @@ void public_regions_match_wire_names_without_hidden_filters() {
            "Community discovery retained an invisible region filter");
 }
 
+void server_browser_region_defaults_to_us_west_and_mode_sorts_by_title() {
+    ServerBrowserModel browser;
+    expect(browser.region() == ServerBrowserRegion::us_west,
+           "config.py server_region defaults to US West");
+
+    auto ctf = server("A", "127.0.0.1", 32887U, 20U, 1U, 32U);
+    ctf.mode = "CTF_TITLE";
+    auto zombie = server("B", "127.0.0.2", 32887U, 30U, 1U, 32U);
+    zombie.mode = "ZOMBIE_MODE_TITLE";
+    auto tdm = server("C", "127.0.0.3", 32887U, 40U, 1U, 32U);
+    tdm.mode = "TDM_TITLE";
+    browser.replace_servers({ctf, zombie, tdm});
+    // A catalogue whose titles order differently from their ids.
+    browser.set_mode_title_lookup([](std::string_view key) -> std::string {
+        if (key == "CTF_TITLE") return "Zzz Capture";
+        if (key == "ZOMBIE_MODE_TITLE") return "Aaa Zombie";
+        return "Mmm Deathmatch";
+    });
+    browser.select_sort_column(ServerSortColumn::mode);
+    const auto visible = browser.visible_indices();
+    expect(visible.size() == 3U && browser.servers()[visible[0]].name == "B" &&
+               browser.servers()[visible[1]].name == "C" &&
+               browser.servers()[visible[2]].name == "A",
+           "MODE sorts on the localised title (serverInfo.py), not the string id");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -731,6 +757,8 @@ int main() {
          server_browser_presentation_reflects_rows_filters_and_selection},
         {"server_browser_presentation_exposes_retail_sort_scroll_and_button_states",
          server_browser_presentation_exposes_retail_sort_scroll_and_button_states},
+        {"server_browser_region_defaults_to_us_west_and_mode_sorts_by_title",
+         server_browser_region_defaults_to_us_west_and_mode_sorts_by_title},
     };
 
     std::size_t failures{};

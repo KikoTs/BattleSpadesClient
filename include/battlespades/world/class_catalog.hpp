@@ -102,4 +102,20 @@ preferred_spawn_tool(const ClassDefinition& definition,
 [[nodiscard]] std::string_view class_item_group_name(ClassItemGroup group) noexcept;
 [[nodiscard]] std::string_view class_catalog_contract_sha256() noexcept;
 
+/**
+ * The class's construct names: every PREFAB_LISTS entry named by
+ * CLASS_ITEMS[class][CLASS_PREFABS], in table order. Generated from the
+ * server's shared/constants.py so the picker always offers exactly what the
+ * server validates (retail stock Engineer = 7 constructs).
+ */
+[[nodiscard]] std::span<const std::string_view> class_prefab_names(std::uint8_t class_id) noexcept;
+
+/** CLASS_NAMES / CLASS_DESCRIPTIONS localization ids; empty when unknown. */
+[[nodiscard]] std::string_view class_name_key(std::uint8_t class_id) noexcept;
+[[nodiscard]] std::string_view class_description_key(std::uint8_t class_id) noexcept;
+
+/** TOOL_NAMES / TOOL_DESCRIPTIONS localization ids; empty when unknown. */
+[[nodiscard]] std::string_view tool_name_key(std::uint16_t tool) noexcept;
+[[nodiscard]] std::string_view tool_description_key(std::uint16_t tool) noexcept;
+
 } // namespace battlespades::world

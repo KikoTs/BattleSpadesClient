@@ -166,14 +166,41 @@ struct UgcEditorSettingDefinition final {
     bool editable_text{};
 };
 
+/**
+ * One reopenable hosted_ugc project listed under the lobby Map row's
+ * SAVED_MAPS category (retail mapsPanel.populate_playlist, ugc_mode branch).
+ */
+struct UgcEditorSavedProject final {
+    /** File stem shared by the .vxl/.txt/.ugc triplet, e.g. "Custommap_3". */
+    std::string stem;
+    std::string title;
+    /** One of ugc_editor_maps(); the project's fixed baseplate. */
+    std::string baseplate;
+    std::string author;
+    std::optional<std::uint8_t> prefab_set{};
+
+    [[nodiscard]] friend bool operator==(const UgcEditorSavedProject&,
+                                         const UgcEditorSavedProject&) = default;
+};
+
 /** Exact UGC settings persisted into the editor-server launch request. */
 struct UgcEditorConfiguration final {
     UgcEditorPrivacy privacy{UgcEditorPrivacy::open};
     std::uint8_t maximum_players{12U};
+    /** Baseplate stem (template or the saved project's own baseplate). */
     std::string map_name{"DesertBaseplate"};
     std::string ugc_mode{"tdm"};
     std::uint8_t prefab_set{1U};
-    std::string map_title{"DesertBaseplate"};
+    /** generate_ugc_map_title(TEMPLATE title): "Desert", "Desert-1", ... */
+    std::string map_title{"Desert"};
+    /**
+     * Project identity (file stem) passed to the editor server. Templates
+     * get a fresh generate_ugc_map_filename "Custommap_N"; SAVED_MAPS keep
+     * the chosen project's stem so reopening never clobbers another map.
+     */
+    std::string project_stem{"Custommap_1"};
+    /** True when map_name/project_stem name an existing SAVED_MAPS project. */
+    bool saved_project{};
 
     [[nodiscard]] friend bool operator==(const UgcEditorConfiguration&,
                                          const UgcEditorConfiguration&) = default;
@@ -221,6 +248,16 @@ public:
 
     UgcEditorLobbyModel();
     void set_host_authority(bool host) noexcept;
+    /**
+     * Installs the SAVED_MAPS catalog (listed before the nine TEMPLATES on
+     * the Map row) and every file stem already present in hosted_ugc/maps.
+     * An untouched template selection re-derives its unique title/stem.
+     */
+    void set_saved_projects(std::vector<UgcEditorSavedProject> projects,
+                            std::vector<std::string> taken_stems = {});
+    /** Localised TEMPLATE names (strings DesertBaseplate..); English by default. */
+    void set_template_titles(std::span<const std::string> titles);
+    [[nodiscard]] std::span<const UgcEditorSavedProject> saved_projects() const noexcept;
     [[nodiscard]] bool apply_configuration(const UgcEditorConfiguration& configuration);
     void set_members(std::vector<std::pair<std::string, bool>> members);
     [[nodiscard]] const std::vector<std::pair<std::string, bool>>& members() const noexcept;
@@ -253,8 +290,14 @@ private:
     activate(const UgcEditorLobbyControl& control) noexcept;
     [[nodiscard]] std::optional<UgcEditorSettingId> focused_setting() const noexcept;
     void rebuild_focus() noexcept;
+    void select_template(std::size_t index);
+    void select_saved_project(std::size_t index);
 
     UgcEditorConfiguration configuration_{};
+    std::vector<UgcEditorSavedProject> saved_projects_{};
+    std::vector<std::string> taken_stems_{};
+    std::array<std::string, 9U> template_titles_{};
+    bool title_customized_{};
     bool host_authority_{true};
     std::vector<std::pair<std::string, bool>> members_{};
     std::array<UgcEditorSettingDefinition, setting_count> settings_{};
@@ -269,6 +312,14 @@ private:
 };
 
 [[nodiscard]] std::span<const std::string_view> ugc_editor_maps() noexcept;
+/** String id naming each ugc_editor_maps() entry (strings.DesertBaseplate...). */
+[[nodiscard]] std::span<const std::string_view> ugc_editor_template_title_keys() noexcept;
+/**
+ * Canonical ugc_editor_maps() entry for a sidecar `baseplate` stem, matched
+ * case-insensitively (TempleBaseplate -> Templebaseplate, MarshBaseplate ->
+ * MarshTemplate). Empty when the stem is not one of the nine baseplates.
+ */
+[[nodiscard]] std::string_view ugc_editor_map_for_baseplate(std::string_view baseplate) noexcept;
 /** Shared arrow geometry for pointer input and rendering, in UI subpixels. */
 [[nodiscard]] ui::Rect ugc_editor_setting_arrow(ui::Rect row, int direction) noexcept;
 [[nodiscard]] std::span<const std::string_view> ugc_editor_modes() noexcept;

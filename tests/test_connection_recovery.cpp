@@ -1,8 +1,10 @@
 #include "battlespades/network/live_protocol168_connection.hpp"
+#include "battlespades/network/protocol168_clock.hpp"
 
 #include <enet/enet.h>
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -159,6 +161,122 @@ void live_queue_bounds_memory_without_losing_order_or_capacity() {
                capacity_fixture.push(std::vector<std::byte>{std::byte{4U}}),
            "moving a queue must transfer memory ownership and leave the source reusable");
 }
+[[nodiscard]] std::unique_ptr<ENetHost, decltype(&enet_host_destroy)>
+loopback_server(ENetAddress& address) {
+    expect(enet_address_set_host_ip(&address, "127.0.0.1") == 0, "timeout loopback address");
+    std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> server{
+        enet_host_create(&address, 1U, 1U, 0U, 0U), &enet_host_destroy};
+    expect(server != nullptr && enet_host_compress_with_range_coder(server.get()) == 0 &&
+               enet_socket_get_address(server->socket, &address) == 0 && address.port != 0U,
+           "bind timeout fixture");
+    return server;
+}
+
+void unanswered_connect_times_out_after_five_seconds_as_error_timeout() {
+    expect(EnetProtocol168Config{}.connect_timeout_ms == 5'000U &&
+               EnetProtocol168Config{}.timeout_ms == 30'000U,
+           "retail NetworkClient.timeout = 5, loadingMenu no-progress = 30 s");
+    // A bound but never-serviced host swallows the CONNECT command.
+    ENetAddress address{};
+    const auto silent = loopback_server(address);
+    expect(silent != nullptr, "silent host stays bound for the whole test");
+    LiveProtocol168Connection connection;
+    Protocol168SessionConfig session;
+    session.auto_join = false;
+    EnetProtocol168Config transport{"127.0.0.1", address.port, 5'000U};
+    transport.connect_timeout_ms = 300U;
+    const auto started = std::chrono::steady_clock::now();
+    expect(connection.start(transport, session), "start unanswered connect");
+    LiveProtocol168Status status;
+    do {
+        status = connection.status();
+    } while (status.phase != LiveProtocol168Phase::failed &&
+             std::chrono::steady_clock::now() - started < std::chrono::seconds{4});
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    expect(status.phase == LiveProtocol168Phase::failed && status.disconnect_reason == 11U,
+           "an unanswered connect reports DISCONNECT.ERROR_TIMEOUT (11)");
+    expect(elapsed >= std::chrono::milliseconds{250} && elapsed < std::chrono::seconds{3},
+           "the connect deadline, not the 5 s no-progress timer, fires");
+    connection.stop();
+}
+
+void connected_handshake_without_progress_times_out() {
+    ENetAddress address{};
+    const auto server = loopback_server(address);
+    LiveProtocol168Connection connection;
+    Protocol168SessionConfig session;
+    session.auto_join = false;
+    EnetProtocol168Config transport{"127.0.0.1", address.port, 500U};
+    transport.connect_timeout_ms = 2'000U;
+    expect(connection.start(transport, session), "start silent handshake");
+    const auto started = std::chrono::steady_clock::now();
+    LiveProtocol168Status status;
+    bool saw_connect{};
+    do {
+        ENetEvent event{};
+        if (enet_host_service(server.get(), &event, 5U) > 0) {
+            if (event.type == ENET_EVENT_TYPE_CONNECT) saw_connect = true;
+            if (event.type == ENET_EVENT_TYPE_RECEIVE) enet_packet_destroy(event.packet);
+        }
+        status = connection.status();
+    } while (status.phase != LiveProtocol168Phase::failed &&
+             std::chrono::steady_clock::now() - started < std::chrono::seconds{4});
+    expect(saw_connect, "the server accepted the ENet connection");
+    expect(status.phase == LiveProtocol168Phase::failed && !status.disconnect_reason &&
+               status.failure_key == "ERROR_TIMEOUT",
+           "no handshake progress within the timer fails as ERROR_TIMEOUT");
+    connection.stop();
+}
+
+void only_clock_sync_and_client_data_are_unsequenced() {
+    for (unsigned id{}; id < 256U; ++id) {
+        expect(protocol168_client_packet_unsequenced(static_cast<std::uint8_t>(id)) ==
+                   (id == 0U || id == 4U),
+               "send_packet(unreliable=True) only at send_clock_sync and send_client_data");
+    }
+}
+
+void clock_sync_uses_retail_half_rtt_lead_and_dead_band() {
+    expect(clock_sync_max_ping_ms == 10'000 && max_clock_sync_difference == 10,
+           "MAX_PING = 10000 (initgameScene), MAX_CLOCK_SYNC_DIFFERENCE = 10");
+    expect(clock_sync_client_time(123'456U) == 3'456, "client_time = time_get() % MAX_PING");
+    expect(clock_sync_ping_ms(123'556U, 3'456) == 100, "ping is the echo round trip");
+    expect(clock_sync_ping_ms(130'050U, 9'950) == 100, "a MAX_PING wrap adds MAX_PING back");
+    // 200 ms RTT: latency 0.1 s -> int(6.0) = 6 loops of lead.
+    expect(clock_sync_relabel(1'000, 1'000, 200) == std::nullopt,
+           "a 6-loop error sits inside the +/-10 dead band");
+    expect(clock_sync_relabel(1'000, 1'010, 200) == 1'016,
+           "16 loops off adopts server loop + half-RTT lead");
+    expect(clock_sync_relabel(1'100, 1'000, 0) == 1'000,
+           "retail also relabels backwards (the caller keeps labels monotonic)");
+    expect(clock_sync_relabel(1'000, 990, 0) == std::nullopt,
+           "exactly 10 loops is still inside the dead band");
+}
+
+void watchdog_warns_after_five_seconds_and_times_out_at_retail_limits() {
+    RetailConnectionWatchdog never;
+    RetailConnectionWatchdog::Verdict verdict;
+    for (int loop{}; loop < 300; ++loop) verdict = never.tick(false);
+    expect(!verdict.seconds_left && !verdict.timed_out, "5 s of silence is still quiet");
+    verdict = never.tick(false);
+    expect(verdict.seconds_left.has_value() &&
+               std::abs(*verdict.seconds_left - (20.0 - 301.0 / 60.0)) < 1.0e-9,
+           "never answered: CONNECTION_PROBLEMS counts down from 20 s");
+    for (int loop{301}; loop < 1200; ++loop) verdict = never.tick(false);
+    expect(verdict.seconds_left.has_value() && !verdict.timed_out, "20.0 s exactly still warns");
+    verdict = never.tick(false);
+    expect(verdict.timed_out, "past SERVER_TIMEOUT_BEFORE_FIRST_RESPONSE disconnects");
+
+    for (const bool ugc : {false, true}) {
+        RetailConnectionWatchdog answered;
+        answered.note_response();
+        for (int loop{}; loop < 1802; ++loop) verdict = answered.tick(ugc);
+        expect(verdict.timed_out == !ugc, "30 s after a response; UGC waits 60 s");
+        answered.note_response();
+        verdict = answered.tick(ugc);
+        expect(!verdict.seconds_left && !verdict.timed_out, "a response clears the warning");
+    }
+}
 } // namespace
 
 int main() {
@@ -173,6 +291,11 @@ int main() {
         recovery_requires_map_change_evidence();
         cancellation_signal_is_nonblocking_and_owner_can_restart();
         live_queue_bounds_memory_without_losing_order_or_capacity();
+        unanswered_connect_times_out_after_five_seconds_as_error_timeout();
+        connected_handshake_without_progress_times_out();
+        only_clock_sync_and_client_data_are_unsequenced();
+        clock_sync_uses_retail_half_rtt_lead_and_dead_band();
+        watchdog_warns_after_five_seconds_and_times_out_at_retail_limits();
         std::cout << "connection recovery tests passed\n";
         return 0;
     } catch (const std::exception& error) {

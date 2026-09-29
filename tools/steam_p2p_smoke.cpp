@@ -154,12 +154,12 @@ private:
     // that Steam accepts both keys, which hosting a real match otherwise only
     // exercises on a second machine.
     const auto presence = runtime.publish_presence(
-        "Checking the Steam transport", "steam:" + std::to_string(runtime.steam_id()));
+        "Checking the Steam transport", "+connect steam:" + std::to_string(runtime.steam_id()));
     std::printf("presence : %s\n", presence ? "published and cleared" : "refused");
     runtime.clear_presence();
     // A lobby answers asynchronously, so creating one and reading a key back
     // proves the call-result dispatch works. One account is enough.
-    const auto connect = "steam:" + std::to_string(runtime.steam_id());
+    const auto connect = "+connect steam:" + std::to_string(runtime.steam_id());
     if (const auto lobby = runtime.create_lobby("Checking the lobby", connect, 2);
         lobby != 0U) {
         const auto stored = runtime.lobby_data(lobby, "connect");

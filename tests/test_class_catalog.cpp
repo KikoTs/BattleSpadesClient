@@ -189,6 +189,18 @@ int main() {
             expect(blue.models->crouching_preview.vertices.size() ==
                        expected_crouching_vertices,
                    "retail crouch pose must draw the shared leg mesh twice");
+            // Character.set_crouch keeps the head at BODY_PARTS_Z in both
+            // poses: the standing head mesh is the crouch pose's head, with
+            // no invented standing upper-body lift.
+            const auto& standing_head = blue.models->head_preview.vertices;
+            const auto& crouch_pose = blue.models->crouching_preview.vertices;
+            expect(!standing_head.empty() && crouch_pose.size() >= standing_head.size() &&
+                       std::equal(standing_head.begin(), standing_head.end(),
+                                  crouch_pose.begin(),
+                                  [](const auto& lhs, const auto& rhs) {
+                                      return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+                                  }),
+                   "the standing head must sit at the retail anchor (no upper-body lift)");
             for (const auto portrait : definition.team_portrait_assets) {
                 if (!portrait.empty()) expect(std::filesystem::exists(assets / portrait),
                                               "declared class portrait must exist");
@@ -205,8 +217,10 @@ int main() {
                                           soldier.models->right_leg_preview.minimum[2U]);
             const auto seam_overlap =
                 soldier.models->standing_body_preview.maximum[2U] - leg_top;
-            expect(seam_overlap >= 0.0F && seam_overlap <= 0.04F,
-                   "standing upper body must clear the legs with only a hidden hip seam");
+            // Retail keeps the full 0.125 torso/leg overlap at the BODY_PARTS
+            // anchors (set_crouch pyx 829-837); nothing lifts the upper body.
+            expect(seam_overlap >= 0.12F && seam_overlap <= 0.13F,
+                   "standing upper body must keep the retail 0.125 hip overlap");
         }
         expect(!class_catalog_contract_sha256().empty(), "catalog must carry its source digest");
         std::cout << "class catalog: 18 skins, body parts, arms and loadouts passed\n";

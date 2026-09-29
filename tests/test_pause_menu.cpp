@@ -132,11 +132,15 @@ int main() {
         expect(!tutorial.show_class_change && !tutorial.show_team_change,
                "Tutorial hides both multiplayer selectors");
 
-        expect(live_world_simulation_allowed(true, true, false),
-               "an Escape overlay must not suspend the live world");
-        expect(!live_world_simulation_allowed(true, true, true) &&
-                   !live_world_simulation_allowed(true, false, false),
-               "window suspension or route teardown must stop local simulation");
+        expect(live_world_simulation_allowed(true, true),
+               "an Escape overlay or a minimised window must not suspend the live world");
+        expect(!live_world_simulation_allowed(true, false) &&
+                   !live_world_simulation_allowed(false, true),
+               "route teardown or a missing session must stop local simulation");
+        expect(!live_world_presentation_allowed(true, true) &&
+                   !live_world_presentation_allowed(false, false) &&
+                   live_world_presentation_allowed(false, true),
+               "a minimised window skips rendering only");
         expect(!should_present_local_death(false, true, 0) &&
                    should_present_local_death(true, true, 0) &&
                    !should_present_local_death(true, false, 0),
@@ -199,7 +203,8 @@ int main() {
         ChangeTeamPresentation team_presentation;
         const auto team_draw =
             team_presentation.build(teams, battlespades::ui::PixelExtent{800, 600});
-        const auto* join_blue = find_text(team_draw, "JOIN Blue");
+        // strings.JOIN_TEAM ("Join {0}") formatted with the team name.
+        const auto* join_blue = find_text(team_draw, "Join Blue");
         const auto* spectate = find_text(team_draw, "SPECTATE");
         expect(join_blue != nullptr &&
                    join_blue->requested_font_size_pixels == 36.0 &&
@@ -462,6 +467,74 @@ int main() {
         expect(leader != nullptr && host_text != nullptr &&
                    host_text->destination.x == 143.91,
                "lobby hosts must render the leader icon and advance the name column");
+
+        // escapeMenu.py: catalogue ids, Spades 36 as written, 2 px press sink.
+        PauseMenuModel plain{pause_menu_environment_for(PauseMenuServerState{
+            6U, 2U, 1U, 4U, false, false, false, false, false, false, false, false, false})};
+        const PauseMenuPresentation pause_presentation;
+        const auto plain_draw = pause_presentation.build(plain, {});
+        const auto* change_class = find_text(plain_draw, "CHANGE_CLASS");
+        expect(change_class != nullptr && find_text(plain_draw, "CHANGE_TEAM") != nullptr &&
+                   find_text(plain_draw, "PAUSE") != nullptr &&
+                   find_text(plain_draw, "CHANGE CLASS") == nullptr,
+               "Escape-menu labels must be catalogue ids so they translate");
+        expect(change_class->requested_font_size_pixels == 36.0 &&
+                   change_class->transform == battlespades::ui::TextTransform::preserve,
+               "TextButton draws big_button_aldo_font without upper-casing");
+        expect(find_text(plain_draw, "DISCONNECT") != nullptr &&
+                   find_text(plain_draw, "SAVE") == nullptr &&
+                   find_text(plain_draw, "QUIT") == nullptr,
+               "a normal match keeps DISCONNECT");
+        const auto resume_bounds = PauseMenuModel::action_bounds(PauseMenuAction::resume);
+        const battlespades::ui::Point resume_point{resume_bounds.x + 20, resume_bounds.y + 20};
+        plain.pointer_press(resume_point);
+        const auto* sunk = find_text(pause_presentation.build(plain, {}), "RESUME");
+        expect(sunk != nullptr && sunk->destination.y > resume_bounds.y + 4.0 + 1.5,
+               "a held button sinks its text");
+        expect(sunk->modulation.intensity_per_mille == 1'000U,
+               "the text never dims with the button art");
+
+        PauseMenuServerState host_state{};
+        host_state.mode_type = 12U;
+        host_state.ugc_mode = true;
+        host_state.player_team = 2U;
+        host_state.ugc_host = true;
+        PauseMenuModel host{pause_menu_environment_for(host_state)};
+        const auto host_draw = pause_presentation.build(host, {});
+        expect(find_text(host_draw, "SAVE") != nullptr && find_text(host_draw, "QUIT") != nullptr &&
+                   find_text(host_draw, "DISCONNECT") == nullptr,
+               "the Map Creator host gets SAVE and QUIT instead of DISCONNECT");
+        expect(find_sprite(host_draw, "png/ui/in_game_menus/pause_menu_frame_expanded.png") !=
+                   nullptr,
+               "the host menu uses pause_menu_frame_big");
+        const auto quit_bounds = PauseMenuModel::action_bounds(PauseMenuAction::quit);
+        const battlespades::ui::Point quit_point{quit_bounds.x + 30, quit_bounds.y + 20};
+        host.pointer_press(quit_point);
+        expect(host.pointer_release(quit_point) == PauseMenuAction::quit, "QUIT is clickable");
+        host.show_message(PauseMenuMessage::save_before_quit);
+        const auto quit_draw = pause_presentation.build(host, {});
+        expect(find_text(quit_draw, "UGC_QUIT_WITHOUT_SAVING") != nullptr &&
+                   find_text(quit_draw, "KICK_YES") != nullptr &&
+                   find_text(quit_draw, "KICK_NO") != nullptr,
+               "QUIT asks Save before quitting? with Yes and No");
+        host.pointer_press(quit_point);
+        expect(host.pointer_release(quit_point) == std::nullopt,
+               "the menu buttons are disabled while the box is up");
+        const auto yes = host.message_button_bounds(PauseMenuAction::message_primary);
+        const auto no = host.message_button_bounds(PauseMenuAction::message_secondary);
+        expect(yes.x < no.x && yes.y == no.y, "Yes sits left of No");
+        const battlespades::ui::Point no_point{no.x + 10, no.y + 10};
+        host.pointer_press(no_point);
+        expect(host.pointer_release(no_point) == PauseMenuAction::message_secondary,
+               "No is clickable");
+        host.show_message(PauseMenuMessage::saved);
+        expect(!host.message_has_two_buttons() &&
+                   find_text(pause_presentation.build(host, {}), "OK") != nullptr,
+               "a successful save shows one OK button");
+        host.hide_message();
+        expect(!host.message().has_value() &&
+                   host.action_enabled(PauseMenuAction::save),
+               "hiding the box re-enables the menu");
         std::cout << "pause menu server-state tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -5,6 +5,7 @@
 #include "battlespades/render/quality_profile.hpp"
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/dynamic_light.hpp"
+#include "battlespades/world/emissive_volume.hpp"
 #include "battlespades/world/map_atmosphere.hpp"
 #include "battlespades/world/particle_system.hpp"
 #include "battlespades/world/sniper_laser.hpp"
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -54,6 +56,14 @@ struct WorldFrameStats final {
  * original byte normalization; the Legacy path intentionally performs no
  * HDR/exposure transform.
  */
+/**
+ * The retail sea colour: vxl.pyd draw_sea reads the voxel colour at (0,0,239),
+ * which the map finaliser has made the map-wide bed colour. VxlMap stores that
+ * bed as colour zero, so it resolves to the mesher's bed/water colour.
+ */
+[[nodiscard]] std::array<std::uint8_t, 3U> retail_sea_color_for(
+    const world::VxlMap& map, world::VxlColor bed_water_color) noexcept;
+
 struct RetailTerrainLighting final {
     std::array<float, 3U> light_color{1.0F, 1.0F, 1.0F};
     std::array<float, 3U> light_direction{0.0F, 0.707F, -0.707F};
@@ -74,6 +84,12 @@ struct ViewModelDraw final {
     std::uint32_t slot{};
     std::array<float, 16U> transform{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
                                      0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    /**
+     * Retail PASSTHROUGH_SHADER: raw vertex colour, no lighting, back faces
+     * culled as retail's GL_CULL_FACE does. Used by the first-person muzzle
+     * flash (Weapon.draw_muzzle).
+     */
+    bool unlit{};
 };
 
 /** One resident multipart/class mesh placed in the normal world pass. */
@@ -153,6 +169,12 @@ public:
     void set_fog_color(std::array<std::uint8_t, 3U> color) noexcept;
     /** Preserve packet fog in Legacy while Enhanced uses its measured sky horizon. */
     void set_retail_fog_color(std::array<std::uint8_t, 3U> color) noexcept;
+    /**
+     * The retail sea: vxl.pyd draw_sea's single 2000x2000 quad 0.1 below the
+     * bed top, coloured with the map-wide z=239 bed colour. Drawn in the
+     * Retail tier only; nullopt (the default) draws nothing.
+     */
+    void set_retail_sea_color(std::optional<std::array<std::uint8_t, 3U>> color) noexcept;
 
     /** Installs packet-45's exact two directional lights and ambient fill. */
     void set_retail_lighting(const RetailTerrainLighting& lighting) noexcept;
@@ -171,6 +193,12 @@ public:
      * know what a tier name means.
      */
     void set_quality_profile(const QualityProfile& profile) noexcept;
+    /**
+     * Main-pass world-model sphere culling against the submitted camera
+     * (behind the eye plane / past fog). On by default; harnesses that
+     * replace the world view transform after submit must turn it off.
+     */
+    void set_model_culling(bool enabled) noexcept;
     [[nodiscard]] const QualityProfile& quality_profile() const noexcept;
 
     /**
@@ -207,6 +235,21 @@ public:
     void set_viewmodel_skylight(float skylight) noexcept;
 
     /**
+     * Non-owning map light sources that models sample on enhanced tiers.
+     *
+     * Terrain gets flare/fire light from its per-vertex bake and emissive
+     * spill from the volume probe; KV6 models have no bake, and the view
+     * model is drawn in view space where the probe reads the wrong cell. So
+     * submit() samples these on the CPU at each world model's origin (placed
+     * light) and at the eye for the view model (placed + spill) and adds the
+     * result through u_modelLight, with terrain's own gains. Either pointer
+     * may be null; both must outlive the next submit(). The Retail tier never
+     * reads them: retail model_frag lights KV6s with packet 45 only.
+     */
+    void set_model_light_sources(const world::StaticLightField* placed,
+                                 const world::EmissiveVolume* cast) noexcept;
+
+    /**
      * Uploads the volume of light cast by emissive blocks.
      *
      * This is what makes a neon sign bleed onto the wall opposite it and a
@@ -237,6 +280,8 @@ public:
     [[nodiscard]] bool set_view_model_mesh(std::uint32_t slot,
                                            const world::ChunkMesh& mesh);
     void clear_view_model() noexcept;
+    /** True when a viewmodel slot holds uploaded buffers (cleared slots do not). */
+    [[nodiscard]] bool view_model_mesh_resident(std::uint32_t slot) const noexcept;
 
     /** 0..23 debug, 24..63 effects, 64..95 projectiles, 96..1631 players. */
     // Slots 96..1631 hold 128 independent twelve-part remote-player rigs:
@@ -248,7 +293,7 @@ public:
     // Keep the entity band above the maximum valid player id (127). The 32
     // slot guard band makes a bad presentation index fail empty instead of
     // aliasing a pickup/turret model on a full server.
-    static constexpr std::uint32_t world_model_slot_count{1920U};
+    static constexpr std::uint32_t world_model_slot_count{2240U};
     static constexpr std::uint32_t terrain_effect_slot_base{24U};
     static constexpr std::uint32_t terrain_effect_slot_count{40U};
     static constexpr std::uint32_t projectile_slot_base{64U};
@@ -256,6 +301,21 @@ public:
     /** Budgeted per PART: a turret is three meshes and a UGC marker is two. */
     static constexpr std::uint32_t entity_slot_base{1664U};
     static constexpr std::uint32_t entity_slot_count{256U};
+    /**
+     * Shared retail effect meshes drawn many times per frame from one slot:
+     * tracer KV6s, muzzleflash_default and Crate_Parachute.
+     */
+    static constexpr std::uint32_t effect_model_slot_base{1920U};
+    static constexpr std::uint32_t effect_model_slot_count{64U};
+    /**
+     * Shared character accessory meshes keyed by model and colour, drawn by
+     * any number of players: the living jetpack, the Classic CTF back intel,
+     * ClassicCorpse and the spawn-protection (full team colour) body parts.
+     */
+    static constexpr std::uint32_t character_accessory_slot_base{1984U};
+    static constexpr std::uint32_t character_accessory_slot_count{256U};
+    static_assert(character_accessory_slot_base + character_accessory_slot_count ==
+                  world_model_slot_count);
     /** Shader-side bounded forward-light array. */
     static constexpr std::size_t maximum_dynamic_lights{8U};
     [[nodiscard]] bool set_world_model_mesh(std::uint32_t slot,

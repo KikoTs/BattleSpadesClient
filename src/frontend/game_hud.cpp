@@ -1,5 +1,7 @@
 #include "battlespades/frontend/game_hud.hpp"
 
+#include "battlespades/frontend/retail_hud_rules.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -92,12 +94,17 @@ constexpr std::size_t maximum_score_lines{5U};
 constexpr ui::ColorRgba8 score_title_color{255U, 255U, 255U, 255U};
 constexpr ui::ColorRgba8 score_stroke_color{0U, 0U, 0U, 255U};
 constexpr double big_text_duration{4.0};
+/** shared/hud_constants.py BIG_TEXT_MIN_DURATION: dwell before a queued line. */
+constexpr double big_text_min_duration{1.5};
 constexpr double big_text_font_size{30.0};
 // Font.get_line_height() from the shipped x86 font module. These are layout
 // spans, not nominal point sizes. Label(anchor_y='center') subtracts half of
 // this value from its bottom-origin baseline.
 constexpr double big_text_line_advance{37.0};
-constexpr double big_text_frame_height{58.0};
+// images.load_ui('big_text_frame', scale=global_scale 0.64, center=True):
+// draw_big_text only stretches scale_y by the line count, so one line is
+// 58 * 0.64 px tall (the old authored 58 px drew a 21 px taller box).
+constexpr double big_text_frame_height{58.0 * 0.64};
 constexpr double big_text_frame_padding{40.0};
 constexpr ui::ColorRgba8 big_text_color{231U, 74U, 25U, 255U};
 constexpr double respawn_font_size{40.0};
@@ -162,7 +169,7 @@ std::string_view score_reason_label_impl(std::uint8_t reason) noexcept {
     case 22U: return "Control Territory";
     case 23U: return "Defend Territory";
     case 24U: return "Assault Territory";
-    case 25U: return "Contend Territory";
+    case 25U: return "Contest hill";
     case 26U: return "Occupy";
     case 27U: return "Carry Bomb";
     case 28U: return "BOOM!";
@@ -176,7 +183,7 @@ std::string_view score_reason_label_impl(std::uint8_t reason) noexcept {
     case 37U: return "Intercept Disposal";
     case 38U: return "Capture";
     case 39U: return "Uncover Diamond";
-    case 40U: return "Carry Diamond";
+    case 40U: return "Carry diamond";
     case 41U: return "Diamond Escort";
     case 42U: return "Diamond Distraction";
     case 43U: return "Carrier Defend";
@@ -460,29 +467,37 @@ minimap_zone_icon_style(std::uint8_t icon_id) noexcept {
     }
 }
 
-std::string_view ControlKeyNames::lookup(std::string_view placeholder) const noexcept {
-    if (placeholder == "key_forward") {
-        return forward;
+std::optional<std::string_view>
+ControlKeyNames::lookup(std::string_view placeholder) const noexcept {
+    // translate_controls_in_message's controls_to_translate, in retail order.
+    const std::array<std::pair<std::string_view, const std::string*>, 20U> table{{
+        {"key_forward", &forward},
+        {"key_backward", &backward},
+        {"key_left", &left},
+        {"key_right", &right},
+        {"key_jump", &jump},
+        {"key_crouch", &crouch},
+        {"key_change_class", &change_class},
+        {"key_view_scores", &view_scores},
+        {"key_palette_up", &palette_up},
+        {"key_palette_down", &palette_down},
+        {"key_palette_left", &palette_left},
+        {"key_palette_right", &palette_right},
+        {"key_weapon_custom", &weapon_custom},
+        {"key_cancel_prefab_placement", &cancel_prefab_placement},
+        {"key_carve_prefab", &carve_prefab},
+        {"key_tool_help", &tool_help},
+        {"key_hover", &hover},
+        {"key_sprint", &sprint},
+        {"key_ugc_settings", &ugc_settings},
+        {"key_menu", &menu},
+    }};
+    for (const auto& [name, value] : table) {
+        if (name == placeholder) {
+            return std::string_view{*value};
+        }
     }
-    if (placeholder == "key_backward") {
-        return backward;
-    }
-    if (placeholder == "key_left") {
-        return left;
-    }
-    if (placeholder == "key_right") {
-        return right;
-    }
-    if (placeholder == "key_jump") {
-        return jump;
-    }
-    if (placeholder == "key_crouch") {
-        return crouch;
-    }
-    if (placeholder == "key_tool_help") {
-        return tool_help;
-    }
-    return {};
+    return std::nullopt;
 }
 
 std::string resolve_control_placeholders(std::string_view text,
@@ -496,17 +511,21 @@ std::string resolve_control_placeholders(std::string_view text,
             result.append(text.substr(position));
             break;
         }
-        const auto close = text.find('}', open + 1U);
-        if (close == std::string_view::npos) {
-            result.append(text.substr(position));
-            break;
-        }
         result.append(text.substr(position, open - position));
-        const auto placeholder = text.substr(open + 1U, close - open - 1U);
-        const auto name = names.lookup(placeholder);
+        const auto close = text.find('}', open + 1U);
+        const auto name = close == std::string_view::npos
+                              ? std::nullopt
+                              : names.lookup(text.substr(open + 1U, close - open - 1U));
+        if (!name.has_value()) {
+            // Retail replaces only its 20 known tokens; `{0}` and unknown
+            // placeholders stay literal.
+            result.push_back('{');
+            position = open + 1U;
+            continue;
+        }
         // Retail translate_controls_in_message renders "[<key>]".
         result.push_back('[');
-        result.append(name.empty() ? std::string_view{"?"} : name);
+        result.append(*name);
         result.push_back(']');
         position = close + 1U;
     }
@@ -553,7 +572,22 @@ std::string_view tutorial_string(std::string_view message_key) noexcept {
 
 void GameHudModel::set_help_messages(std::vector<std::string> lines, std::string close_hint,
                                      double delay_seconds) {
-    help_lines_ = std::move(lines);
+    // HelpPanel.set_text splits every message on its explicit newlines
+    // (UGC_HELP_WELCOME carries two); each resulting row is drawn as one
+    // single-line text, and an empty row keeps its blank line.
+    help_lines_.clear();
+    for (auto& message : lines) {
+        std::size_t start{};
+        while (true) {
+            const auto end = message.find('\n', start);
+            auto row = message.substr(start, end == std::string::npos ? std::string::npos
+                                                                      : end - start);
+            if (!row.empty() && row.back() == '\r') row.pop_back();
+            help_lines_.push_back(row.empty() ? std::string{" "} : std::move(row));
+            if (end == std::string::npos) break;
+            start = end + 1U;
+        }
+    }
     help_close_hint_ = std::move(close_hint);
     help_delay_ = delay_seconds;
     help_open_ = true;
@@ -565,6 +599,10 @@ void GameHudModel::set_help_messages(std::vector<std::string> lines, std::string
 
 void GameHudModel::toggle_help() noexcept {
     help_open_ = !help_open_;
+}
+
+void GameHudModel::set_help_open(bool open) noexcept {
+    help_open_ = open;
 }
 
 void GameHudModel::toggle_hud() noexcept {
@@ -653,7 +691,10 @@ void GameHudModel::set_ammo_state(std::string image_asset, std::int32_t current,
                         : std::nullopt;
     ammo_.image_scale = 0.1;
     ammo_.image_color.reset();
-    ammo_.enough = ammo_.current > 0;
+    // HUD.update_ammo (hud.pyd 0x1008A930): ammo_color is the enough-ammo
+    // yellow when get_has_enough_ammo() OR the reserve (get_ammo()[1]) is
+    // > 0, so an empty magazine with spare rounds (RPG 0/3) stays yellow.
+    ammo_.enough = ammo_.current > 0 || ammo_.reserve.value_or(0) > 0;
     ammo_.visible = visible && !ammo_.image_asset.empty();
 }
 
@@ -667,7 +708,11 @@ void GameHudModel::set_prefab_cost_state(std::string preview_asset,
     ammo_.reserve.reset();
     // hud.pyd draw_tools_hud passes image_scale=.25 specifically for
     // weapon_object.prefab_cost_icon. Every shipped prefab portrait is 330px.
-    ammo_.image_scale = 0.25;
+    // Unlike TOOL_IMAGES, prefab_cost_icon is loaded through load_ui at the
+    // 0.64 global image scale (int(330 * .64) = 211 px), so the drawn icon is
+    // 211 * .25 px; the unscaled 330 px source drew it ~1.6x too large
+    // (live A/B 2026-09-29, 32 vs 51 px tall).
+    ammo_.image_scale = std::trunc(330.0 * 0.64) / 330.0 * 0.25;
     ammo_.image_color = tint;
     ammo_.enough = affordable;
     ammo_.visible = visible && !ammo_.image_asset.empty();
@@ -920,9 +965,10 @@ void GameHudModel::add_score_award(std::int32_t delta,
         score_award_ = {};
         score_award_.displayed_delta = delta;
         score_award_.lines.push_back(GameHudScoreLineState{
-            format_score_delta(delta), 0, score_message_ttl, 0.0, 0.0, true});
+            format_score_delta(delta), 0, score_message_ttl, 0.0, 0.0, true, {}});
         score_award_.lines.push_back(GameHudScoreLineState{
-            std::string{label}, 0, score_message_ttl, 0.0, 0.0, false});
+            std::string{label}, 0, score_message_ttl, 0.0, 0.0, false,
+            std::string{retail_score_reason_key(reason)}});
         return;
     }
 
@@ -931,7 +977,8 @@ void GameHudModel::add_score_award(std::int32_t delta,
     const auto retained_lines = lines.size();
     lines.push_back(GameHudScoreLineState{
         std::string{label}, delta, score_message_ttl, 0.0,
-        score_line_delay * static_cast<double>(retained_lines), false});
+        score_line_delay * static_cast<double>(retained_lines), false,
+        std::string{retail_score_reason_key(reason)}});
 
     // add_score_reason computes alive_before_show + start_ttl (1.75 s) and
     // calls ScoreLine.set_ttl on every retained line when the title has less.
@@ -959,16 +1006,49 @@ void GameHudModel::set_big_message(std::string text, bool override_previous,
     } else if ((!big_message_.text.empty() &&
                 big_message_.remaining_seconds > 0.0) ||
                !big_message_.pending.empty()) {
-        // hud.pyd checks `len(bigMsgList_text) > 5` before appending, so six
-        // deferred messages survive and the oldest is discarded on overflow.
+        // HUD.add_big_message (hud.pyd 0x100ec260): when
+        // `len(bigMsgList_text) > 5` it calls list.pop() -- the no-index
+        // __Pyx_PyObject_Pop, i.e. the NEWEST deferred row -- on both lists
+        // before appending, so six rows survive.
         constexpr std::size_t maximum_pending{6U};
-        if (big_message_.pending.size() == maximum_pending) {
-            big_message_.pending.erase(big_message_.pending.begin());
+        if (big_message_.pending.size() >= maximum_pending) {
+            big_message_.pending.pop_back();
         }
         big_message_.pending.push_back({std::move(text), duration});
         return;
     }
+    start_big_message(std::move(text), duration);
+}
+
+void GameHudModel::set_background_big_message(std::string text,
+                                              double duration_seconds) {
+    if (text.empty()) return;
+    const bool idle = (big_message_.text.empty() ||
+                       big_message_.remaining_seconds <= 0.0) &&
+                      big_message_.pending.empty();
+    if (idle) {
+        start_big_message(text, duration_seconds);
+    }
+    big_message_background_text_ = std::move(text);
+    big_message_background_seconds_ = duration_seconds;
+}
+
+void GameHudModel::hide_big_message_if(std::string_view text) noexcept {
+    if (!big_message_.text.empty() && big_message_.text == text) {
+        big_message_.remaining_seconds = 0.0;
+        big_message_.text.clear();
+        big_message_.age_seconds = 0.0;
+    }
+}
+
+void GameHudModel::start_big_message(std::string text, double duration) {
+    // HUD.start_big_message(text, duration, BIG_TEXT_MIN_DURATION) stores
+    // big_text_min_duration = min(duration, BIG_TEXT_MIN_DURATION) and resets
+    // big_text_time to 0.0.
     big_message_.text = std::move(text);
+    big_message_.duration_seconds = duration;
+    big_message_.min_duration_seconds =
+        std::min(duration, big_text_min_duration);
     big_message_.remaining_seconds = duration;
     big_message_.age_seconds = 0.0;
 }
@@ -1132,23 +1212,51 @@ void GameHudModel::tick() noexcept {
             score_award_ = {};
         }
     }
-    if (!big_message_.text.empty()) {
-        big_message_.remaining_seconds =
-            std::max(0.0, big_message_.remaining_seconds - fixed_dt);
+    // HUD.update (hud.pyd 0x100edd30, lines 531-541):
+    //   if big_text_time is not None:
+    //       big_text_time += dt
+    //       limit = big_text_min_duration if bigMsgList_text else big_text_duration
+    //       if big_text_time > limit: big_text_time = None
+    //   if big_text_time is None and bigMsgList_text:
+    //       start_big_message(bigMsgList_text.pop(), bigMsgList_time.pop(),
+    //                         BIG_TEXT_MIN_DURATION)
+    // A queued line therefore replaces the current one after at most 1.5 s,
+    // and list.pop() takes the NEWEST queued row first.
+    if (!big_message_.text.empty() && big_message_.remaining_seconds > 0.0) {
         big_message_.age_seconds += fixed_dt;
-        if (big_message_.remaining_seconds <= 1.0e-9 &&
-            !big_message_.pending.empty()) {
-            auto pending = std::move(big_message_.pending.front());
-            big_message_.pending.erase(big_message_.pending.begin());
-            big_message_.text = std::move(pending.text);
-            big_message_.remaining_seconds =
-                pending.duration_seconds > 0.0
-                    ? pending.duration_seconds
-                    : big_text_duration;
-            big_message_.age_seconds = 0.0;
-        } else if (big_message_.remaining_seconds <= 1.0e-9) {
+        const auto limit = big_message_.pending.empty()
+                               ? big_message_.duration_seconds
+                               : big_message_.min_duration_seconds;
+        big_message_.remaining_seconds =
+            std::max(0.0, big_message_.duration_seconds - big_message_.age_seconds);
+        if (big_message_.age_seconds > limit - 1.0e-9) {
+            big_message_.remaining_seconds = 0.0;
+        }
+    }
+    if (big_message_.remaining_seconds <= 0.0) {
+        if (!big_message_.pending.empty()) {
+            auto pending = std::move(big_message_.pending.back());
+            big_message_.pending.pop_back();
+            start_big_message(std::move(pending.text),
+                              pending.duration_seconds > 0.0
+                                  ? pending.duration_seconds
+                                  : big_text_duration);
+        } else if (big_message_background_seconds_.has_value()) {
+            // HUD.update: an idle lane with a live background line restarts
+            // it once (start_big_message(bg_text, bg_time, MIN)); bg_time = 0.
+            start_big_message(big_message_background_text_,
+                              *big_message_background_seconds_);
+            big_message_background_seconds_ = 0.0;
+        } else if (!big_message_.text.empty()) {
             big_message_.text.clear();
             big_message_.age_seconds = 0.0;
+        }
+    }
+    // HUD.update: big_text_background_time -= dt; <= 0.0 -> None.
+    if (big_message_background_seconds_.has_value()) {
+        *big_message_background_seconds_ -= fixed_dt;
+        if (*big_message_background_seconds_ <= 0.0) {
+            big_message_background_seconds_.reset();
         }
     }
     if (!help_lines_.empty() && help_open_) {
@@ -1241,6 +1349,15 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
     // alpha-block texture and recovered alpha=150 tint the 3D scene while the
     // crosshair, minimap and health remain crisp above it.
     if (const auto tint = model.inside_zone_tint(); tint.has_value()) {
+        list.push(window_sprite(
+            game_hud_assets::inside_zone_tint, 0.0, 0.0,
+            window_width, window_height,
+            ui::ColorModulation{*tint, 1'000U, 1'000U}));
+    }
+    // HUD.draw: burn, then sudden death, each a full-screen quad of the same
+    // inside_zone_texture art, independently and up to full alpha.
+    for (const auto tint : {model.burn_tint(), model.sudden_death_tint()}) {
+        if (!tint.has_value()) continue;
         list.push(window_sprite(
             game_hud_assets::inside_zone_tint, 0.0, 0.0,
             window_width, window_height,
@@ -1379,10 +1496,16 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
         // accuracy-driven corner spread. Every authored image remains 16x16:
         // the centre stays on the window centre while the four corner anchors
         // move by the weapon's live accuracy radius.
-        if (context.player_widgets_visible && model.crosshair_visible()) {
-            const double center_left = window_width * 0.5 - crosshair_size * 0.5;
-            const double center_top = window_height * 0.5 - crosshair_size * 0.5;
-            const double radius = model.crosshair_radius_pixels();
+        if (context.player_widgets_visible && context.character_widgets_visible &&
+            model.crosshair_visible()) {
+            // Snap to whole pixels: the 1 px bracket art turned grey under
+            // linear filtering at fractional accuracy radii, where retail's
+            // reticle stays crisp white.
+            const double center_left =
+                std::floor(window_width * 0.5 - crosshair_size * 0.5);
+            const double center_top =
+                std::floor(window_height * 0.5 - crosshair_size * 0.5);
+            const double radius = std::round(model.crosshair_radius_pixels());
             const ui::ColorModulation crosshair_modulation{
                 model.crosshair_color(), 1'000U, 1'000U};
             list.push(window_sprite(game_hud_assets::crosshair_top_left,
@@ -1437,6 +1560,8 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                             list,
                             line.title
                                 ? format_score_delta(model.score_award().displayed_delta)
+                            : context.localize && !line.localization_key.empty()
+                                ? context.localize(line.localization_key)
                                 : line.text,
                             left, baseline_y_down, font_size, line_height,
                             line.title ? score_title_color : model.team_color(),
@@ -1475,6 +1600,11 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                 ui::TextureFilter::linear, indicator.rotation_degrees));
         }
 
+        // Retail HUD.draw calls minimap.draw() late: after the health bar,
+        // tools, HeadCount, score and feeds. The corner minimap never meets
+        // those widgets, but the full map must cover them (the A-H column
+        // letters overlap the top bar), so it is appended after the feeds.
+        const auto append_minimap = [&]() {
         if (model.minimap().visible &&
             !model.minimap().texture_asset.empty()) {
             const auto& minimap = model.minimap();
@@ -1550,8 +1680,11 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             const auto view_bottom = view_top + map_size;
             const auto zone_alpha =
                 (std::sin(minimap.zone_phase_radians) * 0.4 + 0.6) * 0.5;
-            const auto zone_icon_pulse =
-                std::sin(minimap.zone_phase_radians * 1.5) * 0.4 + 0.6;
+            // MinimapZone.draw (hud.pyd 0x10021FA0): the icon keeps its
+            // packet icon_scale and pulses its opacity instead,
+            // icon.opacity = int((sin(phase) * 0.4 + 0.6) * 255).
+            const auto zone_icon_opacity = std::clamp(
+                std::sin(minimap.zone_phase_radians) * 0.4 + 0.6, 0.0, 1.0);
             for (const auto& zone : minimap.zones) {
                 if (!std::isfinite(zone.world_x1) ||
                     !std::isfinite(zone.world_y1) ||
@@ -1583,22 +1716,30 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                 }
                 const auto centre_x = (left + right) * 0.5;
                 const auto centre_y = (top + bottom) * 0.5;
-                const auto icon_size = zone.icon_source_pixels *
-                                       zone.icon_scale * zone_icon_pulse;
+                const auto icon_size =
+                    zone.icon_source_pixels * zone.icon_scale;
+                // MinimapZone.draw clamps the icon centre into the map view
+                // (clamp(centre, view_min, view_max)) and draws it unclipped,
+                // so off-view TC letters stack on the minimap edge and spill
+                // over the frame instead of being culled.
+                const auto half_icon = icon_size * 0.5;
                 if (zone.icon_asset.empty() || !std::isfinite(icon_size) ||
-                    icon_size <= 0.0 || centre_x < view_left ||
-                    centre_x > view_right || centre_y < view_top ||
-                    centre_y > view_bottom) {
+                    icon_size <= 0.0) {
                     continue;
                 }
+                const auto icon_x = std::clamp(centre_x, view_left, view_right);
+                const auto icon_y = std::clamp(centre_y, view_top, view_bottom);
                 auto zone_icon = window_sprite(
                     zone.icon_asset,
-                    map_left + centre_x - view_left - icon_size * 0.5,
-                    map_top + centre_y - view_top - icon_size * 0.5,
+                    map_left + icon_x - view_left - half_icon,
+                    map_top + icon_y - view_top - half_icon,
                     icon_size, icon_size,
-                    ui::ColorModulation{zone.color, 1'000U, 1'000U},
+                    ui::ColorModulation{
+                        zone.color, 1'000U,
+                        static_cast<std::uint16_t>(std::clamp(
+                            std::lround(zone_icon_opacity * 1'000.0), 0L,
+                            1'000L))},
                     ui::TextureFilter::linear);
-                zone_icon.clip_pixels = minimap_clip;
                 list.push(std::move(zone_icon));
             }
 
@@ -1649,8 +1790,10 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                 append_marker(marker);
             }
         }
+        };
+        if (!model.minimap().full_map_visible) append_minimap();
 
-        if (context.player_widgets_visible) {
+        if (context.player_widgets_visible && context.character_widgets_visible) {
             if (model.intel_carried()) {
                 // draw_intel_hud uses centre-anchored 90px art at
                 // (window.width-80, window.height-250) with the minimap, or
@@ -1714,7 +1857,8 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             // ordinary orange-red BIG_TEXT_COLOR. vip_text_offset is 60.0, making
             // draw_big_text's bottom-origin anchor y exactly 30 + 60 = 90.
             if (model.class_portrait_highly_visible()) {
-                append_big_text("You are a V.I.P! Stay safe!",
+                append_big_text(context.localize ? context.localize("VIP_YOU_ARE_VIP")
+                                                 : std::string{"You are a V.I.P! Stay safe!"},
                                 window_width * 0.5, 90.0, model.team_color());
             }
 
@@ -2089,7 +2233,9 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
         }
 
         // Top-centre HeadCount bar: each team's score flanking the countdown.
-        if (model.team_scores_visible()) {
+        // HUD.draw skips head_count.draw() for the spectator class (A87),
+        // like the health bar, intel icon and player score.
+        if (context.player_widgets_visible && model.team_scores_visible()) {
             const auto format_score = [](const GameHudTeamScore& entry) {
                 auto text = std::to_string(entry.score);
                 if (entry.show_max_score) {
@@ -2292,7 +2438,9 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             list.push(window_sprite(game_hud_assets::score_frame, score_left, score_top,
                                     score_rect.width, score_rect.height));
             list.push(ui::TextDrawCommand{
-                "SCORE: " + std::to_string(model.player_score()),
+                // draw_player_score: strings.SCORE + ': ' + str(score).
+                (context.localize ? context.localize("SCORE") : std::string{"Score"}) +
+                    ": " + std::to_string(model.player_score()),
                 std::string{game_hud_assets::help_font},
                 ui::DrawRect{score_left + 10.0, score_top, score_rect.width,
                              score_rect.height},
@@ -2400,6 +2548,8 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             kill_row_offset += content_height + hud_layout::message_pad * 2.0;
         }
 
+        if (model.minimap().full_map_visible) append_minimap();
+
         if (!model.big_message().text.empty() &&
             model.big_message().remaining_seconds > 0.0) {
             append_big_text(model.big_message().text, window_width * 0.5,
@@ -2411,12 +2561,16 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             // The Label is Spades/HUD_FONT at 40 px with both anchors=center,
             // white foreground and Label's default (64,64,64) shadow at
             // (+2,-2) in bottom-origin coordinates.
+            // strings.RESPAWNING_IN "Respawning in {0}" / NEVER_RESPAWN.
+            const auto seconds_text = std::to_string(
+                static_cast<std::int32_t>(model.respawn().remaining_seconds));
             const auto respawn_text =
                 model.respawn().never_respawn
-                    ? std::string{"No respawns!"}
-                    : std::string{"Respawning in "} +
-                          std::to_string(static_cast<std::int32_t>(
-                              model.respawn().remaining_seconds));
+                    ? (context.localize ? context.localize("NEVER_RESPAWN")
+                                        : std::string{"No respawns!"})
+                    : context.localize
+                    ? format_retail_template(context.localize("RESPAWNING_IN"), {seconds_text})
+                    : std::string{"Respawning in "} + seconds_text;
             const auto append_respawn_text =
                 [&list, &respawn_text, window_width, window_height](
                     double x_offset, double y_offset,
@@ -2444,11 +2598,17 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                                 ui::ColorRgba8{255U, 255U, 255U, 255U});
         }
 
+        // DEATH_CLASS_CHANGE_HINT and VIP_DEAD_CAM_INSTRUCTION are not
+        // separate dead-screen labels in retail: character.pyd posts them
+        // through hud.add_big_message / add_big_messageBackGround, so they
+        // render in the big-text lane above (see set_background_big_message).
+
         // GameScene.on_mouse_scroll asks HUD.set_show_tool_loadout(True, 1.0)
         // and shows the selected authored-scale entry. Hotkey selection changes the
         // tool without opening this strip, which is the important retail
         // wheel-vs-number distinction.
-        if (context.player_widgets_visible && model.inventory_visible()) {
+        if (context.player_widgets_visible && context.character_widgets_visible &&
+            model.inventory_visible()) {
             const auto& slots = model.inventory_slots();
             const double count = static_cast<double>(slots.size());
             const double start_x = window_width * 0.5 - count * inventory_slot_stride * 0.5 +
@@ -2509,7 +2669,8 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             }
         }
 
-        if (context.player_widgets_visible && model.palette().visible) {
+        if (context.player_widgets_visible && context.character_widgets_visible &&
+            model.palette().visible) {
             const auto& palette = model.palette();
             const auto columns = std::max<std::size_t>(1U, palette.columns);
             const auto rows =

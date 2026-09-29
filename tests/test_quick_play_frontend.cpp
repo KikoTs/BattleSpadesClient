@@ -168,7 +168,9 @@ void start_requires_a_completed_search_and_preserves_join_identity() {
     concrete.identity_server_id = "88.80.155.252:32887";
     concrete.identity_ticket = true;
     expect(menu.accept_server(*request, std::move(concrete)), "direct fixture should be admitted");
-    expect(!menu.activate_primary(), "partial discovery cannot start before completion");
+    // quickPlayMenu.py enables START as soon as the row has a server to join.
+    expect(menu.primary_enabled() && menu.activate_primary().has_value(),
+           "a chosen server enables START before the search completes");
     expect(menu.finish_search(*request), "direct fixture search must finish");
     const auto direct = menu.activate_primary();
     const auto* loading =

@@ -41,22 +41,40 @@ namespace {
     return false;
 }
 
-[[nodiscard]] const std::array<float, 3U>& retail_normal(std::uint8_t index) {
-    // kv6.pyd sub_10001350/100013F0 construct this table. sub_1001AA50
-    // reads voxel byte 7 and writes (-x, z, -y), including index 255's sentinel.
-    static const auto normals = [] {
-        std::array<std::array<float, 3U>, 256U> result{};
-        for (std::size_t i{}; i < 255U; ++i) {
-            const float value = static_cast<float>(i);
-            const float nz = value * 0.007843137718737125F - 0.9960784316062927F;
-            const float radius = std::sqrt(std::max(0.0F, 1.0F - nz * nz));
-            const float angle = value * 2.39996337890625F;
-            result[i] = {-std::cos(angle) * radius, nz, -std::sin(angle) * radius};
-        }
-        result[255U] = {2.0F, 0.0F, 0.0F};
-        return result;
-    }();
-    return normals[index];
+/** ChunkVertex::face decoded in the vertex's own (render) basis, as vs_world does. */
+[[nodiscard]] constexpr std::array<float, 3U> render_face_normal(std::uint8_t face) noexcept {
+    switch (face) {
+    case 0U: return {-1.0F, 0.0F, 0.0F};
+    case 1U: return {1.0F, 0.0F, 0.0F};
+    case 2U: return {0.0F, -1.0F, 0.0F};
+    case 3U: return {0.0F, 1.0F, 0.0F};
+    case 4U: return {0.0F, 0.0F, -1.0F};
+    default: return {0.0F, 0.0F, 1.0F};
+    }
+}
+
+/** kv6.pyd sub_1000DC40: normalize(normalize(corner - centre) + face normal). */
+[[nodiscard]] std::array<float, 3U> retail_model_normal(std::array<float, 3U> corner,
+                                                        std::array<float, 3U> face,
+                                                        std::array<float, 3U> centre) noexcept {
+    std::array<float, 3U> radial{corner[0U] - centre[0U], corner[1U] - centre[1U],
+                                 corner[2U] - centre[2U]};
+    const float radial_length =
+        std::sqrt(radial[0U] * radial[0U] + radial[1U] * radial[1U] + radial[2U] * radial[2U]);
+    if (radial_length > 1.0e-6F) {
+        for (auto& axis : radial) axis /= radial_length;
+    } else {
+        radial = {};
+    }
+    std::array<float, 3U> normal{radial[0U] + face[0U], radial[1U] + face[1U],
+                                 radial[2U] + face[2U]};
+    const float length =
+        std::sqrt(normal[0U] * normal[0U] + normal[1U] * normal[1U] + normal[2U] * normal[2U]);
+    if (length <= 1.0e-6F) {
+        return face;
+    }
+    for (auto& axis : normal) axis /= length;
+    return normal;
 }
 
 } // namespace
@@ -481,12 +499,25 @@ ChunkMesh Kv6Model::mesh(const ChunkMesherConfig& shading,
                     0U,
                     0U,
                 };
-                // kv6.pyd sub_10001350/100013F0 generate the 255-direction table;
-                // sub_1001AA50 writes (-nx, nz, -ny) as gl_Normal for every face.
-                // Reuse the terrain-only UV attribute for a tagged KV6 normal.
-                // Enhanced retains the exposed face normal and its existing AO.
-                const auto& normal = retail_normal(voxel.normal_index);
+                // Retail gl_Normal. sub_1001AA50 first writes the byte-7 table
+                // normal (-nx, nz, -ny), but every non-billboard path then
+                // calls sub_1000DC40 (or sub_1000E120 for team-colour groups),
+                // which OVERWRITES each corner's normal with
+                // normalize(normalize(P - C) + F): P the render-space corner,
+                // F the quad's face normal and C the model centre
+                // ((xsiz>>1) - px, -((zsiz>>1) - pz), (ysiz>>1) - py),
+                // deliberately unscaled by the voxel size as in retail. The
+                // table value is dead. Using it drew slab6's per-voxel normal
+                // noise on every model, and the 255 sentinel as an embossed
+                // cross on the held block. Reuse the terrain-only UV attribute
+                // for this tagged KV6 normal; Enhanced keeps the face normal.
                 vertex.static_light = 0x40000000U;
+                const auto normal = retail_model_normal(
+                    {model_x, model_y, model_z},
+                    render_face_normal(kv6_face_to_render[face_index]),
+                    {static_cast<float>(size_x_ >> 1U) - pivot_[0U],
+                     -(static_cast<float>(size_z_ >> 1U) - pivot_[2U]),
+                     static_cast<float>(size_y_ >> 1U) - pivot_[1U]});
                 vertex.ao_u = normal[0U];
                 vertex.ao_v = normal[1U];
                 vertex.edge_u = normal[2U];

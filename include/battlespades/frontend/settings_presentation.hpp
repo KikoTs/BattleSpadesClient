@@ -59,6 +59,8 @@ struct SettingsPresentationRow final {
     std::vector<std::string> dropdown_options;
     std::size_t dropdown_selected_index{};
     bool dropdown_selection_visible{true};
+    /** Toggle: the pointer is over the unselected half (TOGGLE_OPTION_HOVERED_COLOUR). */
+    bool unselected_half_hovered{};
 };
 
 /** State of a retail sliced TextButton. */

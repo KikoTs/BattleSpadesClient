@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <utility>
 
 namespace battlespades::frontend {
 namespace {
@@ -50,11 +51,11 @@ objective_zone_billboard_style(std::uint8_t icon_id) noexcept {
     };
     if (icon_id >= assets.size() || assets[icon_id].empty())
         return std::nullopt;
-    return ObjectiveBillboardStyle{assets[icon_id], 2.5};
+    return ObjectiveBillboardStyle{assets[icon_id], 2.5, 1.0};
 }
 
-std::optional<std::string_view>
-objective_packet_billboard_asset(std::string_view icon_name) noexcept {
+std::optional<std::string>
+objective_packet_billboard_asset(std::string_view icon_name) {
     struct Entry final {
         std::string_view name;
         std::string_view asset;
@@ -77,9 +78,22 @@ objective_packet_billboard_asset(std::string_view icon_name) noexcept {
         Entry{"spawn_icon", "png/ui/spawn_icon.png"},
     };
     const auto found = std::ranges::find(entries, icon_name, &Entry::name);
-    if (found == entries.end())
+    if (found != entries.end())
+        return std::string{found->asset};
+    // Retail has no whitelist: the handler loads png/ui/<icon_name>.png and
+    // an absent file drops the billboard. Accept only a bare identifier so a
+    // server string can never escape the UI texture directory.
+    const bool bare_identifier =
+        !icon_name.empty() && icon_name.size() <= 64U &&
+        std::ranges::all_of(icon_name, [](char character) {
+            return (character >= 'a' && character <= 'z') ||
+                   (character >= 'A' && character <= 'Z') ||
+                   (character >= '0' && character <= '9') || character == '_' ||
+                   character == '-';
+        });
+    if (!bare_identifier)
         return std::nullopt;
-    return found->asset;
+    return "png/ui/" + std::string{icon_name} + ".png";
 }
 
 bool objective_visible_to_team(std::uint8_t visible_team,
@@ -140,12 +154,14 @@ project_objective_indicator(world::Vec3 eye,
                             double fov_y_degrees,
                             std::uint32_t window_width,
                             std::uint32_t window_height,
-                            double world_scale) noexcept {
+                            double scale,
+                            double initial_scale) noexcept {
     if (!finite(eye) || !finite(target) || !std::isfinite(yaw_degrees) ||
         !std::isfinite(pitch_degrees) || !std::isfinite(fov_y_degrees) ||
-        !std::isfinite(world_scale) || window_width == 0U ||
+        !std::isfinite(scale) || !std::isfinite(initial_scale) ||
+        window_width == 0U ||
         window_height == 0U || fov_y_degrees <= 1.0 ||
-        fov_y_degrees >= 179.0 || world_scale <= 0.0) {
+        fov_y_degrees >= 179.0 || scale <= 0.0 || initial_scale <= 0.0) {
         return std::nullopt;
     }
 
@@ -172,58 +188,79 @@ project_objective_indicator(world::Vec3 eye,
 
     constexpr double near_depth{0.05};
     constexpr double edge_margin_pixels{42.0};
-    if (depth > near_depth) {
+    // MinimapBillboard.render (hud.pyd 0x1001B040):
+    //   factor = initial_scale (<= 20 blocks), 0.6 (>= 100 blocks), else
+    //            0.6 + (initial_scale - 0.6) * (d - 100) / -80
+    //   s      = max(0.02 * scale * factor, min_scale = 0.02)
+    //   set_variables(x, y, z - s / initial_scale, s, ...)
+    // __init__ stores initial_scale = scale (the constructor argument): 2.5
+    // for a MinimapZone billboard, the 1.8 default for Minimap.add_billboard.
+    // MinimapZone.update resets a FULLSIZE zone's billboard.scale to 1.0, so
+    // a steady zone draws with scale 1.0 and initial_scale 2.5 (retail
+    // runtime probe, TC 2026-09-29).
+    // aoslib.draw's Billboard quad spans +-s along the camera axes
+    // (draw.pyd 0x10001730), placed 0.25 block from the eye along the
+    // (cone-clamped) direction. So the 256 px canvas is 2 s / depth focal
+    // lengths wide and rises s / initial_scale above the direction.
+    const double distance_scale =
+        distance <= 20.0 ? initial_scale
+                         : distance >= 100.0
+                               ? 0.6
+                               : 0.6 + (initial_scale - 0.6) * (distance - 100.0) / -80.0;
+    constexpr double min_scale{0.02};
+    const double billboard_half = std::max(0.02 * scale * distance_scale, min_scale);
+    constexpr double billboard_distance{0.25};
+    constexpr double cone_radians{std::numbers::pi / 6.0};
+    const auto canvas_at = [&](double cosine) {
+        const double billboard_depth = billboard_distance * std::max(cosine, 0.05);
+        return std::pair{2.0 * billboard_half * focal_pixels / billboard_depth,
+                         billboard_half / initial_scale * focal_pixels / billboard_depth};
+    };
+    if (depth > near_depth && depth / distance >= std::cos(cone_radians)) {
+        const auto [canvas_pixels, lift_pixels] = canvas_at(depth / distance);
         const double ndc_x = right / (depth * tangent * aspect);
         const double ndc_y = up / (depth * tangent);
         const double screen_x = (ndc_x * 0.5 + 0.5) * width;
         const double screen_y = (0.5 - ndc_y * 0.5) * height;
-        if (std::isfinite(screen_x) && std::isfinite(screen_y) &&
-            screen_x >= edge_margin_pixels &&
-            screen_x <= width - edge_margin_pixels &&
-            screen_y >= edge_margin_pixels &&
-            screen_y <= height - edge_margin_pixels) {
-            const double projected_size = world_scale * focal_pixels / depth;
+        if (std::isfinite(screen_x) && std::isfinite(screen_y)) {
             return ObjectiveIndicatorProjection{
                 screen_x,
-                screen_y,
-                std::clamp(projected_size, 24.0, 128.0),
+                screen_y - lift_pixels,
+                canvas_pixels,
                 0.0,
                 distance,
                 false};
         }
     }
 
-    // Project the target direction onto the screen plane. When it is behind
-    // the camera, reverse that plane vector so the pointer chooses the nearer
-    // screen edge instead of mirroring around the centre.
+    // MinimapBillboard.render (hud.pyd 0x1001B040): an objective outside the
+    // view is not pushed to the screen edge. Its direction is clamped onto a
+    // pi/6 (30 degree) cone around the view axis (clamp_point_to_cone) and
+    // the billboard plus its pointer are drawn there, 0.25 block in front of
+    // the eye. The old screen-edge placement hid the pointer under the
+    // minimap and the ammo panels (live A/B 2026-09-29, CTF bases).
     double direction_x = right;
     double direction_y = -up;
-    if (depth < -near_depth) {
-        direction_x = -direction_x;
-        direction_y = -direction_y;
-    }
     if (std::abs(direction_x) < 1.0e-9 &&
         std::abs(direction_y) < 1.0e-9) {
         direction_y = 1.0;
     }
+    const double lateral = std::hypot(direction_x, direction_y);
+    // Cone edge on the projection plane: tan(30 deg) of the focal length.
+    const double cone_pixels = focal_pixels * std::tan(cone_radians);
     const double half_width = std::max(1.0, centre_x - edge_margin_pixels);
     const double half_height = std::max(1.0, centre_y - edge_margin_pixels);
-    const double factor = std::min(
-        std::abs(direction_x) > 1.0e-9
-            ? half_width / std::abs(direction_x)
-            : std::numeric_limits<double>::infinity(),
-        std::abs(direction_y) > 1.0e-9
-            ? half_height / std::abs(direction_y)
-            : std::numeric_limits<double>::infinity());
-    const double x = centre_x + direction_x * factor;
-    const double y = centre_y + direction_y * factor;
+    const double radius = std::min({cone_pixels, half_width, half_height});
+    const auto [canvas_pixels, lift_pixels] = canvas_at(std::cos(cone_radians));
+    const double x = centre_x + direction_x / lateral * radius;
+    const double y = centre_y + direction_y / lateral * radius - lift_pixels;
     // pointer_icon is authored pointing downward. Sprite rotations use
     // pyglet-compatible clockwise degrees around the destination centre.
     const double rotation =
         std::atan2(direction_y, direction_x) * 180.0 / std::numbers::pi - 90.0;
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(rotation))
         return std::nullopt;
-    return ObjectiveIndicatorProjection{x, y, 42.0, rotation, distance, true};
+    return ObjectiveIndicatorProjection{x, y, canvas_pixels, rotation, distance, true};
 }
 
 } // namespace battlespades::frontend

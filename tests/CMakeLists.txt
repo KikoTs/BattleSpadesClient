@@ -29,10 +29,25 @@ target_link_libraries(aos_game_hud_tests PRIVATE BattleSpades::Frontend BattleSp
 aos_enable_strict_warnings(aos_game_hud_tests)
 add_test(NAME aos_game_hud_tests COMMAND aos_game_hud_tests)
 
+add_executable(aos_retail_input_rules_tests test_retail_input_rules.cpp)
+target_link_libraries(aos_retail_input_rules_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_retail_input_rules_tests)
+add_test(NAME aos_retail_input_rules_tests COMMAND aos_retail_input_rules_tests)
+
+add_executable(aos_retail_hud_rules_tests test_retail_hud_rules.cpp)
+target_link_libraries(aos_retail_hud_rules_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_retail_hud_rules_tests)
+add_test(NAME aos_retail_hud_rules_tests COMMAND aos_retail_hud_rules_tests)
+
 add_executable(aos_match_overlays_tests test_match_overlays.cpp)
 target_link_libraries(aos_match_overlays_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_match_overlays_tests)
 add_test(NAME aos_match_overlays_tests COMMAND aos_match_overlays_tests)
+
+add_executable(aos_retail_announcer_tests test_retail_announcer.cpp)
+target_link_libraries(aos_retail_announcer_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_retail_announcer_tests)
+add_test(NAME aos_retail_announcer_tests COMMAND aos_retail_announcer_tests)
 
 add_executable(aos_player_progression_tests test_player_progression.cpp)
 target_link_libraries(aos_player_progression_tests PRIVATE BattleSpades::Frontend)
@@ -58,6 +73,11 @@ add_executable(aos_death_camera_tests test_death_camera.cpp)
 target_link_libraries(aos_death_camera_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_death_camera_tests)
 add_test(NAME aos_death_camera_tests COMMAND aos_death_camera_tests)
+
+add_executable(aos_retail_feel_tests test_retail_feel.cpp)
+target_link_libraries(aos_retail_feel_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_retail_feel_tests)
+add_test(NAME aos_retail_feel_tests COMMAND aos_retail_feel_tests)
 
 add_executable(aos_jetpack_death_tests test_jetpack_death.cpp)
 target_link_libraries(aos_jetpack_death_tests PRIVATE BattleSpades::World)
@@ -115,6 +135,14 @@ target_compile_definitions(aos_retail_movement_core_tests PRIVATE
     AOS_RETAIL_CLASS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/retail_class_movement.json")
 aos_enable_strict_warnings(aos_retail_movement_core_tests)
 add_test(NAME aos_retail_movement_core_tests COMMAND aos_retail_movement_core_tests)
+
+add_executable(aos_tutorial_script_tests test_tutorial_script.cpp)
+target_link_libraries(aos_tutorial_script_tests PRIVATE
+    BattleSpades::World nlohmann_json::nlohmann_json)
+target_compile_definitions(aos_tutorial_script_tests PRIVATE
+    AOS_TUTORIAL_SCRIPT_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/data/tutorial_script.json")
+aos_enable_strict_warnings(aos_tutorial_script_tests)
+add_test(NAME aos_tutorial_script_tests COMMAND aos_tutorial_script_tests)
 
 add_executable(aos_chunk_mesher_tests test_chunk_mesher.cpp)
 target_link_libraries(aos_chunk_mesher_tests PRIVATE BattleSpades::World)
@@ -207,7 +235,10 @@ aos_enable_strict_warnings(aos_runtime_vfx_adapter_tests)
 add_test(NAME aos_runtime_vfx_adapter_tests COMMAND aos_runtime_vfx_adapter_tests)
 
 add_executable(aos_protocol168_terrain_tests test_protocol168_terrain.cpp)
-target_link_libraries(aos_protocol168_terrain_tests PRIVATE BattleSpades::Protocol)
+target_link_libraries(aos_protocol168_terrain_tests PRIVATE
+    BattleSpades::Protocol nlohmann_json::nlohmann_json)
+target_compile_definitions(aos_protocol168_terrain_tests PRIVATE
+    AOS_BLOCK_DAMAGE_FOOTPRINT_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/block_damage_footprints_live.json")
 aos_enable_strict_warnings(aos_protocol168_terrain_tests)
 add_test(NAME aos_protocol168_terrain_tests COMMAND aos_protocol168_terrain_tests)
 
@@ -269,6 +300,11 @@ target_compile_definitions(aos_server_audio_catalog_tests PRIVATE
     AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}")
 aos_enable_strict_warnings(aos_server_audio_catalog_tests)
 add_test(NAME aos_server_audio_catalog_tests COMMAND aos_server_audio_catalog_tests)
+
+add_executable(aos_retail_audio_mix_tests test_retail_audio_mix.cpp)
+target_link_libraries(aos_retail_audio_mix_tests PRIVATE BattleSpades::Ports)
+aos_enable_strict_warnings(aos_retail_audio_mix_tests)
+add_test(NAME aos_retail_audio_mix_tests COMMAND aos_retail_audio_mix_tests)
 
 add_executable(aos_weapon_models_tests test_weapon_models.cpp)
 target_link_libraries(aos_weapon_models_tests PRIVATE BattleSpades::World)
@@ -358,6 +394,11 @@ add_executable(aos_class_selection_menu_tests test_class_selection_menu.cpp)
 target_link_libraries(aos_class_selection_menu_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_class_selection_menu_tests)
 add_test(NAME aos_class_selection_menu_tests COMMAND aos_class_selection_menu_tests)
+
+add_executable(aos_retail_menus_tests test_retail_menus.cpp)
+target_link_libraries(aos_retail_menus_tests PRIVATE BattleSpades::Frontend BattleSpades::Settings)
+aos_enable_strict_warnings(aos_retail_menus_tests)
+add_test(NAME aos_retail_menus_tests COMMAND aos_retail_menus_tests)
 
 add_executable(aos_ugc_loadout_menu_tests test_ugc_loadout_menu.cpp)
 target_link_libraries(aos_ugc_loadout_menu_tests PRIVATE BattleSpades::Frontend)
@@ -688,6 +729,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     # box event test needs SDL_PushEvent for deterministic input injection.
     find_package(SDL3 CONFIG REQUIRED)
 
+    add_executable(aos_retail_event_cues_tests test_retail_event_cues.cpp)
+    target_link_libraries(aos_retail_event_cues_tests PRIVATE BattleSpades::AudioOpenAl)
+    aos_enable_strict_warnings(aos_retail_event_cues_tests)
+    add_test(NAME aos_retail_event_cues_tests COMMAND aos_retail_event_cues_tests)
+
     add_executable(aos_asset_install_tests test_asset_install.cpp)
     target_link_libraries(aos_asset_install_tests PRIVATE BattleSpades::AssetInstall)
     aos_enable_strict_warnings(aos_asset_install_tests)
@@ -697,6 +743,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_ugc_preview_writer_tests PRIVATE BattleSpades::FrontendNative)
     aos_enable_strict_warnings(aos_ugc_preview_writer_tests)
     add_test(NAME aos_ugc_preview_writer_tests COMMAND aos_ugc_preview_writer_tests)
+
+    add_executable(aos_ugc_round5_tests test_ugc_round5.cpp)
+    target_link_libraries(aos_ugc_round5_tests PRIVATE BattleSpades::FrontendNative)
+    aos_enable_strict_warnings(aos_ugc_round5_tests)
+    add_test(NAME aos_ugc_round5_tests COMMAND aos_ugc_round5_tests)
 
     add_executable(
         aos_sdl_window_tests
@@ -714,6 +765,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     aos_enable_strict_warnings(aos_sdl_window_tests)
     add_test(NAME aos_sdl_window_tests COMMAND aos_sdl_window_tests)
+
+    add_executable(aos_input_script_tests test_input_script.cpp)
+    target_link_libraries(aos_input_script_tests PRIVATE BattleSpades::PlatformSdl SDL3::SDL3)
+    aos_enable_strict_warnings(aos_input_script_tests)
+    add_test(NAME aos_input_script_tests COMMAND aos_input_script_tests)
 
     add_executable(
         aos_text_tests
@@ -790,11 +846,32 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_revival_social_tests PRIVATE BattleSpades::NetworkEnet)
     aos_enable_strict_warnings(aos_revival_social_tests)
     add_test(NAME aos_revival_social_tests COMMAND aos_revival_social_tests)
+    # Manual two-identity scenario driver for the loopback AoSPlay social dev
+    # server (aos_revival/scripts/social-dev-server.mjs); not a CTest case.
+    add_executable(aos_social_live_driver social_live_driver.cpp)
+    target_link_libraries(aos_social_live_driver PRIVATE BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_social_live_driver)
 
     add_executable(aos_local_server_process_tests test_local_server_process.cpp)
     target_link_libraries(aos_local_server_process_tests PRIVATE BattleSpades::LocalHost)
     aos_enable_strict_warnings(aos_local_server_process_tests)
     add_test(NAME aos_local_server_process_tests COMMAND aos_local_server_process_tests)
+
+    add_executable(aos_steam_connect_tests test_steam_connect.cpp)
+    target_link_libraries(aos_steam_connect_tests PRIVATE BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_steam_connect_tests)
+    add_test(NAME aos_steam_connect_tests COMMAND aos_steam_connect_tests)
+    if(WIN32)
+        # Speaks the bridge protocol without Steam, so the handshake, noise
+        # tolerance, retry and join events are tested on every machine.
+        add_executable(aos_fake_steam_bridge fake_steam_bridge.cpp)
+        target_link_libraries(aos_fake_steam_bridge PRIVATE BattleSpades::BuildOptions)
+        aos_enable_strict_warnings(aos_fake_steam_bridge)
+        add_dependencies(aos_steam_connect_tests aos_fake_steam_bridge)
+        target_compile_definitions(
+            aos_steam_connect_tests
+            PRIVATE AOS_FAKE_STEAM_BRIDGE="$<TARGET_FILE:aos_fake_steam_bridge>")
+    endif()
 
     find_package(unofficial-sodium CONFIG REQUIRED)
     add_executable(aos_relay_host_tunnel_tests test_relay_host_tunnel.cpp)
@@ -911,6 +988,26 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_ads_sight_render_tests)
     add_test(NAME aos_ads_sight_render_tests COMMAND aos_ads_sight_render_tests)
     set_tests_properties(aos_ads_sight_render_tests PROPERTIES RESOURCE_LOCK gpu)
+    # Named-asset cache: cache-first lookup, worker decode of cold samples and
+    # the music/ambience LRU budget. Skips cleanly without an audio device.
+    add_executable(aos_audio_cache_tests test_audio_cache.cpp)
+    target_link_libraries(aos_audio_cache_tests PRIVATE BattleSpades::AudioOpenAl)
+    target_compile_definitions(aos_audio_cache_tests PRIVATE
+        AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}")
+    aos_enable_strict_warnings(aos_audio_cache_tests)
+    add_test(NAME aos_audio_cache_tests COMMAND aos_audio_cache_tests)
+    set_tests_properties(aos_audio_cache_tests PROPERTIES RESOURCE_LOCK audio)
+    # Weapon.draw_fps / draw_sight muzzle flash for every retail gun with a
+    # first-person flash: the capture asserts the hip flash sits at the
+    # muzzle (off the optical axis, small) and the aimed flash never
+    # blankets the view.
+    foreach(aos_flash_tool 7 8 9 10 15 17 18 19 35 36 37 38 53 60 61 62)
+        add_test(NAME aos_view_muzzle_flash_capture_${aos_flash_tool}
+                 COMMAND aos_ads_sight_render_tests --viewmodel ${aos_flash_tool} --png
+                         "${CMAKE_CURRENT_BINARY_DIR}/muzzle_flash_capture")
+        set_tests_properties(aos_view_muzzle_flash_capture_${aos_flash_tool}
+                             PROPERTIES RESOURCE_LOCK gpu)
+    endforeach()
 endif()
 
 if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
@@ -925,6 +1022,31 @@ if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
     add_test(NAME aos_block_shading_render_tests COMMAND aos_block_shading_render_tests)
     set_tests_properties(aos_block_shading_render_tests PROPERTIES RESOURCE_LOCK gpu
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" TIMEOUT 90)
+    # Developer tool (not a test): offscreen production-renderer capture of a
+    # map at an exact pose, for retail screenshot comparison.
+    add_executable(aos_retail_scene_capture "${PROJECT_SOURCE_DIR}/tools/retail_scene_capture.cpp")
+    target_link_libraries(aos_retail_scene_capture PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_retail_scene_capture SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_retail_scene_capture PRIVATE
+        AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_retail_scene_capture)
+    # Offscreen before/after capture of third-person characters, packs, back
+    # intel, classic corpse and spawn flash (docs/RETAIL_PARITY_GAPS round 2).
+    add_executable(aos_character_scene_capture
+                   "${PROJECT_SOURCE_DIR}/tools/character_scene_capture.cpp")
+    target_link_libraries(aos_character_scene_capture PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_character_scene_capture SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_character_scene_capture PRIVATE
+        AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_character_scene_capture)
+    add_test(NAME aos_character_scene_capture_smoke
+             COMMAND aos_character_scene_capture
+                     "out=${CMAKE_CURRENT_BINARY_DIR}/character_scene_capture.png")
+    set_tests_properties(aos_character_scene_capture_smoke PROPERTIES RESOURCE_LOCK gpu)
     add_executable(aos_placement_render_tests test_placement_render.cpp)
     target_link_libraries(aos_placement_render_tests PRIVATE
         BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
@@ -937,3 +1059,8 @@ if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
     set_tests_properties(aos_placement_render_tests PROPERTIES RESOURCE_LOCK gpu
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 endif()
+
+add_executable(aos_retail_effects_tests test_retail_effects.cpp)
+target_link_libraries(aos_retail_effects_tests PRIVATE BattleSpades::World)
+aos_enable_strict_warnings(aos_retail_effects_tests)
+add_test(NAME aos_retail_effects_tests COMMAND aos_retail_effects_tests)

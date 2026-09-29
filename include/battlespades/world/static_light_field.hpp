@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -44,8 +45,14 @@ public:
     static constexpr float flare_block_radius{5.0F};
     /** Retail block fire and block goo shared this shorter radius. */
     static constexpr float block_fire_radius{3.0F};
-    /** Bounded so a griefer cannot make every chunk re-mesh forever. */
-    static constexpr std::size_t maximum_lights{512U};
+    /**
+     * Bounded so a griefer cannot make every chunk re-mesh forever. Sized to
+     * the server's static-light cap: 20thCenturyTown alone restores 524 map
+     * flare markers before any player places one.
+     */
+    static constexpr std::size_t maximum_lights{2048U};
+    /** Edge of the xy bucket grid that keeps `sample` O(nearby lights). */
+    static constexpr std::uint32_t bucket_edge{8U};
 
     /** Returns false when the position already holds a light or the pool is full. */
     [[nodiscard]] bool add(StaticLight light);
@@ -67,6 +74,29 @@ public:
      */
     [[nodiscard]] std::array<float, 3U> sample(float x, float y, float z) const noexcept;
 
+    /** The one light retail's vertex kernel keeps for a point. */
+    struct StrongestLight final {
+        /** Light colour, c / 255. */
+        std::array<float, 3U> rgb{};
+        /** clamp(1 - d^2 / r^2, 0, 1). */
+        float attenuation{};
+        /** The light's voxel centre in canonical coordinates. */
+        std::array<float, 3U> position{};
+    };
+
+    /**
+     * Retail vxl.pyd 0x10022360 light selection: over every light within
+     * reach, `att = clamp(1 - d^2/r^2, 0, 1)` measured from the light
+     * voxel's centre, keeping the largest (`best <= att`, so a later light
+     * wins a tie). Empty when no light reaches the point.
+     */
+    [[nodiscard]] std::optional<StrongestLight> strongest(float x, float y,
+                                                          float z) const noexcept;
+
+    /** True when a light sits in this exact cell (retail colour-entry flag +4). */
+    [[nodiscard]] bool has_light_at(std::uint32_t x, std::uint32_t y,
+                                    std::uint32_t z) const noexcept;
+
     /**
      * Every chunk a light at this cell can affect, for dirtying after an edit.
      *
@@ -77,7 +107,12 @@ public:
                                                         std::uint32_t chunk_edge) const;
 
 private:
+    void rebuild_buckets();
+
     std::vector<StaticLight> lights_;
+    /** Per 8x8 column bucket, the indices of lights whose cell lies in it. */
+    std::vector<std::vector<std::uint16_t>> buckets_;
+    float max_radius_{};
 };
 
 } // namespace battlespades::world

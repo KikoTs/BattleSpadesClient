@@ -804,7 +804,9 @@ RuntimeDecodeResult decode_runtime_packet(std::span<const std::byte> payload) {
         auto value = std::optional<std::string>{};
         if (!required(reader.u8(), packet.player_id) ||
             !required(reader.u8(), packet.chat_type) ||
-            !(value = reader.string(256U)).has_value()) {
+            // The server relays up to 200 UTF-8 characters (800 bytes) plus
+            // a sender prefix on system lines; retail's reader has no cap.
+            !(value = reader.string(1024U)).has_value()) {
             return malformed("malformed ChatMessage(49)");
         }
         packet.value = std::move(*value);
@@ -950,8 +952,19 @@ RuntimeDecodeResult decode_runtime_packet(std::span<const std::byte> payload) {
     if (*id == TerritoryBaseStatePacket::id) {
         TerritoryBaseStatePacket packet;
         if (!required(reader.u8(), packet.base_index) ||
-            !required(reader.u8(), packet.action) ||
-            !required(reader.u8(), packet.controlled_by) ||
+            !required(reader.u8(), packet.action) || packet.action > 7U) {
+            return malformed("malformed TerritoryBaseState(106)");
+        }
+        // TerritoryBaseState.read (packet.pyd): TC_DETAIL_NOT_REQUIRED
+        // (ENTERING 3, LEAVING 4, CONTENDED 6, UNCONTENDED 7) carries only
+        // base_index + action; capture_amount reads back as 0.5.
+        if (packet.action == 3U || packet.action == 4U || packet.action == 6U ||
+            packet.action == 7U) {
+            packet.capture_amount = 0.5F;
+            return complete(std::move(packet), reader,
+                            "TerritoryBaseState(106)");
+        }
+        if (!required(reader.u8(), packet.controlled_by) ||
             !required(reader.u8(), packet.attacked_by) ||
             !read_fixed(reader, packet.capture_amount) ||
             packet.action > 7U || packet.controlled_by > 3U ||
@@ -960,6 +973,13 @@ RuntimeDecodeResult decode_runtime_packet(std::span<const std::byte> payload) {
         }
         return complete(std::move(packet), reader,
                         "TerritoryBaseState(106)");
+    }
+    if (*id == PoiFocusPacket::id) {
+        PoiFocusPacket packet;
+        if (!read_fixed_vector(reader, packet.target)) {
+            return malformed("malformed POIFocus(18) target");
+        }
+        return complete(packet, reader, "POIFocus(18)");
     }
     return malformed("packet is not a supported runtime packet");
 }
@@ -991,6 +1011,23 @@ std::vector<std::byte> encode_packet(const SkyboxDataPacket& packet) {
     Writer writer;
     writer.u8(SkyboxDataPacket::id);
     writer.string(packet.definition_name);
+    return std::move(writer).take();
+}
+
+std::vector<std::byte> encode_packet(const UgcMapInfoPacket& packet) {
+    // UGCMapInfo(102): int32 length + PNG bytes; the host's preview upload.
+    constexpr std::size_t maximum_png{8U * 1024U * 1024U};
+    if (packet.png_data.size() < 8U || packet.png_data.size() > maximum_png ||
+        packet.png_data[0U] != std::byte{0x89U} || packet.png_data[1U] != std::byte{'P'} ||
+        packet.png_data[2U] != std::byte{'N'} || packet.png_data[3U] != std::byte{'G'}) {
+        return {};
+    }
+    Writer writer;
+    writer.u8(UgcMapInfoPacket::id);
+    writer.integer(static_cast<std::int32_t>(packet.png_data.size()));
+    for (const auto value : packet.png_data) {
+        writer.u8(static_cast<std::uint8_t>(value));
+    }
     return std::move(writer).take();
 }
 

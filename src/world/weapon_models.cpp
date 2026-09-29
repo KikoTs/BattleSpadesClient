@@ -115,7 +115,8 @@ namespace {
 WeaponModelLoadResult load_weapon_models(
     const std::filesystem::path& asset_root, std::uint8_t tool_id,
     std::array<float, 3U> tint, std::optional<VxlColor> team_color,
-    std::uint8_t inverse_scale, const WeaponCosmeticFinish* finish) {
+    std::uint8_t inverse_scale, const WeaponCosmeticFinish* finish,
+    bool force_default_color) {
     const auto* definition = find_weapon_definition(tool_id);
     if (definition == nullptr) {
         return {std::nullopt, "tool id is outside the selectable catalog"};
@@ -123,7 +124,9 @@ WeaponModelLoadResult load_weapon_models(
     WeaponModelSet result;
     result.tool_id = tool_id;
     std::string error;
-    const auto model_team_color = definition->retail.use.use_team_color
+    // force_default_color: Character.draw's use_color and
+    // use_other_team_color paths also call set_kv6_default_color.
+    const auto model_team_color = definition->retail.use.use_team_color || force_default_color
                                       ? team_color
                                       : std::nullopt;
     constexpr std::uint8_t zombie_prefab_tool_id{28U};
@@ -185,6 +188,47 @@ WeaponModelLoadResult load_weapon_models(
         result.pin.reset();
     }
     return {std::move(result), {}};
+}
+
+namespace {
+
+/** Kv6Model::mesh's per-channel tint on an unshaded, untinted colour. */
+void tint_mesh_colors(ChunkMesh& mesh, std::array<float, 3U> tint) {
+    const auto channel = [](std::uint32_t abgr, unsigned int shift, float channel_tint) {
+        const auto value = static_cast<float>((abgr >> shift) & 0xFFU);
+        return static_cast<std::uint32_t>(std::min(255.0F, value * channel_tint + 0.5F))
+               << shift;
+    };
+    for (auto& vertex : mesh.vertices) {
+        vertex.abgr = (vertex.abgr & 0xFF000000U) | channel(vertex.abgr, 0U, tint[0U]) |
+                      channel(vertex.abgr, 8U, tint[1U]) | channel(vertex.abgr, 16U, tint[2U]);
+    }
+}
+
+} // namespace
+
+WeaponModelSet tinted_weapon_models(WeaponModelSet untinted, std::array<float, 3U> tint) {
+    if (tint == std::array<float, 3U>{1.0F, 1.0F, 1.0F}) {
+        return untinted;
+    }
+    // Same rule as load_weapon_models: ZombiePrefabTool tints only part 1.
+    constexpr std::uint8_t zombie_prefab_tool_id{28U};
+    const auto tint_parts = [&](std::vector<ChunkMesh>& parts) {
+        for (std::size_t index{}; index < parts.size(); ++index) {
+            if (untinted.tool_id == zombie_prefab_tool_id && index != 1U) {
+                continue;
+            }
+            tint_mesh_colors(parts[index], tint);
+        }
+    };
+    tint_parts(untinted.third_person_parts);
+    tint_parts(untinted.first_person_parts);
+    for (auto* optional : {&untinted.sight, &untinted.pin, &untinted.casing, &untinted.tracer}) {
+        if (optional->has_value()) {
+            tint_mesh_colors(**optional, tint);
+        }
+    }
+    return untinted;
 }
 
 } // namespace battlespades::world

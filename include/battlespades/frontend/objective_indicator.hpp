@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace battlespades::frontend {
@@ -13,8 +14,14 @@ namespace battlespades::frontend {
 /** Retail world-billboard art selected by a server packet-43 icon ordinal. */
 struct ObjectiveBillboardStyle final {
     std::string_view icon_asset;
-    /** MinimapZone constructs its companion billboard with scale=2.5. */
-    double world_scale{2.5};
+    /**
+     * MinimapZone constructs its companion billboard with scale=2.5, which
+     * MinimapBillboard.__init__ also stores as initial_scale. MinimapZone.update
+     * then sets billboard.scale = 1.0 once the zone is FULLSIZE (retail runtime
+     * probe 2026-09-29: scale 1.0, initial_scale 2.5 on every TC zone).
+     */
+    double initial_scale{2.5};
+    double scale{1.0};
 };
 
 /**
@@ -30,13 +37,13 @@ objective_zone_billboard_style(std::uint8_t icon_id) noexcept;
 /**
  * Resolve a packet-41 icon name to a shipped client asset.
  *
- * Packet strings are untrusted network input. Only retail billboard names
- * present in the preserved asset set are accepted; paths and extensions are
- * deliberately rejected so a malformed server cannot trigger arbitrary
- * texture loads on the render thread.
+ * Packet strings are untrusted network input. Known retail aliases resolve
+ * to their shipped art; any other bare identifier becomes png/ui/<name>.png
+ * like the retail handler (which has no whitelist). Paths and extensions are
+ * rejected so a server string cannot leave the UI texture directory.
  */
-[[nodiscard]] std::optional<std::string_view>
-objective_packet_billboard_asset(std::string_view icon_name) noexcept;
+[[nodiscard]] std::optional<std::string>
+objective_packet_billboard_asset(std::string_view icon_name);
 
 /** Shared neutral/team/spectator visibility gate used by packets 41 and 43. */
 [[nodiscard]] bool objective_visible_to_team(std::uint8_t visible_team,
@@ -99,7 +106,8 @@ project_objective_indicator(world::Vec3 eye,
                             double fov_y_degrees,
                             std::uint32_t window_width,
                             std::uint32_t window_height,
-                            double world_scale = 2.5) noexcept;
+                            double scale = 1.0,
+                            double initial_scale = 2.5) noexcept;
 
 inline constexpr std::string_view objective_pointer_asset{
     "png/ui/pointer_icon.png"};

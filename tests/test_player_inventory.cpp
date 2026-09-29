@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -79,6 +80,25 @@ int main() {
         expect(inventory.toolbar().slots().size() == 5U &&
                    !inventory.select_tool(30U),
                "dropping intel must remove its objective slot");
+
+        // Retail Player pickup setter (live, modern CTF): the carrier is
+        // switched to the pickup tool and the switch keys cannot leave it.
+        inventory.tick(2.0);
+        inventory.set_carried_pickup(16U, true);
+        inventory.tick(2.0);
+        expect(inventory.toolbar().selected_tool_id() == std::optional<std::uint8_t>{std::uint8_t{30U}} &&
+                   inventory.carried_pickup_locks_tool(),
+               "an equipped pickup must select its objective tool");
+        expect(!inventory.select_slot(0U) && !inventory.cycle(1) &&
+                   inventory.toolbar().selected_tool_id() == std::optional<std::uint8_t>{std::uint8_t{30U}},
+               "switch keys and the wheel must not leave a carried pickup");
+        inventory.set_carried_pickup(0xFFU, true);
+        expect(!inventory.carried_pickup_locks_tool() &&
+                   inventory.toolbar().selected_tool_id().has_value() &&
+                   inventory.toolbar().selected_tool_id() != std::optional<std::uint8_t>{std::uint8_t{30U}},
+               "dropping the pickup must return to an ordinary tool");
+        inventory.tick(2.0);
+        expect(inventory.select_slot(0U), "switching works again after the drop");
 
         const auto engineer = default_class_selection(12U);
         expect(engineer.prefabs.size() == 3U,
@@ -173,6 +193,30 @@ int main() {
                    inventory.select_tool(45U) &&
                    inventory.weapons().replication().selected_tool() == 45U,
                "UGC toolbar selection must atomically select the same runtime tool");
+
+        // V2: Character.auto_switch_tool walks AMMO_DEPLETED_SWITCH_ORDER
+        // (primary, secondary, melee), not the next toolbar slot. Emptying
+        // the Scout pistol (slot 3) must return to the sniper (slot 2), not
+        // advance to the landmine in slot 4.
+        {
+            PlayerInventory scout;
+            expect(scout.spawn_with_selection(1U, official_scout, {}, {}) &&
+                       scout.select_tool(17U),
+                   "the official Scout pistol must be selectable");
+            scout.tick(2.0);
+            for (int tick{}; tick < 60 * 600 &&
+                             scout.toolbar().selected_tool_id() == std::optional<std::uint8_t>{std::uint8_t{17U}};
+                 ++tick) {
+                scout.weapons().set_primary(tick % 4 == 0);
+                scout.tick(1.0 / 60.0);
+            }
+            scout.weapons().set_primary(false);
+            expect(scout.ammo(17U) != nullptr && scout.ammo(17U)->magazine == 0U &&
+                       scout.ammo(17U)->reserve == 0U,
+                   "the pistol ran completely dry");
+            expect(scout.toolbar().selected_tool_id() == std::optional<std::uint8_t>{std::uint8_t{18U}},
+                   "an empty secondary switches back to the primary weapon first");
+        }
         std::cout << "player inventory: ammo, blocks, class and all-tool modes passed\n";
         return 0;
     } catch (const std::exception& error) {

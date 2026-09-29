@@ -98,9 +98,10 @@ std::optional<PlayerNameProjection> project_retail_player_name(
         return std::nullopt;
     }
 
-    // text.py creates the over-player face at 14 px.  Text3DRenderer then
+    // text.py set_fonts:202 creates big_name_font = load_font(STANDARD_FONT,
+    // 20, False), the face draw_player_names_above_players uses. Text3D then
     // applies PLAYER_NAME_SCALE * d^0.7 before perspective projection.
-    constexpr double retail_font_height{14.0};
+    constexpr double retail_font_height{20.0};
     const double focal_pixels = static_cast<double>(window_height) / (2.0 * tangent);
     const double scaled_font = retail_font_height * retail_player_name_scale *
                                std::pow(distance, 0.7) * focal_pixels / depth;

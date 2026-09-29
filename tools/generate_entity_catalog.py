@@ -396,8 +396,13 @@ CATALOG = {
              parts=[part("radar_station.kv6", z=alias("A1902"))], spawnable=True,
              team_tinted=True,
              model_size=alias("A1898"), health=alias("A1899"),
-             lifetime=alias("A1900"),
-             sense_radius=alias("A1901"),
+             # A1900 is the squared-distance limit in the stock
+             # RadarStationEntity.can_detect_player (the 250-block minimap
+             # range); A1901 is the 45 s lifetime the server sends as the
+             # packet-21 fuse (BS/shared/constants.py RADAR_STATION_*,
+             # BS/docs/RETAIL_VALUES.md "Radar station").
+             lifetime=alias("A1901"),
+             sense_radius=alias("A1900"),
              sound_place="AoS_soundfx_PLAYER_marksman_item_RADAR_place_001",
              note="EARLIER CLAIM WITHDRAWN: the radar is not silent. SOUND_MAP id 56 names "
                   "the LONG stem, which ships; only the short RADAR_place_001 spelling is "

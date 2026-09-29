@@ -23,14 +23,90 @@
 #include <variant>
 #include <vector>
 
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
+
 namespace battlespades::render {
 namespace {
+
+/**
+ * bgfx callback that keeps bgfx's stub behaviour (fatal aborts, no trace or
+ * shader cache) and additionally receives requestScreenShot() pixels, which
+ * bgfx delivers on its render thread.
+ */
+class ScreenshotCallback final : public bgfx::CallbackI {
+public:
+    void fatal(const char* file_path, std::uint16_t line, bgfx::Fatal::Enum code,
+               const char* message) override {
+        std::fprintf(stderr, "bgfx fatal 0x%08x at %s:%u: %s\n", static_cast<unsigned>(code),
+                     file_path != nullptr ? file_path : "?", static_cast<unsigned>(line),
+                     message != nullptr ? message : "");
+        std::abort();
+    }
+    void traceVargs(const char*, std::uint16_t, const char*, va_list) override {}
+    void profilerBegin(const char*, std::uint32_t, const char*, std::uint16_t) override {}
+    void profilerBeginLiteral(const char*, std::uint32_t, const char*, std::uint16_t) override {}
+    void profilerEnd() override {}
+    std::uint32_t cacheReadSize(std::uint64_t) override { return 0U; }
+    bool cacheRead(std::uint64_t, void*, std::uint32_t) override { return false; }
+    void cacheWrite(std::uint64_t, const void*, std::uint32_t) override {}
+    void screenShot(const char*, std::uint32_t width, std::uint32_t height, std::uint32_t pitch,
+                    const void* data, std::uint32_t size, bool yflip) override {
+        if (data == nullptr || width == 0U || height == 0U ||
+            static_cast<std::uint64_t>(pitch) * height > size || pitch < width * 4U) {
+            return;
+        }
+        BgfxUiRenderer::BackbufferCapture capture;
+        capture.width = width;
+        capture.height = height;
+        capture.rgba.resize(static_cast<std::size_t>(width) * height * 4U);
+        const auto* source = static_cast<const std::uint8_t*>(data);
+        for (std::uint32_t row = 0U; row < height; ++row) {
+            const std::uint32_t source_row = yflip ? height - 1U - row : row;
+            const auto* in = source + static_cast<std::size_t>(source_row) * pitch;
+            auto* out = capture.rgba.data() + static_cast<std::size_t>(row) * width * 4U;
+            for (std::uint32_t column = 0U; column < width; ++column) {
+                // bgfx screenshots are BGRA8.
+                out[column * 4U + 0U] = in[column * 4U + 2U];
+                out[column * 4U + 1U] = in[column * 4U + 1U];
+                out[column * 4U + 2U] = in[column * 4U + 0U];
+                out[column * 4U + 3U] = 255U;
+            }
+        }
+        const std::scoped_lock lock{mutex_};
+        pending_ = std::move(capture);
+    }
+    void captureBegin(std::uint32_t, std::uint32_t, std::uint32_t, bgfx::TextureFormat::Enum,
+                      bool) override {}
+    void captureEnd() override {}
+    void captureFrame(const void*, std::uint32_t) override {}
+
+    [[nodiscard]] std::optional<BgfxUiRenderer::BackbufferCapture> take() {
+        const std::scoped_lock lock{mutex_};
+        auto capture = std::move(pending_);
+        pending_.reset();
+        return capture;
+    }
+
+private:
+    std::mutex mutex_;
+    std::optional<BgfxUiRenderer::BackbufferCapture> pending_;
+};
+
+/** One process-wide callback: bgfx is a singleton and outlives no renderer. */
+ScreenshotCallback& screenshot_callback() {
+    static ScreenshotCallback callback;
+    return callback;
+}
 
 // View 1 between the clear and the sprite layers belongs to WorldRenderer;
 // see render_views.hpp for the global ordering contract.
 constexpr bgfx::ViewId clear_view_id{backdrop_clear_view_id};
 constexpr bgfx::ViewId window_view_id{ui_window_view_id};
 constexpr bgfx::ViewId ui_view_id{ui_canvas_view_id};
+constexpr bgfx::ViewId window_overlay_view_id{ui_window_overlay_view_id};
 constexpr std::uint32_t vertices_per_sprite{4U};
 constexpr std::uint32_t indices_per_sprite{6U};
 
@@ -431,6 +507,14 @@ struct BgfxUiRenderer::Impl final {
         bgfx::setViewClear(ui_view_id, BGFX_CLEAR_NONE);
         bgfx::setViewMode(ui_view_id, bgfx::ViewMode::Sequential);
 
+        bgfx::setViewRect(window_overlay_view_id,
+                          0U,
+                          0U,
+                          static_cast<std::uint16_t>(drawable_width),
+                          static_cast<std::uint16_t>(drawable_height));
+        bgfx::setViewClear(window_overlay_view_id, BGFX_CLEAR_NONE);
+        bgfx::setViewMode(window_overlay_view_id, bgfx::ViewMode::Sequential);
+
         std::array<float, 16U> view{};
         std::array<float, 16U> window_projection{};
         std::array<float, 16U> projection{};
@@ -467,9 +551,12 @@ struct BgfxUiRenderer::Impl final {
                      bgfx::getCaps()->homogeneousDepth);
         bgfx::setViewTransform(window_view_id, view.data(), window_projection.data());
         bgfx::setViewTransform(ui_view_id, view.data(), projection.data());
+        bgfx::setViewTransform(window_overlay_view_id, view.data(), window_projection.data());
         bgfx::touch(clear_view_id);
         bgfx::touch(window_view_id);
         bgfx::touch(ui_view_id);
+        bgfx::touch(window_overlay_view_id);
+        canvas_submitted = false;
         return true;
     }
 
@@ -523,6 +610,7 @@ struct BgfxUiRenderer::Impl final {
                 static_cast<std::uint16_t>(std::ceil(clip->y + clip->height) - y));
         }
         bgfx::submit(ui_view_id, program);
+        canvas_submitted = true;
         return true;
     }
 
@@ -643,7 +731,12 @@ struct BgfxUiRenderer::Impl final {
                              static_cast<std::uint16_t>(right - left),
                              static_cast<std::uint16_t>(bottom - top));
         }
-        const auto view = sprite.space == UiDrawSpace::window_pixels ? window_view_id : ui_view_id;
+        // Draw-list order wins: a window-pixel sprite queued after canvas
+        // content goes to the overlay layer above the canvas.
+        const auto view = sprite.space != UiDrawSpace::window_pixels ? ui_view_id
+                          : canvas_submitted                         ? window_overlay_view_id
+                                                                     : window_view_id;
+        if (view == ui_view_id) canvas_submitted = true;
         bgfx::submit(view, program);
         return true;
     }
@@ -673,6 +766,7 @@ struct BgfxUiRenderer::Impl final {
     bool initialized{false};
     bool frame_open{false};
     std::size_t dropped_draws{};
+    bool canvas_submitted{};
     std::size_t last_dropped_draws{};
 };
 
@@ -714,6 +808,7 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     init.vendorId = BGFX_PCI_ID_NONE;
     init.debug = config.debug_device;
     init.profile = false;
+    init.callback = &screenshot_callback();
     init.platformData.ndt = config.native_window.display;
     init.platformData.nwh = config.native_window.window;
     init.platformData.context = config.native_window.graphics_context;
@@ -724,6 +819,11 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     init.resolution.width = config.drawable_extent.width;
     init.resolution.height = config.drawable_extent.height;
     init.resolution.reset = reset_flags(config);
+    // The default (BGFX_CONFIG_MAX_FRAME_LATENCY = 3) lets the DXGI/Vulkan
+    // queue fill 2-3 frames ahead under VSync because 60.000 Hz ticks never
+    // match a 59.94 Hz panel: +30-50 ms of input latency. One queued frame
+    // (plus bgfx's own render thread) keeps VSync latency near retail.
+    init.resolution.maxFrameLatency = bgfx_max_frame_latency;
 
     impl_->owner_thread = std::this_thread::get_id();
 #if defined(__APPLE__)
@@ -767,6 +867,7 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     bgfx::setViewName(clear_view_id, "BattleSpades UI clear");
     bgfx::setViewName(window_view_id, "BattleSpades UI window layer");
     bgfx::setViewName(ui_view_id, "BattleSpades Classic UI");
+    bgfx::setViewName(window_overlay_view_id, "BattleSpades UI window overlay");
     bgfx::setDebug(BGFX_DEBUG_NONE);
     impl_->error.clear();
     return true;
@@ -1415,6 +1516,24 @@ bool BgfxUiRenderer::draw(const UiGeometry& geometry) {
     impl_->draws.emplace_back(geometry);
     impl_->error.clear();
     return true;
+}
+
+bool BgfxUiRenderer::request_backbuffer_capture() {
+    if (!impl_->initialized) {
+        return impl_->fail("bgfx UI renderer is not initialized");
+    }
+    if (!impl_->check_thread()) {
+        return false;
+    }
+    if (bgfx::getRendererType() == bgfx::RendererType::Noop) {
+        return impl_->fail("the active bgfx backend cannot capture the backbuffer");
+    }
+    bgfx::requestScreenShot(BGFX_INVALID_HANDLE, "screenshot");
+    return true;
+}
+
+std::optional<BgfxUiRenderer::BackbufferCapture> BgfxUiRenderer::take_backbuffer_capture() {
+    return screenshot_callback().take();
 }
 
 bool BgfxUiRenderer::end_frame() {

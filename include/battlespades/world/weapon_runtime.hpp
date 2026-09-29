@@ -35,6 +35,11 @@ enum class WeaponActionKind : std::uint8_t {
     throwable_primed,
     reload_started,
     reload_completed,
+    /**
+     * Presentation only: a trigger press refused because the placement
+     * target is invalid (BUILD_ERROR_SOUND). Never sent to the server.
+     */
+    placement_rejected,
 };
 
 /**
@@ -64,6 +69,15 @@ struct WeaponAction final {
      * and never serialised: the wire marshals its own context struct.
      */
     bool burst_follow_up{};
+    /**
+     * Weapon.accuracy at the moment of the shot (hitscan only).
+     *
+     * Retail prep_shoot() derives it from the current accuracy_spread BEFORE
+     * shot_weapon() grows the spread, and shoot_bullet() scatters with it, so
+     * the local pellet/impact FX must bloom exactly like the server's cloud.
+     * Never serialised.
+     */
+    double accuracy{};
 };
 
 struct WeaponRuntimeContext final {
@@ -153,6 +167,16 @@ public:
      */
     [[nodiscard]] static bool can_use_while_sprinting(
         const WeaponDefinition& weapon, bool secondary = false) noexcept;
+    /**
+     * Retail Tool.can_swap: false while the SpadeTool's inert secondary lock
+     * (active_secondary, SPADE secondary_shoot_interval 1.0 s) is running.
+     */
+    [[nodiscard]] bool swap_locked() const noexcept;
+    /**
+     * One-shot Character.auto_switch_tool request: the held tool was fired dry
+     * with nothing left to reload (or a throwable with no count).
+     */
+    [[nodiscard]] bool take_auto_switch_request() noexcept;
 
 private:
     void process_edges(const WeaponDefinition& weapon) noexcept;
@@ -162,6 +186,7 @@ private:
     void activate(const WeaponDefinition& weapon, bool secondary) noexcept;
     void emit(WeaponActionKind kind, const WeaponDefinition& weapon,
               bool secondary = false, double value = 0.0) noexcept;
+    void report_placement_rejected(const WeaponDefinition& weapon, bool secondary) noexcept;
     [[nodiscard]] bool consume(const WeaponDefinition& weapon) noexcept;
     [[nodiscard]] std::uint8_t next_seed() noexcept;
     [[nodiscard]] double named_value(const WeaponDefinition& weapon,
@@ -182,6 +207,14 @@ private:
     bool secondary_held_{};
     bool custom_held_{};
     bool primary_pressed_{};
+    /**
+     * Character.shoot_primary_held: the shot that emptied the magazine had
+     * the trigger down. end_reload stops a shell chain on it and resumes fire
+     * (set_primary_shoot(True)) once rounds are back.
+     */
+    bool shoot_primary_held_{};
+    /** set_primary_shoot(True) from end_reload, honoured once cooldown allows. */
+    bool resume_fire_pending_{};
     bool primary_released_{};
     bool secondary_pressed_{};
     bool secondary_released_{};
@@ -223,6 +256,12 @@ private:
     double block_sucker_shake_amplitude_{};
     double block_sucker_settle_remaining_{};
     double block_sucker_settle_start_amplitude_{};
+    /** A primary press during a clip_reload shell cycle (retail end_reload stop). */
+    bool reload_interrupt_latched_{};
+    /** Retail Character.reload_next_update, set by an ammo-crate restock. */
+    bool reload_next_update_{};
+    bool auto_switch_requested_{};
+    double swap_lock_remaining_{};
     std::array<double, 3U> block_sucker_shake_{};
 };
 

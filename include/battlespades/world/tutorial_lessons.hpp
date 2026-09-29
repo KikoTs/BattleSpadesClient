@@ -25,14 +25,50 @@ enum class TutorialLessonStage : std::uint8_t {
  * lesson), jump/crouch sightings are sticky, and each movement gate keeps the
  * recovered geometry-backed fallback threshold for missed input samples.
  * SHOOTING requires destroying the five gallery targets and CLIMB requires
- * building, so an offline session without weapons stops at SHOOTING —
- * advance_external() exists for those future systems.
+ * standing on top of the lane's tower (CLIMB1: "Dig and build your way to the
+ * top of the tower!"); both arrive through advance_external().
+ *
+ * The retail lesson logic ran on an unshipped dedicated server, so these
+ * gates are a reconstruction shared value-for-value with the server and
+ * pinned by tests/data/tutorial_script.json (a copy of the server fixture).
  */
 class TutorialLessons final {
 public:
     /** Recovered pacing constants. */
     static constexpr double intro_seconds{3.0};
     static constexpr double help_transition_delay{0.35};
+    /** COMPLETE_3 "Training will exit when the timer reaches zero". */
+    static constexpr double completion_seconds{10.0};
+    /** Movement gates on the minimum lane-local x reached. */
+    static constexpr double basic_controls_max_local_x{135.0};
+    static constexpr double jump_with_input_max_local_x{128.0};
+    static constexpr double jump_fallback_max_local_x{119.0};
+    static constexpr double crouch_with_input_max_local_x{108.0};
+    static constexpr double crouch_fallback_max_local_x{99.0};
+    /** Five bullseyes per lane. */
+    static constexpr int target_count{5};
+    /**
+     * Tower top (Training.vxl, identical in all twelve lanes): dome centre at
+     * lane-local (118.5, 51.5), top voxel z 193, dome surface z <= 197 within
+     * r ~8.5, a ledge ring at z 207 and the ground near z 238. Standing on
+     * the dome puts the player position at z <= 200 (z grows downward).
+     */
+    static constexpr double tower_center_local_x{118.5};
+    static constexpr double tower_center_local_y{51.5};
+    static constexpr double tower_radius{9.5};
+    static constexpr double tower_max_player_z{200.0};
+
+    /** CLIMB gate: the player stands on the tower top. */
+    [[nodiscard]] static bool on_tower_top(double local_x, double local_y,
+                                           double z) noexcept;
+
+    /**
+     * Retail tool ids granted at `stage` in inventory order: nothing before
+     * SHOOTING, the pistol (17) at SHOOTING, then pistol, block tool (5) and
+     * spade (2). SetClassLoadout instant=1 equips the final list item.
+     */
+    [[nodiscard]] static std::span<const std::uint8_t>
+    loadout(TutorialLessonStage stage) noexcept;
 
     /**
      * Advances one fixed step. Returns true when a new stage was entered

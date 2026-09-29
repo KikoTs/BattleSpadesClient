@@ -86,168 +86,110 @@ template <typename T>
     return true;
 }
 
-[[nodiscard]] std::optional<world::VoxelCell>
-damage_cell(const DamagePacket& packet) noexcept {
-    std::array<std::uint32_t, 3U> cell{};
-    const std::array<std::uint32_t, 3U> limits{
-        world::VxlMap::width, world::VxlMap::depth, world::VxlMap::height};
+/** Damage(37) centre: floor(position + 0.5) per axis for every type. */
+[[nodiscard]] std::optional<std::array<std::int64_t, 3U>>
+damage_center(const std::array<float, 3U>& position) noexcept {
+    std::array<std::int64_t, 3U> center{};
     for (std::size_t axis{}; axis < 3U; ++axis) {
-        const float value = packet.position[axis];
-        if (!std::isfinite(value) || value < 0.0F || value >= static_cast<float>(limits[axis])) {
+        const auto value = static_cast<double>(position[axis]);
+        // Bound far-away garbage before the integer conversion; any footprint
+        // (radius <= 8) of a centre this far out cannot touch the map.
+        if (!std::isfinite(value) || value < -4096.0 || value > 4096.0) {
             return std::nullopt;
         }
-        // Placed explosives detonate at their rendered face/centre. Their
-        // authoritative Damage(37) therefore contains .5 offsets (C4 and
-        // landmines), while BlockManager converts that point with int() before
-        // applying the native radius handler. Direct bullet/melee damage still
-        // names an exact voxel and must fail closed on fractional coordinates.
-        const bool radius_damage = packet.type == 15U || packet.type == 16U ||
-                                   packet.type == 21U || packet.type == 41U;
-        if (!radius_damage && std::floor(value) != value) {
-            return std::nullopt;
-        }
-        // The original turret handler receives int(round(position)) from
-        // BlockManager.handle_damage (Python 2 rounds halves away from zero).
-        // Keep the existing compact deployable protocol's truncation separate.
-        cell[axis] = static_cast<std::uint32_t>(
-            packet.type == 21U ? std::round(value) : std::floor(value));
+        center[axis] = static_cast<std::int64_t>(std::floor(value + 0.5));
     }
-    return world::VoxelCell{cell[0U], cell[1U], cell[2U]};
+    return center;
 }
 
-struct TerrainCellDamage final {
-    world::VoxelCell cell;
-    float damage;
+/** In-map centre cell of a Damage(37), for impact presentation. */
+[[nodiscard]] std::optional<world::VoxelCell>
+damage_cell(const DamagePacket& packet) noexcept {
+    const auto center = damage_center(packet.position);
+    if (!center.has_value()) return std::nullopt;
+    const std::array<std::int64_t, 3U> limits{
+        world::VxlMap::width, world::VxlMap::depth, world::VxlMap::height};
+    for (std::size_t axis{}; axis < 3U; ++axis) {
+        if ((*center)[axis] < 0 || (*center)[axis] >= limits[axis]) return std::nullopt;
+    }
+    return world::VoxelCell{static_cast<std::uint32_t>((*center)[0U]),
+                            static_cast<std::uint32_t>((*center)[1U]),
+                            static_cast<std::uint32_t>((*center)[2U])};
+}
+
+enum class FootprintKind : std::uint8_t { none, single, column, machete, cube, radius };
+
+struct FootprintShape final {
+    FootprintKind kind{FootprintKind::none};
+    /** RADIUS: R. CUBE: the random extra E. */
+    float parameter{};
 };
 
-[[nodiscard]] std::vector<TerrainCellDamage>
-expanded_damage_cells(const DamagePacket& packet) {
-    if (!std::isfinite(packet.damage) || packet.damage <= 0.0F) return {};
-    std::array<std::int64_t, 3U> center{};
-    if (packet.type == 21U) {
-        // A rocket just outside the map can still damage its edge. Bound the
-        // signed centre before conversion, then clip individual candidates.
-        constexpr std::array limits{world::VxlMap::width, world::VxlMap::depth,
-                                    world::VxlMap::height};
-        for (std::size_t axis{}; axis < center.size(); ++axis) {
-            const auto value = packet.position[axis];
-            if (!std::isfinite(value) || value < -3.0F || value > static_cast<float>(limits[axis]) + 3.0F)
-                return {};
-            center[axis] = static_cast<std::int64_t>(std::round(value));
-        }
-    } else {
-        const auto cell = damage_cell(packet);
-        if (!cell.has_value()) return {};
-        center = {cell->x, cell->y, cell->z};
+/** BS/server/block_damage_model.py FOOTPRINTS, fitted live for all 44 types. */
+[[nodiscard]] FootprintShape footprint_shape(std::uint8_t type) noexcept {
+    switch (type) {
+    case 0U:  // PICKAXE
+    case 1U:  // KNIFE
+    case 4U:  // CLASSIC_SPADE
+    case 6U:  // WEAPON
+    case 25U: // BLOCKFIRE
+    case 26U: // CROWBAR
+    case 28U: // UGC_PICKAXE
+    case 29U: // UGC_SUPERSPADE
+    case 34U: // RIOTSTICK
+    case 42U: // BLOCK_SUCKER
+    case 43U: // UNKNOWN
+        return {FootprintKind::single, 0.0F};
+    case 2U:  // SPADE
+    case 5U:  // CLASSIC_SPADE_SECONDARY
+    case 36U: // RIOTSHIELD
+        return {FootprintKind::column, 0.0F};
+    case 35U: // MACHETE
+        return {FootprintKind::machete, 0.0F};
+    case 3U:  // SUPERSPADE
+        return {FootprintKind::cube, 5.0F};
+    case 17U: // ZOMBIE
+        return {FootprintKind::cube, 8.0F};
+    case 31U: // UGC_SUPERSPADE_SECONDARY
+        return {FootprintKind::cube, 0.0F};
+    case 22U: // CLASSIC_GRENADE
+    case 23U: // ANTIPERSONNEL_GRENADE
+        return {FootprintKind::radius, 2.0F};
+    case 10U: // DRILL
+    case 11U: // DRILL_DESTROYED
+    case 12U: // ROCKET_TURRET
+    case 13U: // CORPSE
+    case 14U: // GRAVE
+    case 15U: // LANDMINE
+    case 21U: // ROCKET_TURRET_ROCKET
+    case 33U: // UGC_DRILL
+    case 38U: // SOME
+    case 40U: // MINE_LAUNCHER
+        return {FootprintKind::radius, 3.0F};
+    case 7U:  // GRENADE
+    case 8U:  // ROCKET
+    case 24U: // MOLOTOV
+    case 30U: // UGC_ROCKET2
+    case 37U: // GRENADE_LAUNCHER
+        return {FootprintKind::radius, 4.0F};
+    case 39U: // STICKY_GRENADE
+        return {FootprintKind::radius, 5.0F};
+    case 9U:  // ROCKET2
+    case 18U: // AIRSTRIKE
+        return {FootprintKind::radius, 6.0F};
+    case 19U: // BOMB
+        return {FootprintKind::radius, 7.0F};
+    case 16U: // DYNAMITE
+    case 41U: // C4
+        return {FootprintKind::radius, 8.0F};
+    default:  // 20 SNOWBALL, 27 MG, 32 UGC_SNOWBALL and unknown ids.
+        return {FootprintKind::none, 0.0F};
     }
+}
 
-    enum class Shape { single, column, cube, vertical_pair, radius_one, radius_two };
-    Shape shape{Shape::single};
-    switch (packet.type) {
-    case 2U:  // SPADE_DAMAGE: z - 1, z, z + 1.
-    case 4U:  // CLASSIC_SPADE_DAMAGE uses the ordinary spade handler.
-        shape = Shape::column;
-        break;
-    case 3U:  // SUPERSPADE_DAMAGE: centered 3 x 3 x 3.
-    case 17U: // ZOMBIE_DAMAGE: the same native cube handler.
-    case 31U: // UGC_SUPERSPADE_SECONDARY_DAMAGE.
-        shape = Shape::cube;
-        break;
-    case 35U: // MACHETE_DAMAGE: hit cell and z + 1.
-        shape = Shape::vertical_pair;
-        break;
-    case 10U: // DRILL_DAMAGE: native radius-damage handler, radius 2.
-    case 33U: // UGC_DRILL_DAMAGE.
-    case 16U: // DYNAMITE_DAMAGE.
-    case 41U: // C4_DAMAGE.
-        shape = Shape::radius_two;
-        break;
-    case 15U: // LANDMINE_DAMAGE: native radius-damage handler, radius 1.
-        shape = Shape::radius_one;
-        break;
-    default:
-        break;
-    }
-
-    std::vector<TerrainCellDamage> cells;
-    const auto add_damage = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz,
-                                float damage) {
-        const auto x = center[0U] + dx;
-        const auto y = center[1U] + dy;
-        const auto z = center[2U] + dz;
-        if (x < 0 || y < 0 || z < 0 ||
-            x >= static_cast<std::int64_t>(world::VxlMap::width) ||
-            y >= static_cast<std::int64_t>(world::VxlMap::depth) ||
-            z >= static_cast<std::int64_t>(world::VxlMap::height)) {
-            return;
-        }
-        cells.push_back({{static_cast<std::uint32_t>(x),
-                          static_cast<std::uint32_t>(y),
-                          static_cast<std::uint32_t>(z)}, damage});
-    };
-    const auto add = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz) {
-        add_damage(dx, dy, dz, packet.damage);
-    };
-
-    if (packet.type == 21U) { // ROCKET_TURRET_ROCKET_DAMAGE.
-        // gameScene.pyd: turret wrapper 0x10085FA0 (A1621 = 3), radius-list
-        // generator 0x10079680, damage handler 0x1007C3A0. Its 93 offsets are
-        // ordered Z/X/Y, with strict d^2 < 9; this is not a uniform crater.
-        world::RetailRandom random{packet.seed};
-        for (std::int32_t dz{-3}; dz <= 3; ++dz) {
-            for (std::int32_t dx{-3}; dx <= 3; ++dx) {
-                for (std::int32_t dy{-3}; dy <= 3; ++dy) {
-                    const auto distance_squared = dx * dx + dy * dy + dz * dz;
-                    if (distance_squared >= 9) continue;
-                    // Consume one CPython random sample even for air or an
-                    // out-of-map cell. Skipping it changes every later hit.
-                    const double damage = static_cast<double>(packet.damage) / 9.0 *
-                                              (9 - distance_squared) +
-                                          random.random() * 2.0;
-                    add_damage(dx, dy, dz,
-                               static_cast<float>(std::ceil(damage * 4.0) / 4.0));
-                }
-            }
-        }
-        return cells;
-    }
-
-    if (shape == Shape::single) {
-        add(0, 0, 0);
-    } else if (shape == Shape::column) {
-        for (std::int32_t dz{-1}; dz <= 1; ++dz) add(0, 0, dz);
-    } else if (shape == Shape::cube) {
-        for (std::int32_t dx{-1}; dx <= 1; ++dx) {
-            for (std::int32_t dy{-1}; dy <= 1; ++dy) {
-                for (std::int32_t dz{-1}; dz <= 1; ++dz) add(dx, dy, dz);
-            }
-        }
-    } else if (shape == Shape::vertical_pair) {
-        add(0, 0, 0);
-        add(0, 0, 1);
-    } else if (shape == Shape::radius_one) {
-        // BlockManager tests voxel centres against radius + 0.5. Radius one
-        // therefore keeps faces and edges (distance squared <= 2) but excludes
-        // the eight 3-axis corners, for nineteen cells total.
-        for (std::int32_t dx{-1}; dx <= 1; ++dx) {
-            for (std::int32_t dy{-1}; dy <= 1; ++dy) {
-                for (std::int32_t dz{-1}; dz <= 1; ++dz) {
-                    if (dx * dx + dy * dy + dz * dz <= 2) add(dx, dy, dz);
-                }
-            }
-        }
-    } else {
-        // The recovered BlockManager radius predicate is distance < 2.5,
-        // yielding exactly 81 integer cells for radius two.
-        for (std::int32_t dx{-2}; dx <= 2; ++dx) {
-            for (std::int32_t dy{-2}; dy <= 2; ++dy) {
-                for (std::int32_t dz{-2}; dz <= 2; ++dz) {
-                    if (dx * dx + dy * dy + dz * dz <= 6) add(dx, dy, dz);
-                }
-            }
-        }
-    }
-    return cells;
+/** ceil4: round up to the retail 0.25 block-damage quantum. */
+[[nodiscard]] float ceil4(double value) noexcept {
+    return static_cast<float>(std::ceil(value * 4.0) / 4.0);
 }
 
 [[nodiscard]] world::TerrainImpactKind
@@ -280,8 +222,13 @@ impact_kind(std::uint8_t damage_type) noexcept {
     case 41U:
         return world::TerrainImpactKind::explosion;
     case 24U:
-    case 25U:
         return world::TerrainImpactKind::fire;
+    case 25U:
+        // BLOCKFIRE: one burning block per tick, not a molotov blast.
+        return world::TerrainImpactKind::burn;
+    case 43U:
+        // Chemical Bomb goo dissolving its block.
+        return world::TerrainImpactKind::dissolve;
     default:
         return world::TerrainImpactKind::bullet;
     }
@@ -372,7 +319,8 @@ TerrainDecodeResult decode_terrain_packet(std::span<const std::byte> payload) {
             !read_required(reader.f32(), packet.position[2U]) || !reader.done()) {
             return {std::nullopt, "malformed Damage(37) packet"};
         }
-        packet.damage = static_cast<float>(static_cast<std::int8_t>(encoded_damage)) / 4.0F;
+        // One UNSIGNED byte in quarter units (retail shared.packet).
+        packet.damage = static_cast<float>(encoded_damage) / 4.0F;
         packet.chunk_check = chunk_check != 0U;
         return {TerrainPacket{packet}, {}};
     }
@@ -416,6 +364,68 @@ TerrainDecodeResult decode_terrain_packet(std::span<const std::byte> payload) {
         }
         return {TerrainPacket{packet}, {}};
     }
+    if (*id == BlockManagerStatePacket::id) {
+        BlockManagerStatePacket packet;
+        const auto count = [&](std::size_t row_bytes) -> std::optional<std::size_t> {
+            const auto value = reader.little_integer<std::int32_t>();
+            if (!value.has_value() || *value < 0 ||
+                static_cast<std::size_t>(*value) > reader.remaining() / row_bytes) {
+                return std::nullopt;
+            }
+            return static_cast<std::size_t>(*value);
+        };
+        const auto read_cell = [&](std::int16_t& x, std::int16_t& y, std::int16_t& z) {
+            return read_required(reader.little_integer<std::int16_t>(), x) &&
+                   read_required(reader.little_integer<std::int16_t>(), y) &&
+                   read_required(reader.little_integer<std::int16_t>(), z);
+        };
+        const auto damaged_count = count(10U);
+        if (!damaged_count.has_value()) {
+            return {std::nullopt, "malformed BlockManagerState(38) damaged table"};
+        }
+        packet.damaged.resize(*damaged_count);
+        for (auto& row : packet.damaged) {
+            std::uint8_t quarters{};
+            std::uint8_t blue{};
+            std::uint8_t green{};
+            std::uint8_t red{};
+            if (!read_cell(row.x, row.y, row.z) || !read_required(reader.u8(), quarters) ||
+                !read_required(reader.u8(), blue) || !read_required(reader.u8(), green) ||
+                !read_required(reader.u8(), red)) {
+                return {std::nullopt, "malformed BlockManagerState(38) damaged row"};
+            }
+            row.health = static_cast<float>(quarters) / 4.0F;
+            row.original_color = (static_cast<std::uint32_t>(red) << 16U) |
+                                 (static_cast<std::uint32_t>(green) << 8U) |
+                                 static_cast<std::uint32_t>(blue);
+        }
+        const auto user_count = count(7U);
+        if (!user_count.has_value()) {
+            return {std::nullopt, "malformed BlockManagerState(38) user table"};
+        }
+        packet.user.resize(*user_count);
+        for (auto& row : packet.user) {
+            std::uint8_t quarters{};
+            if (!read_cell(row.x, row.y, row.z) || !read_required(reader.u8(), quarters)) {
+                return {std::nullopt, "malformed BlockManagerState(38) user row"};
+            }
+            row.health = static_cast<float>(quarters) / 4.0F;
+        }
+        const auto occupied_count = count(7U);
+        if (!occupied_count.has_value()) {
+            return {std::nullopt, "malformed BlockManagerState(38) occupied table"};
+        }
+        packet.occupied.resize(*occupied_count);
+        for (auto& row : packet.occupied) {
+            if (!read_cell(row.x, row.y, row.z) || !read_required(reader.u8(), row.player_id)) {
+                return {std::nullopt, "malformed BlockManagerState(38) occupied row"};
+            }
+        }
+        if (!reader.done()) {
+            return {std::nullopt, "malformed BlockManagerState(38) packet"};
+        }
+        return {TerrainPacket{std::move(packet)}, {}};
+    }
     return {std::nullopt, "packet is not a supported Protocol 168 terrain packet"};
 }
 
@@ -434,10 +444,7 @@ std::vector<std::byte> encode_packet(const DamagePacket& packet) {
     writer.u8(DamagePacket::id);
     writer.u8(packet.player_id);
     writer.u8(packet.type);
-    const auto scaled = static_cast<int>(packet.damage * 4.0F);
-    writer.u8(static_cast<std::uint8_t>(static_cast<std::int8_t>(
-        std::clamp(scaled, static_cast<int>(std::numeric_limits<std::int8_t>::min()),
-                   static_cast<int>(std::numeric_limits<std::int8_t>::max())))));
+    writer.u8(encode_damage_quarters(packet.damage));
     writer.u8(packet.face);
     writer.u8(packet.chunk_check ? 1U : 0U);
     writer.u8(packet.seed);
@@ -462,6 +469,36 @@ std::vector<std::byte> encode_packet(const BlockBuildColoredPacket& packet) {
     return std::move(writer).take();
 }
 
+std::vector<std::byte> encode_packet(const BlockManagerStatePacket& packet) {
+    Writer writer;
+    writer.u8(BlockManagerStatePacket::id);
+    writer.little_integer(static_cast<std::int32_t>(packet.damaged.size()));
+    for (const auto& row : packet.damaged) {
+        writer.little_integer(row.x);
+        writer.little_integer(row.y);
+        writer.little_integer(row.z);
+        writer.u8(encode_damage_quarters(row.health));
+        writer.u8(static_cast<std::uint8_t>(row.original_color));
+        writer.u8(static_cast<std::uint8_t>(row.original_color >> 8U));
+        writer.u8(static_cast<std::uint8_t>(row.original_color >> 16U));
+    }
+    writer.little_integer(static_cast<std::int32_t>(packet.user.size()));
+    for (const auto& row : packet.user) {
+        writer.little_integer(row.x);
+        writer.little_integer(row.y);
+        writer.little_integer(row.z);
+        writer.u8(encode_damage_quarters(row.health));
+    }
+    writer.little_integer(static_cast<std::int32_t>(packet.occupied.size()));
+    for (const auto& row : packet.occupied) {
+        writer.little_integer(row.x);
+        writer.little_integer(row.y);
+        writer.little_integer(row.z);
+        writer.u8(row.player_id);
+    }
+    return std::move(writer).take();
+}
+
 std::vector<std::byte> encode_packet(const BlockLinePacket& packet) {
     Writer writer;
     writer.u8(BlockLinePacket::id);
@@ -476,71 +513,131 @@ std::vector<std::byte> encode_packet(const BlockLinePacket& packet) {
     return std::move(writer).take();
 }
 
-TerrainApplyResult apply_direct_damage(world::VxlMap& map,
-                                       const DamagePacket& packet,
-                                       float block_health) {
-    TerrainApplyResult result;
-    const auto cell = damage_cell(packet);
-    if (!cell.has_value() || !std::isfinite(block_health) || block_health <= 0.0F ||
-        packet.damage <= 0.0F || !map.solid(cell->x, cell->y, cell->z) ||
-        cell->z + 1U >= world::VxlMap::height) {
-        return result;
+std::vector<DamageFootprintCell>
+retail_damage_footprint(std::uint8_t damage_type, const std::array<float, 3U>& position,
+                        float amount, std::uint8_t seed) {
+    const auto shape = footprint_shape(damage_type);
+    const auto center = damage_center(position);
+    std::vector<DamageFootprintCell> cells;
+    if (shape.kind == FootprintKind::none || !center.has_value() || !std::isfinite(amount)) {
+        return cells;
     }
-    result.accepted = true;
-    const float accumulated =
-        map.damage_fraction(cell->x, cell->y, cell->z) * block_health + packet.damage;
-    if (accumulated < block_health) {
-        if (map.set_damage_fraction(cell->x, cell->y, cell->z,
-                                    accumulated / block_health)) {
-            result.changed_cells.push_back(*cell);
-        }
-        return result;
-    }
-
-    result.destroyed = map.clear_voxel(cell->x, cell->y, cell->z);
-    if (!result.destroyed) {
-        return result;
-    }
-    result.changed_cells.push_back(*cell);
-    if (packet.chunk_check) {
-        result.falling_components =
-            world::collapse_unsupported_components(map, {*cell});
-        for (const auto& component : result.falling_components) {
-            for (const auto& voxel : component) {
-                result.changed_cells.push_back(voxel.cell);
+    const auto cx = static_cast<std::int32_t>((*center)[0U]);
+    const auto cy = static_cast<std::int32_t>((*center)[1U]);
+    const auto cz = static_cast<std::int32_t>((*center)[2U]);
+    const auto push = [&](std::int32_t dx, std::int32_t dy, std::int32_t dz, float damage) {
+        cells.push_back({cx + dx, cy + dy, cz + dz, damage});
+    };
+    switch (shape.kind) {
+    case FootprintKind::single:
+        push(0, 0, 0, amount);
+        return cells;
+    case FootprintKind::column:
+        push(0, 0, -1, amount);
+        push(0, 0, 0, amount);
+        push(0, 0, 1, amount);
+        return cells;
+    case FootprintKind::machete:
+        push(0, 0, 0, amount);
+        push(0, 0, 1, amount);
+        return cells;
+    case FootprintKind::cube: {
+        world::RetailRandom random{seed};
+        const double extra = shape.parameter;
+        for (std::int32_t dx{-1}; dx <= 1; ++dx) {
+            for (std::int32_t dy{-1}; dy <= 1; ++dy) {
+                for (std::int32_t dz{-1}; dz <= 1; ++dz) {
+                    push(dx, dy, dz,
+                         ceil4(static_cast<double>(amount) + extra * random.random()));
+                }
             }
         }
+        return cells;
     }
-    return result;
+    case FootprintKind::radius: {
+        world::RetailRandom random{seed};
+        const auto radius = static_cast<std::int32_t>(shape.parameter);
+        const auto limit = static_cast<double>(radius * radius);
+        // RADIUS_BLOCK_DAMAGE_RANDOM_EXTRA.
+        constexpr double extra{2.0};
+        for (std::int32_t dz{-radius}; dz <= radius; ++dz) {
+            for (std::int32_t dx{-radius}; dx <= radius; ++dx) {
+                for (std::int32_t dy{-radius}; dy <= radius; ++dy) {
+                    const auto distance_squared = dx * dx + dy * dy + dz * dz;
+                    if (distance_squared >= radius * radius) continue;
+                    // One CPython draw per footprint cell, solid or not.
+                    const double roll = random.random();
+                    push(dx, dy, dz,
+                         ceil4(static_cast<double>(amount) *
+                                   (1.0 - static_cast<double>(distance_squared) / limit) +
+                               extra * roll));
+                }
+            }
+        }
+        return cells;
+    }
+    case FootprintKind::none:
+        break;
+    }
+    return cells;
 }
 
-TerrainApplyResult apply_expanded_damage(world::VxlMap& map,
-                                         const DamagePacket& packet,
-                                         float block_health) {
-    TerrainApplyResult result;
-    const auto cells = expanded_damage_cells(packet);
-    std::vector<world::VoxelCell> destroyed_cells;
-    destroyed_cells.reserve(cells.size());
-
-    for (const auto& entry : cells) {
-        const auto& cell = entry.cell;
-        auto direct = packet;
-        direct.damage = entry.damage;
-        direct.position = {static_cast<float>(cell.x),
-                           static_cast<float>(cell.y),
-                           static_cast<float>(cell.z)};
-        // Collapse is a property of the complete wire action, not each cell;
-        // running it inside the loop makes the result order-dependent.
-        direct.chunk_check = false;
-        auto mutation = apply_direct_damage(map, direct, block_health);
-        result.accepted = result.accepted || mutation.accepted;
-        result.destroyed = result.destroyed || mutation.destroyed;
-        if (mutation.destroyed) destroyed_cells.push_back(cell);
-        result.changed_cells.insert(result.changed_cells.end(),
-                                    mutation.changed_cells.begin(),
-                                    mutation.changed_cells.end());
+bool is_block_granting_damage(std::uint8_t damage_type) noexcept {
+    switch (damage_type) {
+    case 2U:  // SPADE
+    case 4U:  // CLASSIC_SPADE
+    case 3U:  // SUPERSPADE
+    case 0U:  // PICKAXE
+    case 1U:  // KNIFE
+    case 17U: // ZOMBIE
+    case 26U: // CROWBAR
+    case 28U: // UGC_PICKAXE
+    case 29U: // UGC_SUPERSPADE
+    case 34U: // RIOTSTICK
+    case 35U: // MACHETE
+    case 36U: // RIOTSHIELD
+    case 42U: // BLOCK_SUCKER
+        return true;
+    default:
+        return false;
     }
+}
 
+std::uint8_t encode_damage_quarters(float amount) noexcept {
+    if (!std::isfinite(amount)) return 0U;
+    const auto quarters = std::floor(static_cast<double>(amount) * 4.0 + 0.5);
+    return static_cast<std::uint8_t>(std::clamp(quarters, 0.0, 255.0));
+}
+
+namespace {
+
+void apply_footprint(world::VxlMap& map, const DamagePacket& packet,
+                     std::span<const DamageFootprintCell> cells,
+                     TerrainApplyResult& result) {
+    std::vector<world::VoxelCell> destroyed_cells;
+    for (const auto& entry : cells) {
+        if (entry.x < 0 || entry.y < 0 || entry.z < 0 ||
+            entry.x >= static_cast<std::int32_t>(world::VxlMap::width) ||
+            entry.y >= static_cast<std::int32_t>(world::VxlMap::depth) ||
+            entry.z > static_cast<std::int32_t>(world::VxlMap::max_damageable_z) ||
+            !(entry.damage > 0.0F)) {
+            continue;
+        }
+        const world::VoxelCell cell{static_cast<std::uint32_t>(entry.x),
+                                    static_cast<std::uint32_t>(entry.y),
+                                    static_cast<std::uint32_t>(entry.z)};
+        const auto outcome = map.add_damage(cell.x, cell.y, cell.z, entry.damage);
+        if (outcome == world::BlockDamageOutcome::ignored) continue;
+        result.accepted = true;
+        result.changed_cells.push_back(cell);
+        if (outcome == world::BlockDamageOutcome::destroyed) {
+            result.destroyed = true;
+            ++result.destroyed_cells;
+            destroyed_cells.push_back(cell);
+        }
+    }
+    // Collapse is a property of the complete wire action, not each cell;
+    // running it inside the loop makes the result order-dependent.
     if (packet.chunk_check && !destroyed_cells.empty()) {
         result.falling_components =
             world::collapse_unsupported_components(map, destroyed_cells);
@@ -550,29 +647,85 @@ TerrainApplyResult apply_expanded_damage(world::VxlMap& map,
             }
         }
     }
+}
+
+[[nodiscard]] world::VxlColor unpack_rgb(std::uint32_t color) noexcept {
+    return {static_cast<std::uint8_t>(color >> 16U), static_cast<std::uint8_t>(color >> 8U),
+            static_cast<std::uint8_t>(color), 255U};
+}
+
+} // namespace
+
+TerrainApplyResult apply_direct_damage(world::VxlMap& map, const DamagePacket& packet) {
+    TerrainApplyResult result;
+    if (!std::isfinite(packet.damage) || packet.damage <= 0.0F) return result;
+    const auto center = damage_center(packet.position);
+    if (!center.has_value()) return result;
+    const std::array<DamageFootprintCell, 1U> cell{{
+        {static_cast<std::int32_t>((*center)[0U]), static_cast<std::int32_t>((*center)[1U]),
+         static_cast<std::int32_t>((*center)[2U]), packet.damage}}};
+    apply_footprint(map, packet, cell, result);
+    return result;
+}
+
+TerrainApplyResult apply_expanded_damage(world::VxlMap& map, const DamagePacket& packet) {
+    TerrainApplyResult result;
+    if (!std::isfinite(packet.damage) || packet.damage <= 0.0F) return result;
+    const auto cells =
+        retail_damage_footprint(packet.type, packet.position, packet.damage, packet.seed);
+    apply_footprint(map, packet, cells, result);
     return result;
 }
 
 TerrainApplyResult apply_block_build_colored(
     world::VxlMap& map, const BlockBuildColoredPacket& packet) {
     TerrainApplyResult result;
-    if (packet.x < 0 || packet.y < 0 || packet.z < 0 ||
-        packet.x >= static_cast<std::int16_t>(world::VxlMap::width) ||
-        packet.y >= static_cast<std::int16_t>(world::VxlMap::depth) ||
-        packet.z >= static_cast<std::int16_t>(world::VxlMap::height)) {
+    if (packet.x < 0 || packet.y < 0 || packet.z < 0) {
         return result;
     }
     const auto x = static_cast<std::uint32_t>(packet.x);
     const auto y = static_cast<std::uint32_t>(packet.y);
     const auto z = static_cast<std::uint32_t>(packet.z);
-    const world::VxlColor color{
-        static_cast<std::uint8_t>(packet.color >> 16U),
-        static_cast<std::uint8_t>(packet.color >> 8U),
-        static_cast<std::uint8_t>(packet.color), 255U};
-    result.accepted = map.set_voxel(x, y, z, color);
+    // Stock client (live 2026-09-26): user block at 3.0, ignored on a solid.
+    result.accepted = map.add_user_block(x, y, z, unpack_rgb(packet.color),
+                                         world::VxlMap::snow_block_health, false);
     if (result.accepted) {
         result.changed_cells.push_back({x, y, z});
     }
+    return result;
+}
+
+TerrainApplyResult apply_block_manager_state(world::VxlMap& map,
+                                             const BlockManagerStatePacket& packet) {
+    TerrainApplyResult result;
+    result.accepted = true;
+    const auto in_map = [](std::int16_t x, std::int16_t y, std::int16_t z) {
+        return x >= 0 && y >= 0 && z >= 0 &&
+               x < static_cast<std::int16_t>(world::VxlMap::width) &&
+               y < static_cast<std::int16_t>(world::VxlMap::depth) &&
+               z < static_cast<std::int16_t>(world::VxlMap::height);
+    };
+    // receive_block_manager_state MERGES, in wire order: damaged rows darken
+    // against the initial health held at that moment, which is why the
+    // server always sends user rows in earlier packets.
+    for (const auto& row : packet.damaged) {
+        if (!in_map(row.x, row.y, row.z)) continue;
+        const auto x = static_cast<std::uint32_t>(row.x);
+        const auto y = static_cast<std::uint32_t>(row.y);
+        const auto z = static_cast<std::uint32_t>(row.z);
+        if (map.set_damaged_block(x, y, z, row.health, unpack_rgb(row.original_color))) {
+            result.changed_cells.push_back({x, y, z});
+        }
+    }
+    for (const auto& row : packet.user) {
+        if (!in_map(row.x, row.y, row.z)) continue;
+        static_cast<void>(map.set_user_block_health(static_cast<std::uint32_t>(row.x),
+                                                    static_cast<std::uint32_t>(row.y),
+                                                    static_cast<std::uint32_t>(row.z),
+                                                    row.health));
+    }
+    // Occupied rows reserve air cells for pending builds; BattleSpades never
+    // sends them (BlockOccupy is unused) and nothing here consumes them.
     return result;
 }
 
@@ -660,8 +813,9 @@ TerrainApplyResult apply_block_line(world::VxlMap& map,
     for (const auto& cell : cells) {
         // The preview/cost path omits pre-existing terrain. The receiver must
         // do the same instead of recoloring terrain crossed by the drag.
-        if (map.solid(cell.x, cell.y, cell.z) ||
-            !map.set_voxel(cell.x, cell.y, cell.z, voxel)) {
+        // Retail add_user_block(..., DEFAULT_PREFAB_HEALTH): 9.0 per cell.
+        if (!map.add_user_block(cell.x, cell.y, cell.z, voxel,
+                                world::VxlMap::prefab_block_health, false)) {
             continue;
         }
         result.changed_cells.push_back(cell);
@@ -683,7 +837,22 @@ std::uint16_t confirmed_owner_block_cost(
         const auto* build = decoded
                                 ? std::get_if<BlockBuildPacket>(&*decoded.packet)
                                 : nullptr;
-        return build != nullptr && build->player_id == local_player_id ? 1U : 0U;
+        return build != nullptr && build->player_id == local_player_id &&
+                       result.mutation.accepted
+                   ? 1U
+                   : 0U;
+    }
+    if (id == BuildPrefabActionPacket::id) {
+        const auto decoded = decode_tool_action_packet(payload);
+        const auto* prefab = decoded
+                                 ? std::get_if<BuildPrefabActionPacket>(&*decoded.packet)
+                                 : nullptr;
+        if (prefab == nullptr || !prefab->add_to_user_blocks ||
+            prefab->player_id != local_player_id) {
+            return 0U;
+        }
+        return static_cast<std::uint16_t>(std::min<std::size_t>(
+            result.mutation.user_blocks_added, std::numeric_limits<std::uint16_t>::max()));
     }
     if (id != BlockLinePacket::id) return 0U;
 
@@ -698,8 +867,12 @@ std::uint16_t confirmed_owner_block_cost(
 }
 
 Protocol168TerrainReplica::Protocol168TerrainReplica(world::VxlMap& map,
-                                                     float block_health) noexcept
-    : map_{&map}, block_health_{block_health} {}
+                                                     float health_multiplier,
+                                                     bool classic, bool ugc) noexcept
+    : map_{&map} {
+    map_->set_health_multiplier(health_multiplier);
+    map_->set_user_block_rules(classic, ugc);
+}
 
 std::size_t Protocol168TerrainReplica::ExpectedBuildKeyHash::operator()(
     const ExpectedBuildKey& key) const noexcept {
@@ -775,7 +948,27 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
             if (expected != expected_owner_build_colors_.end()) {
                 expected_owner_build_colors_.erase(expected);
             }
-            result.mutation = apply_block_build_colored(*map_, colored);
+            // BLOCK_BUILD_TYPE_STATS: type 0 (prefab/ordinary) 9.0, type 1
+            // (snow) 3.0; add_user_block never replaces a solid.
+            const float health = build_packet->block_type == 1U
+                                     ? world::VxlMap::snow_block_health
+                                 : build_packet->block_type == 0U
+                                     ? world::VxlMap::prefab_block_health
+                                     : world::VxlMap::default_block_health;
+            if (colored.x >= 0 && colored.y >= 0 && colored.z >= 0) {
+                const auto bx = static_cast<std::uint32_t>(colored.x);
+                const auto by = static_cast<std::uint32_t>(colored.y);
+                const auto bz = static_cast<std::uint32_t>(colored.z);
+                const world::VxlColor block_color{
+                    static_cast<std::uint8_t>(colored.color >> 16U),
+                    static_cast<std::uint8_t>(colored.color >> 8U),
+                    static_cast<std::uint8_t>(colored.color), 255U};
+                result.mutation.accepted =
+                    map_->add_user_block(bx, by, bz, block_color, health, false);
+                if (result.mutation.accepted) {
+                    result.mutation.changed_cells.push_back({bx, by, bz});
+                }
+            }
         } else if (const auto* paint_packet =
                        std::get_if<PaintBlockPacket>(&*decoded.packet);
                    paint_packet != nullptr) {
@@ -791,9 +984,10 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
             const auto ux = static_cast<std::uint32_t>(x);
             const auto uy = static_cast<std::uint32_t>(y);
             const auto uz = static_cast<std::uint32_t>(z);
-            // Paint is recolor-only. Treating it as a generic set operation
-            // creates a solid collision voxel when a delayed paint packet
-            // races a destroy.
+            // Paint is recolor-only (VXL.color_block). Treating it as a
+            // generic set operation creates a solid collision voxel when a
+            // delayed paint packet races a destroy, and would erase the
+            // cell's user health and DamagedBlock, which retail keeps.
             if (!map_->solid(ux, uy, uz)) {
                 return result;
             }
@@ -801,7 +995,7 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
                 static_cast<std::uint8_t>(paint_packet->color >> 16U),
                 static_cast<std::uint8_t>(paint_packet->color >> 8U),
                 static_cast<std::uint8_t>(paint_packet->color), 255U};
-            result.mutation.accepted = map_->set_voxel(ux, uy, uz, color);
+            result.mutation.accepted = map_->recolor_voxel(ux, uy, uz, color);
             if (result.mutation.accepted) {
                 result.mutation.changed_cells.push_back({ux, uy, uz});
             }
@@ -828,8 +1022,7 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
                 const auto color = center.has_value()
                                        ? map_->color(center->x, center->y, center->z)
                                        : std::nullopt;
-                result.mutation = apply_expanded_damage(
-                    *map_, packet, block_health_);
+                result.mutation = apply_expanded_damage(*map_, packet);
                 // The retail turret handler disables debris; Rocket.delete
                 // (DestroyEntity) already owns its explosion effects/audio.
                 if (result.mutation.accepted && center.has_value() && packet.type != 21U) {
@@ -846,6 +1039,8 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
             } else if constexpr (std::is_same_v<Packet,
                                                 BlockBuildColoredPacket>) {
                 result.mutation = apply_block_build_colored(*map_, packet);
+            } else if constexpr (std::is_same_v<Packet, BlockManagerStatePacket>) {
+                result.mutation = apply_block_manager_state(*map_, packet);
             } else if constexpr (std::is_same_v<Packet, BlockLinePacket>) {
                 const auto color = player_colors_[packet.player_id];
                 if (!color.has_value()) {
@@ -873,6 +1068,23 @@ TerrainReplicaResult Protocol168TerrainReplica::apply_colored_cells(
         }
     }
     result.mutation.accepted = !result.mutation.changed_cells.empty();
+    record(result.mutation);
+    return result;
+}
+
+TerrainReplicaResult Protocol168TerrainReplica::apply_prefab_user_blocks(
+    std::span<const ColoredTerrainCell> cells) {
+    TerrainReplicaResult result;
+    result.recognized = true;
+    result.mutation.changed_cells.reserve(cells.size());
+    for (const auto& mutation : cells) {
+        if (map_->add_user_block(mutation.cell.x, mutation.cell.y, mutation.cell.z,
+                                 mutation.color, world::VxlMap::prefab_block_health, true)) {
+            result.mutation.changed_cells.push_back(mutation.cell);
+            ++result.mutation.user_blocks_added;
+        }
+    }
+    result.mutation.accepted = result.mutation.user_blocks_added != 0U;
     record(result.mutation);
     return result;
 }
@@ -939,31 +1151,47 @@ Protocol168TerrainReplica::player_color(std::uint8_t player_id) const noexcept {
 void Protocol168TerrainReplica::record(const TerrainApplyResult& result) {
     constexpr std::uint32_t chunk_edge{16U};
     constexpr std::uint32_t chunks_per_axis{world::VxlMap::width / chunk_edge};
+    if (result.changed_cells.empty()) {
+        for (const auto& component : result.falling_components) {
+            falling_components_.push_back(component);
+        }
+        return;
+    }
+    // O(1) de-duplication: the old std::find over dirty_chunks_ per changed
+    // cell was O(cells x dirty) on large blasts.
+    std::array<bool, static_cast<std::size_t>(chunks_per_axis) * chunks_per_axis> queued{};
+    for (const auto& key : dirty_chunks_) {
+        if (key.x < chunks_per_axis && key.y < chunks_per_axis) {
+            queued[static_cast<std::size_t>(key.y) * chunks_per_axis + key.x] = true;
+        }
+    }
     const auto add_chunk = [&](std::uint32_t x, std::uint32_t y) {
-        const world::ChunkKey key{x, y};
-        if (std::find(dirty_chunks_.begin(), dirty_chunks_.end(), key) ==
-            dirty_chunks_.end()) {
-            dirty_chunks_.push_back(key);
+        auto& flag = queued[static_cast<std::size_t>(y) * chunks_per_axis + x];
+        if (!flag) {
+            flag = true;
+            dirty_chunks_.push_back(world::ChunkKey{x, y});
         }
     };
+    // Same neighbourhood as world::ChunkTracker::mark_voxel: a cell's faces
+    // and AO reach one voxel into every edge- and corner-adjacent chunk, and
+    // the retail diagonal sun light (retail_sun_light) shades cells up to
+    // nine rows further along +y, plus one for corner averaging. Missing the
+    // diagonals and the +y reach left stale shading at chunk seams after
+    // remote edits.
+    constexpr std::int64_t sun_reach_y{10};
+    constexpr auto last = static_cast<std::int64_t>(world::VxlMap::width) - 1;
     for (const auto& cell : result.changed_cells) {
-        const auto chunk_x = cell.x / chunk_edge;
-        const auto chunk_y = cell.y / chunk_edge;
-        add_chunk(chunk_x, chunk_y);
-        // A boundary mutation changes the neighboring chunk's exposed face.
-        if (cell.x % chunk_edge == 0U && chunk_x > 0U) {
-            add_chunk(chunk_x - 1U, chunk_y);
-        }
-        if (cell.x % chunk_edge == chunk_edge - 1U &&
-            chunk_x + 1U < chunks_per_axis) {
-            add_chunk(chunk_x + 1U, chunk_y);
-        }
-        if (cell.y % chunk_edge == 0U && chunk_y > 0U) {
-            add_chunk(chunk_x, chunk_y - 1U);
-        }
-        if (cell.y % chunk_edge == chunk_edge - 1U &&
-            chunk_y + 1U < chunks_per_axis) {
-            add_chunk(chunk_x, chunk_y + 1U);
+        const auto low_x = std::max<std::int64_t>(static_cast<std::int64_t>(cell.x) - 1, 0);
+        const auto high_x = std::min<std::int64_t>(static_cast<std::int64_t>(cell.x) + 1, last);
+        const auto low_y = std::max<std::int64_t>(static_cast<std::int64_t>(cell.y) - 1, 0);
+        const auto high_y =
+            std::min<std::int64_t>(static_cast<std::int64_t>(cell.y) + sun_reach_y, last);
+        for (auto chunk_y = static_cast<std::uint32_t>(low_y) / chunk_edge;
+             chunk_y <= static_cast<std::uint32_t>(high_y) / chunk_edge; ++chunk_y) {
+            for (auto chunk_x = static_cast<std::uint32_t>(low_x) / chunk_edge;
+                 chunk_x <= static_cast<std::uint32_t>(high_x) / chunk_edge; ++chunk_x) {
+                add_chunk(chunk_x, chunk_y);
+            }
         }
     }
     for (const auto& component : result.falling_components) {

@@ -126,7 +126,11 @@ bool IdentityMenuModel::busy() const noexcept {
 }
 
 bool IdentityMenuModel::steam_available() const noexcept {
-    return steam_available_;
+    return steam_state_ == IdentitySteamState::available;
+}
+
+IdentitySteamState IdentityMenuModel::steam_state() const noexcept {
+    return steam_state_;
 }
 
 WidgetVisualState IdentityMenuModel::visual_state(ui::WidgetId id) const noexcept {
@@ -235,14 +239,26 @@ void IdentityMenuModel::set_busy(bool busy, std::string status) {
     status_ = std::move(status);
     error_.clear();
     for (auto& control : controls_) control.widget.state.enabled = !busy;
+    apply_steam_control();
 }
 
 void IdentityMenuModel::set_steam_available(bool available) noexcept {
-    steam_available_ = available;
-    if (phase_ == IdentityMenuPhase::form) {
-        controls_[2].widget.state.visible = available;
-    }
-    if (!available && (hovered_ == 2U || pressed_ == 2U)) {
+    set_steam_state(available ? IdentitySteamState::available : IdentitySteamState::hidden);
+}
+
+void IdentityMenuModel::set_steam_state(IdentitySteamState state) noexcept {
+    steam_state_ = state;
+    apply_steam_control();
+}
+
+void IdentityMenuModel::apply_steam_control() noexcept {
+    auto& control = controls_[2];
+    control.label = steam_state_ == IdentitySteamState::connecting ? "CONNECTING TO STEAM..."
+                                                                   : "SIGN IN THROUGH STEAM";
+    control.widget.state.visible =
+        phase_ == IdentityMenuPhase::form && steam_state_ != IdentitySteamState::hidden;
+    control.widget.state.enabled = !busy_ && steam_state_ == IdentitySteamState::available;
+    if (!control.widget.state.enabled && (hovered_ == 2U || pressed_ == 2U)) {
         hovered_.reset();
         pressed_.reset();
     }
@@ -253,6 +269,7 @@ void IdentityMenuModel::set_error(std::string error) {
     status_.clear();
     error_ = std::move(error);
     for (auto& control : controls_) control.widget.state.enabled = true;
+    apply_steam_control();
 }
 
 void IdentityMenuModel::show_recovery_code(std::string code) {
@@ -278,13 +295,13 @@ void IdentityMenuModel::reset_form() noexcept {
     phase_ = IdentityMenuPhase::form;
     focused_field_ = IdentityField::username;
     for (std::size_t index = 0U; index < controls_.size(); ++index) {
-        controls_[index].widget.state.visible =
-            index == 2U ? steam_available_ : index != 4U;
+        controls_[index].widget.state.visible = index != 4U;
         controls_[index].widget.state.enabled = true;
     }
     busy_ = false;
     hovered_.reset();
     pressed_.reset();
+    apply_steam_control();
 }
 
 std::optional<std::size_t> IdentityMenuModel::hit_test(ui::Point point) const noexcept {

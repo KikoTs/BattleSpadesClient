@@ -1,14 +1,16 @@
 #include <Windows.h>
 #include <shellapi.h>
 
+#include "battlespades/platform/steam_registration_windows.hpp"
+
 #include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <filesystem>
-#include <iostream>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -27,6 +29,18 @@ using SteamApiInit = bool(__cdecl*)();
 using SteamApiShutdown = void(__cdecl*)();
 using SteamApiRunCallbacks = void(__cdecl*)();
 using SteamApiInterface = void*(__cdecl*)();
+using SteamApiIsRunning = bool(__cdecl*)();
+
+class CallbackBase;
+using SteamApiRegisterCallback = void(__cdecl*)(CallbackBase*, int);
+using SteamApiUnregisterCallback = void(__cdecl*)(CallbackBase*);
+
+// k_iSteamFriendsCallbacks + 33 / + 37. The retail SteamFriends013 era SDK
+// already posted both; their layouts have not changed since.
+constexpr int game_lobby_join_requested{333};
+constexpr int game_rich_presence_join_requested{337};
+constexpr std::size_t rich_presence_value_bytes{256U};
+constexpr std::size_t maximum_queued_events{8U};
 
 struct SteamId final {
     std::uint64_t value{};
@@ -95,13 +109,120 @@ template <typename Function>
     return result;
 }
 
+/**
+ * The protocol pipe, captured before steam_api.dll is loaded.
+ *
+ * The retail DLL printf()s breakpad and minidump notices to whatever stdout
+ * the process has. That stdout used to be the response pipe, so a stray
+ * "Setting breakpad minidump AppID = 224540" could arrive where the client
+ * expected READY and the Steam integration failed its handshake for the
+ * whole session. The DLL now gets NUL, and only the bridge writes here.
+ */
+HANDLE protocol_output{INVALID_HANDLE_VALUE};
+
 void response(std::string_view value) {
-    std::cout << value << '\n' << std::flush;
+    std::string line{value};
+    line.push_back('\n');
+    DWORD written{};
+    static_cast<void>(WriteFile(protocol_output,
+                                line.data(),
+                                static_cast<DWORD>(line.size()),
+                                &written,
+                                nullptr));
 }
 
 void error_response(std::string_view value) {
     response("ERROR\t" + hex_encode(value));
 }
+
+/**
+ * Join requests Steam posted, held until the client asks for them.
+ *
+ * A client from before SUBSCRIBE existed reads exactly one line per command,
+ * so an unsolicited line would be taken as the next command's answer. Events
+ * are therefore only written after SUBSCRIBE; earlier ones (a Join clicked
+ * while the bridge was still starting) wait here.
+ */
+std::deque<std::string> pending_events;
+bool events_subscribed{};
+
+void emit_event(std::string line) {
+    if (events_subscribed) {
+        response(line);
+        return;
+    }
+    if (pending_events.size() >= maximum_queued_events) pending_events.pop_front();
+    pending_events.push_back(std::move(line));
+}
+
+/**
+ * Binary-compatible stand-in for the SDK's CCallbackBase.
+ *
+ * The bridge has no SDK headers for the 2013 DLL, so it declares the class the
+ * way steam_api.h does: same virtual functions in the same order (MSVC groups
+ * the two Run overloads exactly as it does for the SDK), then the flag byte and
+ * the callback id that SteamAPI_RegisterCallback fills in.
+ */
+class CallbackBase {
+public:
+    CallbackBase() = default;
+    CallbackBase(const CallbackBase&) = delete;
+    CallbackBase& operator=(const CallbackBase&) = delete;
+
+    virtual void Run(void* parameter) = 0;
+    virtual void Run(void* parameter, bool io_failure, std::uint64_t call) = 0;
+    virtual int GetCallbackSizeBytes() = 0;
+
+    [[nodiscard]] bool registered() const noexcept { return (callback_flags & 0x01U) != 0U; }
+
+protected:
+    ~CallbackBase() = default;
+
+private:
+    std::uint8_t callback_flags{};
+    int callback_id{};
+};
+
+/** GameRichPresenceJoinRequested_t (337) and GameLobbyJoinRequested_t (333). */
+class JoinCallback final : public CallbackBase {
+public:
+    explicit JoinCallback(int kind) noexcept : kind_{kind} {}
+    ~JoinCallback() = default;
+    JoinCallback(const JoinCallback&) = delete;
+    JoinCallback& operator=(const JoinCallback&) = delete;
+
+    void Run(void* parameter) override { handle(parameter); }
+    void Run(void* parameter, bool, std::uint64_t) override { handle(parameter); }
+    int GetCallbackSizeBytes() override {
+        return kind_ == game_rich_presence_join_requested
+                   ? static_cast<int>(sizeof(std::uint64_t) + rich_presence_value_bytes)
+                   : static_cast<int>(sizeof(std::uint64_t) * 2U);
+    }
+
+private:
+    void handle(const void* parameter) const {
+        if (parameter == nullptr) return;
+        const auto* const bytes = static_cast<const char*>(parameter);
+        if (kind_ == game_rich_presence_join_requested) {
+            std::uint64_t friend_id{};
+            std::memcpy(&friend_id, bytes, sizeof(friend_id));
+            const auto* const connect = bytes + sizeof(friend_id);
+            const auto length = strnlen(connect, rich_presence_value_bytes);
+            emit_event("EVENT\tJOIN\t" + hex_encode(std::string_view{connect, length}) + "\t" +
+                       std::to_string(friend_id));
+        } else {
+            std::uint64_t lobby{};
+            std::uint64_t friend_id{};
+            std::memcpy(&lobby, bytes, sizeof(lobby));
+            std::memcpy(&friend_id, bytes + sizeof(lobby), sizeof(friend_id));
+            if (lobby == 0U) return;
+            emit_event("EVENT\tLOBBY\t" + std::to_string(lobby) + "\t" +
+                       std::to_string(friend_id));
+        }
+    }
+
+    int kind_;
+};
 
 struct Options final {
     std::filesystem::path library;
@@ -156,10 +277,29 @@ struct SteamRuntime final {
     void* apps{};
     SteamId steam_id{};
     std::uint32_t ticket_handle{};
+    SteamApiUnregisterCallback unregister_callback{};
+    JoinCallback rich_presence_join{game_rich_presence_join_requested};
+    JoinCallback lobby_join{game_lobby_join_requested};
+    /**
+     * Only a bridge that set presence clears it on exit. Presence belongs to
+     * the account and application, not the process, so an unconditional
+     * clear wiped what the game's own Steam runtime had published.
+     */
+    mutable bool presence_published{};
+    /** Set when the failure is permanent: a missing or unusable DLL. */
+    bool permanent_failure{};
+
+    SteamRuntime() = default;
+    SteamRuntime(const SteamRuntime&) = delete;
+    SteamRuntime& operator=(const SteamRuntime&) = delete;
 
     ~SteamRuntime() {
         cancel_ticket();
-        if (friends != nullptr) {
+        if (unregister_callback != nullptr) {
+            if (rich_presence_join.registered()) unregister_callback(&rich_presence_join);
+            if (lobby_join.registered()) unregister_callback(&lobby_join);
+        }
+        if (friends != nullptr && presence_published) {
             using ClearPresence = void(__thiscall*)(void*);
             if (const auto clear = virtual_function<ClearPresence>(friends, 37U);
                 clear != nullptr) {
@@ -172,9 +312,30 @@ struct SteamRuntime final {
 
     [[nodiscard]] bool initialize(const std::filesystem::path& path,
                                   std::string& error) {
+        // Steam takes the application from SteamAppId, then from a
+        // steam_appid.txt in the working directory. Launched by Steam the
+        // environment carries it; launched directly (a shortcut to aos.exe,
+        // a developer build) nothing did, since the imported steam/win32
+        // directory has no steam_appid.txt, and SteamAPI_Init failed. Set it
+        // before the DLL loads so its C runtime sees it too.
+        static_cast<void>(SetEnvironmentVariableW(L"SteamAppId", L"224540"));
+        static_cast<void>(SetEnvironmentVariableW(L"SteamGameId", L"224540"));
         module = LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
         if (module == nullptr) {
             error = "cannot load the original steam_api.dll";
+            permanent_failure = true;
+            return false;
+        }
+        const auto is_running = reinterpret_cast<SteamApiIsRunning>(
+            GetProcAddress(module, "SteamAPI_IsSteamRunning"));
+        const auto register_callback = reinterpret_cast<SteamApiRegisterCallback>(
+            GetProcAddress(module, "SteamAPI_RegisterCallback"));
+        unregister_callback = reinterpret_cast<SteamApiUnregisterCallback>(
+            GetProcAddress(module, "SteamAPI_UnregisterCallback"));
+        if (is_running != nullptr && !is_running()) {
+            const auto diagnosis = battlespades::platform::diagnose_steam_registration();
+            error = diagnosis.empty() ? std::string{"Steam is not running; start Steam and sign in"}
+                                      : diagnosis;
             return false;
         }
         const auto init = reinterpret_cast<SteamApiInit>(
@@ -193,8 +354,21 @@ struct SteamRuntime final {
             GetProcAddress(module, "SteamApps"));
         if (init == nullptr || shutdown == nullptr || callbacks == nullptr ||
             get_user == nullptr || get_friends == nullptr || get_stats == nullptr ||
-            get_apps == nullptr || !init()) {
-            error = "SteamAPI_Init failed; start Steam and own Ace of Spades (224540)";
+            get_apps == nullptr) {
+            error = "the imported steam_api.dll is not the retail Steamworks runtime";
+            permanent_failure = true;
+            shutdown = nullptr;
+            unregister_callback = nullptr;
+            return false;
+        }
+        if (!init()) {
+            // Only a successful init may be paired with SteamAPI_Shutdown.
+            shutdown = nullptr;
+            const auto diagnosis = battlespades::platform::diagnose_steam_registration();
+            error = diagnosis.empty()
+                        ? std::string{"SteamAPI_Init failed; sign in to Steam with an account "
+                                      "that owns Ace of Spades (224540)"}
+                        : "SteamAPI_Init failed: " + diagnosis;
             return false;
         }
         user = get_user();
@@ -228,6 +402,13 @@ struct SteamRuntime final {
         if (const auto request = virtual_function<RequestStats>(stats, 0U);
             request != nullptr) {
             static_cast<void>(request(stats));
+        }
+        // Registered before the first RunCallbacks: a Join clicked in the
+        // friends list while the game was starting is already queued in
+        // Steam, and an unregistered callback is simply dropped.
+        if (register_callback != nullptr) {
+            register_callback(&rich_presence_join, game_rich_presence_join_requested);
+            register_callback(&lobby_join, game_lobby_join_requested);
         }
         callbacks();
         return true;
@@ -286,10 +467,22 @@ struct SteamRuntime final {
         if (set == nullptr) return false;
         const std::string connect_value{connect};
         const std::string status_value{status};
+        presence_published = true;
         return set(friends,
                    "connect",
                    connect_value.empty() ? nullptr : connect_value.c_str()) &&
                set(friends, "status", status_value.c_str());
+    }
+
+    /** One rich presence key; an empty value deletes it. */
+    [[nodiscard]] bool set_presence_key(std::string_view key, std::string_view value) const {
+        using SetPresence = bool(__thiscall*)(void*, const char*, const char*);
+        const auto set = virtual_function<SetPresence>(friends, 36U);
+        if (set == nullptr) return false;
+        const std::string key_value{key};
+        const std::string text{value};
+        presence_published = true;
+        return set(friends, key_value.c_str(), text.empty() ? nullptr : text.c_str());
     }
 
     [[nodiscard]] bool clear_presence() const {
@@ -297,6 +490,7 @@ struct SteamRuntime final {
         const auto clear = virtual_function<ClearPresence>(friends, 37U);
         if (clear == nullptr) return false;
         clear(friends);
+        presence_published = false;
         return true;
     }
 
@@ -364,6 +558,34 @@ struct SteamRuntime final {
         }
         return true;
     }
+    if (fields[0U] == "PRESENCE_KEY" && fields.size() == 3U) {
+        // Only the keys Steam itself interprets, so a compromised caller
+        // cannot use the bridge to publish arbitrary account data.
+        const auto key = hex_decode(fields[1U]);
+        const auto value = hex_decode(fields[2U]);
+        const bool known = key.has_value() &&
+                           (*key == "status" || *key == "connect" ||
+                            *key == "steam_player_group" ||
+                            *key == "steam_player_group_size");
+        if (!known || !value.has_value() || value->size() >= rich_presence_value_bytes ||
+            !steam.set_presence_key(*key, *value)) {
+            error_response("SteamFriends013::SetRichPresence failed");
+        } else {
+            response("OK");
+        }
+        return true;
+    }
+    if (fields[0U] == "SUBSCRIBE" && fields.size() == 1U) {
+        // The answer comes first so the client pairs it with this command;
+        // queued events follow as ordinary event lines.
+        response("OK");
+        events_subscribed = true;
+        while (!pending_events.empty()) {
+            response(pending_events.front());
+            pending_events.pop_front();
+        }
+        return true;
+    }
     if (fields[0U] == "CLEAR_PRESENCE" && fields.size() == 1U) {
         if (steam.clear_presence()) response("OK");
         else error_response("SteamFriends013::ClearRichPresence failed");
@@ -402,6 +624,20 @@ struct SteamRuntime final {
 
 int wmain(int argc, wchar_t* argv[]) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    // Keep the protocol pipe for ourselves and give everything else NUL
+    // before steam_api.dll (and its own C runtime) loads; see response().
+    protocol_output = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (const HANDLE nul = CreateFileW(L"NUL",
+                                       GENERIC_WRITE,
+                                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                       nullptr,
+                                       OPEN_EXISTING,
+                                       0U,
+                                       nullptr);
+        nul != INVALID_HANDLE_VALUE) {
+        static_cast<void>(SetStdHandle(STD_OUTPUT_HANDLE, nul));
+        static_cast<void>(SetStdHandle(STD_ERROR_HANDLE, nul));
+    }
     const auto options = parse_options(argc, argv);
     if (!options.has_value()) return 2;
 
@@ -409,7 +645,9 @@ int wmain(int argc, wchar_t* argv[]) {
     std::string error;
     if (!steam.initialize(options->library, error)) {
         error_response(error);
-        return 3;
+        // 6: nothing will change by retrying (missing or foreign DLL).
+        // 3: Steam is not ready yet; the client tries again later.
+        return steam.permanent_failure ? 6 : 3;
     }
     const auto persona = steam.persona_name();
     if (persona.empty()) {

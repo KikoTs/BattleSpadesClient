@@ -168,6 +168,19 @@ bool WeaponRuntime::restock_from_ammo_crate() noexcept {
         dry_fire_latched_ = false;
         secondary_dry_fire_latched_ = false;
     }
+    // Weapon.restock(AMMO_CRATE): when the held weapon is reloadable and its
+    // magazine is empty, Character.reload_next_update starts the reload on the
+    // next update instead of leaving the gun dry until R is pressed.
+    if (const auto selected = replication_.selected_tool(); selected.has_value()) {
+        const auto& weapon = weapon_catalog()[*selected];
+        const auto* ammo = replication_.ammo(*selected);
+        const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(
+            weapon.clip_size);
+        if (automatically_reloads(weapon.mechanism) && ammo != nullptr &&
+            capacity != 0U && ammo->magazine == 0U && ammo->reserve > 0U) {
+            reload_next_update_ = true;
+        }
+    }
     return changed;
 }
 
@@ -216,6 +229,11 @@ void WeaponRuntime::tick(double dt) noexcept {
     cooldown_ = std::max(0.0, cooldown_ - dt);
     secondary_cooldown_ = std::max(0.0, secondary_cooldown_ - dt);
     block_sucker_reactivate_ = std::max(0.0, block_sucker_reactivate_ - dt);
+    // Releasing RMB runs on_stop_secondary, clearing active_secondary. The
+    // release is honoured here, after this frame's tool-switch input, so a
+    // switch key handled while RMB was still down is refused first.
+    swap_lock_remaining_ =
+        secondary_held_ ? std::max(0.0, swap_lock_remaining_ - dt) : 0.0;
 
     const auto selected = replication_.selected_tool();
     if (!selected.has_value()) {
@@ -224,9 +242,22 @@ void WeaponRuntime::tick(double dt) noexcept {
     }
     const auto& weapon = weapon_catalog()[*selected];
 
+    if (reload_next_update_) {
+        reload_next_update_ = false;
+        static_cast<void>(request_reload());
+    }
+
     if (reload_remaining_ > 0.0) {
+        // Weapon.use_primary still refuses while reloading, but a press during
+        // a clip_reload cycle makes Character.end_reload stop the chain after
+        // the shell in progress (BS/server/player.py _reload_blocks_shot). The
+        // press is latched here and replayed once that shell is loaded.
+        if (primary_pressed_ && weapon.retail.ammo.clip_reload) {
+            reload_interrupt_latched_ = true;
+        }
         reload_remaining_ = std::max(0.0, reload_remaining_ - dt);
         if (reload_remaining_ == 0.0) {
+            const bool interrupted = std::exchange(reload_interrupt_latched_, false);
             if (replication_.finish_reload(*selected) == WeaponStateResult::accepted) {
                 // Rounds are back, so the weapon can click again the next time
                 // it runs dry -- even if the trigger was never released.
@@ -235,12 +266,17 @@ void WeaponRuntime::tick(double dt) noexcept {
                 const auto* ammo = replication_.ammo(*selected);
                 const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(
                     weapon.clip_size);
-                // Character.end_reload transfers exactly one round for
-                // clip_reload weapons, sends the finished edge, and invokes
-                // Character.reload again while another shell will fit. That
-                // second call owns a fresh timer and a fresh wire start edge.
+                // Character.end_reload (character.pyd 0x1001FC00) transfers
+                // exactly one round for clip_reload weapons, sends the finished
+                // edge, and invokes Character.reload again while another shell
+                // will fit -- unless `reloaded_cancel or shoot_primary_held or
+                // shoot_primary`: a new press, the empty-while-held latch, or
+                // a trigger that is simply HELD at the shell boundary all stop
+                // the chain after the shell in progress.
+                const bool fire_resume = std::exchange(shoot_primary_held_, false);
+                const bool stop_chain = interrupted || fire_resume || primary_held_;
                 const bool continue_shell_reload =
-                    weapon.retail.ammo.clip_reload && ammo != nullptr &&
+                    !stop_chain && weapon.retail.ammo.clip_reload && ammo != nullptr &&
                     ammo->magazine < capacity && ammo->reserve > 0U;
                 // The wire completion edge occurs after every shell. Value is
                 // local presentation metadata: 1 only on the final cycle, so
@@ -253,9 +289,22 @@ void WeaponRuntime::tick(double dt) noexcept {
                     reload_remaining_ = weapon.retail.use.reload_time.value_or(
                         weapon.reload_time);
                     emit(WeaponActionKind::reload_started, weapon);
+                } else if (interrupted && ammo != nullptr && ammo->magazine > 0U) {
+                    // Let the latched trigger pull through with the shells
+                    // loaded so far, on this same update.
+                    primary_pressed_ = true;
+                } else if (fire_resume && ammo != nullptr && ammo->magazine > 0U) {
+                    // end_reload's set_primary_shoot(True), for magazine
+                    // weapons as well: shoot_primary stays set, so the gun
+                    // fires as soon as its shoot interval allows.
+                    resume_fire_pending_ = true;
                 }
             }
         }
+    }
+    if (resume_fire_pending_ && reload_remaining_ == 0.0 && cooldown_ == 0.0) {
+        resume_fire_pending_ = false;
+        primary_pressed_ = true;
     }
 
     const auto& aim = weapon.retail.aim;
@@ -302,6 +351,9 @@ void WeaponRuntime::process_edges(const WeaponDefinition& weapon) noexcept {
                 // GrenadeTool plays GRENADE_PULL_PIN_SOUND here. Molotov and
                 // the Specialist charged throws deliberately do not.
                 emit(WeaponActionKind::throwable_primed, weapon);
+            } else {
+                // GrenadeTool.on_start_primary with no count left.
+                auto_switch_requested_ = true;
             }
             break;
         case WeaponMechanism::charged_throwable:
@@ -309,6 +361,9 @@ void WeaponRuntime::process_edges(const WeaponDefinition& weapon) noexcept {
                 interaction_active_ = true;
                 interaction_elapsed_ = 0.0;
                 interaction_value_ = 0.0;
+            } else {
+                // MolotovWeapon / StickyGrenadeWeapon on_start_primary.
+                auto_switch_requested_ = true;
             }
             break;
         case WeaponMechanism::block_builder:
@@ -415,9 +470,22 @@ void WeaponRuntime::process_edges(const WeaponDefinition& weapon) noexcept {
             primary_pressed_ = false;
             primary_released_ = false;
             emit(WeaponActionKind::block_line_cancel, weapon, true);
-        } else if (weapon.retail.use.has_secondary) {
+        } else if (weapon.tool_id == 45U ||
+                   weapon.mechanism == WeaponMechanism::ugc_entity) {
+            // The only remaining real use_secondary overrides: the UGC super
+            // spade's immediate 3x3x3 alternate dig and the UGC tool's
+            // item-variant cycle (docs/WEAPON_SECONDARY_RECOVERY.md).
             activate(weapon, true);
+        } else if (weapon.tool_id == 2U) {
+            // SpadeTool RMB is an INERT lock: delay_secondary=True, and
+            // on_start_secondary only sets active_secondary, so Tool.can_swap
+            // is false until the 1.0 s charge ends or RMB is released. It
+            // sends nothing and digs nothing.
+            swap_lock_remaining_ =
+                weapon.retail.use.secondary_shoot_interval.value_or(1.0);
         }
+        // Every other has_secondary tool inherits Tool.use_secondary, which
+        // returns None: retail never sends a secondary ShootPacket for them.
     }
 
     if (custom_pressed_ &&
@@ -566,6 +634,12 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         !context_.deployable_target_valid) {
         // Retail Weapon.shoot returns False when its ghost target is absent;
         // base weapon logic therefore leaves both stock and cooldown intact.
+        // c4Weapon.py / dynamiteWeapon.py / landmineWeapon.py /
+        // medPackWeapon.py play BUILD_ERROR_SOUND on that refusal. Only a
+        // trigger press reports it, and it draws no seed.
+        if (secondary ? secondary_pressed_ : primary_pressed_) {
+            report_placement_rejected(weapon, secondary);
+        }
         return;
     }
     const bool consumes_this_action = consumes_weapon_ammo(weapon.mechanism) &&
@@ -591,6 +665,11 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         if (!latch) {
             latch = true;
             emit(WeaponActionKind::dry_fire, weapon, secondary);
+            // Weapon.use_primary calls Character.auto_switch_tool on the dry
+            // pull. Nothing is left to reload here, so move off the tool.
+            if (!secondary) {
+                auto_switch_requested_ = true;
+            }
         }
         return;
     }
@@ -656,6 +735,9 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         const auto* ammo = replication_.ammo(weapon.tool_id);
         emptied_magazine = ammo != nullptr && ammo->magazine == 0U &&
                            ammo->reserve > 0U;
+        // Weapon.use_primary: the shot that empties the magazine while the
+        // trigger is down sets shoot_primary_held.
+        if (emptied_magazine && !secondary && primary_held_) shoot_primary_held_ = true;
     }
     if (weapon.retail.aim.variable_accuracy) {
         spread_ = std::min(
@@ -686,6 +768,14 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
     }
 }
 
+void WeaponRuntime::report_placement_rejected(const WeaponDefinition& weapon,
+                                              bool secondary) noexcept {
+    // Presentation-only: no seed is drawn, so the shot RNG stream the server
+    // replays stays identical to a client that never pressed.
+    actions_.push_back(WeaponAction{WeaponActionKind::placement_rejected, weapon.tool_id, 0U,
+                                    1U, secondary, 0.0, false, 0.0});
+}
+
 void WeaponRuntime::emit(WeaponActionKind kind,
                          const WeaponDefinition& weapon,
                          bool secondary, double value) noexcept {
@@ -694,9 +784,17 @@ void WeaponRuntime::emit(WeaponActionKind kind,
     // without any new state. Reads only; the seed stream is unchanged.
     const bool burst_follow_up =
         weapon.mechanism == WeaponMechanism::firearm_burst && burst_remaining_ > 0U;
+    // Weapon.prep_shoot: the shot uses the bloom reached BEFORE this round's
+    // shot_weapon() increase (activate() grows spread_ after emitting).
+    double accuracy{};
+    if (kind == WeaponActionKind::hitscan) {
+        accuracy = weapon.retail.aim.variable_accuracy
+                       ? current_accuracy()
+                       : weapon.retail.aim.accuracy.value_or(weapon.spread);
+    }
     actions_.push_back(WeaponAction{kind, weapon.tool_id, next_seed(),
                                     weapon.pellet_count, secondary, value,
-                                    burst_follow_up});
+                                    burst_follow_up, accuracy});
 }
 
 bool WeaponRuntime::consume(const WeaponDefinition& weapon) noexcept {
@@ -789,6 +887,12 @@ void WeaponRuntime::reset_selected_runtime() noexcept {
     reload_remaining_ = 0.0;
     burst_cooldown_ = 0.0;
     block_sucker_reactivate_ = 0.0;
+    reload_interrupt_latched_ = false;
+    shoot_primary_held_ = false;
+    resume_fire_pending_ = false;
+    reload_next_update_ = false;
+    auto_switch_requested_ = false;
+    swap_lock_remaining_ = 0.0;
     const auto selected = replication_.selected_tool();
     if (!selected.has_value()) {
         spread_ = 0.0;
@@ -809,6 +913,12 @@ std::vector<WeaponAction> WeaponRuntime::take_actions() {
 
 const WeaponReplicationState& WeaponRuntime::replication() const noexcept {
     return replication_;
+}
+
+bool WeaponRuntime::swap_locked() const noexcept { return swap_lock_remaining_ > 0.0; }
+
+bool WeaponRuntime::take_auto_switch_request() noexcept {
+    return std::exchange(auto_switch_requested_, false);
 }
 
 double WeaponRuntime::cooldown_remaining() const noexcept { return cooldown_; }
@@ -852,6 +962,15 @@ double WeaponRuntime::crosshair_radius_pixels(double viewport_height,
         return 0.0;
     }
 
+    // get_accuracy/get_static_accuracy live on Weapon only. Plain Tool
+    // subclasses (spade and other DiggingTools, BlockTool, GrenadeTool,
+    // PrefabTool, ...) never reach them and keep the 1 px minimum, the small
+    // square retail draws for blocks, melee, grenades and prefabs (live A/B
+    // 2026-09-29: 18 px extent for keys 1/2/5/6). Every retail Weapon
+    // subclass name ends in "Weapon".
+    if (!weapon_catalog()[*selected].retail.class_name.ends_with("Weapon")) {
+        return 1.0;
+    }
     const auto& aim = weapon_catalog()[*selected].retail.aim;
     // Python's `accuracy_zoom != accuracy` is significant here: a firearm
     // with numeric accuracy and None for accuracy_zoom still uses the

@@ -26,6 +26,19 @@ enum class IdentityAction : std::uint8_t {
     acknowledge_recovery,
 };
 
+/**
+ * What the Steam sign-in button shows.
+ *
+ * `connecting` keeps the button in place, disabled, while the retail Steam
+ * runtime is still attaching; it used to be hidden until then, so whether the
+ * player saw it depended on how fast Steam answered on that launch.
+ */
+enum class IdentitySteamState : std::uint8_t {
+    hidden,
+    connecting,
+    available,
+};
+
 enum class IdentityMenuPhase : std::uint8_t {
     form,
     recovery_code,
@@ -66,6 +79,7 @@ public:
     [[nodiscard]] std::string_view recovery_code() const noexcept;
     [[nodiscard]] bool busy() const noexcept;
     [[nodiscard]] bool steam_available() const noexcept;
+    [[nodiscard]] IdentitySteamState steam_state() const noexcept;
     [[nodiscard]] WidgetVisualState visual_state(ui::WidgetId id) const noexcept;
     [[nodiscard]] ui::Rect username_bounds() const noexcept;
     [[nodiscard]] ui::Rect password_bounds() const noexcept;
@@ -83,6 +97,8 @@ public:
     void set_busy(bool busy, std::string status = {});
     /** Show Steam only after the owned native retail runtime is ready. */
     void set_steam_available(bool available) noexcept;
+    /** Hidden, connecting (visible, disabled) or available. */
+    void set_steam_state(IdentitySteamState state) noexcept;
     void set_error(std::string error);
     void show_recovery_code(std::string code);
     void reset_form() noexcept;
@@ -90,6 +106,7 @@ public:
 private:
     [[nodiscard]] std::optional<std::size_t> hit_test(ui::Point point) const noexcept;
     [[nodiscard]] bool field_hit(ui::Rect bounds, ui::Point point) const noexcept;
+    void apply_steam_control() noexcept;
 
     std::array<IdentityControl, control_count> controls_;
     std::string username_;
@@ -102,7 +119,7 @@ private:
     std::optional<std::size_t> hovered_;
     std::optional<std::size_t> pressed_;
     bool busy_{};
-    bool steam_available_{};
+    IdentitySteamState steam_state_{IdentitySteamState::hidden};
 };
 
 } // namespace battlespades::frontend

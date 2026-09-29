@@ -170,11 +170,38 @@ struct RevivalSocialClientConfig final {
     std::size_t maximum_results{128U};
     std::chrono::milliseconds menu_poll_interval{3'000};
     std::chrono::milliseconds active_lobby_poll_interval{1'000};
-    std::chrono::milliseconds maximum_backoff{30'000};
+    /**
+     * Failed polls back off to at most this. Ten seconds keeps a transient
+     * AoSPlay outage from leaving the Friends list stale for half a minute.
+     */
+    std::chrono::milliseconds maximum_backoff{10'000};
+    /** Poll cadence while a social screen (Friends, lobby) is on screen. */
+    std::chrono::milliseconds foreground_poll_interval{1'500};
+    /**
+     * A poll is also the presence heartbeat. Continuous player writes used to
+     * suppress every poll, so AoSPlay evicted a busy player from their own
+     * lobby after its 30 second grace. Past this age a poll runs regardless.
+     */
+    std::chrono::milliseconds maximum_poll_starvation{8'000};
+    /** Transparent retries of idempotent writes after transport/5xx failures. */
+    std::size_t write_retries{2U};
+    std::chrono::milliseconds write_retry_delay{400};
 };
 
+/** True when a failed write may be repeated without changing its meaning. */
+[[nodiscard]] bool revival_social_write_is_idempotent(const RevivalSocialRequest& request) noexcept;
+
+/** True when a failure is transient (transport, gateway, overload), not a rejection. */
+[[nodiscard]] bool revival_social_failure_is_transient(const RevivalSocialResult& result) noexcept;
+
 struct RevivalSocialClientStatus final {
+    /** Online account and the last poll succeeded ("CONNECTED"). */
     bool available{};
+    /**
+     * Online account, independent of the last poll. Actions stay usable while
+     * a poll is failing; each write reports its own outcome.
+     */
+    bool enabled{};
     bool closing{};
     bool normal_active{};
     bool priority_active{};
@@ -208,6 +235,8 @@ public:
     [[nodiscard]] bool enqueue(RevivalSocialRequest request);
     void set_available(bool available) noexcept;
     void set_presence(std::string presence, nlohmann::json metadata = {});
+    /** Poll faster while a social screen is visible; takes effect at once. */
+    void set_foreground(bool foreground) noexcept;
     void tick(std::chrono::steady_clock::time_point now);
     [[nodiscard]] std::vector<RevivalSocialResult> drain(
         std::chrono::steady_clock::time_point now);

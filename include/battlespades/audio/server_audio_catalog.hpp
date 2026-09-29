@@ -13,11 +13,12 @@ namespace battlespades::audio {
 inline constexpr float retail_hearing_distance{50.0F};
 
 /**
- * Positional mixing classes used after the retail 50-block allocation gate.
+ * Call-site tag for positional cues after the retail 50-block allocation gate.
  *
- * Terrain and movement cues keep the ordinary falloff. A firearm report is a
- * high-energy transient: full-cover VXL occlusion must muffle it, but must not
- * reduce it to the near-silent level appropriate for footsteps or digging.
+ * Retail mixes every world cue identically: `DEFAULT_ATTENUATION` rolloff,
+ * reference distance 1 and no occlusion (the only audio raycast in retail is
+ * the reverb probe). The tag keeps call sites readable, but both values
+ * resolve to the same retail mix.
  */
 enum class SpatialSoundProfile : std::uint8_t {
     ordinary,
@@ -25,46 +26,22 @@ enum class SpatialSoundProfile : std::uint8_t {
 };
 
 /**
- * Presentation gain for a firearm report at its source.
- *
- * First-person reports are head-relative and therefore receive no distance
- * attenuation. Feeding them the same unit gain as a world-space observer shot
- * makes the local gun mask movement, impacts, and class voices. Retail mixed
- * those two paths independently; keep that distinction explicit here rather
- * than hiding per-call magic numbers in the frontend.
+ * `Tool.play_sound` volume (tool.py:99-100): the local player's shot, loops
+ * and tails play 2D at 0.5.
  */
 [[nodiscard]] constexpr float local_weapon_report_gain() noexcept {
-    return 0.72F;
+    return 0.5F;
 }
 
-/** Nearby observer reports must remain present after distance and VXL cover. */
+/** Observers hear the same `Tool.play_sound` 0.5, attenuated by distance. */
 [[nodiscard]] constexpr float remote_weapon_report_gain() noexcept {
-    return 1.18F;
+    return 0.5F;
 }
 
+/** Retail `AL_ROLLOFF_FACTOR` = DEFAULT_ATTENUATION 0.15 for every world cue. */
 [[nodiscard]] constexpr float
-spatial_rolloff(SpatialSoundProfile profile) noexcept {
-    return profile == SpatialSoundProfile::weapon_report ? 0.065F : 0.15F;
-}
-
-[[nodiscard]] constexpr float
-spatial_transmission_floor(SpatialSoundProfile profile) noexcept {
-    // Occlusion is a muffling layer, not a second distance curve. Retail did
-    // not raycast audio at all, so both floors deliberately preserve presence
-    // while our live-VXL extension still distinguishes open and covered paths.
-    return profile == SpatialSoundProfile::weapon_report ? 0.70F : 0.35F;
-}
-
-[[nodiscard]] constexpr float profiled_spatial_transmission(
-    SpatialSoundProfile profile, float transmission) noexcept {
-    const float bounded = transmission < 0.0F ? 0.0F
-                        : transmission > 1.0F ? 1.0F
-                                              : transmission;
-    if (bounded <= 0.0F) {
-        return 0.0F;
-    }
-    const float floor = spatial_transmission_floor(profile);
-    return bounded < floor ? floor : bounded;
+spatial_rolloff(SpatialSoundProfile /*profile*/) noexcept {
+    return 0.15F;
 }
 
 /**

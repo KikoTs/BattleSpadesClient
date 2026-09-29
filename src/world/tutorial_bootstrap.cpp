@@ -74,7 +74,10 @@ void TutorialWorldBootstrap::start() {
     auto supplied_map = supplied_map_;
     // The emissive palette is keyed on the map's basename, e.g. `TokyoNeon`.
     const std::string map_name = map_name_.empty() ? path_.stem().string() : map_name_;
-    state_->coordinator = std::thread{[state, path, supplied_map, workers, map_name]() {
+    const auto bed_water_color = bed_water_color_;
+    const bool retail_look = retail_look_;
+    state_->coordinator = std::thread{[state, path, supplied_map, workers, map_name,
+                                       bed_water_color, retail_look]() {
         std::shared_ptr<VxlMap> shared_map = supplied_map;
         if (shared_map == nullptr) {
             auto loaded = VxlMap::load_file(path);
@@ -94,8 +97,17 @@ void TutorialWorldBootstrap::start() {
         }
         // A map with authored light-emitting colours needs them classified at
         // mesh time, because the emission strength rides in the vertex colour.
+        // The Retail tier meshes without it: vxl.pyd had no self-lit voxels.
+        // The emissive spill volume below is still built for the enhanced
+        // tiers, so a later tier switch only has to re-mesh.
+        const auto map_palette = emissive_palette_for(map_name);
         ChunkMesherConfig mesher_config;
-        mesher_config.emissive = emissive_palette_for(map_name);
+        if (!retail_look) {
+            mesher_config.emissive = map_palette;
+        }
+        if (bed_water_color.has_value()) {
+            mesher_config.bed_water_color = *bed_water_color;
+        }
         const ChunkMesher mesher{mesher_config};
         const auto chunks_per_axis = mesher.chunks_per_axis();
         const auto total = static_cast<std::size_t>(chunks_per_axis) * chunks_per_axis;
@@ -110,7 +122,7 @@ void TutorialWorldBootstrap::start() {
         // tick. Building them in parallel with chunk meshing keeps every
         // graphics backend responsive while the existing loading screen is
         // visible. The map is immutable throughout this phase.
-        std::thread derived_worker{[state, shared_map, palette = mesher_config.emissive]() {
+        std::thread derived_worker{[state, shared_map, palette = map_palette]() {
             BootstrapDerivedWorld derived;
             derived.skylight.rebuild(*shared_map);
             derived.minimap_rgba = build_minimap_overview_rgba(*shared_map);

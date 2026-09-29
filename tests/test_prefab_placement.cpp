@@ -39,7 +39,33 @@ void overlap_is_legal_and_only_air_costs_blocks() {
         {20, 20, 40}, {21, 20, 40}, {22, 20, 40}};
     const auto result = evaluate_prefab_placement(map, footprint);
     expect(result.all_in_bounds && result.touches_world && result.required_blocks == 2U,
-           "an occupied prefab voxel must attach the shape and cost zero blocks");
+           "an occupied prefab voxel must attach the shape and fill only two air cells");
+    expect(result.model_blocks == 3U,
+           "the retail wallet gate is len(model_points), overlap included");
+}
+
+void competitive_prefab_colour_and_smoke_rings_follow_build_prefab() {
+    // shared.common.blend_color(base, voxel, 0.5): int(voxel + (base-voxel)/2);
+    // live sample base (44,117,179) + voxel (176,179,179) -> (110,148,179).
+    expect(retail_prefab_blend({44U, 117U, 179U, 255U}, {176U, 179U, 179U, 9U}) ==
+               VxlColor{110U, 148U, 179U, 255U},
+           "prefab colour must be the exact truncating 50/50 blend, no jitter");
+    expect(retail_prefab_blend({1U, 3U, 255U, 255U}, {2U, 4U, 0U, 255U}) ==
+               VxlColor{1U, 3U, 127U, 255U},
+           "blend must truncate like Python int()");
+
+    // One ring per voxel on the model's max-z (lowest) layer, at cell + z 1.
+    const std::vector<PrefabModelVoxel> model{
+        {0, 0, 0}, {1, 0, 0}, {0, 0, 2}, {1, 0, 2}, {2, 0, 2}};
+    const auto rings = prefab_smoke_rings(model, 3U, {100, 100, 50}, 0U, 0U, 0U);
+    expect(rings.size() == 3U, "one smoke ring per bottom-layer model voxel");
+    expect(rings.front().position == std::array<float, 3U>{100.0F, 100.0F, 53.0F} &&
+               rings.front().radius == 1.0F,
+           "ring sits one below the voxel with radius (x_size - 1) / 2");
+    const auto turned = prefab_smoke_rings(model, 3U, {100, 100, 50}, 1U, 0U, 0U);
+    expect(turned.size() == 3U && turned[1U].position[0U] == 100.0F &&
+               turned[1U].position[1U] == 99.0F,
+           "ring positions follow the packet-30 rotation");
 }
 
 void block_drag_cost_and_support_match_the_authoritative_build() {
@@ -201,6 +227,62 @@ void preview_cache_tracks_pose_map_and_model_changes() {
     expect(!preview.evaluate(map, anchor, 0U, 0U, 0U).has_effect(), "clearing a preview leaves no footprint");
 }
 
+void ghost_position_follows_retail_get_prefab_ghost_position() {
+    auto map = empty_world();
+    // prefab_ultrabarrier: KV6 header 6x14x6, the Soldier's first prefab.
+    PrefabGhostRequest request;
+    request.position = {256.3, 256.7, 100.2};
+    request.orientation = {1.0, 0.0, 0.0};
+    request.size = {6, 14, 6};
+    request.player_direction = 0U;
+    request.check_world_intersect = false;
+    // Default override 1: rotated sizes (14, -6, 6), radius sqrt(67) -> band
+    // 10, distance 10.82; floor(267.12, 256.7, 100.2) - int(ws / 2) then
+    // int(-0.8 * 6 / 2.0) = -2 on z.
+    request.yaw = 1U;
+    auto ghost = prefab_ghost_position(map, {}, request);
+    expect(ghost.anchor == PrefabPlacementCell{260, 259, 95},
+           "signed rotated sizes truncate toward zero around the aim point");
+    expect(ghost.center == std::array<std::int32_t, 3U>{267, 256, 98},
+           "prefab_center adds int(world_size / 2) back");
+    // Override 3 (WEST relative to the facing): both even sizes compensate.
+    request.yaw = 3U;
+    ghost = prefab_ghost_position(map, {}, request);
+    expect(ghost.anchor == PrefabPlacementCell{273, 254, 95},
+           "even-size facing compensation moves x -1 and y +1");
+    request.use_player_orientation = false;
+    ghost = prefab_ghost_position(map, {}, request);
+    expect(ghost.anchor == PrefabPlacementCell{274, 253, 95},
+           "UGC ghosts skip the facing compensation");
+
+    // FACE_BOTTOM lift while the model intersects and still sinks below the
+    // player's floor (floor(z + 2.25)); it stops at that floor regardless.
+    const std::vector<PrefabPlacementCell> single{{0, 0, 0}};
+    PrefabGhostRequest down;
+    down.position = {100.5, 100.5, 30.0};
+    down.orientation = {0.0, 0.0, 1.0};
+    down.size = {1, 1, 1};
+    for (std::uint32_t z{32U}; z <= 37U; ++z) {
+        expect(!map.solid(100U, 100U, z), "fixture column starts as air");
+    }
+    expect(prefab_ghost_position(map, single, down).anchor == PrefabPlacementCell{100, 100, 37},
+           "minimum distance 7 straight down with nothing to intersect");
+    constexpr VxlColor stone{90U, 100U, 110U, 255U};
+    for (std::uint32_t z{35U}; z <= 37U; ++z) {
+        expect(map.set_voxel(100U, 100U, z, stone), "fixture column must be placed");
+    }
+    expect(prefab_ghost_position(map, single, down).anchor == PrefabPlacementCell{100, 100, 34},
+           "the ghost lifts out of the terrain it intersects");
+    for (std::uint32_t z{32U}; z <= 34U; ++z) {
+        expect(map.set_voxel(100U, 100U, z, stone), "fixture column must be placed");
+    }
+    expect(prefab_ghost_position(map, single, down).anchor == PrefabPlacementCell{100, 100, 32},
+           "the lift stops at the player's floor even while intersecting");
+    down.check_world_intersect = false;
+    expect(prefab_ghost_position(map, single, down).anchor == PrefabPlacementCell{100, 100, 37},
+           "UGC ghosts never lift");
+}
+
 void ghost_transform_matches_voxels_at_every_rotation_and_pivot() {
     const std::array<float, 3U> pivot{2.5F, -3.0F, 4.25F};
     const std::array<double, 3U> voxel{7.0, 11.0, 13.0};
@@ -241,6 +323,7 @@ void ghost_transform_matches_voxels_at_every_rotation_and_pivot() {
 int main() {
     try {
         overlap_is_legal_and_only_air_costs_blocks();
+        competitive_prefab_colour_and_smoke_rings_follow_build_prefab();
         block_drag_cost_and_support_match_the_authoritative_build();
         no_op_and_out_of_bounds_fail_closed();
         streamed_prefab_is_revealed_atomically_on_completion();
@@ -249,6 +332,7 @@ int main() {
         placement_audio_edges_use_retail_stems();
         preview_cache_tracks_pose_map_and_model_changes();
         ghost_transform_matches_voxels_at_every_rotation_and_pivot();
+        ghost_position_follows_retail_get_prefab_ghost_position();
         std::cout << "prefab placement tests passed\n";
         return 0;
     } catch (const std::exception& error) {

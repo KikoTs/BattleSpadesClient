@@ -153,6 +153,12 @@ std::string_view FriendsLobbyMenuModel::service_status() const noexcept {
     return service_status_;
 }
 bool FriendsLobbyMenuModel::service_available() const noexcept { return service_available_; }
+bool FriendsLobbyMenuModel::connected() const noexcept { return connected_; }
+std::size_t FriendsLobbyMenuModel::incoming_request_count() const noexcept {
+    return static_cast<std::size_t>(std::ranges::count_if(authoritative_friends_, [](const auto& row) {
+        return row.relationship == "pending" && row.direction == "incoming";
+    }));
+}
 bool FriendsLobbyMenuModel::search_focused() const noexcept { return search_focused_; }
 bool FriendsLobbyMenuModel::busy() const noexcept { return operation_.has_value(); }
 bool FriendsLobbyMenuModel::is_host() const noexcept {
@@ -207,14 +213,24 @@ FriendsLobbyButton FriendsLobbyMenuModel::primary_button() const {
             return action("JOIN LOBBY", FriendsLobbyActionKind::join_friend_lobby, found->current_lobby_id);
         if (!found->current_server_id.empty())
             return action("JOIN GAME", FriendsLobbyActionKind::join_game, found->current_server_id);
-        if (snapshot_.lobby && found->presence != "offline") {
+        if (snapshot_.lobby) {
             if (snapshot_.lobby->members.size() >= snapshot_.lobby->maximum_members)
                 return {"LOBBY FULL", std::nullopt};
-            return action("INVITE TO LOBBY", FriendsLobbyActionKind::invite_friend, found->id);
+            // AoSPlay keeps an invitation for ten minutes, so an offline (or
+            // briefly unpolled) friend still receives it when they return.
+            return action(found->presence == "offline" ? "INVITE (OFFLINE)" : "INVITE TO LOBBY",
+                          FriendsLobbyActionKind::invite_friend, found->id);
         }
-        if (!snapshot_.lobby)
-            return action("CREATE + INVITE", FriendsLobbyActionKind::create_lobby, found->id);
-        return {"FRIEND OFFLINE", std::nullopt};
+        return action("CREATE + INVITE", FriendsLobbyActionKind::create_lobby, found->id);
+    }
+    if (snapshot_.lobby && !selected_invitation_id_.empty()) {
+        const auto invitation = std::ranges::find(snapshot_.invitations, selected_invitation_id_,
+                                                  &FriendsLobbyInvitation::id);
+        // Accepting another lobby's invitation used to be impossible while in
+        // any lobby (and lobbies persist while the game runs). The frontend
+        // leaves the current lobby first, then joins, in one ordered queue.
+        if (invitation != snapshot_.invitations.end() && invitation->lobby_id != snapshot_.lobby->id)
+            return action("LEAVE + JOIN", FriendsLobbyActionKind::accept_lobby_invite, selected_invitation_id_);
     }
     if (!snapshot_.lobby) {
         if (!selected_invitation_id_.empty())
@@ -315,6 +331,8 @@ void FriendsLobbyMenuModel::set_tab(FriendsLobbyTab tab) noexcept {
     rebuild_visible_rows();
 }
 
+void FriendsLobbyMenuModel::set_connected(bool connected) noexcept { connected_ = connected; }
+
 void FriendsLobbyMenuModel::set_service_status(bool available, std::string status) {
     service_available_ = available;
     service_status_ = core::utf8_code_point_prefix(status, 128U);
@@ -397,13 +415,24 @@ bool FriendsLobbyMenuModel::apply_search_results(
 }
 
 void FriendsLobbyMenuModel::tick(std::chrono::steady_clock::time_point now) noexcept {
-    if (!operation_.has_value() || now < operation_->deadline) return;
+    if (!operation_.has_value()) {
+        // A failed action explains itself, then gets out of the way; it used
+        // to stay red until the next action, over a list that had since
+        // recovered.
+        if (!error_.empty() && phase_ == FriendsLobbyPhase::error && now >= error_expires_) {
+            error_.clear();
+            update_phase_from_lobby();
+        }
+        return;
+    }
+    if (now < operation_->deadline) return;
     const auto kind = operation_->intent.kind;
     operation_.reset();
     error_ = kind == FriendsLobbyActionKind::start_lobby
                  ? "The host did not answer. You can retry safely."
-                 : "AoSPlay did not answer. Please retry.";
+                 : "AoSPlay did not confirm in time. The list will update if it went through.";
     phase_ = FriendsLobbyPhase::error;
+    error_expires_ = now + error_display_duration;
     controls_armed_after_ = now + std::chrono::milliseconds{250};
 }
 
@@ -618,6 +647,7 @@ bool FriendsLobbyMenuModel::complete(std::uint64_t generation,
         error_ = core::utf8_code_point_prefix(error, 160U);
         if (error_.empty()) error_ = "The lobby action failed safely.";
         phase_ = FriendsLobbyPhase::error;
+        error_expires_ = now + error_display_duration;
         return true;
     }
     error_.clear();

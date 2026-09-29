@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battlespades/audio/audio_port.hpp"
+#include "battlespades/audio/retail_mix.hpp"
 #include "battlespades/audio/server_audio_catalog.hpp"
 
 #include <array>
@@ -13,10 +14,21 @@
 
 namespace battlespades::audio {
 
+/**
+ * One-shot voice pool bounds (decision D5). Retail opened 128 OpenAL
+ * sources; OpenAL Soft's default context offers 256, which leaves room for
+ * the music, ambience and loop pools. A device that runs out of sources
+ * earlier keeps at least 64 voices, and protected cues (stingers, voice
+ * lines, countdown beeps) are never the first to be stolen.
+ */
+inline constexpr std::size_t retail_one_shot_voices{128U};
+inline constexpr std::size_t minimum_one_shot_voices{64U};
+inline constexpr std::size_t maximum_one_shot_voices{128U};
+
 /** Startup settings for the retail-compatible frontend audio bed and cues. */
 struct OpenAlFrontendAudioConfig final {
     std::filesystem::path asset_root{"assets/original"};
-    std::size_t max_one_shot_voices{48U};
+    std::size_t max_one_shot_voices{retail_one_shot_voices};
     /** Retail config.py music_volume default. */
     float music_gain{1.0F};
     float cue_gain{1.0F};
@@ -53,6 +65,20 @@ enum class WeaponCue : std::uint8_t {
 };
 
 /**
+ * Whether a tool cue feeds the world reverb send.
+ *
+ * Retail `Tool.play_sound` plays the MAIN player's own tool cues (fire,
+ * reload, swing, throw, tool loops) with zone DEFAULT and `pos=None`, which
+ * maps to the HUD audio zone: dry, no reverb (IDA, audit 2026-09-29). Remote
+ * cues are IN_WORLD and wet. Dry-fire is the exception: it stays IN_WORLD
+ * even for the local player.
+ */
+[[nodiscard]] constexpr bool tool_cue_reverb_send(bool local_player_cue,
+                                                  WeaponCue cue = WeaponCue::fire_loop) noexcept {
+    return !local_player_cue || cue == WeaponCue::empty_fire;
+}
+
+/**
  * Handle to a sustained looping voice; 0 is never valid.
  *
  * Loops come from a dedicated source pool rather than the one-shot voices,
@@ -61,11 +87,6 @@ enum class WeaponCue : std::uint8_t {
  */
 using LoopVoice = std::uint32_t;
 inline constexpr LoopVoice invalid_loop_voice{0U};
-
-/** Main-thread terrain transmission callback for positional audio. */
-using SpatialGainResolver = float (*)(void* context,
-                                      SoundPosition listener,
-                                      SoundPosition source) noexcept;
 
 /**
  * Main-thread OpenAL Soft owner for frontend music and UI cues.
@@ -173,10 +194,24 @@ public:
     void set_listener_pose(SoundPosition position,
                            const std::array<float, 3U>& forward,
                            const std::array<float, 3U>& up);
-    /** Install or clear the live VXL spatial-transmission callback. */
-    void set_spatial_gain_resolver(void* context, SpatialGainResolver resolver) noexcept;
+    /**
+     * Apply one `GameScene.update_audio_effects` result: the smoothed reverb
+     * decay/gain drive the EFX slot (re-bound so OpenAL Soft applies the
+     * change) and the ambience ducking scales the local fallback bed.
+     */
+    void apply_environment_audio(const EnvironmentAudioState& state);
+    [[nodiscard]] EnvironmentAudioState environment_audio() const noexcept;
     void play_one_shot(SoundHandle sound, SoundPosition position, float gain) override;
-    /** Plays an owner/UI cue at the listener without world-space stereo panning. */
+    /** play_one_shot with a retail random-pitch ratio (media.play_pitched). */
+    void play_pitched_one_shot(SoundHandle sound,
+                               SoundPosition position,
+                               float gain,
+                               float pitch,
+                               bool head_relative = false);
+    /**
+     * Plays an owner cue at the listener without world-space stereo panning.
+     * Like retail IN_WORLD_AUDIO_ZONE cues it still feeds the reverb send.
+     */
     void play_head_relative_one_shot(SoundHandle sound, float gain = 1.0F);
     [[nodiscard]] SoundHandle preload_skin_sound(const std::filesystem::path& path);
     void play_skin_sound(SoundHandle sound,float gain,float pitch=1.0F);
@@ -224,6 +259,15 @@ public:
                                  SoundPosition position,
                                  float gain = 1.0F,
                                  bool head_relative = false);
+    /**
+     * Shotgun2Weapon.update_ammo: the first barrel plays
+     * shotgun_double_fire01 and the second shotgun_double_fire02.
+     */
+    void play_double_shotgun_barrel(bool second_barrel,
+                                    SoundPosition position,
+                                    float gain = 1.0F,
+                                    bool head_relative = false,
+                                    SpatialSoundProfile profile = SpatialSoundProfile::ordinary);
 
     /**
      * Plays one recovered per-tool cue.
@@ -317,19 +361,23 @@ public:
                              float start_offset = 0.0F,
                              float attenuation = 0.15F,
                              bool protect_voice = false,
-                             float pitch = 1.0F);
+                             float pitch = 1.0F,
+                             bool reverb_send = true);
 
     /** Start a server-selected `music/<stem>.ogg` track at its wire offset. */
     [[nodiscard]] bool play_named_music(std::string_view stem, float start_offset = 0.0F);
     /**
-     * Decode and upload a map ambience without starting playback.
+     * media.is_playing_music(name): true while `music/<stem>.ogg` is the
+     * requested (looping or still loading) music track.
+     */
+    [[nodiscard]] bool is_playing_named_music(std::string_view stem) const noexcept;
+    /**
+     * Start decoding a map ambience without starting playback.
      *
-     * OpenAL
-     * buffer creation belongs to the audio owner thread, so the loading
-     * gate calls this
-     * before the first playable frame rather than letting
-     * play_named_ambience perform cold
-     * OGG I/O during world entry.
+     * The loading gate calls this before the first playable frame. The Vorbis
+     * decode runs on a worker (tick() uploads it); play_named_ambience of a
+     * bed that is still decoding starts it on the tick its upload lands.
+     * Returns false only when the asset does not exist.
      */
     [[nodiscard]] bool preload_named_ambience(std::string_view stem);
     /**
@@ -356,11 +404,8 @@ public:
      *
      *
      * `ambient_asset` selects the `ambients/` tree; false selects `sounds/`.
-     * Positioned
-     * loops remain allocated while distant but are hard-muted past
-     * retail's 50-block hearing
-     * radius, so approaching them works without
-     * leaking quiet map-wide noise.
+     * Like retail's HUD-zone packet sounds these loops are dry (no reverb
+     * send) and, once started, are never re-culled by distance.
      */
     [[nodiscard]] bool start_named_loop(std::uint8_t loop_id,
                                         std::string_view stem,
@@ -371,6 +416,12 @@ public:
                                         float attenuation = 0.15F,
                                         float start_offset = 0.0F);
     void update_named_loop(std::uint8_t loop_id, SoundPosition position);
+    /**
+     * Apply an `AmbientSound.update` volume. `non_positional` pins the loop to
+     * the listener (the >= 3-point branch's scripted falloff replaces
+     * OpenAL's); otherwise only the gain changes.
+     */
+    void set_named_loop_mix(std::uint8_t loop_id, float gain, bool non_positional);
     void stop_named_loop(std::uint8_t loop_id) noexcept;
     /** Stop every packet-owned loop without touching local weapon loops. */
     void stop_named_loops() noexcept;
@@ -391,12 +442,27 @@ public:
 
     /** Start/restart or stop the dedicated looping main-menu music source. */
     [[nodiscard]] bool start_menu_music();
+    /**
+     * `media.stop_music()`: the current track fades out (1/6.5 volume per
+     * second, or 1/1.5 for the secondary select bed); it is never cut.
+     */
     void stop_menu_music() noexcept;
+    [[nodiscard]] bool music_fading() const noexcept;
 
     [[nodiscard]] bool is_started() const noexcept;
     [[nodiscard]] std::string_view playback_device() const noexcept;
     [[nodiscard]] std::size_t active_one_shot_voices() const noexcept;
     [[nodiscard]] std::string_view last_error() const noexcept;
+
+    /**
+     * Decoded music + ambience PCM resident in OpenAL buffers. Kept at or
+     * below `music_ambience_pcm_budget_bytes` by LRU eviction of buffers no
+     * source is playing (a rotation used to plateau near 530 MB).
+     */
+    static constexpr std::size_t music_ambience_pcm_budget_bytes{128U * 1024U * 1024U};
+    [[nodiscard]] std::size_t resident_music_ambience_bytes() const noexcept;
+    /** Named assets still decoding on worker threads (diagnostics/tests). */
+    [[nodiscard]] std::size_t pending_named_decodes() const noexcept;
 
 private:
     struct Impl;

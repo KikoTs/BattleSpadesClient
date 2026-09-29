@@ -1,6 +1,8 @@
 #include "battlespades/world/terrain_effects.hpp"
 
 #include "battlespades/world/particle_effects.hpp"
+#include "battlespades/world/retail_character_pose.hpp"
+#include "battlespades/world/retail_view_model.hpp"
 
 #include <algorithm>
 #include <array>
@@ -148,11 +150,6 @@ void add_cube(ChunkMesh& mesh, std::array<float, 3U> origin, float size,
     return static_cast<float>(mix(seed) & 0xFFFFU) / 32767.5F - 1.0F;
 }
 
-[[nodiscard]] float smooth_step(float value) noexcept {
-    const float t = std::clamp(value, 0.0F, 1.0F);
-    return t * t * (3.0F - 2.0F * t);
-}
-
 [[nodiscard]] constexpr float degrees_to_radians(float degrees) noexcept {
     return degrees * 0.01745329251994329577F;
 }
@@ -213,52 +210,66 @@ void add_cube(ChunkMesh& mesh, std::array<float, 3U> origin, float size,
     return relative;
 }
 
-[[nodiscard]] std::array<float, 3U> collapse_smoke_ground_position(
-    const VxlMap& map, std::span<const FallingVoxel> component,
-    const std::array<float, 3U>& source_pivot,
-    const TerrainEffectInstance& presented) noexcept {
-    std::array<double, 2U> centre{};
-    for (const auto& voxel : component) {
-        const auto transformed = transformed_voxel_center(voxel, source_pivot, presented);
-        centre[0U] += transformed[0U];
-        centre[1U] += transformed[1U];
-    }
-    const auto count = static_cast<double>(std::max<std::size_t>(1U, component.size()));
-    const float x = std::clamp(static_cast<float>(centre[0U] / count),
-                               0.5F, static_cast<float>(VxlMap::width) - 0.5F);
-    const float y = std::clamp(static_cast<float>(centre[1U] / count),
-                               0.5F, static_cast<float>(VxlMap::depth) - 0.5F);
-    const auto cell_x = static_cast<std::uint32_t>(std::floor(x));
-    const auto cell_y = static_cast<std::uint32_t>(std::floor(y));
-    const auto surface = map.surface_z(cell_x, cell_y);
-    // Every valid runtime map owns the z=239 safety bed. Keep the guard anyway
-    // so a synthetic/partially loaded map cannot throw smoke outside the world.
-    const float ground = surface < VxlMap::height
-                             ? static_cast<float>(surface) - 0.05F
-                             : static_cast<float>(VxlMap::height - 1U) - 0.05F;
-    return {x, y, ground};
-}
-
 } // namespace
 
-float falling_animation_duration(std::size_t block_count) noexcept {
-    const auto bounded = std::clamp<std::size_t>(block_count, 1U,
-                                                  TerrainEffectSimulation::maximum_falling_voxels);
-    if (bounded <= falling_sound_medium_blocks) {
-        return 0.5F;
+bool retail_falling_blocks_step(const VxlMap& map, std::array<float, 3U>& position,
+                                std::array<float, 3U>& velocity, float dt,
+                                float gravity) noexcept {
+    const auto previous = position;
+    velocity[2U] += gravity * dt;
+    const float scale = dt * 32.0F;
+    for (std::size_t axis{}; axis < 3U; ++axis) position[axis] += velocity[axis] * scale;
+    const auto cell_x = static_cast<std::int64_t>(std::floor(position[0U]));
+    const auto cell_y = static_cast<std::int64_t>(std::floor(position[1U]));
+    const auto cell_z = static_cast<std::int64_t>(std::floor(position[2U]));
+    if (cell_z < 0) return false;
+    // The water-aware solid test: z=239 probes 238 (the bed is water), and
+    // anything at or below z=240 always counts as a hit.
+    if (cell_z < static_cast<std::int64_t>(VxlMap::height)) {
+        const auto probe_z =
+            cell_z == static_cast<std::int64_t>(VxlMap::height) - 1 ? cell_z - 1 : cell_z;
+        if (cell_x < 0 || cell_y < 0 || cell_x >= static_cast<std::int64_t>(VxlMap::width) ||
+            cell_y >= static_cast<std::int64_t>(VxlMap::depth) ||
+            !map.solid(static_cast<std::uint32_t>(cell_x), static_cast<std::uint32_t>(cell_y),
+                       static_cast<std::uint32_t>(probe_z))) {
+            return false;
+        }
     }
-    if (bounded <= falling_sound_large_blocks) {
-        const float ratio =
-            static_cast<float>(bounded - falling_sound_medium_blocks) /
-            static_cast<float>(falling_sound_large_blocks -
-                               falling_sound_medium_blocks);
-        return 0.5F + smooth_step(ratio) * 0.4F;
+    // Reflect the axis whose cell changed (z first, then x, else y), restore
+    // the previous position and halve the velocity.
+    if (cell_z != static_cast<std::int64_t>(std::floor(previous[2U]))) {
+        velocity[2U] = -velocity[2U];
+    } else if (cell_x != static_cast<std::int64_t>(std::floor(previous[0U]))) {
+        velocity[0U] = -velocity[0U];
+    } else if (cell_y != static_cast<std::int64_t>(std::floor(previous[1U]))) {
+        velocity[1U] = -velocity[1U];
     }
-    const float ratio =
-        static_cast<float>(bounded - falling_sound_large_blocks) /
-        static_cast<float>(TerrainEffectSimulation::maximum_falling_voxels -
-                           falling_sound_large_blocks);
-    return 0.9F + smooth_step(ratio) * 0.3F;
+    position = previous;
+    for (auto& component : velocity) component *= 0.5F;
+    return true;
+}
+
+std::size_t falling_blocks_particle_mod(std::size_t block_count) noexcept {
+    // int(FALLING_BLOCKS_PARTICLE_MOD_MIN + size / FALLING_BLOCKS_MAX_SIZE *
+    //     (FALLING_BLOCKS_PARTICLE_MOD_MAX - FALLING_BLOCKS_PARTICLE_MOD_MIN))
+    return static_cast<std::size_t>(
+        static_cast<double>(falling_blocks_particle_mod_min) +
+        static_cast<double>(block_count) / static_cast<double>(falling_blocks_max_size) *
+            static_cast<double>(falling_blocks_particle_mod_max -
+                                falling_blocks_particle_mod_min));
+}
+
+std::array<float, 3U> retail_random_unit_axis(std::uint32_t& state) noexcept {
+    const auto next = [&state] {
+        state = state * 214'013U + 2'531'011U;
+        return static_cast<double>((state >> 16U) & 0x7FFFU);
+    };
+    // world.pyd sub_100027F0: z = rand()/16383 - 1, phi = rand() * 2pi/32767.
+    const double z = next() / 16383.0 - 1.0;
+    const double phi = next() * 0.00019175345369149;
+    const double radius = std::sqrt(std::max(0.0, 1.0 - z * z));
+    return {static_cast<float>(std::cos(phi) * radius),
+            static_cast<float>(std::sin(phi) * radius), static_cast<float>(z)};
 }
 
 std::string_view falling_sound_group(TerrainSoundKind kind,
@@ -307,6 +318,53 @@ ChunkMesh placement_preview_cube(VxlColor color) {
     return mesh;
 }
 
+ChunkMesh placement_preview_wire_cube(VxlColor color) {
+    ChunkMesh mesh;
+    constexpr float maximum = std::numeric_limits<float>::max();
+    mesh.minimum = {maximum, maximum, maximum};
+    mesh.maximum = {-maximum, -maximum, -maximum};
+    // draw_cube(..., textured_wireframe=True): the twelve cube edges as thin
+    // bars, so the classic ghost reads as an outline rather than a solid.
+    constexpr float thickness{0.04F};
+    const auto add_bar = [&mesh, color](std::array<float, 3U> low, std::array<float, 3U> high) {
+        for (std::uint8_t face_index{}; face_index < faces.size(); ++face_index) {
+            const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
+            for (const auto& corner : faces[face_index].corners) {
+                const ChunkVertex vertex{
+                    low[0U] + corner[0U] * (high[0U] - low[0U]),
+                    low[1U] + corner[1U] * (high[1U] - low[1U]),
+                    low[2U] + corner[2U] * (high[2U] - low[2U]),
+                    pack_abgr(color, 1.0F),
+                    face_index,
+                    0U,
+                    0U,
+                    0U,
+                };
+                mesh.vertices.push_back(vertex);
+                for (std::size_t axis{}; axis < 3U; ++axis) {
+                    const float value = axis == 0U ? vertex.x : axis == 1U ? vertex.y : vertex.z;
+                    mesh.minimum[axis] = std::min(mesh.minimum[axis], value);
+                    mesh.maximum[axis] = std::max(mesh.maximum[axis], value);
+                }
+            }
+            constexpr std::array<std::uint32_t, 6U> indices{0U, 1U, 2U, 0U, 2U, 3U};
+            for (const auto index : indices) {
+                mesh.indices.push_back(base + index);
+            }
+        }
+    };
+    constexpr float low_edge{-thickness * 0.5F};
+    constexpr float high_edge{1.0F + thickness * 0.5F};
+    for (const float a : {low_edge, 1.0F - thickness * 0.5F}) {
+        for (const float b : {low_edge, 1.0F - thickness * 0.5F}) {
+            add_bar({low_edge, a, b}, {high_edge, a + thickness, b + thickness});
+            add_bar({a, low_edge, b}, {a + thickness, high_edge, b + thickness});
+            add_bar({a, b, low_edge}, {a + thickness, b + thickness, high_edge});
+        }
+    }
+    return mesh;
+}
+
 void TerrainEffectSimulation::set_particle_sink(ParticleSystem* particles) noexcept {
     particles_ = particles;
 }
@@ -319,18 +377,16 @@ void TerrainEffectSimulation::spawn_falling(FallingComponent component) {
     if (component.empty()) {
         return;
     }
-    if (component.size() > maximum_falling_voxels) {
-        component.resize(maximum_falling_voxels);
-    }
-    std::array<float, 3U> pivot{};
+    // gameScene FallingBlocks.initialize (0x100C7290): the body's origin is
+    // the bounding-box centre, x1 + (x2 - x1) * 0.5 on every axis; world.pyd
+    // FallingBlocks.initialize (0x1000B7C0) zeroes the velocity and picks a
+    // random unit tumble axis. There is no size cap: every voxel is drawn.
     std::array<std::uint32_t, 3U> minimum{
         std::numeric_limits<std::uint32_t>::max(),
         std::numeric_limits<std::uint32_t>::max(),
         std::numeric_limits<std::uint32_t>::max()};
     std::array<std::uint32_t, 3U> maximum{};
     for (const auto& voxel : component) {
-        pivot[0U] += static_cast<float>(voxel.cell.x) + 0.5F;
-        pivot[1U] += static_cast<float>(voxel.cell.y) + 0.5F;
         for (std::size_t axis{}; axis < minimum.size(); ++axis) {
             const std::uint32_t coordinate =
                 axis == 0U ? voxel.cell.x : axis == 1U ? voxel.cell.y : voxel.cell.z;
@@ -338,12 +394,11 @@ void TerrainEffectSimulation::spawn_falling(FallingComponent component) {
             maximum[axis] = std::max(maximum[axis], coordinate);
         }
     }
-    pivot[0U] /= static_cast<float>(component.size());
-    pivot[1U] /= static_cast<float>(component.size());
-    // Rotate around the lower face, not the centre of mass. A detached wall
-    // now commits to a readable sideways fall instead of spinning like a coin
-    // around its middle while dropping straight down.
-    pivot[2U] = static_cast<float>(maximum[2U]) + 1.0F;
+    std::array<float, 3U> pivot{};
+    for (std::size_t axis{}; axis < pivot.size(); ++axis) {
+        pivot[axis] = static_cast<float>(minimum[axis]) +
+                      static_cast<float>(maximum[axis] - minimum[axis]) * 0.5F;
+    }
     const auto seed = mix(component.front().cell.x ^ (component.front().cell.y << 10U) ^
                           (component.front().cell.z << 20U));
     ActiveEffect effect;
@@ -352,36 +407,19 @@ void TerrainEffectSimulation::spawn_falling(FallingComponent component) {
     effect.presented.position = pivot;
     effect.source_pivot = pivot;
     effect.presented.mesh = component_mesh(component, pivot);
-    effect.lifetime = falling_animation_duration(component.size());
-    // A detached body commits to one horizontal hinge and eases to a bounded
-    // final tilt. Size adds weight without letting a large facade pirouette or
-    // turn completely sideways before the timed breakup.
-    const float mass = smooth_step(
-        static_cast<float>(component.size() - 1U) /
-        static_cast<float>(maximum_falling_voxels - 1U));
-    const float tilt = 13.0F + mass * 15.0F +
-                       std::abs(random_signed(seed + 1U)) * 4.0F;
-    const float sign = (mix(seed + 2U) & 1U) == 0U ? -1.0F : 1.0F;
-    const auto span_x = maximum[0U] - minimum[0U];
-    const auto span_y = maximum[1U] - minimum[1U];
-    if (span_x >= span_y) {
-        effect.target_rotation_degrees = {
-            random_signed(seed + 3U) * 2.0F, sign * tilt,
-            random_signed(seed + 4U) * 1.25F};
-        effect.velocity[0U] = -sign * 0.014F;
-    } else {
-        effect.target_rotation_degrees = {
-            sign * tilt, random_signed(seed + 3U) * 2.0F,
-            random_signed(seed + 4U) * 1.25F};
-        effect.velocity[1U] = sign * 0.014F;
-    }
+    // No timer: the body lives until its first map contact.
+    effect.lifetime = std::numeric_limits<float>::infinity();
+    std::uint32_t axis_state = seed;
+    effect.angular_velocity = retail_random_unit_axis(axis_state);
+    const auto block_count = static_cast<std::uint16_t>(
+        std::min<std::size_t>(component.size(), std::numeric_limits<std::uint16_t>::max()));
     // Retail plays a des_split_ group the moment a component detaches. It uses
     // one 0.75 volume for every size; perceived weight comes from the authored
     // small/medium/large bank, not from scaling the same generic sample.
     sound_events_.push_back({TerrainSoundKind::structure_split, pivot,
                              0.75F,
                              static_cast<std::uint8_t>(seed % 3U), 0U,
-                             static_cast<std::uint16_t>(component.size())});
+                             block_count});
     effect.source = std::move(component);
     active_.push_back(std::move(effect));
     enforce_limit();
@@ -389,6 +427,22 @@ void TerrainEffectSimulation::spawn_falling(FallingComponent component) {
 
 void TerrainEffectSimulation::spawn_impact(const TerrainImpactEvent& impact,
                                            TerrainImpactSoundPolicy sound_policy) {
+    if (impact.kind == TerrainImpactKind::burn || impact.kind == TerrainImpactKind::dissolve) {
+        // Single-block fire/goo ticks have no sound, light or blast. Goo
+        // throws chemical debris on every tick (on_single_block_damaged);
+        // fire only chips the block it finally burns through. The chemical
+        // debris tint is VERIFY (A2433's goo green is used).
+        static_cast<void>(sound_policy);
+        if (particles_ != nullptr &&
+            (impact.kind == TerrainImpactKind::dissolve || impact.destroyed)) {
+            auto chips = impact;
+            if (impact.kind == TerrainImpactKind::dissolve) {
+                chips.color = VxlColor{20U, 255U, 50U, 255U};
+            }
+            emit_block_break(*particles_, chips);
+        }
+        return;
+    }
     const auto origin = terrain_impact_position(impact);
     const bool explosive = impact.kind == TerrainImpactKind::explosion ||
                            impact.kind == TerrainImpactKind::fire ||
@@ -436,14 +490,10 @@ void TerrainEffectSimulation::spawn_impact(const TerrainImpactEvent& impact,
             emit_grave_explosion(*particles_, impact,
                                  grave_model_ ? &*grave_model_ : nullptr);
         } else if (impact.kind == TerrainImpactKind::block_cannon) {
-            // The same recovered snow smoke used in flight, with a small
-            // four-puff contact bloom instead of the RPG effect compositor.
-            for (std::uint32_t index{}; index < 4U; ++index) {
-                emit_block_cannon_trail(*particles_, origin,
-                                        {0.0F, 0.0F, -2.0F},
-                                        mix(impact.cell.x ^ (impact.cell.y << 9U) ^
-                                            (impact.cell.z << 18U) ^ index));
-            }
+            // Retail GameScene.create_snowke_ring: the SMOKE_RING layout in
+            // the SnowkeTrail atlas, instead of the RPG effect compositor.
+            emit_snowke_ring(*particles_, origin, impact.color,
+                             mix(impact.cell.x ^ (impact.cell.y << 9U) ^ (impact.cell.z << 18U)));
         } else if (explosive) {
             emit_explosion(*particles_, impact);
         } else {
@@ -605,43 +655,48 @@ void TerrainEffectSimulation::spawn_impact(const TerrainImpactEvent& impact,
     enforce_limit();
 }
 
+bool weapon_flash_casts_light(std::uint8_t tool_id) noexcept {
+    // Every gun with a propellant flash (a first- or third-person retail
+    // muzzleflash_default draw) plus the launchers. The old hand list keyed
+    // SMG/shotgun lights to the wrong ids (20, 48), so most guns cast none.
+    return retail_view_muzzle_flash(tool_id).has_value() ||
+           retail_third_person_muzzle_attachment(tool_id).has_value() ||
+           tool_id == 12U || tool_id == 13U || tool_id == 46U || tool_id == 55U;
+}
+
+bool muzzle_light_enabled(bool retail_look, std::uint8_t tool_id) noexcept {
+    // Retail has no shot light: character.pyd only asks light_manager for a
+    // dynamic light in Grenade.initialize.
+    return !retail_look && weapon_flash_casts_light(tool_id);
+}
+
 void TerrainEffectSimulation::spawn_weapon_flash(
     std::array<float, 3U> position,
     std::uint8_t tool_id) {
-    // Deliberately not every gun. These weapons have a visible propellant
-    // flash; sniper rifles retain their laser/optic identity without becoming
-    // small lamps on every shot.
-    switch (tool_id) {
-    case 8U:  // minigun
-    case 12U: // RPG
-    case 13U: // RPG2
-    case 14U: // flak cannon
-    case 17U: // pistol
-    case 20U: // SMG
-    case 22U:
-    case 23U:
-    case 24U:
-    case 25U:
-    case 26U:
-    case 48U: // shotgun
-    case 55U: // grenade launcher
-        break;
-    default:
+    if (!weapon_flash_casts_light(tool_id)) {
         return;
+    }
+    for (const float value : position) {
+        if (!std::isfinite(value)) {
+            return;
+        }
     }
 
     ActiveLight flash;
     flash.presented.position = position;
-    const bool heavy = tool_id == 12U || tool_id == 13U || tool_id == 14U ||
-                       tool_id == 55U;
+    const bool heavy = tool_id == 12U || tool_id == 13U || tool_id == 46U || tool_id == 55U;
+    const bool shotgun = tool_id == 9U || tool_id == 10U || tool_id == 37U || tool_id == 62U;
+    // A warm propellant flash that reaches a few blocks: enough to light the
+    // hands, the gun and the wall in front of it for a frame or four, then
+    // cool and die within ~70 ms so it never reads as a lamp.
     flash.hot_color = heavy ? std::array<float, 3U>{1.0F, 0.76F, 0.32F}
-                            : std::array<float, 3U>{1.0F, 0.84F, 0.56F};
-    flash.cool_color = {1.0F, 0.31F, 0.06F};
-    flash.peak_radius = heavy ? 3.2F : 1.65F;
-    flash.peak_intensity = heavy ? 1.15F : 0.42F;
+                            : std::array<float, 3U>{1.0F, 0.80F, 0.50F};
+    flash.cool_color = {1.0F, 0.42F, 0.12F};
+    flash.peak_radius = heavy ? 4.2F : shotgun ? 3.8F : 3.2F;
+    flash.peak_intensity = heavy ? 1.3F : shotgun ? 1.1F : 0.9F;
     flash.presented.radius = flash.peak_radius;
     flash.presented.intensity = flash.peak_intensity;
-    flash.lifetime = heavy ? 0.095F : 0.060F;
+    flash.lifetime = heavy ? 0.080F : 0.065F;
     active_lights_.push_back(flash);
     if (active_lights_.size() > maximum_dynamic_lights) {
         active_lights_.erase(active_lights_.begin());
@@ -694,48 +749,36 @@ void TerrainEffectSimulation::tick(double dt, const VxlMap& map) {
     for (std::size_t index{}; index < active_.size(); ++index) {
         auto& effect = active_[index];
         effect.age += seconds;
+        if (effect.presented.kind == TerrainEffectKind::falling_structure) {
+            // gameScene FallingBlocks.update (0x100C8720): world_object.update
+            // runs world.pyd sub_10007DC0 (gravity, pos += v * dt * 32, a
+            // solid-grid probe at the bbox-centre origin, bounce). No hit:
+            // rotate_x/y/z += axis * dt * 50. First hit: break up.
+            if (retail_falling_blocks_step(map, effect.presented.position, effect.velocity,
+                                           seconds, gravity_) ||
+                effect.age > falling_structure_safety_seconds) {
+                breaking.push_back(index);
+                continue;
+            }
+            for (std::size_t axis{}; axis < 3U; ++axis) {
+                effect.presented.rotation_degrees[axis] +=
+                    effect.angular_velocity[axis] * seconds * 50.0F;
+            }
+            continue;
+        }
         if (effect.presented.kind != TerrainEffectKind::fire_flame &&
             effect.presented.kind != TerrainEffectKind::chemical_cloud) {
             effect.velocity[2U] += seconds; // recovered world gravity is 1.0
         }
-        // Retail integrates a detached structure as
-        //   vel.z += gravity * dt;  pos += vel * (dt * 32)
-        // with gravity 1.0, which the server mirrors in its own state packet.
-        // That is 32 blocks/s^2 -- the same scale our player movement already
-        // uses. Running a structure at 60 made it fall 1.875x too fast, so a
-        // ten-block drop finished in 0.58 s instead of 0.79 s.
-        //
-        // Scoped to falling structures on purpose: the cosmetic chips, glows,
-        // flames and clouds had their velocities hand-authored against the 60
-        // scale, and retiming them here would slow every one of them by the same
-        // 1.875x and leave chips hanging in the air.
-        const bool is_structure =
-            effect.presented.kind == TerrainEffectKind::falling_structure;
-        const float position_scale = seconds * (is_structure ? 32.0F : 60.0F);
+        // Cosmetic chips, glows, flames and clouds keep their hand-authored
+        // 60-scale velocities (a falling structure uses the retail * 32 step).
+        const float position_scale = seconds * 60.0F;
         for (std::size_t axis{}; axis < 3U; ++axis) {
             effect.presented.position[axis] +=
                 effect.velocity[axis] * position_scale;
-            if (is_structure) {
-                const float progress = smooth_step(
-                    effect.age / std::max(effect.lifetime, 0.001F));
-                effect.presented.rotation_degrees[axis] =
-                    effect.target_rotation_degrees[axis] * progress;
-            } else {
-                // Cosmetic tumble is authored in degrees per retail step.
-                effect.presented.rotation_degrees[axis] +=
-                    effect.angular_velocity[axis] * retail_steps;
-            }
-        }
-        if (!is_structure) {
-            continue;
-        }
-        // Retail FallingBlocks is presentation-only. Its recovered update owns
-        // gravity/rotation and never calls the VXL collision kernel, so a
-        // detached facade phases through walls, roofs and the terrain bed while
-        // completing its readable downward fall. Reintroducing collision here
-        // makes bodies freeze unnaturally on the first surviving ledge.
-        if (effect.age >= effect.lifetime) {
-            breaking.push_back(index);
+            // Cosmetic tumble is authored in degrees per retail step.
+            effect.presented.rotation_degrees[axis] +=
+                effect.angular_velocity[axis] * retail_steps;
         }
     }
 
@@ -743,27 +786,25 @@ void TerrainEffectSimulation::tick(double dt, const VxlMap& map) {
         ActiveEffect source = std::move(active_[*iterator]);
         active_.erase(active_.begin() + static_cast<std::ptrdiff_t>(*iterator));
         const auto size = source.source.size();
-        const auto ground_smoke = collapse_smoke_ground_position(
-            map, source.source, source.source_pivot, source.presented);
+        // The impact bank plays at world_object.position; the water tier is
+        // chosen from its z (>= MAP_Z - 2) by the audio consumer.
         sound_events_.push_back({TerrainSoundKind::structure_break,
-                                 ground_smoke,
+                                 source.presented.position,
                                  0.75F,
                                  static_cast<std::uint8_t>(
                                      mix(static_cast<std::uint32_t>(
                                              source.presented.id)) %
                                      4U),
                                  0U,
-                                 static_cast<std::uint16_t>(size)});
-        // The structure vanishes here. Bursting it into particles that wear
-        // each broken block's own captured colour is what replaces the mass
-        // that just disappeared; make_debris keeps the recovered cube
-        // fallback for the slot-bounded renderer path.
+                                 static_cast<std::uint16_t>(std::min<std::size_t>(
+                                     size, std::numeric_limits<std::uint16_t>::max()))});
+        // Every int(5 + size / 8000 * 10)-th voxel breaks into five particles
+        // carrying the bounced body velocity; the body is then deleted.
         if (particles_ != nullptr) {
-            emit_structure_burst(
+            emit_falling_blocks_breakup(
                 *particles_, source.source, source.presented.position,
                 source.source_pivot, source.presented.rotation_degrees,
-                static_cast<std::uint32_t>(source.presented.id),
-                source.lifetime);
+                source.velocity, static_cast<std::uint32_t>(source.presented.id));
         } else {
             // Headless/test and renderer-loss fallback. The live renderer uses
             // the one-particle-per-block burst below rather than duplicating it
@@ -789,9 +830,9 @@ void TerrainEffectSimulation::make_debris(const ActiveEffect& source) {
     if (source.source.empty()) {
         return;
     }
-    // Recovered constants select one particle per 5..15 source blocks. Keep
-    // at least one and respect the renderer's hard slot budget.
-    const std::size_t stride = source.source.size() >= 80U ? 15U : 5U;
+    // Same retail sampling as the particle breakup (every mod-th voxel), kept
+    // within the instance slot budget for the headless fallback.
+    const std::size_t stride = falling_blocks_particle_mod(source.source.size());
     const std::size_t available = maximum_instances > active_.size()
                                       ? maximum_instances - active_.size()
                                       : 0U;

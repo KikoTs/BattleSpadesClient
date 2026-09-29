@@ -1,5 +1,6 @@
 #include "battlespades/network/server_discovery.hpp"
 
+#include <algorithm>
 #include <array>
 #include <exception>
 #include <iostream>
@@ -53,6 +54,29 @@ void public_list_parses_real_schema_and_deduplicates() {
                server.master_identifier == "88.80.155.252:38886" &&
                server.identity_ticket,
            "AoSPlay metadata must retain browser and loading fields");
+}
+
+void gameplay_mode_tag_beats_the_category_mode_tla() {
+    // Live AoSPlay list 2026-09-29: mode_tla "dem" on every server because the
+    // master read the trailing SERVERMODE_PUBLIC tag (mode=0001).
+    constexpr std::string_view json = R"json([
+      {"ip":"204.168.157.43","port":27017,"name":"Official CTF","game_mode":"DEM",
+       "mode_tla":"dem","tags":["v1.0.0.0","mode=0008","community","mode=0001"]},
+      {"ip":"204.168.157.43","port":27018,"name":"Official Zombie","game_mode":"DEM",
+       "mode_tla":"dem","tags":["mode=0002","mode=0001"]},
+      {"ip":"204.168.157.43","port":27019,"name":"Real Demolition","game_mode":"DEM",
+       "mode_tla":"dem","tags":["mode=0001","mode=0001"]},
+      {"ip":"204.168.157.43","port":27020,"name":"Plain TDM","mode_tla":"tdm",
+       "tags":["mode=0001"]}
+    ])json";
+    const auto parsed = battlespades::network::parse_public_server_list(json);
+    expect(parsed && parsed.servers.size() == 4U, "all four rows must parse");
+    std::vector<std::string> codes;
+    for (const auto& server : parsed.servers) codes.push_back(server.mode_code);
+    std::ranges::sort(codes);
+    const std::vector<std::string> expected{"ctf", "dem", "tdm", "zom"};
+    expect(codes == expected,
+           "the gameplay mode tag must replace a category-derived dem label");
 }
 
 void lan_response_uses_datagram_source_as_authority() {
@@ -110,10 +134,11 @@ int main() {
     try {
         endpoints_are_strict_and_retail_local_is_supported();
         public_list_parses_real_schema_and_deduplicates();
+        gameplay_mode_tag_beats_the_category_mode_tla();
         lan_response_uses_datagram_source_as_authority();
         opaque_lobby_ids_resolve_to_current_endpoints();
         friend_server_selection_matches_authoritative_social_ids();
-        std::cout << "5/5 tests passed\n";
+        std::cout << "6/6 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

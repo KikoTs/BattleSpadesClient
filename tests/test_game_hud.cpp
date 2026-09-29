@@ -84,8 +84,14 @@ int main() {
                        sprite_count(spectating, art::jetpack_fuel_frame) == 0U &&
                        !contains_text(spectating, "12345"),
                    "spectators must not display invented local health or inventory");
-            expect(contains_text(spectating, "7") && contains_text(spectating, "4"),
-                   "spectating must retain the live team score display");
+            // HUD.draw (hud.pyd 0x1009EE80) skips head_count.draw() for the
+            // spectator class, exactly like the health bar and player score.
+            expect(!contains_text(spectating, "7/100") &&
+                       !contains_text(spectating, "4/100") &&
+                       sprite_count(spectating, art::head_count_frame) == 0U,
+                   "spectators must not draw the HeadCount bar");
+            expect(contains_text(alive, "7/100") && contains_text(alive, "4/100"),
+                   "players keep the HeadCount bar");
         }
         expect(battlespades::frontend::retail_jetpack_fuel_fraction(100.0) == 1.0 &&
                    battlespades::frontend::retail_jetpack_fuel_fraction(50.0) == 0.5,
@@ -116,7 +122,8 @@ int main() {
             expect(resolve_control_placeholders(tutorial_string("TOOL_HELP_PANEL_CLOSE"), names) ==
                        "[H] Close",
                    "the close hint must resolve to the retail form");
-            expect(resolve_control_placeholders("{key_unknown} test", names) == "[?] test",
+            expect(resolve_control_placeholders("{key_unknown} test", names) ==
+                       "{key_unknown} test",
                    "unknown placeholders must stay visible");
         }
 
@@ -623,9 +630,9 @@ int main() {
                 // part of the retail string and is visible in the reference
                 // screenshots as "SCORE: 100".
                 expect(contains_text(list, "7") && contains_text(list, "/ 24") &&
-                           contains_text(list, "SCORE: 300"),
+                           contains_text(list, "Score: 300"),
                        "ammo, reserve and score values must be rendered");
-                const auto* score_text = find_text(list, "SCORE: 300");
+                const auto* score_text = find_text(list, "Score: 300");
                 expect(score_text != nullptr &&
                            score_text->destination == battlespades::ui::DrawRect{
                                22.0, 8.0, 200.0, 40.0} &&
@@ -671,9 +678,9 @@ int main() {
                 find_sprite(prefab_list, "prefabs/prefab_barricade.png");
             const auto* prefab_cost = find_text(prefab_list, "75");
             expect(prefab_icon != nullptr &&
-                       std::fabs(prefab_icon->destination.width - 82.5) < 1e-9 &&
-                       std::fabs(prefab_icon->destination.height - 82.5) < 1e-9,
-                   "prefab cost icon must use retail draw_ammo_hud scale 0.25");
+                       std::fabs(prefab_icon->destination.width - 52.75) < 1e-9 &&
+                       std::fabs(prefab_icon->destination.height - 52.75) < 1e-9,
+                   "prefab cost icon must be the 0.64-loaded 211 px image at scale 0.25");
             expect(prefab_icon != nullptr &&
                        prefab_icon->modulation.color ==
                            battlespades::ui::ColorRgba8{12U, 34U, 56U, 255U},
@@ -875,6 +882,30 @@ int main() {
                    "inside-zone tint must cover the viewport behind normal HUD widgets");
         }
 
+        // V4: burn and sudden death are inside_zone_texture quads too, burn
+        // red, sudden death in the team colour, and both draw together.
+        {
+            GameHudModel model;
+            model.set_status_tints(battlespades::ui::ColorRgba8{255U, 0U, 0U, 255U},
+                                   battlespades::ui::ColorRgba8{44U, 117U, 179U, 128U});
+            const GameHudPresentation presentation;
+            const auto list = presentation.build(
+                model, GameHudPresentationContext{{1280, 720}, 1'000U, {}});
+            std::vector<battlespades::ui::ColorRgba8> quads;
+            for (const auto& command : list.commands()) {
+                const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(&command);
+                if (sprite != nullptr &&
+                    sprite->asset_id == "png/high/alpha_block_inside_zone.png" &&
+                    sprite->destination == battlespades::ui::DrawRect{0.0, 0.0, 1280.0, 720.0}) {
+                    quads.push_back(sprite->modulation.color);
+                }
+            }
+            expect(quads.size() == 2U &&
+                       quads[0U] == battlespades::ui::ColorRgba8{255U, 0U, 0U, 255U} &&
+                       quads[1U] == battlespades::ui::ColorRgba8{44U, 117U, 179U, 128U},
+                   "burn then sudden death draw as full-screen inside_zone_texture quads");
+        }
+
         // Lesson driver: recovered thresholds and monotonic progression.
         {
             TutorialLessons lessons;
@@ -911,7 +942,7 @@ int main() {
                    "destroying the targets must enter CLIMB");
             expect(lessons.advance_external(TutorialLessonStage::climb) &&
                        lessons.stage() == TutorialLessonStage::complete,
-                   "building must enter COMPLETE");
+                   "reaching the tower top must enter COMPLETE");
 
             const auto keys = TutorialLessons::message_keys(TutorialLessonStage::basic_controls);
             expect(keys.size() == 3U && keys[0U] == "TUTORIAL_BASIC_CONTROLS_1",

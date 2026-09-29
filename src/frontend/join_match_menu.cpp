@@ -834,6 +834,12 @@ void ServerBrowserModel::rebuild_visible() {
     clamp_scroll();
 }
 
+void ServerBrowserModel::set_mode_title_lookup(
+    std::function<std::string(std::string_view)> lookup) {
+    mode_title_lookup_ = std::move(lookup);
+    rebuild_visible();
+}
+
 void ServerBrowserModel::sort_visible() {
     const auto key_less = [this](std::size_t left_index, std::size_t right_index) {
         const auto& left = servers_[left_index];
@@ -846,6 +852,9 @@ void ServerBrowserModel::sort_visible() {
         case ServerSortColumn::map:
             return ascii_less(left.map, right.map);
         case ServerSortColumn::mode:
+            if (mode_title_lookup_) {
+                return ascii_less(mode_title_lookup_(left.mode), mode_title_lookup_(right.mode));
+            }
             return ascii_less(left.mode, right.mode);
         case ServerSortColumn::ping:
             return left.ping_milliseconds < right.ping_milliseconds;

@@ -389,6 +389,8 @@ RevivalWorkshopProject read_revival_workshop_project(
         if (extension == ".ugc") {
             const auto document = Json::parse(file.bytes);
             result.description = document.value("description", std::string{});
+            // ugc_data.pyd's placeholder for a project saved without one.
+            if (result.description.empty()) result.description = "Undescribed UGC";
             result.author = document.value("author", std::string{});
             if (const auto tags = document.find("tags"); tags != document.end() && tags->is_array()) {
                 for (const auto& tag : *tags) {
@@ -445,6 +447,16 @@ public:
         initialize_libraries();
         if (config.state_path.empty()) {
             config.state_path = default_revival_state_path();
+        }
+        // Developer/test launches may point one client at a local AoSPlay
+        // (for example the social dev server) without a rebuild. Only the
+        // compiled default is overridable, and valid_base_url below still
+        // admits HTTPS or loopback HTTP only.
+        if (config.api_base == RevivalIdentityConfig{}.api_base) {
+            if (auto override_base = environment_value("AOS_REVIVAL_API_BASE");
+                override_base.has_value() && !override_base->empty()) {
+                config.api_base = std::move(*override_base);
+            }
         }
         if (!valid_base_url(config.api_base)) {
             throw std::invalid_argument{
@@ -1022,7 +1034,13 @@ public:
         }
         }
 
-        const auto response = request(path, method, std::move(payload), token, timeout, stop);
+        // Snapshots carry every friend, invitation, lobby member and a page of
+        // events. The generic 64 KiB bound made a busy lobby's sync fail as
+        // "too much data" forever: a failed sync never advances its cursor.
+        // The parser still bounds every collection it keeps.
+        constexpr std::size_t social_snapshot_limit{2U * 1'024U * 1'024U};
+        const auto response = request(path, method, std::move(payload), token, timeout, stop,
+                                      social_snapshot_limit);
         wipe(token);
         if (!response) {
             failure.error_code = response.error_code.empty() ? "http_error" : response.error_code;
@@ -1244,6 +1262,17 @@ private:
         if (result.status < 200L || result.status >= 300L) {
             result.error_code = "http_error";
             result.error = "AoSPlay rejected the request.";
+            if (result.status >= 500L) {
+                // Gateway pages (Vercel timeouts, deploy swaps) are HTML, not
+                // an AoSPlay verdict. Say so, and let callers treat it as
+                // transient; a JSON body below still overrides both fields.
+                result.error_code = "service_unavailable";
+                result.error = "AoSPlay is temporarily unavailable (HTTP " +
+                               std::to_string(result.status) + "). Retrying automatically.";
+            } else if (result.status == 429L) {
+                result.error_code = "rate_limited";
+                result.error = "Too many requests to AoSPlay. Wait a few seconds and retry.";
+            }
             if (const auto parsed = parse_json(result); parsed.has_value()) {
                 const auto code_value = json_string(*parsed, "error");
                 const auto message = json_string(*parsed, "message");
@@ -1427,6 +1456,23 @@ private:
         try {
             auto loaded = Json::parse(stream);
             if (!loaded.is_object() || loaded.value("version", 0) != 1) return;
+            // A bearer token belongs to the service that issued it. Never
+            // replay a www.aosplay.net session to a local/test API, or the
+            // reverse, when AOS_REVIVAL_API_BASE or a state file is reused.
+            if (const auto issuer = loaded.find("api_base");
+                issuer != loaded.end() && issuer->is_string() &&
+                !issuer->get_ref<const std::string&>().empty()) {
+                auto issued_by = issuer->get<std::string>();
+                while (!issued_by.empty() && issued_by.back() == '/') issued_by.pop_back();
+                if (issued_by != config.api_base) {
+                    if (auto secrets = loaded.find("secrets");
+                        secrets != loaded.end() && secrets->is_object()) {
+                        secrets->erase("access_token");
+                    }
+                    loaded.erase("account");
+                    loaded.erase("session_expires_at");
+                }
+            }
             state = std::move(loaded);
             if (const auto found = state.find("account");
                 found != state.end()) {

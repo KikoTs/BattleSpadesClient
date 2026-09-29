@@ -209,6 +209,8 @@ private:
 };
 #endif
 
+std::atomic<LocalServerPortProbe> port_probe{LocalServerPortProbe::all_interfaces};
+
 [[nodiscard]] bool udp_port_available(std::uint16_t port) noexcept {
 #if defined(_WIN32)
     static SocketRuntime sockets;
@@ -225,7 +227,13 @@ private:
 #endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    // The hosted server binds every interface, so the product probes the
+    // same wildcard address. Loopback is a test-only choice: it keeps Windows
+    // Firewall from prompting for a test executable.
+    address.sin_addr.s_addr =
+        htonl(port_probe.load(std::memory_order_relaxed) == LocalServerPortProbe::loopback_only
+                  ? INADDR_LOOPBACK
+                  : INADDR_ANY);
     address.sin_port = htons(port);
 #if defined(_WIN32)
     const auto address_size = static_cast<int>(sizeof(address));
@@ -483,6 +491,47 @@ find_local_server_bundle(const std::filesystem::path& root) {
     return best;
 }
 
+std::string validate_custom_map_files(std::string_view map_name,
+                                     const std::vector<std::filesystem::path>& files) {
+    if (!safe_text(map_name) || map_name.find_first_of("/\\:.") != std::string_view::npos) {
+        return "the custom map name is not a plain file stem";
+    }
+    if (files.size() < 3U || files.size() > 4U) {
+        return "a custom map needs its .vxl, .txt and .ugc files (and optional .png)";
+    }
+    std::set<std::string> extensions;
+    for (const auto& file : files) {
+        std::error_code error;
+        if (!safe_path(file) || std::filesystem::is_symlink(file, error) || error ||
+            !std::filesystem::is_regular_file(file, error) || error) {
+            return "custom map file is missing or not a regular file: " + file.string();
+        }
+        if (file.stem().string() != map_name) {
+            return "custom map file does not belong to " + std::string{map_name};
+        }
+        auto extension = file.extension().string();
+        std::ranges::transform(extension, extension.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        if (extension != ".vxl" && extension != ".txt" && extension != ".ugc" &&
+            extension != ".png") {
+            return "unexpected custom map file type: " + file.filename().string();
+        }
+        if (!extensions.insert(extension).second) {
+            return "duplicate custom map file type: " + extension;
+        }
+    }
+    if (!extensions.contains(".vxl") || !extensions.contains(".txt") ||
+        !extensions.contains(".ugc")) {
+        return "a custom map needs its .vxl, .txt and .ugc files";
+    }
+    return {};
+}
+
+void set_local_server_port_probe(LocalServerPortProbe probe) noexcept {
+    port_probe.store(probe, std::memory_order_relaxed);
+}
+
 std::uint16_t allocate_local_server_port(std::uint16_t preferred,
                                          std::string& error) noexcept {
     error.clear();
@@ -523,6 +572,11 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
             return {};
         }
     } else if (config.map_creator.has_value()) {
+        return {};
+    }
+    // Only a Create Match host of an authored map redirects the map catalog.
+    if (!config.maps_path.empty() &&
+        (config.program != LocalServerProgram::game_server || !safe_path(config.maps_path))) {
         return {};
     }
     if (config.bot_difficulty != "casual" && config.bot_difficulty != "normal" &&
@@ -566,8 +620,14 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "default_map = " << toml_quote(config.map_name) << '\n'
            << "bot_count = " << config.bot_count << '\n'
            << "movement_authority = \"server\"\n"
-           << "map_sync_mode = \"full\"\n\n"
-           << "[lobby]\n"
+           << "map_sync_mode = \"full\"\n\n";
+    if (!config.maps_path.empty()) {
+        // server/config.py reads [world].maps_path; the session copy holds the
+        // authored .vxl/.txt/.ugc triplet named by default_map.
+        output << "[world]\n"
+               << "maps_path = " << toml_quote(config.maps_path.generic_string()) << "\n\n";
+    }
+    output << "[lobby]\n"
            << "map_rotation = [" << toml_quote(config.map_name) << "]\n"
            << "match_length_minutes = " << config.match_minutes << '\n'
            << "end_screen_seconds = 12.0\n\n"
@@ -659,10 +719,13 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
         error = "the local server bundle is incomplete";
         return false;
     }
+    if (!config.custom_map_files.empty()) {
+        error = validate_custom_map_files(config.map_name, config.custom_map_files);
+        if (!error.empty()) return false;
+    }
     const auto resolved_port = allocate_local_server_port(config.preferred_port, error);
     if (resolved_port == 0U) return false;
-    const auto payload = build_local_server_toml(config, resolved_port);
-    if (payload.empty()) {
+    if (build_local_server_toml(config, resolved_port).empty()) {
         error = "Create Match produced an invalid local-server configuration";
         return false;
     }
@@ -671,6 +734,33 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
         config.session_parent.empty() ? default_session_parent() : config.session_parent;
     const auto directory = make_session_directory(std::filesystem::absolute(parent), error);
     if (directory.empty()) return false;
+    auto effective = config;
+    if (!config.custom_map_files.empty()) {
+        // Host the authored map from a private copy so the child's bot-nav
+        // caches never land in the editor's hosted_ugc catalog.
+        const auto maps_directory = directory / "maps";
+        std::error_code copy_error;
+        std::filesystem::create_directories(maps_directory, copy_error);
+        for (const auto& file : config.custom_map_files) {
+            if (copy_error) break;
+            static_cast<void>(std::filesystem::copy_file(
+                file, maps_directory / file.filename(),
+                std::filesystem::copy_options::overwrite_existing, copy_error));
+        }
+        if (copy_error) {
+            error = "cannot stage the custom map for the local server: " + copy_error.message();
+            std::filesystem::remove_all(directory, copy_error);
+            return false;
+        }
+        effective.maps_path = maps_directory;
+    }
+    const auto payload = build_local_server_toml(effective, resolved_port);
+    if (payload.empty()) {
+        error = "Create Match produced an invalid local-server configuration";
+        std::error_code ignored;
+        std::filesystem::remove_all(directory, ignored);
+        return false;
+    }
     const auto config_path = directory / "config.toml";
     const auto temporary_path = directory / "config.toml.tmp";
     {

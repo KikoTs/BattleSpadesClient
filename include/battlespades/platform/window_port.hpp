@@ -28,6 +28,18 @@ struct DisplayMode final {
     [[nodiscard]] friend constexpr bool operator==(const DisplayMode&, const DisplayMode&) = default;
 };
 
+/**
+ * How a fullscreen window covers the display.
+ *
+ * `exclusive` switches the display mode (retail behaviour; slow alt-tab and
+ * SDL minimises it on focus loss). `borderless` covers the desktop at its
+ * current mode, so alt-tab is instant and the window never minimises.
+ */
+enum class FullscreenKind : std::uint8_t {
+    exclusive,
+    borderless,
+};
+
 /** Desktop window systems supported by bgfx's PlatformData boundary. */
 enum class NativeWindowSystem : std::uint8_t {
     unavailable,
@@ -115,6 +127,8 @@ enum class WindowEventType : std::uint8_t {
     minimized,
     /** Window returned from a minimized or maximized state. */
     restored,
+    /** Window entered the maximized state (may follow a minimize directly). */
+    maximized,
     focus_gained,
     focus_lost,
     mouse_entered,
@@ -188,11 +202,27 @@ public:
     /** True while the native window uses an SDL fullscreen mode. */
     [[nodiscard]] virtual bool is_fullscreen() const noexcept = 0;
 
+    /** Kind of the active fullscreen state; meaningless while windowed. */
+    [[nodiscard]] virtual FullscreenKind fullscreen_kind() const noexcept = 0;
+
+    /**
+     * Refresh rate of the display that currently holds the window, in
+     * millihertz; zero when the platform does not report one.
+     */
+    [[nodiscard]] virtual std::uint32_t current_refresh_rate_millihertz() const noexcept = 0;
+
     /**
      * Applies a retail resolution/fullscreen pair on the window owner thread.
+     * A borderless fullscreen request ignores `extent` and covers the desktop.
      * Implementations fail closed and retain a diagnostic through last_error().
      */
-    [[nodiscard]] virtual bool apply_display_mode(WindowExtent extent, bool fullscreen) = 0;
+    [[nodiscard]] virtual bool apply_display_mode(WindowExtent extent, bool fullscreen,
+                                                  FullscreenKind kind) = 0;
+
+    /** Retail two-value form: fullscreen means exclusive. */
+    [[nodiscard]] bool apply_display_mode(WindowExtent extent, bool fullscreen) {
+        return apply_display_mode(extent, fullscreen, FullscreenKind::exclusive);
+    }
 
     /**
      * Replaces the desktop cursor with an authored image. Hotspot coordinates

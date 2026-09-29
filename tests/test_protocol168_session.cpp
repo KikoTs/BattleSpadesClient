@@ -4,6 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <span>
 #include <stdexcept>
@@ -201,6 +203,8 @@ void offline_ticket_and_initial_sequence_are_exact() {
     expect(validation.size() == 6U && validation[0U] == std::byte{0x30U} &&
                validation[1U] == std::byte{60U},
            "the full-sync request must use packet 60 with local CRC zero");
+    expect(!info->beach_z_modifiable,
+           "InitialInfo beach_z_modifiable is decoded (fixture byte 0 -> max z 237)");
 }
 
 void native_steam_ticket_and_xor_sequence_are_exact() {
@@ -480,6 +484,107 @@ void ugc_source_stream_is_framed_before_map_sync() {
            "MapDataEnd must reject an empty/non-zlib UGC source");
 }
 
+/** A flat, full-height 512x512 VXL: every column one solid voxel at z=239. */
+std::vector<std::byte> flat_stock_map() {
+    std::vector<std::byte> raw;
+    raw.reserve(512U * 512U * 8U);
+    for (std::size_t column{}; column < 512U * 512U; ++column) {
+        for (const auto value : {0U, 239U, 239U, 0U, 0x40U, 0x50U, 0x60U, 0x7FU}) {
+            raw.push_back(static_cast<std::byte>(value));
+        }
+    }
+    return raw;
+}
+
+void local_map_crc_answers_validation_and_becomes_the_world_base() {
+    using namespace battlespades::network;
+    const auto directory =
+        std::filesystem::temp_directory_path() / "aos_protocol168_session_crc_test";
+    std::filesystem::create_directories(directory);
+    const auto raw = flat_stock_map();
+    {
+        std::ofstream file{directory / "Training.vxl", std::ios::binary | std::ios::trunc};
+        file.write(reinterpret_cast<const char*>(raw.data()),
+                   static_cast<std::streamsize>(raw.size()));
+    }
+    const auto crc = protocol168_map_crc32(raw);
+    expect(protocol168_map_crc32(std::as_bytes(std::span{"123456789", 9U})) == 0xCBF43926U,
+           "crc32 is the zlib/IEEE polynomial");
+
+    Protocol168SessionConfig config;
+    config.local_map_directory = directory;
+    Protocol168Session session{config};
+    static_cast<void>(session.connected());
+    const auto info = session.ingest(server_datagram(initial_info()));
+    expect(info.accepted && info.outbound_datagrams.size() == 1U && session.sent_map_crc() == crc,
+           "InitialInfo answers with crc32 of the local <filename>.vxl");
+    const auto& validation = info.outbound_datagrams.front();
+    std::uint32_t wire{};
+    for (std::size_t index{}; index < 4U; ++index) {
+        wire |= std::to_integer<std::uint32_t>(validation[2U + index]) << (index * 8U);
+    }
+    expect(validation[1U] == std::byte{60U} && wire == crc, "packet 60 carries the local CRC");
+    expect(session.loading_progress().initial_info, "InitialInfo is a loader milestone");
+
+    std::vector<std::byte> server_validation{std::byte{60U}};
+    integer<std::uint32_t>(server_validation, crc);
+    expect(session.ingest(server_datagram(server_validation)).accepted &&
+               session.loading_progress().map_validated,
+           "MapDataValidation is recorded (LOADING_MAP)");
+    expect(session.ingest(server_datagram(std::array{std::byte{55U}})).accepted &&
+               session.loading_progress().sync_started,
+           "MapSyncStart opens the second loader third");
+    expect(session.ingest(server_datagram(std::array{std::byte{59U}})).accepted,
+           "a CRC match accepts an empty dirty-column delta");
+    const auto* map = session.map();
+    expect(map != nullptr && map->solid(10U, 20U, 239U) && !map->solid(10U, 20U, 238U) &&
+               session.loading_progress().local_map_base &&
+               session.loading_progress().sync_finished,
+           "the local stock map became the world base");
+
+    // A delta record replaces exactly the column it names.
+    std::vector<std::byte> records;
+    integer<std::uint32_t>(records, 5U);
+    integer<std::uint32_t>(records, 6U);
+    for (const auto value : {0U, 200U, 200U, 0U, 1U, 2U, 3U, 0x7FU}) {
+        records.push_back(static_cast<std::byte>(value));
+    }
+    std::string error;
+    const auto overlaid = protocol168_apply_map_records(raw, records, error);
+    expect(overlaid.has_value() && overlaid->solid(5U, 6U, 200U) &&
+               overlaid->solid(5U, 6U, 239U) && !overlaid->solid(5U, 6U, 199U) &&
+               !overlaid->solid(6U, 6U, 200U),
+           "an overlay record rebuilds only its own column");
+    records.resize(records.size() - 3U);
+    expect(!protocol168_apply_map_records(raw, records, error).has_value(),
+           "a truncated record fails closed");
+
+    Protocol168Session mismatch{config};
+    static_cast<void>(mismatch.connected());
+    static_cast<void>(mismatch.ingest(server_datagram(initial_info())));
+    std::vector<std::byte> other_crc{std::byte{60U}};
+    integer<std::uint32_t>(other_crc, crc ^ 1U);
+    static_cast<void>(mismatch.ingest(server_datagram(other_crc)));
+    static_cast<void>(mismatch.ingest(server_datagram(std::array{std::byte{55U}})));
+    expect(!mismatch.ingest(server_datagram(std::array{std::byte{59U}})).accepted &&
+               mismatch.phase() == Protocol168SessionPhase::failed,
+           "a CRC mismatch still requires a complete snapshot");
+
+    Protocol168SessionConfig missing = config;
+    missing.local_map_directory = directory / "absent";
+    Protocol168Session absent{missing};
+    static_cast<void>(absent.connected());
+    static_cast<void>(absent.ingest(server_datagram(initial_info())));
+    expect(absent.sent_map_crc() == 0U, "a missing local map answers CRC 0");
+
+    Protocol168Session ugc{config};
+    static_cast<void>(ugc.connected());
+    static_cast<void>(ugc.ingest(server_datagram(initial_info(UgcRole::host))));
+    expect(ugc.sent_map_crc() == 0U, "UGC worlds always request a full sync");
+    std::error_code ignored;
+    std::filesystem::remove_all(directory, ignored);
+}
+
 void audio_arriving_during_join_is_deferred_in_order() {
     using namespace battlespades::network;
     Protocol168Session session;
@@ -554,6 +659,7 @@ int main() {
         skybox_data_retains_only_a_safe_retail_definition();
         malformed_phase_packets_fail_closed();
         ugc_source_stream_is_framed_before_map_sync();
+        local_map_crc_answers_validation_and_becomes_the_world_base();
         audio_arriving_during_join_is_deferred_in_order();
         deferred_runtime_memory_is_bounded_independently_of_map_transfer();
         std::cout << "Protocol 168 session tests passed\n";

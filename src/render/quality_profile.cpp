@@ -5,7 +5,8 @@ namespace battlespades::render {
 std::string_view quality_profile_name(settings::ShaderQuality quality) noexcept {
     switch (quality) {
     case settings::ShaderQuality::compatibility:
-        return "LEGACY";
+        // Shown as RETAIL: the audited retail lighting equations (D1).
+        return "RETAIL";
     case settings::ShaderQuality::low:
         return "LOW";
     case settings::ShaderQuality::medium:

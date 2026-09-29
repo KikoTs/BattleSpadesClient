@@ -318,6 +318,44 @@ RevivalSocialResult parse_revival_social_response(RevivalSocialRequest request,
 
 std::string new_revival_social_id() { return make_client_instance_id(); }
 
+bool revival_social_write_is_idempotent(const RevivalSocialRequest& request) noexcept {
+    switch (request.kind) {
+    case RevivalSocialRequestKind::find_friends:
+    case RevivalSocialRequestKind::list_lobbies:
+        return true;
+    case RevivalSocialRequestKind::friend_action:
+        // AoSPlay answers a repeated request/accept/decline/remove/block with
+        // the committed state instead of a second transition.
+        return true;
+    case RevivalSocialRequestKind::lobby_action: {
+        const auto& action = request.action;
+        if (action == "start" || action == "start_failed") {
+            // Only an attempt-scoped start is safe to repeat.
+            const auto start = request.payload.find("start_id");
+            return start != request.payload.end() && start->is_string();
+        }
+        // "update" is revision-guarded (a repeat would report a conflict) and
+        // "chat" would post twice; everything else converges on a repeat.
+        return action == "join" || action == "leave" || action == "invite" ||
+               action == "decline_invite" || action == "kick" || action == "assign_team" ||
+               action == "member_update" || action == "in_game" || action == "publish" ||
+               action == "close";
+    }
+    case RevivalSocialRequestKind::sync:
+    case RevivalSocialRequestKind::presence_offline:
+    case RevivalSocialRequestKind::create_lobby:
+        return false;
+    }
+    return false;
+}
+
+bool revival_social_failure_is_transient(const RevivalSocialResult& result) noexcept {
+    if (result || result.error_code == "cancelled") return false;
+    if (result.error_code == "network_error" || result.error_code == "service_unavailable")
+        return true;
+    return result.http_status == 502L || result.http_status == 503L || result.http_status == 504L;
+}
+
 class RevivalSocialClient::Impl final {
 public:
     struct Lane final {
@@ -334,6 +372,10 @@ public:
             config.maximum_priority_requests == 0U || config.maximum_results == 0U ||
             config.menu_poll_interval <= std::chrono::milliseconds::zero() ||
             config.active_lobby_poll_interval <= std::chrono::milliseconds::zero() ||
+            config.foreground_poll_interval <= std::chrono::milliseconds::zero() ||
+            config.maximum_poll_starvation <= std::chrono::milliseconds::zero() ||
+            config.write_retry_delay < std::chrono::milliseconds::zero() ||
+            config.write_retries > 8U ||
             config.maximum_backoff < config.menu_poll_interval) {
             throw std::invalid_argument{"invalid Revival social client bounds"};
         }
@@ -391,16 +433,38 @@ public:
         next_poll = std::chrono::steady_clock::time_point{};
     }
 
+    void set_foreground(bool value) noexcept {
+        std::scoped_lock lock{mutex};
+        if (value == foreground) return;
+        foreground = value;
+        // Opening Friends must show fresh state now, not after the slower
+        // background interval that was scheduled while it was closed.
+        if (value && connected) next_poll = std::chrono::steady_clock::time_point{};
+    }
+
+    [[nodiscard]] std::chrono::milliseconds healthy_interval_locked() const noexcept {
+        if (snapshot.lobby.has_value()) return config.active_lobby_poll_interval;
+        return foreground ? (std::min)(config.foreground_poll_interval, config.menu_poll_interval)
+                          : config.menu_poll_interval;
+    }
+
     void tick(std::chrono::steady_clock::time_point now) {
         std::scoped_lock lock{mutex};
-        // A priority mutation and a sync must never begin together.  A sync
+        // A priority mutation and a sync should not begin together.  A sync
         // already running before the mutation is rejected in drain() using
         // submission_sequence; holding new polls here closes the opposite
         // ordering where a later-enqueued poll reaches AoSPlay first.
+        //
+        // The poll is also this client's presence heartbeat, so a steady
+        // stream of writes may postpone it only up to maximum_poll_starvation;
+        // a result that overlaps a write is still discarded by drain().
+        const bool starving = last_poll_started != std::chrono::steady_clock::time_point{} &&
+                              now - last_poll_started >= config.maximum_poll_starvation;
         if (!enabled || closing || now < next_poll || poll_pending_locked() ||
-            priority.active || !priority.queue.empty()) {
+            ((priority.active || !priority.queue.empty()) && !starving)) {
             return;
         }
+        last_poll_started = now;
         RevivalSocialRequest request;
         request.generation = next_generation++;
         request.submission_sequence = next_submission_sequence++;
@@ -448,8 +512,7 @@ public:
                     snapshot = result.snapshot;
                     connected = true;
                     last_error.clear();
-                    backoff = snapshot.lobby.has_value() ? config.active_lobby_poll_interval
-                                                         : config.menu_poll_interval;
+                    backoff = healthy_interval_locked();
                     // A discarded pre-mutation read is not evidence of the
                     // current state.  Poll again immediately after the
                     // mutation lane settles instead of showing stale data for
@@ -531,6 +594,7 @@ public:
                                ? std::chrono::duration_cast<std::chrono::milliseconds>(next_poll - now)
                                : std::chrono::milliseconds::zero();
         return RevivalSocialClientStatus{enabled && connected,
+                                         enabled && !closing,
                                          closing,
                                          normal.active,
                                          priority.active,
@@ -580,16 +644,20 @@ public:
             }
             RevivalSocialResult result;
             const auto started = std::chrono::steady_clock::now();
-            try {
-                result = executor(request, stop);
-            } catch (const std::exception& error) {
-                result.request = request;
-                result.error_code = "worker_exception";
-                result.error = core::utf8_code_point_prefix(error.what(), 160U);
-            } catch (...) {
-                result.request = request;
-                result.error_code = "worker_exception";
-                result.error = "Social worker failed with an unknown exception.";
+            const bool retryable = request.kind != RevivalSocialRequestKind::sync &&
+                                   revival_social_write_is_idempotent(request);
+            for (std::size_t attempt{};; ++attempt) {
+                result = execute_once(request, stop);
+                // A gateway timeout or dropped socket on a write the server
+                // treats idempotently is repeated here instead of surfacing
+                // "Could not reach AoSPlay" for a blip the player cannot fix.
+                if (!retryable || attempt >= config.write_retries || stop.stop_requested() ||
+                    !revival_social_failure_is_transient(result)) {
+                    break;
+                }
+                trace_result(result, std::chrono::steady_clock::now() - started);
+                if (!interruptible_sleep(config.write_retry_delay * static_cast<int>(attempt + 1U), stop))
+                    break;
             }
             trace_result(result, std::chrono::steady_clock::now() - started);
             {
@@ -599,6 +667,31 @@ public:
                 drained.notify_all();
             }
         }
+    }
+
+    [[nodiscard]] RevivalSocialResult execute_once(const RevivalSocialRequest& request,
+                                                   std::stop_token stop) noexcept {
+        RevivalSocialResult result;
+        try {
+            result = executor(request, stop);
+        } catch (const std::exception& error) {
+            result.request = request;
+            result.error_code = "worker_exception";
+            result.error = core::utf8_code_point_prefix(error.what(), 160U);
+        } catch (...) {
+            result.request = request;
+            result.error_code = "worker_exception";
+            result.error = "Social worker failed with an unknown exception.";
+        }
+        return result;
+    }
+
+    /** Sleep unless shutdown is requested first; false when interrupted. */
+    [[nodiscard]] bool interruptible_sleep(std::chrono::milliseconds duration,
+                                           std::stop_token stop) {
+        std::unique_lock lock{mutex};
+        return !wake.wait_for(lock, stop, duration, [] { return false; }) &&
+               !stop.stop_requested() && !closing;
     }
 
     /**
@@ -720,6 +813,8 @@ public:
     std::string presence{"online"};
     Json metadata = Json::object();
     std::string last_error;
+    std::chrono::steady_clock::time_point last_poll_started{};
+    bool foreground{};
     std::uint64_t next_generation{1U};
     std::uint64_t next_submission_sequence{1U};
     std::uint64_t newest_priority_submission{};
@@ -746,6 +841,10 @@ void RevivalSocialClient::set_available(bool available) noexcept {
 
 void RevivalSocialClient::set_presence(std::string presence, nlohmann::json metadata) {
     impl_->set_presence(std::move(presence), std::move(metadata));
+}
+
+void RevivalSocialClient::set_foreground(bool foreground) noexcept {
+    impl_->set_foreground(foreground);
 }
 
 void RevivalSocialClient::tick(std::chrono::steady_clock::time_point now) { impl_->tick(now); }

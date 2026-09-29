@@ -21,6 +21,7 @@ add_library(
     aos_settings
     STATIC
         settings/client_settings.cpp
+        settings/retail_key_names.cpp
         settings/settings_session.cpp
         settings/settings_store.cpp
         # Tier resolution is pure settings->renderer-knobs and must stay
@@ -102,6 +103,7 @@ add_library(
         world/skylight_map.cpp
         world/emissive_set.cpp
         world/static_light_field.cpp
+        world/retail_effects.cpp
         world/map_catalog.cpp
         world/map_spawn.cpp
         world/minimap_overview.cpp
@@ -109,6 +111,8 @@ add_library(
         world/voxel_collapse.cpp
         world/voxel_raycast.cpp
         world/sniper_laser.cpp
+        world/block_placement.cpp
+        world/retail_blast.cpp
 )
 add_library(BattleSpades::World ALIAS aos_world)
 target_include_directories(aos_world PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -162,6 +166,7 @@ add_library(
         frontend/class_selection_menu.cpp
         frontend/class_selection_presentation.cpp
         frontend/change_team_menu.cpp
+        frontend/kick_vote_menu.cpp
         frontend/death_camera.cpp
         frontend/favorite_server_store.cpp
         frontend/frontend_controller.cpp
@@ -184,6 +189,8 @@ add_library(
         frontend/main_menu.cpp
         frontend/main_menu_presentation.cpp
         frontend/match_overlays.cpp
+        frontend/retail_input_rules.cpp
+        frontend/retail_hud_rules.cpp
         frontend/objective_indicator.cpp
         frontend/parity_debug_menu.cpp
         frontend/parity_debug_presentation.cpp
@@ -202,6 +209,7 @@ add_library(
         frontend/ugc_prefab_catalog.cpp
         frontend/ugc_loadout_menu.cpp
         frontend/ugc_loadout_presentation.cpp
+        frontend/ugc_status_presentation.cpp
         frontend/ugc_select_menu.cpp
         frontend/ugc_select_presentation.cpp
         frontend/ugc_publish_menu.cpp
@@ -442,6 +450,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_native_steam
         STATIC
             platform/native_steam_client.cpp
+            platform/steam_connect.cpp
     )
     add_library(BattleSpades::NativeSteam ALIAS aos_native_steam)
     target_include_directories(aos_native_steam PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -563,6 +572,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_revival_identity_live_smoke
         PRIVATE
             BattleSpades::NetworkEnet
+            nlohmann_json::nlohmann_json
     )
     aos_enable_strict_warnings(aos_revival_identity_live_smoke)
 

@@ -102,7 +102,8 @@ c = imp.load_source('shared.constants', os.path.join(root, 'constants.py'))
 names = (
     'BODY_PARTS_X', 'BODY_PARTS_Y', 'BODY_PARTS_Z', 'CLASS_ITEMS',
     'CLASS_NAMES', 'CLASS_BODY_PARTS_FILENAMES', 'CLASS_BODY_PARTS_OFFSETS',
-    'CLASS_FPS_ARMS_FILENAMES', 'CLASS_BLOCKS',
+    'CLASS_FPS_ARMS_FILENAMES', 'CLASS_BLOCKS', 'CLASS_DAMAGE_MULTIPLIER',
+    'PREFAB_LISTS', 'CLASS_DESCRIPTIONS', 'TOOL_NAMES', 'TOOL_DESCRIPTIONS',
 )
 def materialize(value):
     if isinstance(value, dict):
@@ -133,6 +134,11 @@ print(json.dumps(dict((name, materialize(getattr(c, name))) for name in names)))
         "CLASS_BODY_PARTS_OFFSETS",
         "CLASS_FPS_ARMS_FILENAMES",
         "CLASS_BLOCKS",
+        "CLASS_DAMAGE_MULTIPLIER",
+        "PREFAB_LISTS",
+        "CLASS_DESCRIPTIONS",
+        "TOOL_NAMES",
+        "TOOL_DESCRIPTIONS",
     ):
         raw[name] = {int(key): value for key, value in raw[name].items()}
     def flatten_group(values):
@@ -166,6 +172,20 @@ def icon_pair(stem: str) -> tuple[str, str]:
         path = "png/ui/in_game_menus/select_class/zombie_icon.png"
         return path, path
     return path_pair(stem, "icon")
+
+
+def class_prefabs(c, cid: int) -> list[str]:
+    """PREFAB_LISTS names for CLASS_ITEMS[cid][CLASS_PREFABS], de-duplicated.
+
+    MAP_PREFABS/DEFAULT_PREFABS are empty placeholders filled at runtime by the
+    map, so they contribute nothing to the static table.
+    """
+    names: list[str] = []
+    for prefab_set in c.CLASS_ITEMS[cid].get(4, ()):
+        for name in c.PREFAB_LISTS.get(int(prefab_set), ()):
+            if name not in names:
+                names.append(str(name))
+    return names
 
 
 def generate(server_root: pathlib.Path,
@@ -208,7 +228,12 @@ def generate(server_root: pathlib.Path,
             "items": normalized_items,
             "blocks": c.CLASS_BLOCKS[cid],
             "damage_multiplier": c.CLASS_DAMAGE_MULTIPLIER[cid],
+            "prefabs": class_prefabs(c, cid),
         })
+        prefabs = class_prefabs(c, cid)
+        joined = ", ".join(f"std::string_view{{{q(name)}}}" for name in prefabs)
+        lines.append(f"constexpr std::array<std::string_view, {len(prefabs)}U> "
+                     f"class_{cid}_prefabs{{{{{joined}}}}};\n")
         lines.append("\n")
 
     lines.append("constexpr std::array<ClassDefinition, retail_class_count> classes{{\n")
@@ -240,6 +265,26 @@ def generate(server_root: pathlib.Path,
         lines.append(f"        {{{q(icons[0])}, {q(icons[1])}}}, {q(skin)}, "
                      f"{damage_multiplier!r}}},\n")
     lines.append("}};\n\n")
+    lines.append("constexpr std::array<std::span<const std::string_view>, retail_class_count> "
+                 "prefab_names{{\n")
+    for cid in range(18):
+        lines.append(f"    std::span<const std::string_view>{{class_{cid}_prefabs}},\n")
+    lines.append("}};\n\n")
+    for table, source in (("class_names", c.CLASS_NAMES),
+                          ("class_descriptions", c.CLASS_DESCRIPTIONS)):
+        values = ", ".join(f"std::string_view{{{q(str(source.get(cid, '')))}}}"
+                           for cid in range(18))
+        lines.append(f"constexpr std::array<std::string_view, retail_class_count> "
+                     f"{table}{{{{{values}}}}};\n")
+    lines.append("\n")
+    for function, source in (("tool_name_key_for", c.TOOL_NAMES),
+                             ("tool_description_key_for", c.TOOL_DESCRIPTIONS)):
+        lines.append(f"constexpr std::string_view {function}(std::uint16_t tool) noexcept {{\n"
+                     "    switch (tool) {\n")
+        for tool in sorted(source):
+            if source[tool]:
+                lines.append(f"    case {tool}U: return {q(str(source[tool]))};\n")
+        lines.append("    default: return {};\n    }\n}\n\n")
     lines.append('constexpr std::array<UiSkinDefinition, 2U> skins{{\n'
                  '    UiSkinDefinition{"default", ""},\n'
                  '    UiSkinDefinition{"mafia", "skins/mafia/"},\n'
@@ -291,6 +336,14 @@ def generate(server_root: pathlib.Path,
                  "    constexpr std::array names{std::string_view{\"Melee\"}, std::string_view{\"Primary\"}, std::string_view{\"Secondary\"}, std::string_view{\"Equipment\"}, std::string_view{\"Prefab sets\"}, std::string_view{\"Common\"}, std::string_view{\"UGC tools\"}};\n"
                  "    const auto index = static_cast<std::size_t>(group); return index < names.size() ? names[index] : std::string_view{};\n}\n\n")
     lines.append(f"std::string_view class_catalog_contract_sha256() noexcept {{ return {q(digest)}; }}\n\n")
+    lines.append("std::span<const std::string_view> class_prefab_names(std::uint8_t class_id) noexcept {\n"
+                 "    return class_id < prefab_names.size() ? prefab_names[class_id] : std::span<const std::string_view>{};\n}\n\n")
+    lines.append("std::string_view class_name_key(std::uint8_t class_id) noexcept {\n"
+                 "    return class_id < class_names.size() ? class_names[class_id] : std::string_view{};\n}\n\n")
+    lines.append("std::string_view class_description_key(std::uint8_t class_id) noexcept {\n"
+                 "    return class_id < class_descriptions.size() ? class_descriptions[class_id] : std::string_view{};\n}\n\n")
+    lines.append("std::string_view tool_name_key(std::uint16_t tool) noexcept { return tool_name_key_for(tool); }\n\n")
+    lines.append("std::string_view tool_description_key(std::uint16_t tool) noexcept { return tool_description_key_for(tool); }\n\n")
     lines.append("} // namespace battlespades::world\n")
     return "".join(lines)
 

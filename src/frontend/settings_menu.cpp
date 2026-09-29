@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <string>
 #include <utility>
 
 namespace battlespades::frontend {
@@ -32,7 +33,7 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 9U> main_inventory{{
+constexpr std::array<SettingsRowId, 10U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
@@ -42,6 +43,7 @@ constexpr std::array<SettingsRowId, 9U> main_inventory{{
     SettingsRowId::show_skins,
     SettingsRowId::show_other_skins,
     SettingsRowId::weapon_motion,
+    SettingsRowId::ability_hints,
 }};
 
 constexpr std::array<SettingsRowId, 39U> controls_inventory{{
@@ -151,7 +153,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return SettingsRowKind::continuous_slider;
     }
     if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
-        row == SettingsRowId::weapon_motion || row == SettingsRowId::fullscreen || row == SettingsRowId::favorite_server ||
+        row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
+        row == SettingsRowId::fullscreen || row == SettingsRowId::favorite_server ||
         row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader) {
         return SettingsRowKind::toggle;
     }
@@ -189,6 +192,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "SHOW_OTHER_SKINS";
     case SettingsRowId::weapon_motion:
         return "WEAPON_MOTION";
+    case SettingsRowId::ability_hints:
+        return "ABILITY_HINTS";
     case SettingsRowId::resolution:
         return "RESOLUTION";
     case SettingsRowId::graphics_api:
@@ -309,10 +314,88 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
 }
 
 [[nodiscard]] std::string sensitivity_text(double value) {
+    // SliderControl shows str(round(value, 2)): Python drops trailing zeros
+    // but always keeps one decimal, so 0.1 reads "0.1" and 1.0 reads "1.0".
     const auto hundredths = std::clamp(static_cast<int>(std::lround(value * 100.0)), 0, 100);
     const auto remainder = hundredths % 100;
+    if (remainder % 10 == 0) {
+        return std::to_string(hundredths / 100) + "." + std::to_string(remainder / 10);
+    }
     return std::to_string(hundredths / 100) + "." + (remainder < 10 ? "0" : "") +
            std::to_string(remainder);
+}
+
+/** RangeBarControl geometry: 4 px padding, square arrows, the bar between them. */
+struct RangeBarGeometry final {
+    ui::Rect left_arrow;
+    ui::Rect right_arrow;
+    std::int32_t bar_left{};
+    std::int32_t bar_right{};
+};
+
+[[nodiscard]] constexpr RangeBarGeometry range_bar_geometry(ui::Rect control) noexcept {
+    constexpr std::int32_t option_spacing{4};
+    constexpr std::int32_t button_bar_spacing{2};
+    const auto arrow = std::max(0, control.height - option_spacing * 2);
+    // The hit areas take the arrow plus its padding so the control's edge
+    // pixels still belong to the arrow the player aimed at.
+    return {ui::Rect{control.x, control.y, option_spacing + arrow, control.height},
+            ui::Rect{control.x + control.width - option_spacing - arrow,
+                     control.y,
+                     option_spacing + arrow,
+                     control.height},
+            control.x + option_spacing + arrow + button_bar_spacing,
+            control.x + control.width - (option_spacing + arrow + button_bar_spacing)};
+}
+
+/** SliderControl geometry with its edit box (sliderControl.update_position). */
+struct SliderGeometry final {
+    double track_x{};
+    double track_width{};
+    ui::Rect edit_box{};
+};
+
+[[nodiscard]] SliderGeometry slider_geometry(ui::Rect control) noexcept {
+    constexpr double spacing{4.0};
+    const auto box_width = static_cast<double>(control.width) / 6.0;
+    const auto box_x = static_cast<double>(control.x + control.width) - spacing - box_width;
+    return {static_cast<double>(control.x) + spacing * 2.0,
+            static_cast<double>(control.width) - box_width - spacing * 5.0,
+            ui::Rect{static_cast<std::int32_t>(std::floor(box_x)),
+                     control.y + static_cast<std::int32_t>(spacing),
+                     static_cast<std::int32_t>(std::ceil(box_width)),
+                     control.height - static_cast<std::int32_t>(spacing) * 2}};
+}
+
+/** ToggleOptionControl halves: -1 off box, +1 on box, 0 the gap between. */
+[[nodiscard]] std::int32_t toggle_half_at(ui::Rect control, ui::Point point) noexcept {
+    if (point.y < control.y || point.y > control.y + control.height) {
+        return 0;
+    }
+    const auto box_width = static_cast<double>(control.width) / 2.0 - 2.0;
+    const auto x = static_cast<double>(point.x);
+    if (x >= control.x && x <= control.x + box_width) {
+        return -1;
+    }
+    const auto on_x = static_cast<double>(control.x + control.width) - box_width;
+    if (x >= on_x && x <= control.x + control.width) {
+        return 1;
+    }
+    return 0;
+}
+
+/** Choice rows react only to their SquareButton arrows (gui.py 1817-1880). */
+[[nodiscard]] std::int32_t choice_arrow_at(ui::Rect control, ui::Point point) noexcept {
+    const auto geometry = range_bar_geometry(control);
+    if (geometry.left_arrow.contains(point)) return -1;
+    if (geometry.right_arrow.contains(point)) return 1;
+    return 0;
+}
+
+[[nodiscard]] double snapped_volume(double value) noexcept {
+    // RangeBarControl.set: clamp, then anything under 0.01 is silence.
+    const auto clamped = std::clamp(value, 0.0, 1.0);
+    return clamped < 0.01 ? 0.0 : clamped;
 }
 
 [[nodiscard]] std::string resolution_text(settings::Resolution resolution) {
@@ -320,31 +403,6 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     return std::to_string(resolution.width) + "x" + std::to_string(resolution.height);
 }
 
-[[nodiscard]] std::string binding_text(settings::InputBinding binding) {
-    const auto persisted = settings::binding_to_string(binding);
-    if (persisted == "unbound") {
-        return "UNBOUND";
-    }
-    if (persisted == "mouse:left") {
-        return "LMB";
-    }
-    if (persisted == "mouse:middle") {
-        return "MMB";
-    }
-    if (persisted == "mouse:right") {
-        return "RMB";
-    }
-    const auto separator = persisted.find(':');
-    auto result = separator == std::string::npos ? persisted : persisted.substr(separator + 1U);
-    std::replace(result.begin(), result.end(), '_', ' ');
-    std::replace(result.begin(), result.end(), '-', ' ');
-    for (auto& character : result) {
-        if (character >= 'a' && character <= 'z') {
-            character = static_cast<char>(character - 'a' + 'A');
-        }
-    }
-    return result;
-}
 
 [[nodiscard]] constexpr SettingsVisualState
 visual_state_for(SettingsMenuTarget target,
@@ -518,6 +576,27 @@ shifted_index(std::size_t current, std::size_t count, std::int32_t direction) no
 
 } // namespace
 
+std::string settings_binding_text(settings::InputBinding binding,
+                                  const settings::RetailStringLookup& lookup) {
+    // KeyControl.draw: None/'' text draws strings.NONE ("None").
+    if (binding.is_unbound()) return "NONE";
+    if (!lookup) {
+        // No catalogue: submit the translate_key id and let the renderer
+        // localize it ("COMMA", "CTRL", LEFT -> "Left").
+        const auto id = settings::retail_binding_name(binding, {});
+        return id.empty() ? std::string{"NONE"} : id;
+    }
+    const auto text = settings::retail_binding_name(binding, lookup);
+    return std::string{literal_text_prefix} + (text.empty() ? std::string{"None"} : text);
+}
+
+std::string_view settings_control_action_label(settings::ControlAction action) noexcept {
+    for (const auto row : controls_inventory) {
+        if (settings_row_control_action(row) == action) return label_for(row);
+    }
+    return {};
+}
+
 std::optional<settings::ControlAction> settings_row_control_action(SettingsRowId row) noexcept {
     using settings::ControlAction;
     switch (row) {
@@ -605,6 +684,7 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(show_skins);
         AOS_SETTINGS_ROW_NAME(show_other_skins);
         AOS_SETTINGS_ROW_NAME(weapon_motion);
+        AOS_SETTINGS_ROW_NAME(ability_hints);
         AOS_SETTINGS_ROW_NAME(favorite_server);
         AOS_SETTINGS_ROW_NAME(resolution);
         AOS_SETTINGS_ROW_NAME(graphics_api);
@@ -705,8 +785,10 @@ SettingsMenuModel::SettingsMenuModel(settings::SettingsSession& session,
     // Shader off. Opening the menu with legacy already stored keeps the old
     // observable behaviour of landing on High.
     const auto& initial_graphics = session_->draft().graphics;
+    // With the Retail tier as the new-install default (D1), switching the
+    // toggle off lands on Medium: the enhanced look is one click away.
     restore_shader_quality_ = initial_graphics.compatibility_shader()
-                                  ? settings::ShaderQuality::high
+                                  ? settings::ShaderQuality::medium
                                   : initial_graphics.shader_quality;
 
     const auto current = session_->draft().graphics.resolution;
@@ -743,6 +825,7 @@ void SettingsMenuModel::set_active_tab(settings::SettingsTab tab) {
     if (!valid_tab(tab) || tab == active_tab_) {
         return;
     }
+    if (sensitivity_edit_.has_value()) commit_text_edit();
     active_tab_ = tab;
     close_resolution_dropdown();
     cancel_binding_capture();
@@ -1131,9 +1214,11 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             break;
         case SettingsRowId::show_skins:
         case SettingsRowId::show_other_skins:
-        case SettingsRowId::weapon_motion: {
+        case SettingsRowId::weapon_motion:
+        case SettingsRowId::ability_hints: {
             const bool on = row == SettingsRowId::show_skins ? current.main.show_skins :
                             row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
+                            row == SettingsRowId::ability_hints ? current.main.ability_hints :
                             current.main.weapon_motion;
             item.choice_index = on ? 1U : 0U;
             item.choice_count = 2U;
@@ -1260,24 +1345,34 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             break;
         case SettingsRowId::mouse_sensitivity:
             item.scalar_value = current.controls.mouse_sensitivity;
-            item.value_text = sensitivity_text(current.controls.mouse_sensitivity);
+            item.value_text = sensitivity_edit_.has_value()
+                                  ? std::string{literal_text_prefix} + *sensitivity_edit_ + "_"
+                                  : sensitivity_text(current.controls.mouse_sensitivity);
+            item.text_editing = sensitivity_edit_.has_value();
             break;
         case SettingsRowId::fire_use:
             item.value_text = "LMB";
             break;
         case SettingsRowId::cycle_next_weapon:
-            item.value_text = "MOUSE WHEEL";
+            item.value_text = "MOUSE_WHEEL"; // strings.MOUSE_WHEEL = "MWheel"
             break;
         case SettingsRowId::inventory_slots:
             item.value_text = "1-9";
             break;
         default:
             if (item.control_action.has_value()) {
-                item.value_text = binding_text(current.controls.binding(*item.control_action));
+                item.value_text = settings_binding_text(
+                    current.controls.binding(*item.control_action), key_name_lookup_);
             }
             break;
         }
         item.state = visual_state_for(target, item.enabled, focused_, hovered_, pressed_);
+        if (item.kind == SettingsRowKind::toggle && row != SettingsRowId::favorite_server &&
+            item.enabled && item.visible && pointer_.has_value()) {
+            const auto half = toggle_half_at(item.control_bounds, *pointer_);
+            item.unselected_half_hovered =
+                (half < 0 && item.choice_index != 0U) || (half > 0 && item.choice_index == 0U);
+        }
         result.rows.push_back(std::move(item));
     }
 
@@ -1309,7 +1404,9 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     }};
 
     if (binding_capture_.has_value()) {
-        result.binding_capture = BindingCapturePresentation{*binding_capture_, binding_rejection_};
+        result.binding_capture = BindingCapturePresentation{
+            *binding_capture_, binding_rejection_,
+            binding_rejection_.has_value() ? binding_rejected_input_ : std::nullopt};
     }
     return result;
 }
@@ -1413,6 +1510,17 @@ void SettingsMenuModel::pointer_move(std::optional<ui::Point> point) {
 
 void SettingsMenuModel::pointer_press(ui::Point point) {
     pointer_ = point;
+    pressed_range_arrow_ = 0;
+    if (sensitivity_edit_.has_value()) {
+        // EditBoxControl.on_mouse_press: a press inside keeps focus; anywhere
+        // else drops it, which runs on_return and commits the typed value.
+        const auto bounds = visible_row_bounds(SettingsRowId::mouse_sensitivity);
+        if (bounds.has_value() &&
+            slider_geometry(control_bounds_for(*bounds)).edit_box.contains(point)) {
+            return;
+        }
+        commit_text_edit();
+    }
     if (resolution_dropdown_open_) {
         pressed_.reset();
         dragged_slider_.reset();
@@ -1458,7 +1566,27 @@ void SettingsMenuModel::pointer_press(ui::Point point) {
         return;
     }
     if (hovered_->kind == SettingsTargetKind::row && is_pointer_slider(hovered_->row)) {
-        dragged_slider_ = hovered_->row;
+        const auto row = hovered_->row;
+        const auto bounds = visible_row_bounds(row);
+        if (!bounds.has_value()) return;
+        const auto control = control_bounds_for(*bounds);
+        if (row == SettingsRowId::mouse_sensitivity) {
+            if (slider_geometry(control).edit_box.contains(point)) {
+                sensitivity_edit_ = sensitivity_text(session_->draft().controls.mouse_sensitivity);
+                return;
+            }
+        } else {
+            const auto geometry = range_bar_geometry(control);
+            if (geometry.left_arrow.contains(point)) {
+                pressed_range_arrow_ = -1;
+                return;
+            }
+            if (geometry.right_arrow.contains(point)) {
+                pressed_range_arrow_ = 1;
+                return;
+            }
+        }
+        dragged_slider_ = row;
         static_cast<void>(set_slider_from_pointer(*dragged_slider_, point, true));
     }
 }
@@ -1524,13 +1652,38 @@ void SettingsMenuModel::pointer_release(ui::Point point) {
     }
 
     hovered_ = hit_test(point);
-    if (dragged_slider_.has_value()) {
+    if (pressed_range_arrow_ != 0) {
+        // SquareButton fires on release, and only over the arrow it grabbed.
+        const auto direction = pressed_range_arrow_;
+        pressed_range_arrow_ = 0;
+        if (pressed_.has_value() && pressed_->kind == SettingsTargetKind::row) {
+            const auto bounds = visible_row_bounds(pressed_->row);
+            if (bounds.has_value()) {
+                const auto geometry = range_bar_geometry(control_bounds_for(*bounds));
+                const auto& arrow = direction < 0 ? geometry.left_arrow : geometry.right_arrow;
+                if (arrow.contains(point)) {
+                    static_cast<void>(step_volume(pressed_->row, direction));
+                }
+            }
+        }
+    } else if (dragged_slider_.has_value()) {
         static_cast<void>(set_slider_from_pointer(*dragged_slider_, point, false));
     } else if (pressed_.has_value() && hovered_ == pressed_ && target_enabled(*pressed_)) {
         auto activate_pressed = true;
         if (pressed_->kind == SettingsTargetKind::row && !is_category(pressed_->row)) {
             const auto bounds = visible_row_bounds(pressed_->row);
             activate_pressed = bounds.has_value() && control_bounds_for(*bounds).contains(point);
+            // Sliders act on press/drag only; a release in their gaps is inert.
+            if (is_pointer_slider(pressed_->row)) activate_pressed = false;
+        }
+        if (activate_pressed && pressed_->kind == SettingsTargetKind::row &&
+            kind_for(pressed_->row) == SettingsRowKind::toggle &&
+            pressed_->row != SettingsRowId::favorite_server) {
+            // ToggleOptionControl sets the half that was clicked, never flips.
+            const auto bounds = visible_row_bounds(pressed_->row);
+            const auto half = toggle_half_at(control_bounds_for(*bounds), point);
+            if (half != 0) static_cast<void>(adjust_row(pressed_->row, half));
+            activate_pressed = false;
         }
         if (activate_pressed) {
             if (pressed_->kind == SettingsTargetKind::row &&
@@ -1545,12 +1698,11 @@ void SettingsMenuModel::pointer_release(ui::Point point) {
                         open_resolution_dropdown();
                     }
                 } else {
-                    const auto arrow_width = control.height;
-                    if (point.x < control.x + arrow_width) {
-                        static_cast<void>(adjust_row(pressed_->row, -1));
-                    } else {
-                        // The retail range control's right arrow advances.
-                        static_cast<void>(adjust_row(pressed_->row, 1));
+                    // Retail choice rows react only to their two arrows; the
+                    // value text between them is not a button.
+                    const auto direction = choice_arrow_at(control, point);
+                    if (direction != 0) {
+                        static_cast<void>(adjust_row(pressed_->row, direction));
                     }
                 }
             } else {
@@ -1563,6 +1715,7 @@ void SettingsMenuModel::pointer_release(ui::Point point) {
 }
 
 void SettingsMenuModel::cancel_pointer_capture() noexcept {
+    pressed_range_arrow_ = 0;
     pressed_.reset();
     dragged_slider_.reset();
     pressed_dropdown_option_.reset();
@@ -1696,6 +1849,8 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.show_other_skins ? -1 : 1);
     case SettingsRowId::weapon_motion:
         return adjust_row(target.row, draft.main.weapon_motion ? -1 : 1);
+    case SettingsRowId::ability_hints:
+        return adjust_row(target.row, draft.main.ability_hints ? -1 : 1);
     case SettingsRowId::favorite_server:
         return adjust_row(target.row, favorite_server_ ? -1 : 1);
     case SettingsRowId::vsync:
@@ -1724,6 +1879,22 @@ bool SettingsMenuModel::handle(ui::InputEvent event) {
         }
         // Raw input owns the capture; semantic navigation cannot leak through it.
         return true;
+    }
+    if (sensitivity_edit_.has_value()) {
+        if (event.action == ui::InputAction::cancel) {
+            sensitivity_edit_.reset();
+            activate_menu_key();
+            return true;
+        }
+        if (event.action == ui::InputAction::activate) {
+            commit_text_edit();
+            return true;
+        }
+        if (event.action == ui::InputAction::navigate_left ||
+            event.action == ui::InputAction::navigate_right) {
+            return true; // caret keys stay inside the box
+        }
+        commit_text_edit();
     }
 
     std::vector<SettingsMenuTarget> order;
@@ -1793,7 +1964,8 @@ bool SettingsMenuModel::handle(ui::InputEvent event) {
     case ui::InputAction::activate:
         return focused_.has_value() && activate(*focused_);
     case ui::InputAction::cancel:
-        activate_cancel();
+        // Escape is the default Menu binding (settingsMenu.on_key_press).
+        activate_menu_key();
         return true;
     }
     return false;
@@ -1823,7 +1995,7 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         row == SettingsRowId::music_volume ||
         row == SettingsRowId::fullscreen || row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
-        row == SettingsRowId::weapon_motion) {
+        row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints) {
         auto main = before.main;
         switch (row) {
         case SettingsRowId::language: {
@@ -1840,14 +2012,14 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             break;
         }
         case SettingsRowId::master_volume:
+            // RangeBarControl.on_click: value + step (0.2), never re-rounded,
+            // so a dragged 0.37 steps to 0.57 exactly as the arrows did.
             main.master_volume =
-                std::clamp(main.master_volume + (direction < 0 ? -0.2 : 0.2), 0.0, 1.0);
-            main.master_volume = std::round(main.master_volume * 5.0) / 5.0;
+                snapped_volume(main.master_volume + (direction < 0 ? -0.2 : 0.2));
             break;
         case SettingsRowId::music_volume:
             main.music_volume =
-                std::clamp(main.music_volume + (direction < 0 ? -0.2 : 0.2), 0.0, 1.0);
-            main.music_volume = std::round(main.music_volume * 5.0) / 5.0;
+                snapped_volume(main.music_volume + (direction < 0 ? -0.2 : 0.2));
             break;
         case SettingsRowId::fullscreen:
             main.fullscreen = direction > 0;
@@ -1863,6 +2035,9 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             break;
         case SettingsRowId::weapon_motion:
             main.weapon_motion = direction > 0;
+            break;
+        case SettingsRowId::ability_hints:
+            main.ability_hints = direction > 0;
             break;
         default:
             break;
@@ -1974,12 +2149,33 @@ bool SettingsMenuModel::set_slider_from_pointer(SettingsRowId row,
         return false;
     }
     const auto control = control_bounds_for(*bounds);
-    if (control.width <= 0 || !control.contains(point)) {
+    if (control.width <= 0 || point.y < control.y || point.y > control.y + control.height) {
         return false;
     }
-    const auto position = point.x;
-    auto value = static_cast<double>(position - control.x) / static_cast<double>(control.width);
-    value = std::clamp(value, 0.0, 1.0);
+    double value{};
+    if (row == SettingsRowId::mouse_sensitivity) {
+        // SliderControl.update_press: the track plus one spacing either side;
+        // the edit box on the right is a separate control.
+        const auto geometry = slider_geometry(control);
+        if (point.x < control.x - 4 ||
+            point.x > geometry.track_x + geometry.track_width + 4.0 ||
+            geometry.track_width <= 0.0) {
+            return false;
+        }
+        value = std::clamp((static_cast<double>(point.x) - geometry.track_x) /
+                               geometry.track_width,
+                           0.0,
+                           1.0);
+    } else {
+        // RangeBarControl.update_press maps only the bar between the arrows.
+        const auto geometry = range_bar_geometry(control);
+        if (point.x < geometry.bar_left || point.x > geometry.bar_right ||
+            geometry.bar_right <= geometry.bar_left) {
+            return false;
+        }
+        value = snapped_volume(static_cast<double>(point.x - geometry.bar_left) /
+                               static_cast<double>(geometry.bar_right - geometry.bar_left));
+    }
     const auto before = session_->draft();
 
     if (row == SettingsRowId::master_volume || row == SettingsRowId::music_volume) {
@@ -2012,6 +2208,93 @@ void SettingsMenuModel::emit_preview(SettingsRowId source) {
     effects_.emplace_back(SettingsPreviewEffect{source, session_->draft()});
 }
 
+bool SettingsMenuModel::step_volume(SettingsRowId row, std::int32_t direction) {
+    if (row != SettingsRowId::master_volume && row != SettingsRowId::music_volume) {
+        return false;
+    }
+    // The arrows grey out at the ends (update_buttons_enabled_state).
+    const auto& main = session_->draft().main;
+    const auto value = row == SettingsRowId::master_volume ? main.master_volume
+                                                           : main.music_volume;
+    if ((direction < 0 && value <= 0.0) || (direction > 0 && value >= 1.0)) {
+        return false;
+    }
+    return adjust_row(row, direction);
+}
+
+bool SettingsMenuModel::text_editing() const noexcept {
+    return sensitivity_edit_.has_value();
+}
+
+bool SettingsMenuModel::text_input(std::string_view utf8) {
+    if (!sensitivity_edit_.has_value()) {
+        return false;
+    }
+    // The box is typed float: only characters float() can use are kept, and
+    // the text stays short enough to fit the sixth-of-a-row box.
+    constexpr std::size_t maximum_characters{6U};
+    for (const auto character : utf8) {
+        const bool digit = character >= '0' && character <= '9';
+        const bool point = character == '.' &&
+                           sensitivity_edit_->find('.') == std::string::npos;
+        if ((digit || point) && sensitivity_edit_->size() < maximum_characters) {
+            sensitivity_edit_->push_back(character);
+        }
+    }
+    return true;
+}
+
+bool SettingsMenuModel::text_erase(bool forward) {
+    if (!sensitivity_edit_.has_value()) {
+        return false;
+    }
+    // The caret sits at the end of the text, so Delete has nothing after it
+    // and Backspace removes the last character (EditBoxControl).
+    if (!forward && !sensitivity_edit_->empty()) {
+        sensitivity_edit_->pop_back();
+    }
+    return true;
+}
+
+void SettingsMenuModel::commit_text_edit() {
+    if (!sensitivity_edit_.has_value()) {
+        return;
+    }
+    const auto text = std::move(*sensitivity_edit_);
+    sensitivity_edit_.reset();
+    double parsed{};
+    try {
+        std::size_t used{};
+        parsed = text.empty() || text == "." ? 0.0 : std::stod(text, &used);
+    } catch (...) {
+        return; // an unparsable value leaves the setting untouched
+    }
+    // EditBoxFloatControl.on_return: clamp to min/max, round to 2 places.
+    parsed = std::round(std::clamp(parsed, 0.0, 1.0) * 100.0) / 100.0;
+    const auto before = session_->draft();
+    auto controls = before.controls;
+    controls.mouse_sensitivity = parsed;
+    session_->set_controls(controls);
+    if (session_->draft() != before) {
+        emit_preview(SettingsRowId::mouse_sensitivity);
+    }
+}
+
+void SettingsMenuModel::activate_menu_key() {
+    if (environment_.context != SettingsMenuContext::in_game) {
+        activate_cancel();
+        return;
+    }
+    close_resolution_dropdown();
+    cancel_binding_capture();
+    sensitivity_edit_.reset();
+    session_->cancel();
+    favorite_server_ = initial_favorite_server_;
+    effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::back});
+    effects_.emplace_back(SettingsRestoreCommand{session_->committed()});
+    effects_.emplace_back(SettingsCloseCommand{false, true});
+}
+
 settings::BindingAssignmentResult SettingsMenuModel::capture_scancode(std::uint32_t scancode) {
     if (!binding_capture_.has_value()) {
         return {settings::BindingAssignmentStatus::invalid_action, std::nullopt};
@@ -2021,6 +2304,7 @@ settings::BindingAssignmentResult SettingsMenuModel::capture_scancode(std::uint3
         session_->assign_binding(action, settings::InputBinding::keyboard(scancode));
     if (!result.accepted()) {
         binding_rejection_ = result;
+        binding_rejected_input_ = settings::InputBinding::keyboard(scancode);
         effects_.emplace_back(
             SettingsBindingRejectedEffect{action, result.status, result.conflicting_action});
         return result;
@@ -2046,6 +2330,7 @@ settings::BindingAssignmentResult SettingsMenuModel::capture_mouse_button(std::u
     const auto result = session_->assign_binding(action, settings::InputBinding::mouse(button));
     if (!result.accepted()) {
         binding_rejection_ = result;
+        binding_rejected_input_ = settings::InputBinding::mouse(button);
         effects_.emplace_back(
             SettingsBindingRejectedEffect{action, result.status, result.conflicting_action});
         return result;
@@ -2074,6 +2359,7 @@ void SettingsMenuModel::activate_defaults() {
     }
     close_resolution_dropdown();
     cancel_binding_capture();
+    sensitivity_edit_.reset();
     session_->reset_tab(active_tab_);
     effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::confirm});
     effects_.emplace_back(SettingsDefaultsCommand{active_tab_, session_->draft()});
@@ -2086,6 +2372,7 @@ void SettingsMenuModel::activate_defaults() {
 void SettingsMenuModel::activate_done() {
     close_resolution_dropdown();
     cancel_binding_capture();
+    commit_text_edit();
     const auto previous = session_->committed();
     const auto draft = session_->draft();
     const auto resolution_changed = previous.graphics.resolution != draft.graphics.resolution;
@@ -2103,15 +2390,22 @@ void SettingsMenuModel::activate_done() {
         effects_.emplace_back(SettingsFavoriteServerCommand{favorite_server_});
         initial_favorite_server_ = favorite_server_;
     }
-    effects_.emplace_back(SettingsCloseCommand{true});
+    // save_pressed: Done in a match goes back to the game, not EscapeMenu.
+    effects_.emplace_back(
+        SettingsCloseCommand{true, environment_.context == SettingsMenuContext::in_game});
 }
 
 void SettingsMenuModel::activate_cancel() {
     close_resolution_dropdown();
     cancel_binding_capture();
+    sensitivity_edit_.reset();
     session_->cancel();
     favorite_server_ = initial_favorite_server_;
-    effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::back});
+    // back_pressed (in game) reopens EscapeMenu silently; the frontend's
+    // cancel_pressed plays menu_backA.
+    if (environment_.context != SettingsMenuContext::in_game) {
+        effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::back});
+    }
     effects_.emplace_back(SettingsRestoreCommand{session_->committed()});
     effects_.emplace_back(SettingsCloseCommand{false});
 }

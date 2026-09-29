@@ -67,8 +67,10 @@ int main() {
                    lab.vfx_particles().live_count() == 28U,
                "VFX lab must replay tombstone display destruction independently");
         lab.cycle_vfx(1);
-        expect(lab.vfx_particles().live_count() == 14U,
-               "VFX lab grenade replay must use the recovered 4+10 burst");
+        // Grenade.update (gameScene 0x100AE790) creates 8 glow blocks; only
+        // the GLGrenade (ExplodeOnImpactEntity) uses 4.
+        expect(lab.vfx_particles().live_count() == 18U,
+               "VFX lab grenade replay must use the recovered 8+10 burst");
         lab.cycle_vfx(1);
         expect(lab.vfx_particles().live_count() == 18U,
                "VFX lab rocket replay must use the recovered 8+10 burst");

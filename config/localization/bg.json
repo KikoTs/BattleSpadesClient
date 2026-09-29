@@ -4,9 +4,6 @@
   "native_name": "Български",
   "font_asset": "fonts/Tuffy_Bold.ttf",
   "strings": {
-    "SHOW_SKINS": "Показване на скинове",
-    "SHOW_OTHER_SKINS": "Показване на скиновете на другите играчи",
-    "WEAPON_MOTION": "Движение на оръжието",
     "SETTINGS": "Настройки",
     "PLAYER_PROFILE": "Профил",
     "PLAY_ONLINE": "Избери мач",
@@ -85,6 +82,15 @@
     "SERVER_SEARCH_FAILED": "Търсенето на сървъри се провали",
     "UGC_DELETING_MAP_MESSAGE": "Изтриване на локалната карта",
     "UGC_DESCRIPTION": "Създайте и тествайте собствена вокселна карта.",
-    "UGC_OPERATION_ERROR": "Операцията не можа да бъде завършена"
+    "UGC_OPERATION_ERROR": "Операцията не можа да бъде завършена",
+    "SHOW_SKINS": "Показване на скинове",
+    "SHOW_OTHER_SKINS": "Показване на скиновете на другите играчи",
+    "WEAPON_MOTION": "Движение на оръжието",
+    "ABILITY_HINTS": "Подсказки за умения",
+    "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашутът е отворен",
+    "ABILITY_HINT_PARACHUTE_PENDING": "Парашутът се отваря при спускане",
+    "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: отвори парашута във въздуха",
+    "ABILITY_HINT_JETPACK": "{0}: тяга",
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; пусни и кацни за презареждане"
   }
 }

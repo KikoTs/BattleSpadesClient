@@ -97,6 +97,42 @@ template <typename Integer>
     });
 }
 
+/**
+ * The gameplay ordinal from a listing's `mode=NNNN` tags.
+ *
+ * Revival servers advertise their MODE_* id there, while the Steam A2S path
+ * appends `mode=0001`, the SERVERMODE_PUBLIC browser category. The live
+ * master (2026-09-29) derived `mode_tla` from that last tag and labelled
+ * every CTF/TDM/TC/VIP/Zombie server "dem". When the tags disagree, the
+ * non-category ordinal is the gameplay mode; a real Demolition server
+ * advertises only 0001 and keeps its label.
+ */
+[[nodiscard]] std::optional<std::string> gameplay_mode_from_tags(const nlohmann::json& value) {
+    const auto iterator = value.find("tags");
+    if (iterator == value.end() || !iterator->is_array()) return std::nullopt;
+    constexpr std::array<std::string_view, 13U> codes{
+        "nor", "dem", "zom", "mh", "oc", "dia", "tdm", "vip", "ctf", "tc", "tut", "cctf", "ugc"};
+    std::size_t tags_seen{};
+    std::optional<std::size_t> gameplay;
+    for (const auto& candidate : *iterator) {
+        if (!candidate.is_string()) continue;
+        const auto tag = lowercase(candidate.get<std::string>());
+        if (!tag.starts_with("mode=") || tag.size() > 9U) continue;
+        std::size_t ordinal{};
+        bool digits = tag.size() > 5U;
+        for (std::size_t index{5U}; index < tag.size(); ++index) {
+            const auto character = tag[index];
+            if (character < '0' || character > '9') { digits = false; break; }
+            ordinal = ordinal * 10U + static_cast<std::size_t>(character - '0');
+        }
+        if (!digits || ordinal >= codes.size()) continue;
+        ++tags_seen;
+        if (ordinal != 1U && !gameplay.has_value()) gameplay = ordinal;
+    }
+    if (tags_seen < 2U || !gameplay.has_value()) return std::nullopt;
+    return std::string{codes[*gameplay]};
+}
+
 [[nodiscard]] std::optional<DiscoveredServer> parse_public_entry(const nlohmann::json& value) {
     if (!value.is_object()) return std::nullopt;
     auto host = bounded_string(value, "ip");
@@ -119,6 +155,9 @@ template <typename Integer>
     result.map = bounded_string(value, "map", "Unknown");
     result.mode_code = lowercase(bounded_string(
         value, "mode_tla", bounded_string(value, "game_mode", "tdm")));
+    if (auto tagged = gameplay_mode_from_tags(value); tagged.has_value()) {
+        result.mode_code = std::move(*tagged);
+    }
     result.region = lowercase(bounded_string(value, "region", "europe"));
     result.texture_skin = bounded_string(value, "texture_skin");
     result.master_identifier =

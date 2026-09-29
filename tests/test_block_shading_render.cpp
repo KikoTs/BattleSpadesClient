@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
         expect(ui.active_backend() == config.backend,"Requested graphics backend was not selected");
         render::WorldRenderer scene;
         expect(scene.initialize(config.shader_root, config.asset_root, config.texture_quality), std::string{scene.last_error()});
+        scene.set_model_culling(false); // views are overridden after submit
+
         const std::uint64_t target_flags = samples == 4 ? BGFX_TEXTURE_RT_MSAA_X4
             : samples == 2 ? BGFX_TEXTURE_RT_MSAA_X2 : BGFX_TEXTURE_RT;
         const auto color = bgfx::createTexture2D(size,size,false,1,bgfx::TextureFormat::RGBA8,
@@ -182,8 +184,12 @@ int main(int argc, char** argv) {
         scene.set_retail_lighting(retail);
         profile = render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
         camera.yaw_degrees = 0; camera.pitch_degrees = 0;
-        const double atlas_red = std::array{226.5,223.5,222.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
-        const double atlas_blue = std::array{229.0,219.0,220.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
+        // ao_cube512 reaches retail GL bottom row first: atlas (0.375, 0.625)
+        // is the neutral cell (red 255, no occlusion) and noise corner (0,0)
+        // is the image's bottom-left texel. The earlier top-down upload read
+        // 222..226 here, i.e. every block wore a mirrored AO cell.
+        const double atlas_red = std::array{255.0,255.0,255.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
+        const double atlas_blue = std::array{235.0,236.0,239.0}[static_cast<std::size_t>(texture_tier)] / 255.0;
         const std::array draws{render::WorldModelDraw{0}};
         const auto center = (static_cast<std::size_t>(size)/2*size+size/2)*4;
         for (std::uint8_t face = 0; face < 6; ++face) {
@@ -194,8 +200,14 @@ int main(int argc, char** argv) {
                 axis == 2 ? bx::Vec3{0,-1,0} : bx::Vec3{0,0,-1},bx::Handedness::Right);
             bx::mtxOrtho(projection.data(),-12,12,-12,12,.1F,100,0,bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
             std::array<double,3> canonical{}; canonical[axis] = face%2 == 0 ? -1 : 1;
-            const std::array normal{canonical[0],-canonical[2],canonical[1]};
             for (bool model : {false,true}) for (const float baked : {0.0F,.25F,.5F,1.0F}) {
+                // vxl.pyd sub_10030B60 writes the side-face normal codes with
+                // x and y exchanged (+y face -> code 88 = GL +x, +x face ->
+                // code 148 = GL +z), so map_vert decodes terrain normals as
+                // (y, -z, x). KV6 model normals keep the plain (x, -z, y) basis.
+                const std::array normal = model
+                    ? std::array{canonical[0],-canonical[2],canonical[1]}
+                    : std::array{canonical[1],-canonical[2],canonical[0]};
                 auto mesh = plane(face);
                 for (auto& vertex : mesh.vertices) {
                     vertex.static_light = model ? 0x40000000U : 0xFF000000U;
@@ -309,6 +321,45 @@ int main(int argc, char** argv) {
                "Legacy fog did not preserve the server color");
         camera.fog_distance=256;
         std::cout << "15 tier/effect combinations, presentation reset, and fog authority passed" << std::endl;
+
+        // draw_sea: one 2000-block quad just under the bed, lit by sea_frag
+        // (normal up, AO and edge from the neutral cell, grain repeated 2000x,
+        // per-fragment fog, then x1.01). Looking straight down at an empty
+        // world leaves only the sea at the centre pixel.
+        {
+            scene.set_retail_sea_color(std::array<std::uint8_t,3>{40,54,64});
+            const auto saved_eye=camera.eye;
+            camera.eye={256,256,200};
+            bx::mtxLookAt(view.data(),{256,256,200},{256,256,240},{0,-1,0},bx::Handedness::Right);
+            bx::mtxOrtho(projection.data(),-12,12,-12,12,.1F,100,0,bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+            const auto sea=capture({},false);
+            const std::array<double,3> albedo{40/255.0,54/255.0,64/255.0};
+            // The grain repeats once per block, so the exact texel under the
+            // centre pixel is raster-dependent; it is one scalar shared by all
+            // three channels. Fit it, require it to be a real ao_cube512 blue
+            // value, then require every channel to match the sea_frag oracle.
+            std::array<double,3> unscaled{};
+            double numerator=0.0, denominator=0.0;
+            for (std::size_t channel=0;channel<3;++channel) {
+                const double key=retail.light_color[channel], back=retail.back_light_color[channel];
+                const double combined=std::clamp(.05+albedo[channel]*(key+.3*back)+
+                    .065*std::pow(1.0/std::sqrt(2.0),10)*key,0.0,1.0);
+                // AO red and edge green are both 255 in the neutral cell.
+                unscaled[channel]=combined*(1.0+.35)*1.01*255.0;
+                numerator+=unscaled[channel]*sea[center+channel];
+                denominator+=unscaled[channel]*unscaled[channel];
+            }
+            const double grain=numerator/denominator;
+            expect(grain>.75 && grain<1.0,"Retail sea grain outside the atlas blue range: "+std::to_string(grain));
+            for (std::size_t channel=0;channel<3;++channel) {
+                expect(std::abs(sea[center+channel]-unscaled[channel]*grain)<=2.0,
+                    "Retail sea mismatch: channel="+std::to_string(channel)+" expected="+
+                    std::to_string(unscaled[channel]*grain)+" actual="+std::to_string(sea[center+channel]));
+            }
+            scene.set_retail_sea_color(std::nullopt);
+            camera.eye=saved_eye;
+            std::cout << "retail sea passed" << std::endl;
+        }
         if (argc > 2 && std::string_view{argv[2]} != "-") {
             const auto map = world::VxlMap::load_file(argv[2]);
             expect(static_cast<bool>(map),"Map load failed");

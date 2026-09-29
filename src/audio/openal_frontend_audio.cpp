@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -79,12 +80,17 @@ struct AsyncDecodedAudio final {
 using audio::sound_group_stems;
 
 /**
- * Retail HEARING_DISTANCE is 50 (shared/constants_audio.py:7): beyond it a
- * world cue is inaudible. Without an explicit reference distance OpenAL
- * defaults to 1.0, which makes everything fall off far too sharply.
+ * AL_SOFT_direct_channels source property (alext.h). Retail audio.py:411-412
+ * sets it on every source when the extension exists, so multichannel music
+ * and stereo effects bypass virtual-speaker panning.
  */
-constexpr float retail_reference_distance{2.0F};
-constexpr float retail_default_attenuation{0.15F};
+#ifndef AL_DIRECT_CHANNELS_SOFT
+#define AL_DIRECT_CHANNELS_SOFT 0x1033
+#endif
+
+/** AL_REVERB_DECAY_TIME's legal range (efx.h). */
+constexpr float minimum_reverb_decay{0.1F};
+constexpr float maximum_reverb_decay{20.0F};
 
 struct VorbisCloser final {
     void operator()(stb_vorbis* decoder) const noexcept {
@@ -292,7 +298,69 @@ struct OpenAlFrontendAudio::Impl final {
         SoundHandle handle{};
         ALuint id{};
         float duration_seconds{};
+        /** Decoded PCM size, for the music/ambience LRU budget. */
+        std::size_t bytes{};
     };
+
+    /** The three named asset trees; index into `named_cache`. */
+    enum class NamedDirectory : std::uint8_t { sounds, ambients, music };
+
+    [[nodiscard]] static std::optional<NamedDirectory>
+    named_directory(std::string_view directory) noexcept {
+        if (directory == "sounds") {
+            return NamedDirectory::sounds;
+        }
+        if (directory == "ambients") {
+            return NamedDirectory::ambients;
+        }
+        if (directory == "music") {
+            return NamedDirectory::music;
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * One-shot requested while its sample was still decoding on a worker.
+     * Played from tick() once uploaded, or dropped when it would be stale.
+     */
+    struct PendingOneShot final {
+        std::string canonical;
+        SoundPosition position{};
+        float gain{1.0F};
+        bool relative{};
+        bool protect{};
+        float start_offset{};
+        float attenuation{retail_default_attenuation};
+        SpatialSoundProfile profile{SpatialSoundProfile::ordinary};
+        float pitch{1.0F};
+        bool reverb_send{true};
+        std::chrono::steady_clock::time_point deadline{};
+    };
+    /** A first-use one-shot later than this is dropped rather than played late. */
+    static constexpr std::chrono::milliseconds pending_one_shot_lifetime{300};
+    static constexpr std::size_t maximum_pending_one_shots{64U};
+
+    struct PendingAmbienceRequest final {
+        std::string canonical;
+        float volume{1.0F};
+        float start_offset{};
+    };
+
+    /** A decoded music/ambience buffer that may be evicted when not playing. */
+    struct EvictableBuffer final {
+        std::string canonical;
+        NamedDirectory directory{NamedDirectory::music};
+        std::string stem;
+        std::uint64_t last_used{};
+    };
+    /**
+     * Decoded music + ambience PCM kept resident. A rotation touched ~530 MB
+     * (12 tracks ~272 MB, 21 beds ~263 MB) that was never released; beyond
+     * this budget the least-recently-used buffers not attached to any source
+     * are deleted and re-decoded (off-thread) on next use.
+     */
+    static constexpr std::size_t evictable_pcm_budget_bytes{
+        OpenAlFrontendAudio::music_ambience_pcm_budget_bytes};
 
     struct Voice final {
         ALuint source{};
@@ -328,6 +396,8 @@ struct OpenAlFrontendAudio::Impl final {
     struct PendingNamedBuffer final {
         SoundHandle handle{};
         std::filesystem::path path;
+        NamedDirectory directory{NamedDirectory::sounds};
+        std::string stem;
         std::future<AsyncDecodedAudio> decode;
     };
 
@@ -340,6 +410,8 @@ struct OpenAlFrontendAudio::Impl final {
     struct PendingMusicRequest final {
         std::string canonical;
         float start_offset{};
+        /** fade_speed_when_finished as seconds (1.5 for the select bed). */
+        float fade_seconds{retail_music_fade_seconds};
     };
 
     struct PendingServerLoopRequest final {
@@ -358,20 +430,41 @@ struct OpenAlFrontendAudio::Impl final {
         return owner_thread == std::this_thread::get_id();
     }
 
-    [[nodiscard]] float resolved_spatial_gain(
-        SoundPosition position,
-        float requested_gain,
-        bool relative,
-        SpatialSoundProfile profile = SpatialSoundProfile::ordinary) const noexcept {
-        float multiplier{1.0F};
-        if (!relative && spatial_gain_resolver != nullptr) {
-            multiplier = spatial_gain_resolver(spatial_gain_context, listener_position, position);
-            if (!std::isfinite(multiplier)) {
-                multiplier = 1.0F;
-            }
-            multiplier = profiled_spatial_transmission(profile, multiplier);
+    /** A HUD_AUDIO_ZONE cue: 2D at the listener, no reverb send. */
+    void play_hud(SoundHandle handle, float gain) {
+        play(handle,
+             {},
+             gain,
+             true,
+             false,
+             0.0F,
+             retail_default_attenuation,
+             SpatialSoundProfile::ordinary,
+             1.0F,
+             false);
+    }
+
+    /**
+     * Retail never occludes audio (the only audio raycast is the reverb
+     * probe), so the source gain is simply the requested volume. OpenAL Soft
+     * clamps the attenuated result to AL_MAX_GAIN (1), exactly as retail's
+     * volume-4 crate chute cue relies on.
+     */
+    [[nodiscard]] static float resolved_spatial_gain(float requested_gain) noexcept {
+        return std::clamp(requested_gain, 0.0F, 4.0F);
+    }
+
+    /** Retail GameSound.set_position offset; head-relative sources stay at 0. */
+    [[nodiscard]] static SoundPosition source_position(SoundPosition nominal,
+                                                       bool relative) noexcept {
+        return relative ? SoundPosition{} : retail_source_position(nominal);
+    }
+
+    /** audio.py:411-412: AL_DIRECT_CHANNELS_SOFT on every source. */
+    void apply_direct_channels(ALuint source) const noexcept {
+        if (direct_channels_supported && source != 0U) {
+            alSourcei(source, AL_DIRECT_CHANNELS_SOFT, AL_TRUE);
         }
-        return std::clamp(requested_gain * multiplier, 0.0F, 4.0F);
     }
 
     [[nodiscard]] ALuint buffer_for(SoundHandle handle) const noexcept {
@@ -419,7 +512,156 @@ struct OpenAlFrontendAudio::Impl final {
 
         const auto frames = decoded.samples.size() / static_cast<std::size_t>(decoded.channels);
         const float duration = static_cast<float>(frames) / static_cast<float>(decoded.sample_rate);
-        buffers.push_back(Buffer{.handle = handle, .id = buffer, .duration_seconds = duration});
+        buffers.push_back(Buffer{
+            .handle = handle, .id = buffer, .duration_seconds = duration, .bytes = byte_count});
+        return true;
+    }
+
+    /** Cached handle for a named asset: no path build, no filesystem call. */
+    [[nodiscard]] SoundHandle find_named(NamedDirectory directory, std::string_view stem) {
+        auto& cache = named_cache[static_cast<std::size_t>(directory)];
+        const auto found = cache.find(stem);
+        if (found == cache.end()) {
+            return 0U;
+        }
+        if (const auto evictable = evictable_buffers.find(found->second);
+            evictable != evictable_buffers.end()) {
+            evictable->second.last_used = ++evictable_clock;
+        }
+        return found->second;
+    }
+
+    /** Records a resident named buffer and applies the music/ambience budget. */
+    void remember_named(NamedDirectory directory,
+                        std::string_view stem,
+                        const std::string& canonical,
+                        SoundHandle handle) {
+        named_cache[static_cast<std::size_t>(directory)].insert_or_assign(std::string{stem},
+                                                                          handle);
+        optional_sound_cache.insert_or_assign(canonical, handle);
+        if (directory != NamedDirectory::sounds) {
+            evictable_buffers.insert_or_assign(
+                handle,
+                EvictableBuffer{canonical, directory, std::string{stem}, ++evictable_clock});
+            evict_to_budget();
+        }
+    }
+
+    /** True while any owned source still references the OpenAL buffer. */
+    [[nodiscard]] bool buffer_attached(ALuint id) const noexcept {
+        const auto attached = [id](ALuint source) {
+            if (source == 0U) {
+                return false;
+            }
+            ALint current{};
+            alGetSourcei(source, AL_BUFFER, &current);
+            return static_cast<ALuint>(current) == id;
+        };
+        if (attached(music_source) || attached(fade_source) || attached(ambience_source)) {
+            return true;
+        }
+        return std::ranges::any_of(voices, [&](const Voice& v) { return attached(v.source); }) ||
+               std::ranges::any_of(loop_slots,
+                                   [&](const LoopSlot& s) { return attached(s.source); }) ||
+               std::ranges::any_of(server_loop_slots,
+                                   [&](const ServerLoopSlot& s) { return attached(s.source); });
+    }
+
+    /** Resident decoded music + ambience PCM, in bytes. */
+    [[nodiscard]] std::size_t evictable_bytes() const noexcept {
+        std::size_t total{};
+        for (const auto& [handle, entry] : evictable_buffers) {
+            static_cast<void>(entry);
+            const auto found = std::ranges::find(buffers, handle, &Buffer::handle);
+            if (found != buffers.end()) {
+                total += found->bytes;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Deletes least-recently-used music/ambience buffers that no source holds
+     * until the resident PCM fits the budget. A playing bed or track is never
+     * touched; an evicted asset is simply decoded again on its next use.
+     */
+    void evict_to_budget() {
+        auto total = evictable_bytes();
+        while (total > evictable_pcm_budget_bytes) {
+            auto victim = evictable_buffers.end();
+            for (auto entry = evictable_buffers.begin(); entry != evictable_buffers.end();
+                 ++entry) {
+                if (entry->first == music_track) {
+                    continue;
+                }
+                const ALuint id = buffer_for(entry->first);
+                if (id != 0U && buffer_attached(id)) {
+                    continue;
+                }
+                if (victim == evictable_buffers.end() ||
+                    entry->second.last_used < victim->second.last_used) {
+                    victim = entry;
+                }
+            }
+            if (victim == evictable_buffers.end()) {
+                return;
+            }
+            const SoundHandle handle = victim->first;
+            if (const auto found = std::ranges::find(buffers, handle, &Buffer::handle);
+                found != buffers.end()) {
+                total -= std::min(total, found->bytes);
+                if (found->id != 0U) {
+                    alDeleteBuffers(1, &found->id);
+                }
+                buffers.erase(found);
+            }
+            named_cache[static_cast<std::size_t>(victim->second.directory)].erase(
+                victim->second.stem);
+            if (const auto cached = optional_sound_cache.find(victim->second.canonical);
+                cached != optional_sound_cache.end() && cached->second == handle) {
+                optional_sound_cache.erase(cached);
+            }
+            evictable_buffers.erase(victim);
+        }
+    }
+
+    [[nodiscard]] std::filesystem::path named_path(std::string_view directory,
+                                                   std::string_view stem) const {
+        return (config.asset_root / std::string{directory} / (std::string{stem} + ".ogg"))
+            .lexically_normal();
+    }
+
+    /**
+     * Plays a named one-shot now, or queues it for the tick that uploads its
+     * worker-decoded sample (first use only; dropped if later than
+     * pending_one_shot_lifetime). Returns false only for a missing asset.
+     */
+    [[nodiscard]] bool play_named_or_defer(std::string_view directory,
+                                           std::string_view stem,
+                                           PendingOneShot shot) {
+        const auto request = request_named_buffer_async(directory, stem);
+        if (request.handle != 0U) {
+            play(request.handle,
+                 shot.position,
+                 shot.gain,
+                 shot.relative,
+                 shot.protect,
+                 shot.start_offset,
+                 shot.attenuation,
+                 shot.profile,
+                 shot.pitch,
+                 shot.reverb_send);
+            return true;
+        }
+        if (!request.pending) {
+            return false;
+        }
+        if (pending_one_shots.size() >= maximum_pending_one_shots) {
+            pending_one_shots.erase(pending_one_shots.begin());
+        }
+        shot.canonical = request.canonical;
+        shot.deadline = std::chrono::steady_clock::now() + pending_one_shot_lifetime;
+        pending_one_shots.push_back(std::move(shot));
         return true;
     }
 
@@ -431,34 +673,13 @@ struct OpenAlFrontendAudio::Impl final {
         return upload_buffer(handle, path, std::move(decoded));
     }
 
-    [[nodiscard]] SoundHandle load_named_buffer(std::string_view directory, std::string_view stem) {
-        if (!valid_audio_stem(stem) ||
-            (directory != "sounds" && directory != "ambients" && directory != "music")) {
-            last_error = "unsafe named audio resource";
-            return 0U;
-        }
-        const auto path =
-            (config.asset_root / std::string{directory} / (std::string{stem} + ".ogg"))
-                .lexically_normal();
-        std::error_code error;
-        if (!std::filesystem::is_regular_file(path, error) || error) {
-            last_error = "named audio resource is unavailable: " + path_utf8(path);
-            return 0U;
-        }
-        const auto canonical = path_utf8(path);
-        if (const auto found = optional_sound_cache.find(canonical);
-            found != optional_sound_cache.end()) {
-            return found->second;
-        }
-        const SoundHandle handle = next_optional_handle++;
-        if (!load_buffer(handle, path)) {
-            return 0U;
-        }
-        optional_sound_cache.emplace(canonical, handle);
-        return handle;
-    }
-
     /**
+     * Named assets (sounds/, ambients/, music/) resolve through the cache
+     * below before any path is built or the filesystem is touched; a cold
+     * asset decodes on a worker and every caller either defers (one-shots,
+     * beds, music, server loops) or reserves its loop slot until tick()
+     * uploads it. Nothing named decodes Vorbis on the game thread.
+     *
      * Begin file I/O and Vorbis decoding away from the OpenAL owner thread.
      *
      *
@@ -468,13 +689,16 @@ struct OpenAlFrontendAudio::Impl final {
      */
     [[nodiscard]] NamedBufferRequest request_named_buffer_async(std::string_view directory,
                                                                 std::string_view stem) {
-        if (!valid_audio_stem(stem) || (directory != "ambients" && directory != "music")) {
+        const auto tree = named_directory(directory);
+        if (!valid_audio_stem(stem) || !tree.has_value()) {
             last_error = "unsafe asynchronous audio resource";
             return {};
         }
-        const auto path =
-            (config.asset_root / std::string{directory} / (std::string{stem} + ".ogg"))
-                .lexically_normal();
+        if (const SoundHandle cached = find_named(*tree, stem); cached != 0U) {
+            // Hit: no canonical string or filesystem call is needed.
+            return {.handle = cached, .canonical = {}, .pending = false};
+        }
+        const auto path = named_path(directory, stem);
         std::error_code error;
         if (!std::filesystem::is_regular_file(path, error) || error) {
             last_error = "named audio resource is unavailable: " + path_utf8(path);
@@ -483,6 +707,7 @@ struct OpenAlFrontendAudio::Impl final {
         const auto canonical = path_utf8(path);
         if (const auto found = optional_sound_cache.find(canonical);
             found != optional_sound_cache.end()) {
+            remember_named(*tree, stem, canonical, found->second);
             return {.handle = found->second, .canonical = canonical, .pending = false};
         }
         if (pending_named_buffers.contains(canonical)) {
@@ -492,6 +717,8 @@ struct OpenAlFrontendAudio::Impl final {
         PendingNamedBuffer pending;
         pending.handle = handle;
         pending.path = path;
+        pending.directory = *tree;
+        pending.stem = std::string{stem};
         pending.decode = std::async(std::launch::async, [path]() {
             AsyncDecodedAudio result;
             try {
@@ -519,22 +746,67 @@ struct OpenAlFrontendAudio::Impl final {
             const auto canonical = iterator->first;
             const auto handle = iterator->second.handle;
             const auto path = iterator->second.path;
+            const auto directory = iterator->second.directory;
+            const auto stem = iterator->second.stem;
             bool uploaded{};
             if (result.succeeded) {
                 uploaded = upload_buffer(handle, path, std::move(result.audio));
             } else {
                 last_error = std::move(result.error);
             }
-            if (uploaded) {
-                optional_sound_cache.emplace(canonical, handle);
-            }
             iterator = pending_named_buffers.erase(iterator);
+            if (uploaded) {
+                remember_named(directory, stem, canonical, handle);
+            }
+
+            if (pending_ambience.has_value() && pending_ambience->canonical == canonical) {
+                const auto request = *pending_ambience;
+                pending_ambience.reset();
+                if (uploaded) {
+                    static_cast<void>(
+                        play_ambience(handle, request.volume, request.start_offset));
+                }
+            }
+            const auto now = std::chrono::steady_clock::now();
+            for (auto shot = pending_one_shots.begin(); shot != pending_one_shots.end();) {
+                if (shot->canonical != canonical) {
+                    ++shot;
+                    continue;
+                }
+                const auto request = *shot;
+                shot = pending_one_shots.erase(shot);
+                if (uploaded && now <= request.deadline) {
+                    play(handle,
+                         request.position,
+                         request.gain,
+                         request.relative,
+                         request.protect,
+                         request.start_offset,
+                         request.attenuation,
+                         request.profile,
+                         request.pitch,
+                         request.reverb_send);
+                }
+            }
+            for (auto& slot : loop_slots) {
+                if (!slot.active || !slot.pending || slot.pending_canonical != canonical) {
+                    continue;
+                }
+                slot.pending = false;
+                slot.pending_canonical.clear();
+                const ALuint buffer = uploaded ? buffer_for(handle) : 0U;
+                if (buffer == 0U || !begin_loop_playback(slot, buffer, slot.reverb_send)) {
+                    slot.active = false;
+                    slot.voice = invalid_loop_voice;
+                }
+            }
 
             if (pending_music.has_value() && pending_music->canonical == canonical) {
                 const auto request = *pending_music;
                 pending_music.reset();
                 if (uploaded) {
-                    static_cast<void>(play_music(handle, request.start_offset));
+                    static_cast<void>(
+                        play_music(handle, request.start_offset, request.fade_seconds));
                 }
             }
             for (auto loop = pending_server_loops.begin(); loop != pending_server_loops.end();) {
@@ -646,12 +918,32 @@ struct OpenAlFrontendAudio::Impl final {
             alGenSources(1, &source);
             error = alGetError();
             if (error != AL_NO_ERROR || source == 0U) {
+                // Decision D5: retail had 128 OpenAL sources. A device that
+                // cannot provide them all still gets the 64-voice floor, with
+                // protected stingers and voice lines surviving voice theft.
+                if (voices.size() >= minimum_one_shot_voices) {
+                    clear_openal_error();
+                    break;
+                }
                 last_error =
                     "cannot allocate bounded OpenAL voice pool: " + openal_error_text(error);
                 return false;
             }
             voices.push_back(Voice{.source = source});
         }
+        apply_direct_channels(music_source);
+        apply_direct_channels(fade_source);
+        apply_direct_channels(ambience_source);
+        for (const auto& slot : loop_slots) {
+            apply_direct_channels(slot.source);
+        }
+        for (const auto& slot : server_loop_slots) {
+            apply_direct_channels(slot.source);
+        }
+        for (const auto& voice : voices) {
+            apply_direct_channels(voice.source);
+        }
+        clear_openal_error();
         return true;
     }
 
@@ -696,10 +988,15 @@ struct OpenAlFrontendAudio::Impl final {
             return;
         }
         effect_i(world_reverb_effect, AL_EFFECT_TYPE, AL_EFFECT_REVERB);
-        // MediaManager.set_global_reverb defaults recovered from audio.py.
-        effect_f(world_reverb_effect, AL_REVERB_GAIN, 0.32F);
-        effect_f(world_reverb_effect, AL_REVERB_DECAY_TIME, 1.49F);
-        effect_f(world_reverb_effect, AL_REVERB_GAINHF, 0.89F);
+        // GameScene.update_audio_effects overwrites set_global_reverb's
+        // defaults every update; the scene starts dry (outdoor targets).
+        effect_f(world_reverb_effect, AL_REVERB_GAIN, environment.reverb_amount);
+        effect_f(world_reverb_effect,
+                 AL_REVERB_DECAY_TIME,
+                 std::clamp(environment.reverb_size, minimum_reverb_decay, maximum_reverb_decay));
+        effect_f(world_reverb_effect, AL_REVERB_GAINHF, retail_reverb_gain_hf);
+        applied_reverb_gain = environment.reverb_amount;
+        applied_reverb_decay = environment.reverb_size;
         gen_effect_slots(1, &world_reverb_slot);
         if (world_reverb_slot != 0U) {
             effect_slot_i(
@@ -737,24 +1034,62 @@ struct OpenAlFrontendAudio::Impl final {
 #endif
     }
 
-    /** Attach only positional gameplay sources to the retail reverb bus. */
-    void apply_world_reverb(ALuint source, bool relative) const noexcept {
+    /**
+     * Route one source by retail audio zone, not by head-relativity.
+     *
+     * media.play sends only IN_WORLD_AUDIO_ZONE players to the reverb slot.
+     * That includes the local player's 2D weapon, foley, VO and zoom cues;
+     * server PlaySound/PlayAmbientSound (HUD_AUDIO_ZONE), menu and HUD cues
+     * stay dry.
+     */
+    void apply_world_reverb(ALuint source, bool reverb_send) const noexcept {
 #if defined(__APPLE__)
         static_cast<void>(source);
-        static_cast<void>(relative);
+        static_cast<void>(reverb_send);
 #else
         if (source == 0U || world_reverb_slot == 0U) {
             return;
         }
         alSource3i(source,
                    AL_AUXILIARY_SEND_FILTER,
-                   relative ? AL_EFFECTSLOT_NULL : static_cast<ALint>(world_reverb_slot),
+                   reverb_send ? static_cast<ALint>(world_reverb_slot) : AL_EFFECTSLOT_NULL,
                    0,
                    AL_FILTER_NULL);
 #endif
     }
 
-    [[nodiscard]] bool play_music(SoundHandle track, float start_offset = 0.0F) {
+    /**
+     * Write the smoothed room to the EFX effect and re-bind the slot: OpenAL
+     * Soft only picks up effect parameter changes on AL_EFFECTSLOT_EFFECT.
+     */
+    void update_world_reverb() noexcept {
+#if !defined(__APPLE__)
+        if (world_reverb_effect == 0U || world_reverb_slot == 0U || effect_f == nullptr ||
+            effect_slot_i == nullptr) {
+            return;
+        }
+        constexpr float epsilon{1.0e-4F};
+        if (std::fabs(environment.reverb_amount - applied_reverb_gain) < epsilon &&
+            std::fabs(environment.reverb_size - applied_reverb_decay) < epsilon) {
+            return;
+        }
+        effect_f(world_reverb_effect,
+                 AL_REVERB_GAIN,
+                 std::clamp(environment.reverb_amount, 0.0F, 1.0F));
+        effect_f(world_reverb_effect,
+                 AL_REVERB_DECAY_TIME,
+                 std::clamp(environment.reverb_size, minimum_reverb_decay, maximum_reverb_decay));
+        effect_f(world_reverb_effect, AL_REVERB_GAINHF, retail_reverb_gain_hf);
+        effect_slot_i(
+            world_reverb_slot, AL_EFFECTSLOT_EFFECT, static_cast<ALint>(world_reverb_effect));
+        applied_reverb_gain = environment.reverb_amount;
+        applied_reverb_decay = environment.reverb_size;
+#endif
+    }
+
+    [[nodiscard]] bool play_music(SoundHandle track,
+                                  float start_offset = 0.0F,
+                                  float fade_seconds_when_finished = retail_music_fade_seconds) {
         if (context == nullptr || !on_owner_thread()) {
             last_error = context == nullptr ? "OpenAL frontend audio is not started"
                                             : "OpenAL frontend audio used from non-owner thread";
@@ -776,18 +1111,16 @@ struct OpenAlFrontendAudio::Impl final {
                 return true;
             }
         }
-        // Retail crossfade: the current track keeps playing on a secondary
-        // source and fades at the recovered 1/6.5 volume per second.
-        if (music_requested && fade_source != 0U) {
-            ALint state{};
-            alGetSourcei(music_source, AL_SOURCE_STATE, &state);
-            if (state == AL_PLAYING) {
-                alSourceStop(fade_source);
-                alSourcei(fade_source, AL_BUFFER, 0);
-                std::swap(music_source, fade_source);
-                fade_gain = config.music_gain;
-                fade_active = true;
-            }
+        // media.play_music: a still-fading old track is zeroed first, then
+        // stop_music hands the current track to the fade source, which fades
+        // at that track's own fade_speed_when_finished (1/6.5 by default).
+        if (fade_active && fade_source != 0U) {
+            alSourceStop(fade_source);
+            alSourcei(fade_source, AL_BUFFER, 0);
+            fade_active = false;
+        }
+        if (music_requested) {
+            begin_music_fade();
         }
         alSourceStop(music_source);
         alSourcei(music_source, AL_BUFFER, 0);
@@ -808,24 +1141,98 @@ struct OpenAlFrontendAudio::Impl final {
 
         music_requested = true;
         music_track = track;
+        music_fade_seconds = fade_seconds_when_finished > 0.0F &&
+                                     std::isfinite(fade_seconds_when_finished)
+                                 ? fade_seconds_when_finished
+                                 : retail_music_fade_seconds;
         return true;
     }
 
-    void stop_music() noexcept {
+    /** `media.play_music(name, fade_speed_when_finished=1/fade_seconds)`. */
+    [[nodiscard]] bool
+    play_named_music(std::string_view stem, float start_offset, float fade_seconds) {
+        if (context == nullptr || !on_owner_thread()) {
+            return false;
+        }
+        const auto request = request_named_buffer_async("music", stem);
+        if (request.handle != 0U) {
+            pending_music.reset();
+            const bool started = play_music(request.handle, start_offset, fade_seconds);
+            if (started) {
+                named_music_stem = std::string{stem};
+            }
+            return started;
+        }
+        if (request.pending) {
+            // Last packet wins, matching the synchronous source replacement path.
+            pending_music = PendingMusicRequest{request.canonical, start_offset, fade_seconds};
+            named_music_stem = std::string{stem};
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Move a playing music source onto the fade source (retail old_music).
+     * Returns false when nothing audible was playing.
+     */
+    bool begin_music_fade() noexcept {
+        if (music_source == 0U || fade_source == 0U || context == nullptr) {
+            return false;
+        }
+        ALint state{};
+        alGetSourcei(music_source, AL_SOURCE_STATE, &state);
+        if (state != AL_PLAYING) {
+            return false;
+        }
+        alSourceStop(fade_source);
+        alSourcei(fade_source, AL_BUFFER, 0);
+        std::swap(music_source, fade_source);
+        ALfloat gain{};
+        alGetSourcef(fade_source, AL_GAIN, &gain);
+        fade_gain = gain;
+        fade_rate = 1.0F / music_fade_seconds;
+        fade_active = true;
+        return true;
+    }
+
+    /**
+     * media.stop_music(): the current track fades out rather than cutting;
+     * `instant` is the teardown path (stop(), stop_all()).
+     */
+    void stop_music(bool instant = false) noexcept {
+        const bool was_requested = music_requested;
         music_requested = false;
+        named_music_stem.clear();
+        if (!instant && was_requested && context != nullptr) {
+            if (fade_active && fade_source != 0U) {
+                // A second stop drops the older fading track, as retail's
+                // old_music reference is replaced.
+                alSourceStop(fade_source);
+                alSourcei(fade_source, AL_BUFFER, 0);
+                fade_active = false;
+            }
+            if (begin_music_fade()) {
+                music_fade_seconds = retail_music_fade_seconds;
+                return;
+            }
+        }
         if (music_source != 0U && context != nullptr) {
             alSourceStop(music_source);
             alSourcei(music_source, AL_BUFFER, 0);
         }
-        if (fade_active && fade_source != 0U && context != nullptr) {
+        if (instant && fade_active && fade_source != 0U && context != nullptr) {
             alSourceStop(fade_source);
             alSourcei(fade_source, AL_BUFFER, 0);
+            fade_active = false;
         }
-        fade_active = false;
+        music_fade_seconds = retail_music_fade_seconds;
     }
 
     /** Global ambient bed: a dedicated looping non-positional source. */
     [[nodiscard]] bool play_ambience(SoundHandle bed, float gain, float start_offset = 0.0F) {
+        // Any explicit bed supersedes a bed still decoding on a worker.
+        pending_ambience.reset();
         if (context == nullptr || !on_owner_thread()) {
             last_error = context == nullptr ? "OpenAL frontend audio is not started"
                                             : "OpenAL frontend audio used from non-owner thread";
@@ -843,10 +1250,12 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(ambience_source, AL_SOURCE_RELATIVE, AL_TRUE);
         alSourcei(ambience_source, AL_LOOPING, AL_TRUE);
         alSourcef(ambience_source, AL_ROLLOFF_FACTOR, 0.0F);
-        // The recovered ambient bed fades in at 0.03 volume per tick.
+        // Retail starts a bed at full volume; AMBIENCE_FADE_AMOUNT is the
+        // indoor-ducking smoothing factor, not a fade-in.
         ambience_target_gain = std::clamp(gain, 0.0F, 4.0F);
-        ambience_gain = 0.0F;
+        ambience_gain = ducked_ambience_volume(ambience_target_gain, environment.ambience_ducking);
         alSourcef(ambience_source, AL_GAIN, ambience_gain);
+        apply_world_reverb(ambience_source, false);
         alSource3f(ambience_source, AL_POSITION, 0.0F, 0.0F, 0.0F);
         alSourcei(ambience_source, AL_BUFFER, static_cast<ALint>(buffer));
         apply_start_offset(ambience_source, bed, start_offset);
@@ -863,6 +1272,7 @@ struct OpenAlFrontendAudio::Impl final {
 
     void stop_ambience() noexcept {
         ambience_active = false;
+        pending_ambience.reset();
         if (ambience_source != 0U && context != nullptr) {
             alSourceStop(ambience_source);
             alSourcei(ambience_source, AL_BUFFER, 0);
@@ -878,13 +1288,9 @@ struct OpenAlFrontendAudio::Impl final {
         return nullptr;
     }
 
+    /** Retail culls only at allocation; a playing loop is never re-gated. */
     void refresh_server_loop_gain(ServerLoopSlot& slot) noexcept {
-        const bool audible =
-            slot.relative || within_retail_hearing_distance(listener_position, slot.position);
-        alSourcef(slot.source,
-                  AL_GAIN,
-                  audible ? resolved_spatial_gain(slot.position, slot.requested_gain, slot.relative)
-                          : 0.0F);
+        alSourcef(slot.source, AL_GAIN, resolved_spatial_gain(slot.requested_gain));
     }
 
     void stop_server_loop(ServerLoopSlot& slot) noexcept {
@@ -921,6 +1327,14 @@ struct OpenAlFrontendAudio::Impl final {
             last_error = "Protocol 168 loop buffer is unavailable";
             return false;
         }
+        // MediaManager.play rejects a positioned stream beyond HEARING_DISTANCE
+        // before it allocates; once started a loop is never re-culled.
+        if (!relative && !within_retail_hearing_distance(listener_position, position)) {
+            if (ServerLoopSlot* replaced = find_server_loop(loop_id); replaced != nullptr) {
+                stop_server_loop(*replaced);
+            }
+            return true;
+        }
         ServerLoopSlot* slot = find_server_loop(loop_id);
         if (slot == nullptr) {
             const auto available =
@@ -946,15 +1360,12 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(slot->source, AL_SOURCE_RELATIVE, relative ? AL_TRUE : AL_FALSE);
         alSourcef(slot->source, AL_PITCH, 1.0F);
         alSourcef(slot->source, AL_ROLLOFF_FACTOR, relative ? 0.0F : attenuation);
-        alSourcef(slot->source, AL_REFERENCE_DISTANCE, relative ? 1.0F : retail_reference_distance);
-        alSourcef(slot->source, AL_MAX_DISTANCE, retail_hearing_distance);
-        alSource3f(slot->source,
-                   AL_POSITION,
-                   relative ? 0.0F : position.x,
-                   relative ? 0.0F : position.y,
-                   relative ? 0.0F : position.z);
+        alSourcef(slot->source, AL_REFERENCE_DISTANCE, retail_reference_distance);
+        const auto placed = source_position(position, relative);
+        alSource3f(slot->source, AL_POSITION, placed.x, placed.y, placed.z);
         alSource3f(slot->source, AL_VELOCITY, 0.0F, 0.0F, 0.0F);
-        apply_world_reverb(slot->source, relative);
+        // PlaySound(23)/PlayAmbientSound(24) use HUD_AUDIO_ZONE: always dry.
+        apply_world_reverb(slot->source, false);
         alSourcei(slot->source, AL_BUFFER, static_cast<ALint>(buffer));
         refresh_server_loop_gain(*slot);
         apply_start_offset(slot->source, handle, start_offset);
@@ -1017,7 +1428,9 @@ struct OpenAlFrontendAudio::Impl final {
               float start_offset = 0.0F,
               float attenuation = retail_default_attenuation,
               SpatialSoundProfile profile = SpatialSoundProfile::ordinary,
-              float pitch = 1.0F) {
+              float pitch = 1.0F,
+              bool reverb_send = true) {
+        static_cast<void>(profile);
         if (context == nullptr || !on_owner_thread()) {
             last_error = context == nullptr ? "OpenAL frontend audio is not started"
                                             : "OpenAL frontend audio used from non-owner thread";
@@ -1057,21 +1470,15 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(voice->source, AL_LOOPING, AL_FALSE);
         alSourcei(voice->source, AL_SOURCE_RELATIVE, relative ? AL_TRUE : AL_FALSE);
         alSourcef(voice->source, AL_PITCH, pitch);
-        alSourcef(voice->source, AL_GAIN, resolved_spatial_gain(position, gain, relative, profile));
+        alSourcef(voice->source, AL_GAIN, resolved_spatial_gain(gain));
         alSourcef(voice->source, AL_ROLLOFF_FACTOR, relative ? 0.0F : attenuation);
-        // Retail drops a world cue entirely past HEARING_DISTANCE. Leaving
-        // these at the OpenAL defaults (reference 1, max FLT_MAX) attenuates
-        // everything by 1/distance from one unit out, which is far too sharp.
-        alSourcef(
-            voice->source, AL_REFERENCE_DISTANCE, relative ? 1.0F : retail_reference_distance);
-        alSourcef(voice->source, AL_MAX_DISTANCE, retail_hearing_distance);
-        alSource3f(voice->source,
-                   AL_POSITION,
-                   relative ? 0.0F : position.x,
-                   relative ? 0.0F : position.y,
-                   relative ? 0.0F : position.z);
+        // Retail leaves OpenAL's reference distance (1) and max distance
+        // (FLT_MAX); the 50-block pre-cull above is its only range limit.
+        alSourcef(voice->source, AL_REFERENCE_DISTANCE, retail_reference_distance);
+        const auto placed = source_position(position, relative);
+        alSource3f(voice->source, AL_POSITION, placed.x, placed.y, placed.z);
         alSource3f(voice->source, AL_VELOCITY, 0.0F, 0.0F, 0.0F);
-        apply_world_reverb(voice->source, relative);
+        apply_world_reverb(voice->source, reverb_send);
         alSourcei(voice->source, AL_BUFFER, static_cast<ALint>(buffer));
         apply_start_offset(voice->source, handle, start_offset);
         alSourcePlay(voice->source);
@@ -1106,10 +1513,19 @@ struct OpenAlFrontendAudio::Impl final {
     LPALAUXILIARYEFFECTSLOTI effect_slot_i{};
 #endif
     float fade_gain{};
+    /** Outgoing track's fade speed in volume per second (old_music_fade_speed). */
+    float fade_rate{1.0F / retail_music_fade_seconds};
+    /** Current track's fade_speed_when_finished, as seconds from full volume. */
+    float music_fade_seconds{retail_music_fade_seconds};
     bool fade_active{};
     float ambience_gain{};
     float ambience_target_gain{};
     bool ambience_active{};
+    /** Last GameScene.update_audio_effects state applied to EFX and the bed. */
+    EnvironmentAudioState environment{};
+    float applied_reverb_gain{};
+    float applied_reverb_decay{1.0F};
+    bool direct_channels_supported{};
     std::vector<Buffer> buffers;
     std::vector<Voice> voices;
     std::string last_error;
@@ -1117,8 +1533,6 @@ struct OpenAlFrontendAudio::Impl final {
     std::uint64_t next_sequence{};
     std::uint64_t next_pitch_sequence{};
     SoundPosition listener_position{};
-    void* spatial_gain_context{};
-    SpatialGainResolver spatial_gain_resolver{};
     float master_volume{1.0F};
     bool music_requested{};
     SoundHandle music_track{OpenAlFrontendAudio::main_menu_music};
@@ -1132,9 +1546,20 @@ struct OpenAlFrontendAudio::Impl final {
     using CueGroups =
         std::array<std::vector<SoundHandle>, static_cast<std::size_t>(WeaponCue::count)>;
     std::array<CueGroups, tool_count> weapon_sound_sets;
+    /** Semitone bounds of each bound cue row (retail cue-list slots 3/4). */
+    using CuePitches = std::array<PitchBounds, static_cast<std::size_t>(WeaponCue::count)>;
+    std::array<CuePitches, tool_count> weapon_cue_pitches{};
     std::map<std::string, SoundHandle, std::less<>> optional_sound_cache;
+    /** Per named tree (sounds/ambients/music): stem -> resident handle. */
+    std::array<std::map<std::string, SoundHandle, std::less<>>, 3U> named_cache;
+    std::map<SoundHandle, EvictableBuffer> evictable_buffers;
+    std::uint64_t evictable_clock{};
+    std::vector<PendingOneShot> pending_one_shots;
+    std::optional<PendingAmbienceRequest> pending_ambience;
     std::map<std::string, PendingNamedBuffer, std::less<>> pending_named_buffers;
     std::optional<PendingMusicRequest> pending_music;
+    /** Stem of the last play_named_music track; cleared by any other music. */
+    std::string named_music_stem;
     std::map<std::uint8_t, PendingServerLoopRequest> pending_server_loops;
     SoundHandle next_optional_handle{1'000U};
 
@@ -1156,8 +1581,36 @@ struct OpenAlFrontendAudio::Impl final {
         SpatialSoundProfile profile{SpatialSoundProfile::ordinary};
         bool relative{};
         bool active{};
+        /**
+         * Reserved for a first-use named loop whose sample is still decoding
+         * on a worker; tick() starts it at the latest position and gain.
+         */
+        bool pending{};
+        bool reverb_send{true};
+        std::string pending_canonical;
     };
     std::array<LoopSlot, loop_source_count> loop_slots{};
+
+    /** Configures and starts a reserved loop slot on `buffer`. */
+    [[nodiscard]] bool begin_loop_playback(LoopSlot& slot, ALuint buffer, bool reverb_send) {
+        clear_openal_error();
+        alSourceStop(slot.source);
+        alSourcei(slot.source, AL_BUFFER, 0);
+        alSourcei(slot.source, AL_LOOPING, AL_TRUE);
+        alSourcei(slot.source, AL_SOURCE_RELATIVE, slot.relative ? AL_TRUE : AL_FALSE);
+        alSourcef(slot.source, AL_PITCH, 1.0F);
+        alSourcef(slot.source,
+                  AL_ROLLOFF_FACTOR,
+                  slot.relative ? 0.0F : spatial_rolloff(slot.profile));
+        alSourcef(slot.source, AL_GAIN, resolved_spatial_gain(slot.requested_gain));
+        alSourcef(slot.source, AL_REFERENCE_DISTANCE, retail_reference_distance);
+        const auto placed = source_position(slot.position, slot.relative);
+        alSource3f(slot.source, AL_POSITION, placed.x, placed.y, placed.z);
+        apply_world_reverb(slot.source, reverb_send);
+        alSourcei(slot.source, AL_BUFFER, static_cast<ALint>(buffer));
+        alSourcePlay(slot.source);
+        return alGetError() == AL_NO_ERROR;
+    }
     LoopVoice next_loop_voice{1U};
 
     /**
@@ -1173,17 +1626,12 @@ struct OpenAlFrontendAudio::Impl final {
     static constexpr std::size_t server_loop_source_count{16U};
     std::array<ServerLoopSlot, server_loop_source_count> server_loop_slots{};
 
+    /** Retail culls only at allocation; a started loop keeps its volume. */
     void refresh_weapon_loop_gain(LoopSlot& slot) noexcept {
         if (!slot.active) {
             return;
         }
-        const bool audible =
-            slot.relative || within_retail_hearing_distance(listener_position, slot.position);
-        alSourcef(slot.source,
-                  AL_GAIN,
-                  audible ? resolved_spatial_gain(
-                                slot.position, slot.requested_gain, slot.relative, slot.profile)
-                          : 0.0F);
+        alSourcef(slot.source, AL_GAIN, resolved_spatial_gain(slot.requested_gain));
     }
 
     [[nodiscard]] LoopSlot* find_loop(LoopVoice voice) noexcept {
@@ -1211,7 +1659,7 @@ struct OpenAlFrontendAudio::Impl final {
 };
 
 bool valid_openal_frontend_audio_config(const OpenAlFrontendAudioConfig& config) noexcept {
-    constexpr std::size_t maximum_voice_count{64U};
+    constexpr std::size_t maximum_voice_count{maximum_one_shot_voices};
     return !config.asset_root.empty() && config.max_one_shot_voices > 0U &&
            config.max_one_shot_voices <= maximum_voice_count && std::isfinite(config.music_gain) &&
            config.music_gain >= 0.0F && config.music_gain <= 4.0F &&
@@ -1323,6 +1771,8 @@ bool OpenAlFrontendAudio::start() {
         // Reserving all fixed caches before creating OpenAL objects ensures an
         // allocation exception cannot orphan a generated buffer or source.
         impl_->buffers.reserve(512U);
+        impl_->direct_channels_supported =
+            alIsExtensionPresent("AL_SOFT_direct_channels") != AL_FALSE;
         const auto& root = impl_->config.asset_root;
         if (!impl_->load_buffer(main_menu_music, root / "music" / "mainmenu.ogg") ||
             !impl_->load_buffer(menu_confirm_sound, root / "sounds" / "menu_confirmA.ogg") ||
@@ -1409,9 +1859,12 @@ bool OpenAlFrontendAudio::start() {
             // attributes; the generator recovers them into WeaponSoundSet.
             // An empty role means retail is genuinely silent there.
             auto& set = impl_->weapon_sound_sets[weapon.tool_id];
+            auto& pitches = impl_->weapon_cue_pitches[weapon.tool_id];
             const auto bind = [&](WeaponCue cue, std::string_view group) {
                 set[static_cast<std::size_t>(cue)] =
                     impl_->load_optional_group(group, root / "sounds");
+                pitches[static_cast<std::size_t>(cue)] =
+                    retail_cue_group_pitch(group, cue == WeaponCue::throw_release);
             };
             bind(WeaponCue::fire_loop, weapon.sounds.fire_loop);
             bind(WeaponCue::fire_tail, weapon.sounds.fire_tail);
@@ -1469,7 +1922,21 @@ void OpenAlFrontendAudio::play_bullet_impact(std::uint8_t variant,
                                              float gain) {
     constexpr std::array<SoundHandle, 4U> samples{
         bullet_hit_sound_1, bullet_hit_sound_2, bullet_hit_sound_3, bullet_hit_sound_4};
-    play_one_shot(samples[variant % samples.size()], position, gain);
+    // weapons/__init__.py:64: play_pitched(BULLET_HIT_SCENERY_SOUND, 1.0, pos),
+    // +-1.2 semitones.
+    ++impl_->next_pitch_sequence;
+    const auto draw = static_cast<std::uint32_t>(
+        (impl_->next_pitch_sequence * 0x9E3779B97F4A7C15ULL) >> 16U) ^ variant;
+    impl_->play(samples[variant % samples.size()],
+                position,
+                gain,
+                false,
+                false,
+                0.0F,
+                retail_default_attenuation,
+                SpatialSoundProfile::ordinary,
+                retail_sound_pitch_ratio(
+                    retail_bullet_hit_pitch.minimum, retail_bullet_hit_pitch.maximum, draw));
 }
 
 bool OpenAlFrontendAudio::has_cosmetic_fire(std::string_view id) const noexcept {
@@ -1478,7 +1945,10 @@ bool OpenAlFrontendAudio::has_cosmetic_fire(std::string_view id) const noexcept 
 bool OpenAlFrontendAudio::play_cosmetic_cue(std::string_view id,std::string_view cue,std::uint8_t variant,SoundPosition position,float gain,bool relative){
     const auto item=impl_->cosmetic_cues.find(id);if(item==impl_->cosmetic_cues.end())return false;
     const auto group=item->second.find(cue);if(group==item->second.end()||group->second.empty())return false;
-    impl_->play(group->second[variant%group->second.size()],position,gain,relative);return true;
+    // Cosmetic packs replace Tool.play_sound cues: the local player's are dry.
+    impl_->play(group->second[variant%group->second.size()],position,gain,relative,false,0.0F,
+                retail_default_attenuation,SpatialSoundProfile::ordinary,1.0F,
+                tool_cue_reverb_send(relative));return true;
 }
 
 void OpenAlFrontendAudio::play_weapon_shoot(std::uint8_t tool_id,
@@ -1511,8 +1981,34 @@ void OpenAlFrontendAudio::play_weapon_shoot(std::uint8_t tool_id,
                     0.0F,
                     spatial_rolloff(profile),
                     profile,
-                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw));
+                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw),
+                    tool_cue_reverb_send(head_relative));
     }
+}
+
+void OpenAlFrontendAudio::play_double_shotgun_barrel(bool second_barrel,
+                                                     SoundPosition position,
+                                                     float gain,
+                                                     bool head_relative,
+                                                     SpatialSoundProfile profile) {
+    if (impl_->context == nullptr || !impl_->on_owner_thread()) {
+        return;
+    }
+    // SHOTGUN2_SHOOT_SOUND / SHOTGUN2_SECOND_SHOOT_SOUND: both +-0.8 semitones.
+    ++impl_->next_pitch_sequence;
+    const auto pitch_draw =
+        static_cast<std::uint32_t>(impl_->next_pitch_sequence * 0x9E3779B97F4A7C15ULL);
+    Impl::PendingOneShot shot;
+    shot.position = head_relative ? SoundPosition{} : position;
+    shot.gain = gain;
+    shot.relative = head_relative;
+    shot.attenuation = spatial_rolloff(profile);
+    shot.profile = profile;
+    shot.pitch = retail_sound_pitch_ratio(-0.8F, 0.8F, pitch_draw);
+    shot.reverb_send = tool_cue_reverb_send(head_relative);
+    static_cast<void>(impl_->play_named_or_defer(
+        "sounds", second_barrel ? "shotgun_double_fire02" : "shotgun_double_fire01",
+        std::move(shot)));
 }
 
 void OpenAlFrontendAudio::play_weapon_reload(std::uint8_t tool_id,
@@ -1540,7 +2036,8 @@ void OpenAlFrontendAudio::play_weapon_reload(std::uint8_t tool_id,
                     0.0F,
                     retail_default_attenuation,
                     SpatialSoundProfile::ordinary,
-                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw));
+                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw),
+                    tool_cue_reverb_send(head_relative));
     }
 }
 
@@ -1569,7 +2066,8 @@ void OpenAlFrontendAudio::play_weapon_reload_done(std::uint8_t tool_id,
                     0.0F,
                     retail_default_attenuation,
                     SpatialSoundProfile::ordinary,
-                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw));
+                    retail_sound_pitch_ratio(pitch_bounds[0U], pitch_bounds[1U], pitch_draw),
+                    tool_cue_reverb_send(head_relative));
     }
 }
 
@@ -1585,6 +2083,13 @@ void OpenAlFrontendAudio::play_weapon_cue(std::uint8_t tool_id,
         // Retail is deliberately silent in this role for this tool.
         return;
     }
+    // Character.play_sound applies the row's semitone bounds (e.g. woosh
+    // +-0.4 as a swing, +-0.8 as a throw).
+    const auto bounds = impl_->weapon_cue_pitches[tool_id][static_cast<std::size_t>(cue)];
+    ++impl_->next_pitch_sequence;
+    const auto pitch_draw = static_cast<std::uint32_t>(
+        (impl_->next_pitch_sequence * 0x9E3779B97F4A7C15ULL) ^
+        (static_cast<std::uint64_t>(tool_id) << 16U) ^ variant);
     impl_->play((*group)[variant % group->size()],
                 head_relative ? SoundPosition{} : position,
                 gain,
@@ -1592,7 +2097,9 @@ void OpenAlFrontendAudio::play_weapon_cue(std::uint8_t tool_id,
                 false,
                 0.0F,
                 spatial_rolloff(profile),
-                profile);
+                profile,
+                retail_sound_pitch_ratio(bounds.minimum, bounds.maximum, pitch_draw),
+                tool_cue_reverb_send(head_relative, cue));
 }
 
 bool OpenAlFrontendAudio::has_weapon_cue(std::uint8_t tool_id, WeaponCue cue) const noexcept {
@@ -1616,6 +2123,10 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
     if (buffer == 0U) {
         return invalid_loop_voice;
     }
+    // MediaManager.play's allocation-time HEARING_DISTANCE rejection.
+    if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
+        return invalid_loop_voice;
+    }
     const auto found =
         std::ranges::find_if(impl_->loop_slots, [](const auto& entry) { return !entry.active; });
     if (found == impl_->loop_slots.end()) {
@@ -1633,12 +2144,13 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
     alSourcef(slot->source, AL_ROLLOFF_FACTOR, head_relative ? 0.0F : spatial_rolloff(profile));
     alSourcef(slot->source,
               AL_GAIN,
-              impl_->resolved_spatial_gain(position, gain, head_relative, profile));
+              Impl::resolved_spatial_gain(gain));
     alSourcef(slot->source, AL_REFERENCE_DISTANCE, retail_reference_distance);
-    alSourcef(slot->source, AL_MAX_DISTANCE, retail_hearing_distance);
-    const auto source_position = head_relative ? SoundPosition{} : position;
-    alSource3f(slot->source, AL_POSITION, source_position.x, source_position.y, source_position.z);
-    impl_->apply_world_reverb(slot->source, head_relative);
+    const auto placed = Impl::source_position(position, head_relative);
+    alSource3f(slot->source, AL_POSITION, placed.x, placed.y, placed.z);
+    // Tool loops are Tool.play_sound cues: IN_WORLD (wet) for observers, the
+    // HUD zone (dry) for the player holding the tool.
+    impl_->apply_world_reverb(slot->source, tool_cue_reverb_send(head_relative, cue));
     alSourcei(slot->source, AL_BUFFER, static_cast<ALint>(buffer));
     alSourcePlay(slot->source);
     if (alGetError() != AL_NO_ERROR) {
@@ -1650,6 +2162,8 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
     slot->requested_gain = std::clamp(gain, 0.0F, 4.0F);
     slot->profile = profile;
     slot->relative = head_relative;
+    slot->pending = false;
+    slot->pending_canonical.clear();
     return slot->voice;
 }
 
@@ -1662,9 +2176,14 @@ LoopVoice OpenAlFrontendAudio::start_named_voice_loop(std::string_view stem,
         !finite_position(position)) {
         return invalid_loop_voice;
     }
-    const SoundHandle handle = impl_->load_named_buffer("sounds", stem);
-    const ALuint buffer = impl_->buffer_for(handle);
-    if (buffer == 0U) {
+    // MediaManager.play's allocation-time HEARING_DISTANCE rejection.
+    if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
+        return invalid_loop_voice;
+    }
+    // First use decodes on a worker: the slot is reserved now and tick()
+    // starts it at the latest position/gain when the upload lands.
+    const auto request = impl_->request_named_buffer_async("sounds", stem);
+    if (request.handle == 0U && !request.pending) {
         return invalid_loop_voice;
     }
     const auto found =
@@ -1674,33 +2193,25 @@ LoopVoice OpenAlFrontendAudio::start_named_voice_loop(std::string_view stem,
         return invalid_loop_voice;
     }
     auto* const slot = &*found;
-
-    clear_openal_error();
-    alSourceStop(slot->source);
-    alSourcei(slot->source, AL_BUFFER, 0);
-    alSourcei(slot->source, AL_LOOPING, AL_TRUE);
-    alSourcei(slot->source, AL_SOURCE_RELATIVE, head_relative ? AL_TRUE : AL_FALSE);
-    alSourcef(slot->source, AL_PITCH, 1.0F);
-    alSourcef(slot->source, AL_ROLLOFF_FACTOR, head_relative ? 0.0F : spatial_rolloff(profile));
-    alSourcef(slot->source,
-              AL_GAIN,
-              impl_->resolved_spatial_gain(position, gain, head_relative, profile));
-    alSourcef(slot->source, AL_REFERENCE_DISTANCE, retail_reference_distance);
-    alSourcef(slot->source, AL_MAX_DISTANCE, retail_hearing_distance);
-    const auto source_position = head_relative ? SoundPosition{} : position;
-    alSource3f(slot->source, AL_POSITION, source_position.x, source_position.y, source_position.z);
-    impl_->apply_world_reverb(slot->source, head_relative);
-    alSourcei(slot->source, AL_BUFFER, static_cast<ALint>(buffer));
-    alSourcePlay(slot->source);
-    if (alGetError() != AL_NO_ERROR) {
-        return invalid_loop_voice;
-    }
-    slot->active = true;
-    slot->voice = impl_->next_loop_voice++;
     slot->position = position;
     slot->requested_gain = std::clamp(gain, 0.0F, 4.0F);
     slot->profile = profile;
     slot->relative = head_relative;
+    // Presentation loops (jetpack, parachute, fuses, flights) are IN_WORLD.
+    slot->reverb_send = true;
+    if (request.handle == 0U) {
+        slot->pending = true;
+        slot->pending_canonical = request.canonical;
+    } else {
+        const ALuint buffer = impl_->buffer_for(request.handle);
+        if (buffer == 0U || !impl_->begin_loop_playback(*slot, buffer, slot->reverb_send)) {
+            return invalid_loop_voice;
+        }
+        slot->pending = false;
+        slot->pending_canonical.clear();
+    }
+    slot->active = true;
+    slot->voice = impl_->next_loop_voice++;
     return slot->voice;
 }
 
@@ -1718,7 +2229,8 @@ void OpenAlFrontendAudio::update_weapon_loop(LoopVoice voice,
     slot->position = position;
     slot->requested_gain = std::clamp(gain, 0.0F, 4.0F);
     if (!slot->relative) {
-        alSource3f(slot->source, AL_POSITION, position.x, position.y, position.z);
+        const auto placed = retail_source_position(position);
+        alSource3f(slot->source, AL_POSITION, placed.x, placed.y, placed.z);
     }
     // The floor is 0.01, not 0.25: the minigun's spin loop is pitched by its
     // barrel speed as a raw playback ratio, so a 0.25 floor would clip the
@@ -1749,6 +2261,7 @@ void OpenAlFrontendAudio::stop_weapon_loop(LoopVoice voice,
         slot->requested_gain = 0.0F;
         slot->profile = SpatialSoundProfile::ordinary;
         slot->relative = false;
+        slot->pending = false;
     }
     // Retail closes the loop and immediately plays the tail as a one-shot.
     play_weapon_cue(tool_id, tail, 0U, position, gain, head_relative, profile);
@@ -1770,6 +2283,7 @@ void OpenAlFrontendAudio::stop_weapon_loop(LoopVoice voice) noexcept {
     slot->requested_gain = 0.0F;
     slot->profile = SpatialSoundProfile::ordinary;
     slot->relative = false;
+    slot->pending = false;
 }
 
 std::size_t OpenAlFrontendAudio::active_loop_voices() const noexcept {
@@ -1791,16 +2305,18 @@ core::TickDecision OpenAlFrontendAudio::tick(const core::TickContext& context) {
     if (impl_->music_requested) {
         ALint state{};
         alGetSourcei(impl_->music_source, AL_SOURCE_STATE, &state);
-        if (state != AL_PLAYING && !impl_->play_music(impl_->music_track)) {
+        if (state != AL_PLAYING &&
+            !impl_->play_music(impl_->music_track, 0.0F, impl_->music_fade_seconds)) {
             return core::TickDecision::continue_running;
         }
     }
 
-    // Recovered fade rates: outgoing music loses 1/6.5 volume per second,
-    // the ambient bed gains 0.03 per 60 Hz tick toward its target.
+    // MediaManager.handle_old_music: the outgoing track loses its own
+    // fade_speed_when_finished (1/6.5, or 1/1.5 for the select bed) per second.
     if (impl_->fade_active && impl_->fade_source != 0U) {
         impl_->fade_gain -=
-            static_cast<float>(std::chrono::duration<double>{context.fixed_delta}.count()) / 6.5F;
+            static_cast<float>(std::chrono::duration<double>{context.fixed_delta}.count()) *
+            impl_->fade_rate;
         if (impl_->fade_gain <= 0.0F) {
             alSourceStop(impl_->fade_source);
             alSourcei(impl_->fade_source, AL_BUFFER, 0);
@@ -1809,9 +2325,14 @@ core::TickDecision OpenAlFrontendAudio::tick(const core::TickContext& context) {
             alSourcef(impl_->fade_source, AL_GAIN, impl_->fade_gain);
         }
     }
-    if (impl_->ambience_active && impl_->ambience_gain < impl_->ambience_target_gain) {
-        impl_->ambience_gain = std::min(impl_->ambience_target_gain, impl_->ambience_gain + 0.03F);
-        alSourcef(impl_->ambience_source, AL_GAIN, impl_->ambience_gain);
+    if (impl_->ambience_active) {
+        // GameScene.update: a global bed is scaled by 1 - 0.8 * ducking.
+        const float ducked = ducked_ambience_volume(impl_->ambience_target_gain,
+                                                    impl_->environment.ambience_ducking);
+        if (std::fabs(ducked - impl_->ambience_gain) > 1.0e-5F) {
+            impl_->ambience_gain = ducked;
+            alSourcef(impl_->ambience_source, AL_GAIN, impl_->ambience_gain);
+        }
     }
 
     const ALenum error = alGetError();
@@ -1833,7 +2354,7 @@ void OpenAlFrontendAudio::stop() noexcept {
     }
 
     if (impl_->context != nullptr) {
-        impl_->stop_music();
+        impl_->stop_music(true);
         for (auto& voice : impl_->voices) {
             if (voice.source != 0U) {
                 alSourceStop(voice.source);
@@ -1892,11 +2413,27 @@ void OpenAlFrontendAudio::stop() noexcept {
     impl_->next_pitch_sequence = 0U;
     impl_->listener_position = {};
     impl_->music_requested = false;
+    impl_->fade_active = false;
+    impl_->music_fade_seconds = retail_music_fade_seconds;
+    impl_->environment = {};
+    impl_->applied_reverb_gain = 0.0F;
+    impl_->applied_reverb_decay = 1.0F;
+    impl_->weapon_cue_pitches = {};
 
     // Every buffer these name has just been deleted. Leaving them populated
     // makes a restart hand out dangling handles and reuse stale ids, so the
     // whole optional-sound bookkeeping resets with the buffers it describes.
     impl_->optional_sound_cache.clear();
+    for (auto& cache : impl_->named_cache) {
+        cache.clear();
+    }
+    impl_->evictable_buffers.clear();
+    impl_->pending_one_shots.clear();
+    impl_->pending_ambience.reset();
+    // std::future destructors join the decode workers.
+    impl_->pending_named_buffers.clear();
+    impl_->pending_server_loops.clear();
+    impl_->pending_music.reset();
     impl_->next_optional_handle = 1'000U;
     impl_->next_loop_voice = 1U;
     impl_->cosmetic_fire_groups.clear();
@@ -1945,14 +2482,8 @@ void OpenAlFrontendAudio::set_listener(SoundPosition position) {
     clear_openal_error();
     alListener3f(AL_POSITION, position.x, position.y, position.z);
     impl_->listener_position = position;
-    for (auto& slot : impl_->loop_slots) {
-        impl_->refresh_weapon_loop_gain(slot);
-    }
-    for (auto& slot : impl_->server_loop_slots) {
-        if (slot.active) {
-            impl_->refresh_server_loop_gain(slot);
-        }
-    }
+    // Retail never re-culls a started loop, so moving the listener changes
+    // only OpenAL's own distance attenuation.
     const ALenum error = alGetError();
     if (error != AL_NO_ERROR) {
         impl_->last_error = "cannot change OpenAL listener: " + openal_error_text(error);
@@ -1985,39 +2516,50 @@ void OpenAlFrontendAudio::set_listener_pose(SoundPosition position,
     alListener3f(AL_POSITION, position.x, position.y, position.z);
     alListenerfv(AL_ORIENTATION, orientation.data());
     impl_->listener_position = position;
-    for (auto& slot : impl_->loop_slots) {
-        impl_->refresh_weapon_loop_gain(slot);
-    }
-    for (auto& slot : impl_->server_loop_slots) {
-        if (slot.active) {
-            impl_->refresh_server_loop_gain(slot);
-        }
-    }
     const ALenum error = alGetError();
     if (error != AL_NO_ERROR) {
         impl_->last_error = "cannot change OpenAL listener pose: " + openal_error_text(error);
     }
 }
 
-void OpenAlFrontendAudio::set_spatial_gain_resolver(void* context,
-                                                    SpatialGainResolver resolver) noexcept {
-    impl_->spatial_gain_context = resolver != nullptr ? context : nullptr;
-    impl_->spatial_gain_resolver = resolver;
+void OpenAlFrontendAudio::apply_environment_audio(const EnvironmentAudioState& state) {
+    const auto finite_or = [](float value, float fallback) {
+        return std::isfinite(value) ? value : fallback;
+    };
+    impl_->environment.reverb_size = finite_or(state.reverb_size, 1.0F);
+    impl_->environment.reverb_amount = std::clamp(finite_or(state.reverb_amount, 0.0F), 0.0F, 1.0F);
+    impl_->environment.ambience_ducking =
+        std::clamp(finite_or(state.ambience_ducking, 0.0F), 0.0F, 1.0F);
     if (impl_->context == nullptr || !impl_->on_owner_thread()) {
         return;
     }
-    for (auto& slot : impl_->loop_slots) {
-        impl_->refresh_weapon_loop_gain(slot);
-    }
-    for (auto& slot : impl_->server_loop_slots) {
-        if (slot.active) {
-            impl_->refresh_server_loop_gain(slot);
-        }
-    }
+    clear_openal_error();
+    impl_->update_world_reverb();
+    clear_openal_error();
+}
+
+EnvironmentAudioState OpenAlFrontendAudio::environment_audio() const noexcept {
+    return impl_->environment;
 }
 
 void OpenAlFrontendAudio::play_one_shot(SoundHandle sound, SoundPosition position, float gain) {
     impl_->play(sound, position, gain, false);
+}
+
+void OpenAlFrontendAudio::play_pitched_one_shot(SoundHandle sound,
+                                                SoundPosition position,
+                                                float gain,
+                                                float pitch,
+                                                bool head_relative) {
+    impl_->play(sound,
+                head_relative ? SoundPosition{} : position,
+                gain,
+                head_relative,
+                false,
+                0.0F,
+                retail_default_attenuation,
+                SpatialSoundProfile::ordinary,
+                pitch);
 }
 
 void OpenAlFrontendAudio::play_head_relative_one_shot(SoundHandle sound, float gain) {
@@ -2031,51 +2573,45 @@ bool OpenAlFrontendAudio::play_named_one_shot(std::string_view stem,
                                               float start_offset,
                                               float attenuation,
                                               bool protect_voice,
-                                              float pitch) {
+                                              float pitch,
+                                              bool reverb_send) {
     if (impl_->context == nullptr || !impl_->on_owner_thread() || stem.empty()) {
         return false;
     }
     if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
         return true;
     }
-    const SoundHandle handle = impl_->load_named_buffer("sounds", stem);
-    if (handle == 0U) {
-        return false;
-    }
-    impl_->play(handle,
-                head_relative ? SoundPosition{} : position,
-                gain,
-                head_relative,
-                protect_voice,
-                start_offset,
-                attenuation,
-                SpatialSoundProfile::ordinary,
-                pitch);
-    return true;
+    // A cold sample decodes on a worker; the cue plays on the tick its
+    // upload lands instead of stalling the game thread on Vorbis decode.
+    Impl::PendingOneShot shot;
+    shot.position = head_relative ? SoundPosition{} : position;
+    shot.gain = gain;
+    shot.relative = head_relative;
+    shot.protect = protect_voice;
+    shot.start_offset = start_offset;
+    shot.attenuation = attenuation;
+    shot.pitch = pitch;
+    shot.reverb_send = reverb_send;
+    return impl_->play_named_or_defer("sounds", stem, std::move(shot));
 }
 
 bool OpenAlFrontendAudio::play_named_music(std::string_view stem, float start_offset) {
-    if (impl_->context == nullptr || !impl_->on_owner_thread()) {
-        return false;
-    }
-    const auto request = impl_->request_named_buffer_async("music", stem);
-    if (request.handle != 0U) {
-        impl_->pending_music.reset();
-        return impl_->play_music(request.handle, start_offset);
-    }
-    if (request.pending) {
-        // Last packet wins, matching the synchronous source replacement path.
-        impl_->pending_music = Impl::PendingMusicRequest{request.canonical, start_offset};
-        return true;
-    }
-    return false;
+    return impl_->play_named_music(stem, start_offset, retail_music_fade_seconds);
+}
+
+bool OpenAlFrontendAudio::music_fading() const noexcept {
+    return impl_->fade_active;
+}
+
+bool OpenAlFrontendAudio::is_playing_named_music(std::string_view stem) const noexcept {
+    return (impl_->music_requested || impl_->pending_music.has_value()) &&
+           !impl_->named_music_stem.empty() && impl_->named_music_stem == stem;
 }
 
 bool OpenAlFrontendAudio::preload_named_ambience(std::string_view stem) {
-    if (impl_->context == nullptr || !impl_->on_owner_thread()) {
-        return false;
-    }
-    return impl_->load_named_buffer("ambients", stem) != 0U;
+    // Worker decode as well: a 10-20 MB bed decoded here used to stall the
+    // loading gate's main thread. play_named_ambience picks up a pending bed.
+    return preload_named_ambience_async(stem);
 }
 
 bool OpenAlFrontendAudio::preload_named_ambience_async(std::string_view stem) {
@@ -2092,8 +2628,17 @@ bool OpenAlFrontendAudio::play_named_ambience(std::string_view stem,
     if (impl_->context == nullptr || !impl_->on_owner_thread()) {
         return false;
     }
-    const SoundHandle handle = impl_->load_named_buffer("ambients", stem);
-    return handle != 0U && impl_->play_ambience(handle, volume, start_offset);
+    const auto request = impl_->request_named_buffer_async("ambients", stem);
+    if (request.handle != 0U) {
+        return impl_->play_ambience(request.handle, volume, start_offset);
+    }
+    if (!request.pending) {
+        return false;
+    }
+    // Last request wins; the bed starts on the tick its upload lands.
+    impl_->pending_ambience =
+        Impl::PendingAmbienceRequest{request.canonical, volume, start_offset};
+    return true;
 }
 
 bool OpenAlFrontendAudio::play_named_ambient_one_shot(std::string_view stem,
@@ -2108,18 +2653,16 @@ bool OpenAlFrontendAudio::play_named_ambient_one_shot(std::string_view stem,
     if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
         return true;
     }
-    const SoundHandle handle = impl_->load_named_buffer("ambients", stem);
-    if (handle == 0U) {
-        return false;
-    }
-    impl_->play(handle,
-                head_relative ? SoundPosition{} : position,
-                volume,
-                head_relative,
-                true,
-                start_offset,
-                attenuation);
-    return true;
+    // process_packet_play_ambient_sound uses HUD_AUDIO_ZONE: dry.
+    Impl::PendingOneShot shot;
+    shot.position = head_relative ? SoundPosition{} : position;
+    shot.gain = volume;
+    shot.relative = head_relative;
+    shot.protect = true;
+    shot.start_offset = start_offset;
+    shot.attenuation = attenuation;
+    shot.reverb_send = false;
+    return impl_->play_named_or_defer("ambients", stem, std::move(shot));
 }
 
 bool OpenAlFrontendAudio::start_named_loop(std::uint8_t loop_id,
@@ -2133,24 +2676,21 @@ bool OpenAlFrontendAudio::start_named_loop(std::uint8_t loop_id,
     if (impl_->context == nullptr || !impl_->on_owner_thread()) {
         return false;
     }
-    if (ambient_asset) {
-        const auto request = impl_->request_named_buffer_async("ambients", stem);
-        if (request.handle != 0U) {
-            impl_->pending_server_loops.erase(loop_id);
-            return impl_->start_server_loop(
-                loop_id, request.handle, position, gain, head_relative, attenuation, start_offset);
-        }
-        if (request.pending) {
-            impl_->pending_server_loops[loop_id] = Impl::PendingServerLoopRequest{
-                request.canonical, position, gain, head_relative, attenuation, start_offset};
-            return true;
-        }
-        return false;
+    // Both trees decode cold samples on a worker; the loop starts when the
+    // upload lands (pump_async_named_buffers).
+    const auto request =
+        impl_->request_named_buffer_async(ambient_asset ? "ambients" : "sounds", stem);
+    if (request.handle != 0U) {
+        impl_->pending_server_loops.erase(loop_id);
+        return impl_->start_server_loop(
+            loop_id, request.handle, position, gain, head_relative, attenuation, start_offset);
     }
-    const SoundHandle handle = impl_->load_named_buffer("sounds", stem);
-    return handle != 0U &&
-           impl_->start_server_loop(
-               loop_id, handle, position, gain, head_relative, attenuation, start_offset);
+    if (request.pending) {
+        impl_->pending_server_loops[loop_id] = Impl::PendingServerLoopRequest{
+            request.canonical, position, gain, head_relative, attenuation, start_offset};
+        return true;
+    }
+    return false;
 }
 
 void OpenAlFrontendAudio::update_named_loop(std::uint8_t loop_id, SoundPosition position) {
@@ -2163,11 +2703,37 @@ void OpenAlFrontendAudio::update_named_loop(std::uint8_t loop_id, SoundPosition 
     }
     clear_openal_error();
     slot->position = position;
-    alSource3f(slot->source, AL_POSITION, position.x, position.y, position.z);
-    impl_->refresh_server_loop_gain(*slot);
+    // GameSound.set_position applies the same +0.5 offset on every update.
+    const auto placed = retail_source_position(position);
+    alSource3f(slot->source, AL_POSITION, placed.x, placed.y, placed.z);
     const ALenum error = alGetError();
     if (error != AL_NO_ERROR) {
         impl_->last_error = "cannot reposition Protocol 168 loop: " + openal_error_text(error);
+    }
+}
+
+void OpenAlFrontendAudio::set_named_loop_mix(std::uint8_t loop_id,
+                                             float gain,
+                                             bool non_positional) {
+    if (impl_->context == nullptr || !impl_->on_owner_thread() || !std::isfinite(gain)) {
+        return;
+    }
+    auto* const slot = impl_->find_server_loop(loop_id);
+    if (slot == nullptr) {
+        return;
+    }
+    clear_openal_error();
+    if (non_positional && !slot->relative) {
+        slot->relative = true;
+        alSourcei(slot->source, AL_SOURCE_RELATIVE, AL_TRUE);
+        alSourcef(slot->source, AL_ROLLOFF_FACTOR, 0.0F);
+        alSource3f(slot->source, AL_POSITION, 0.0F, 0.0F, 0.0F);
+    }
+    slot->requested_gain = std::clamp(gain, 0.0F, 4.0F);
+    impl_->refresh_server_loop_gain(*slot);
+    const ALenum error = alGetError();
+    if (error != AL_NO_ERROR) {
+        impl_->last_error = "cannot remix Protocol 168 loop: " + openal_error_text(error);
     }
 }
 
@@ -2198,9 +2764,10 @@ void OpenAlFrontendAudio::stop_all() noexcept {
         return;
     }
 
-    impl_->stop_music();
+    impl_->stop_music(true);
     impl_->stop_ambience();
     stop_named_loops();
+    impl_->pending_one_shots.clear();
     for (auto& slot : impl_->loop_slots) {
         if (slot.active) {
             alSourceStop(slot.source);
@@ -2218,19 +2785,22 @@ void OpenAlFrontendAudio::stop_all() noexcept {
 }
 
 void OpenAlFrontendAudio::play_menu_confirm() {
-    impl_->play(menu_confirm_sound, {}, impl_->config.cue_gain, true);
+    impl_->play_hud(menu_confirm_sound, impl_->config.cue_gain);
 }
 
 void OpenAlFrontendAudio::play_menu_back() {
-    impl_->play(menu_back_sound, {}, impl_->config.cue_gain, true);
+    impl_->play_hud(menu_back_sound, impl_->config.cue_gain);
 }
 
 void OpenAlFrontendAudio::play_menu_scroll() {
-    impl_->play(menu_scroll_sound, {}, impl_->config.cue_gain, true);
+    impl_->play_hud(menu_scroll_sound, impl_->config.cue_gain);
 }
 
 bool OpenAlFrontendAudio::play_secondary_menu_music() {
-    return play_named_music("secondary_menu_bed_001");
+    // selectClass/selectTeam/selectUGC start SECONDARY_MENU_MUSIC1 with
+    // fade_speed_when_finished = 1/SECONDARY_MUSIC_BED_FADE_TIME (1.5 s).
+    return impl_->play_named_music(
+        "secondary_menu_bed_001", 0.0F, retail_secondary_bed_fade_seconds);
 }
 
 void OpenAlFrontendAudio::play_zoom_toggle(bool enabled) {
@@ -2250,21 +2820,22 @@ SoundHandle OpenAlFrontendAudio::preload_skin_sound(const std::filesystem::path&
     impl_->optional_sound_cache.emplace(key,handle);return handle;
 }
 void OpenAlFrontendAudio::play_skin_sound(SoundHandle sound,float gain,float pitch) {
-    impl_->play(sound,{},gain,true,false,0.F,0.F,SpatialSoundProfile::ordinary,pitch);
+    impl_->play(sound,{},gain,true,false,0.F,0.F,SpatialSoundProfile::ordinary,pitch,false);
 }
 
 void OpenAlFrontendAudio::play_respawn_countdown_beep(bool final_beat) {
-    // Character.media.play('beep1'/'beep2') is a protected 2D/UI cue.
+    // Character.media.play('beep1'/'beep2') is a protected 2D HUD-zone cue.
     impl_->play(final_beat ? respawn_beep1_sound : respawn_beep2_sound,
-                {}, impl_->config.cue_gain, true, true);
+                {}, impl_->config.cue_gain, true, true, 0.0F, retail_default_attenuation,
+                SpatialSoundProfile::ordinary, 1.0F, false);
 }
 
 void OpenAlFrontendAudio::play_tutorial_appear() {
-    impl_->play(tutorial_appear_sound, {}, impl_->config.cue_gain, true);
+    impl_->play_hud(tutorial_appear_sound, impl_->config.cue_gain);
 }
 
 void OpenAlFrontendAudio::play_tutorial_disappear() {
-    impl_->play(tutorial_disappear_sound, {}, impl_->config.cue_gain, true);
+    impl_->play_hud(tutorial_disappear_sound, impl_->config.cue_gain);
 }
 
 bool OpenAlFrontendAudio::set_master_volume(float volume) {
@@ -2325,6 +2896,7 @@ float OpenAlFrontendAudio::music_volume() const noexcept {
 
 bool OpenAlFrontendAudio::start_menu_music() {
     impl_->pending_music.reset();
+    impl_->named_music_stem.clear();
     return impl_->play_music(main_menu_music);
 }
 
@@ -2337,6 +2909,7 @@ void OpenAlFrontendAudio::stop_menu_music() noexcept {
 
 bool OpenAlFrontendAudio::play_tutorial_music() {
     impl_->pending_music.reset();
+    impl_->named_music_stem.clear();
     return impl_->play_music(tutorial_music);
 }
 
@@ -2363,6 +2936,14 @@ std::size_t OpenAlFrontendAudio::active_one_shot_voices() const noexcept {
         std::count_if(impl_->voices.begin(), impl_->voices.end(), [](const Impl::Voice& voice) {
             return voice.active;
         }));
+}
+
+std::size_t OpenAlFrontendAudio::resident_music_ambience_bytes() const noexcept {
+    return impl_->evictable_bytes();
+}
+
+std::size_t OpenAlFrontendAudio::pending_named_decodes() const noexcept {
+    return impl_->pending_named_buffers.size();
 }
 
 std::string_view OpenAlFrontendAudio::last_error() const noexcept {

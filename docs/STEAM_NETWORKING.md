@@ -76,10 +76,14 @@ Every step writes to `BattleSpadesClient.log` beside the executable:
 Hosting publishes two Steam rich presence keys. `status` is the line the
 friends list shows under view game info, naming the map and mode. `connect` is
 the command line Steam hands a friend who clicks Join, which is
-`steam:<host id>` — the same address Direct Connect takes. Both keys are
+`+connect steam:<host id>`. Steam appends that value verbatim: to the command
+line when the friend's game is closed, or in a `GameRichPresenceJoinRequested_t`
+callback when it runs. It must therefore carry its own switch; the bare
+`steam:<id>` published before 2026-09-28 made a closed game exit with "unknown
+option" (it is still accepted, for friends on older builds). Both keys are
 free-form and need nothing configured for the application id, which is what
-makes them usable on an id we do not own. Steam spells the switch `+connect`
-when it launches the friend, so the client accepts that as well as `--connect`.
+makes them usable on an id we do not own. `steam_player_group` groups the
+players of one match. See `STEAM_INTEGRATION_FIXES_2026-09-28.md`.
 
 A hosted match also opens a **friends-only** lobby carrying the same two
 values. A lobby needs no public address, so it reaches players behind any NAT.

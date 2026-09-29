@@ -45,15 +45,13 @@ void live_packet_budget_bounds_authority_age_without_reordering() {
     using battlespades::network::protocol168_inbound_apply_budget;
 
     expect(protocol168_inbound_apply_budget(0U, true) == 16U,
-           "ordinary playable frames must retain the small fixed tranche");
+           "an idle playable frame keeps a small non-zero tranche");
     expect(protocol168_inbound_apply_budget(17U, true) == 17U &&
                protocol168_inbound_apply_budget(64U, true) == 64U,
            "a short jitter burst must be drained completely");
-    expect(protocol168_inbound_apply_budget(65U, true) == 64U &&
-               protocol168_inbound_apply_budget(512U, true) == 64U,
-           "ordinary live catch-up must remain bounded");
-    expect(protocol168_inbound_apply_budget(513U, true) == 128U,
-           "a severe backlog must converge faster without an unbounded frame");
+    expect(protocol168_inbound_apply_budget(65U, true) == 65U &&
+               protocol168_inbound_apply_budget(8'192U, true) == 8'192U,
+           "retail NetworkClient.update drains the whole queue every update");
     expect(protocol168_inbound_apply_budget(8'192U, false) == 128U,
            "hidden loading may use the bounded aggressive drain");
 }

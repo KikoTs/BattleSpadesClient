@@ -798,6 +798,112 @@ void partial_responses_preserve_membership_and_consumed_invites_disappear_immedi
 
 } // namespace
 
+void stabilisation_2026_09_28_contract() {
+    // Transient failures of idempotent writes are retried transparently;
+    // non-idempotent chat is not repeated.
+    {
+        std::atomic_int invite_calls{};
+        std::atomic_int chat_calls{};
+        RevivalSocialClientConfig config{64U, 32U, 128U, 10ms, 5ms, 40ms};
+        config.write_retry_delay = 1ms;
+        RevivalSocialClient client{[&](const RevivalSocialRequest& request, std::stop_token) {
+            RevivalSocialResult result;
+            result.request = request;
+            if (request.kind != RevivalSocialRequestKind::lobby_action) return success(request);
+            const auto calls = request.action == "invite" ? ++invite_calls : ++chat_calls;
+            if (request.action == "invite" && calls >= 3) return success(request);
+            result.error_code = "service_unavailable";
+            result.error = "AoSPlay is temporarily unavailable (HTTP 504).";
+            result.http_status = 504L;
+            return result;
+        }, config};
+        client.set_available(true);
+        RevivalSocialRequest invite;
+        invite.generation = 1U;
+        invite.kind = RevivalSocialRequestKind::lobby_action;
+        invite.lobby_id = "42";
+        invite.action = "invite";
+        invite.target = "7";
+        expect(client.enqueue(invite), "invite must queue");
+        std::vector<RevivalSocialResult> delivered;
+        wait_until([&] {
+            for (auto& value : client.drain(std::chrono::steady_clock::now())) delivered.push_back(std::move(value));
+            return !delivered.empty();
+        }, "retried invite was not delivered");
+        expect(delivered.front() && invite_calls.load() == 3, "an invite must survive two gateway timeouts");
+        auto chat = invite;
+        chat.generation = 2U;
+        chat.action = "chat";
+        chat.payload = {{"message", "hi"}};
+        expect(client.enqueue(chat), "chat must queue");
+        delivered.clear();
+        wait_until([&] {
+            for (auto& value : client.drain(std::chrono::steady_clock::now())) delivered.push_back(std::move(value));
+            return !delivered.empty();
+        }, "chat failure was not delivered");
+        expect(!delivered.front() && chat_calls.load() == 1, "chat must never be posted twice");
+        expect(!revival_social_write_is_idempotent(RevivalSocialRequest{}), "sync is not a retried write");
+        RevivalSocialResult rejected;
+        rejected.error_code = "friend_request_missing";
+        rejected.error = "missing";
+        rejected.http_status = 409L;
+        expect(!revival_social_failure_is_transient(rejected), "a 409 verdict is not transient");
+    }
+
+    // A failing poll reports "reconnecting" but keeps the account enabled, so
+    // the menu does not disable every action.
+    {
+        RevivalSocialClient client{[&](const RevivalSocialRequest& request, std::stop_token) {
+            RevivalSocialResult failure;
+            failure.request = request;
+            failure.error_code = "network_error";
+            failure.error = "offline";
+            return failure;
+        }, RevivalSocialClientConfig{64U, 32U, 128U, 10ms, 5ms, 40ms}};
+        client.set_available(true);
+        const auto now = std::chrono::steady_clock::now();
+        client.tick(now);
+        wait_until([&] { return !client.drain(now).empty(); }, "failed poll was not delivered");
+        const auto status = client.status(now);
+        expect(!status.available && status.enabled, "a failed poll must not disable actions");
+    }
+
+    // Continuous writes may postpone the presence poll only up to the
+    // starvation bound.
+    {
+        std::atomic_int syncs{};
+        std::atomic_bool release{};
+        RevivalSocialClientConfig config{64U, 32U, 128U, 10ms, 5ms, 40ms};
+        config.maximum_poll_starvation = 50ms;
+        RevivalSocialClient client{[&](const RevivalSocialRequest& request, std::stop_token stop) {
+            if (request.kind == RevivalSocialRequestKind::sync) {
+                ++syncs;
+                return success(request);
+            }
+            while (!release.load() && !stop.stop_requested()) std::this_thread::sleep_for(1ms);
+            return success(request);
+        }, config};
+        client.set_available(true);
+        const auto start = std::chrono::steady_clock::now();
+        client.tick(start);
+        wait_until([&] { return syncs.load() == 1; }, "first poll did not run");
+        wait_until([&] { return !client.drain(start).empty(); }, "first poll not delivered");
+        RevivalSocialRequest write;
+        write.generation = 9U;
+        write.kind = RevivalSocialRequestKind::lobby_action;
+        write.lobby_id = "42";
+        write.action = "member_update";
+        expect(client.enqueue(write), "write must queue");
+        wait_until([&] { return client.status(start).priority_active; }, "write did not start");
+        client.tick(start + 20ms);
+        std::this_thread::sleep_for(20ms);
+        expect(syncs.load() == 1, "a poll must wait behind a fresh write");
+        client.tick(start + 60ms);
+        wait_until([&] { return syncs.load() == 2; }, "a starved poll must run despite a busy write lane");
+        release = true;
+    }
+}
+
 int main() {
     try {
         default_json_members_are_objects();
@@ -813,6 +919,7 @@ int main() {
         client_instances_are_unique_and_events_are_exactly_once();
         transport_failures_enter_reconnecting_without_stopping_retries();
         two_clients_converge_through_owner_chat_start_and_leave();
+        stabilisation_2026_09_28_contract();
         std::cout << "revival social tests passed\n";
         return 0;
     } catch (const std::exception& error) {

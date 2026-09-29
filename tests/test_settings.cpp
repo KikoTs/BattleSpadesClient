@@ -192,8 +192,23 @@ void edit_sessions_commit_cancel_and_reset_per_tab() {
     session.set_graphics(graphics);
     expect(session.dirty(), "editing any tab must dirty the complete transaction");
 
+    main = session.draft().main;
+    main.language = "de";
+    main.show_skins = false;
+    main.ability_hints = true;
+    main.fullscreen = !defaults.main.fullscreen;
+    main.invert_mouse = true;
+    main.music_volume = 0.4;
+    session.set_main(main);
     session.reset_tab(SettingsTab::main);
-    expect(session.draft().main == defaults.main, "Main Defaults must restore only the Main tab");
+    expect(session.draft().main.master_volume == defaults.main.master_volume &&
+               session.draft().main.music_volume == defaults.main.music_volume &&
+               session.draft().main.fullscreen == defaults.main.fullscreen &&
+               session.draft().main.invert_mouse == defaults.main.invert_mouse,
+           "Main Defaults must restore retail MAIN_DEFAULT's four keys");
+    expect(session.draft().main.language == "de" && !session.draft().main.show_skins &&
+               session.draft().main.ability_hints,
+           "Main Defaults must keep the native-only language and cosmetic options");
     expect(session.draft().graphics.vsync &&
                session.draft().graphics.model_quality == QualityLevel::low,
            "per-tab Defaults must preserve edits on other tabs");
@@ -323,6 +338,8 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.graphics.antialiasing = Antialiasing::samples_4;
     settings.graphics.shader_quality = ShaderQuality::compatibility;
     settings.graphics.vsync = true;
+    settings.graphics.borderless_fullscreen = false;
+    settings.graphics.render_interpolation = false;
     settings.controls.mouse_sensitivity = 0.1;
     static_cast<void>(
         settings.controls.set_binding(ControlAction::toggle_hud, InputBinding::keyboard(53U)));
@@ -339,6 +356,15 @@ void toml_round_trip_is_human_readable_and_atomic() {
                text.find("graphics_api = \"vulkan\"") != std::string::npos &&
                text.find("toggle_hud = \"keyboard:backquote\"") != std::string::npos,
            "saved settings must use readable option and binding values");
+    expect(text.find("fullscreen_mode = \"exclusive\"") != std::string::npos &&
+               text.find("render_interpolation = false") != std::string::npos,
+           "native display options must be saved as readable TOML");
+    {
+        const auto defaults = battlespades::settings::retail_default_settings();
+        expect(defaults.graphics.borderless_fullscreen &&
+                   defaults.graphics.render_interpolation,
+               "fresh installs default to borderless fullscreen and render interpolation");
+    }
     expect(text.find("music_volume = 0.1\n") != std::string::npos &&
                text.find("mouse_sensitivity = 0.1\n") != std::string::npos,
            "human-edited scalar values must use their shortest round-trip decimal");
@@ -359,8 +385,10 @@ void missing_and_unknown_data_fail_safely() {
     const auto missing = TomlSettingsStore{missing_path}.load();
     expect(static_cast<bool>(missing) && !missing.file_found,
            "a missing file must safely produce defaults");
-    expect(missing.settings == battlespades::settings::retail_default_settings(),
-           "missing-file defaults must be exact");
+    auto fresh_install = battlespades::settings::retail_default_settings();
+    fresh_install.graphics.shader_quality = ShaderQuality::compatibility;
+    expect(missing.settings == fresh_install,
+           "missing-file defaults must be exact, with the Retail (Legacy) tier for new installs");
 
     const auto future_path = temporary.path("future.toml");
     write_text(future_path,

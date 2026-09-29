@@ -18,6 +18,26 @@ enum class PauseMenuAction : std::uint8_t {
     game_data,
     settings,
     disconnect,
+    /** Map Creator host only: replaces DISCONNECT (escapeMenu.save_button). */
+    save,
+    /** Map Creator host only: asks UGC_QUIT_WITHOUT_SAVING first. */
+    quit,
+    /** MessageBox left button (OK, Yes or Retry). */
+    message_primary,
+    /** MessageBox right button (No or Cancel). */
+    message_secondary,
+};
+
+/** escapeMenu.py MESSAGE_* ids plus the dialog each one shows. */
+enum class PauseMenuMessage : std::uint8_t {
+    /** UGC_MAP_SAVE_SUCCESSFULLY, OK: resume. */
+    saved,
+    /** UGC_MAP_SAVE_SUCCESSFULLY, OK: disconnect (MESSAGE_QUIT_AFTER_SAVE). */
+    saved_then_quit,
+    /** UGC_MAP_SAVE_ERROR, Retry / Cancel. */
+    save_error,
+    /** UGC_QUIT_WITHOUT_SAVING ("Save before quitting?"), Yes / No. */
+    save_before_quit,
 };
 
 /**
@@ -34,6 +54,11 @@ struct PauseMenuEnvironment final {
     bool show_game_data{};
     bool allow_constructs{};
     bool allow_game_data{};
+    /**
+     * game_scene.is_ugc_host(): SAVE and QUIT replace DISCONNECT and the
+     * menu uses pause_menu_frame_big.
+     */
+    bool ugc_host{};
 };
 
 /** The server-owned subset used by retail EscapeMenu visibility/gating. */
@@ -50,6 +75,8 @@ struct PauseMenuServerState final {
     bool spectator_enabled{};
     bool map_ended{};
     bool ugc_mode{};
+    /** This client owns the Map Creator session (game_scene.is_ugc_host). */
+    bool ugc_host{};
 };
 
 [[nodiscard]] PauseMenuEnvironment
@@ -77,9 +104,18 @@ public:
     [[nodiscard]] std::optional<PauseMenuAction> hovered() const noexcept { return hovered_; }
     [[nodiscard]] std::optional<PauseMenuAction> pressed() const noexcept { return pressed_; }
 
+    /** Menu buttons; message-box buttons use message_button_bounds(). */
     [[nodiscard]] static ui::Rect action_bounds(PauseMenuAction action) noexcept;
     [[nodiscard]] bool action_visible(PauseMenuAction action) const noexcept;
     [[nodiscard]] bool action_enabled(PauseMenuAction action) const noexcept;
+
+    /** show_message_box: every other button is disabled while it is up. */
+    void show_message(PauseMenuMessage message) noexcept;
+    void hide_message() noexcept;
+    [[nodiscard]] std::optional<PauseMenuMessage> message() const noexcept { return message_; }
+    /** False for the one-button (OK) dialogs. */
+    [[nodiscard]] bool message_has_two_buttons() const noexcept;
+    [[nodiscard]] ui::Rect message_button_bounds(PauseMenuAction button) const noexcept;
 
 private:
     [[nodiscard]] std::optional<PauseMenuAction>
@@ -88,6 +124,7 @@ private:
     PauseMenuEnvironment environment_{};
     std::optional<PauseMenuAction> hovered_{};
     std::optional<PauseMenuAction> pressed_{};
+    std::optional<PauseMenuMessage> message_{};
 };
 
 struct PauseMenuPresentationContext final {

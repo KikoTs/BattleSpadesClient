@@ -57,13 +57,21 @@ void retail_normals_survive_loading_and_all_six_faces() {
         expect(mesh.vertices.size()==24,"one voxel must expose six faces");
         for (const auto& v:mesh.vertices) {
             expect(v.static_light==0x40000000U,"KV6 material must stay distinct from terrain/effect cubes");
-            expect(v.ao_u==mesh.vertices.front().ao_u && v.ao_v==mesh.vertices.front().ao_v &&
-                v.edge_u==mesh.vertices.front().edge_u,"authored normal must be shared by all faces");
-            if (index==0) expect(std::abs(v.ao_u+0.08847556F)<0.00001F &&
-                std::abs(v.ao_v+0.99607843F)<0.000001F && v.edge_u==0,
-                "normal zero must match the recovered table and coordinate conversion");
-            if (index==255) expect(v.ao_u==2 && v.ao_v==0 && v.edge_u==0,
-                "normal 255 must retain retail's special vector");
+            // kv6.pyd sub_1000DC40 replaces the byte-7 table normal with
+            // normalize(normalize(P - C) + F); for a 1x1x1 model at pivot 0
+            // the centre C is the origin, so the normal is independent of
+            // the authored byte and each corner leans toward its face.
+            const std::array<float,3> face_normal =
+                v.face==0 ? std::array{-1.F,0.F,0.F} : v.face==1 ? std::array{1.F,0.F,0.F}
+              : v.face==2 ? std::array{0.F,-1.F,0.F} : v.face==3 ? std::array{0.F,1.F,0.F}
+              : v.face==4 ? std::array{0.F,0.F,-1.F} : std::array{0.F,0.F,1.F};
+            const float radial=std::sqrt(v.x*v.x+v.y*v.y+v.z*v.z);
+            std::array<float,3> expected{v.x/radial+face_normal[0],v.y/radial+face_normal[1],
+                                         v.z/radial+face_normal[2]};
+            const float length=std::sqrt(expected[0]*expected[0]+expected[1]*expected[1]+expected[2]*expected[2]);
+            expect(std::abs(v.ao_u-expected[0]/length)<1e-5F && std::abs(v.ao_v-expected[1]/length)<1e-5F &&
+                   std::abs(v.edge_u-expected[2]/length)<1e-5F,
+                   "KV6 gl_Normal must be retail's radial-plus-face normal, not the byte-7 table");
         }
         expect(model->inverse_scaled(2).voxels().front().normal_index==1,
                "reduced-detail models must use retail's rebuilt normal index");

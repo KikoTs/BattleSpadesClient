@@ -80,6 +80,24 @@ struct CreateMatchRuleDefinition final {
 [[nodiscard]] std::span<const CreateMatchModeDefinition> retail_create_match_modes() noexcept;
 [[nodiscard]] std::span<const CreateMatchRuleDefinition> retail_create_match_rules() noexcept;
 
+/**
+ * One authored map offered by Create Match's SAVED_MAPS (hosted_ugc/maps) or
+ * SUBSCRIBED_MAPS (ugc/maps/Subscribed_<id>) category. Retail lists it only
+ * for modes in get_available_game_modes(map) -- the sidecar's `tags`.
+ */
+struct CreateMatchCustomMap final {
+    /** File stem the local server loads as default_map. */
+    std::string stem;
+    std::string title;
+    std::string author;
+    /** Lower-case retail mode ids the map validates for (tdm, ctf, ...). */
+    std::vector<std::string> mode_keys;
+    bool subscribed{};
+
+    [[nodiscard]] friend bool operator==(const CreateMatchCustomMap&,
+                                         const CreateMatchCustomMap&) = default;
+};
+
 struct CreateMatchConfiguration final {
     CreateMatchPrivacy privacy{CreateMatchPrivacy::open};
     std::uint16_t retail_playlist_id{9U};
@@ -91,6 +109,12 @@ struct CreateMatchConfiguration final {
     /** Preferred port; the launcher advances to the next free UDP port. */
     std::uint16_t server_port{27015U};
     std::string map_name{"AncientEgypt"};
+    /** map_name is an authored SAVED/SUBSCRIBED map (retail Custom_UGC_Map). */
+    bool custom_map{};
+    bool subscribed_map{};
+    /** Display title and author (retail Custom_UGC_Map_Author) of a custom map. */
+    std::string map_title{};
+    std::string map_author{};
     /** Only explicit deviations from the selected playlist defaults are stored. */
     std::map<std::string, std::string, std::less<>> rule_overrides{};
 
@@ -265,6 +289,9 @@ public:
     [[nodiscard]] CreateMatchMenuPresentation presentation() const;
 
     void set_players(std::vector<CreateMatchPlayer> players);
+    /** Installs the SAVED_MAPS / SUBSCRIBED_MAPS catalogs for the map page. */
+    void set_custom_maps(std::vector<CreateMatchCustomMap> maps);
+    [[nodiscard]] std::span<const CreateMatchCustomMap> custom_maps() const noexcept;
     void set_chat_lines(std::vector<CreateMatchChatLine> lines);
     /** Apply one server-authoritative lobby snapshot without emitting edits. */
     void apply_authoritative_configuration(CreateMatchConfiguration configuration);
@@ -321,9 +348,13 @@ private:
     void scroll_from_pointer(ui::Point point);
     void emit_configuration_changed();
     void select_mode(const CreateMatchModeDefinition& mode);
+    [[nodiscard]] const CreateMatchCustomMap* listed_custom_map(std::string_view row_key) const;
+    [[nodiscard]] bool custom_map_valid(const CreateMatchModeDefinition& mode) const;
+    void select_stock_map(const CreateMatchModeDefinition& mode);
 
     CreateMatchConfiguration configuration_{};
     CreateMatchConfiguration retail_defaults_{};
+    std::vector<CreateMatchCustomMap> custom_maps_{};
     CreateMatchPage page_{CreateMatchPage::match_settings};
     CreateMatchPage previous_page_{CreateMatchPage::match_settings};
     std::string lobby_name_{"Private Match"};
@@ -346,5 +377,8 @@ private:
 };
 
 [[nodiscard]] std::string_view create_match_page_title(CreateMatchPage page) noexcept;
+
+/** Choose-map row key of a custom map: "SAVED_MAPS/<stem>" or "SUBSCRIBED_MAPS/<stem>". */
+[[nodiscard]] std::string create_match_custom_map_key(const CreateMatchCustomMap& map);
 
 } // namespace battlespades::frontend

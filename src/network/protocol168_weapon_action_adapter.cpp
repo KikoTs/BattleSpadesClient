@@ -60,7 +60,11 @@ EncodedWeaponAction encode_weapon_action(
                            context.penetration,
                            context.affect_shooter,
                            action.secondary,
-                           action.seed});
+                           // DiggingTool.use_spade passes seed 0; only
+                           // shoot_bullet draws randint(1, 255).
+                           action.kind == WeaponActionKind::melee
+                               ? std::uint8_t{0U}
+                               : action.seed});
         return result;
 
     case WeaponActionKind::oriented_item:

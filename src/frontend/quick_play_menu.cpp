@@ -368,8 +368,10 @@ QuickPlayPrimaryKind QuickPlayMenuModel::primary_kind() const noexcept {
 bool QuickPlayMenuModel::primary_enabled() const noexcept {
     switch (primary_kind()) {
     case QuickPlayPrimaryKind::start:
-        return network_available_ && search_state_ == QuickPlaySearchState::complete &&
-               selected().chosen_server() != nullptr;
+        // quickPlayMenu.py enables START as soon as a playlist row is picked.
+        // Native Quick Play needs a server to dial, so START lights up the
+        // moment the selected row has one, even while the search continues.
+        return network_available_ && selected().chosen_server() != nullptr;
     case QuickPlayPrimaryKind::buy:
         return true;
     case QuickPlayPrimaryKind::hidden:

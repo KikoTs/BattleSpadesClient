@@ -1,5 +1,6 @@
 #pragma once
 
+#include "battlespades/settings/retail_key_names.hpp"
 #include "battlespades/settings/settings_session.hpp"
 #include "battlespades/ui/geometry.hpp"
 #include "battlespades/ui/input.hpp"
@@ -26,6 +27,7 @@ enum class SettingsRowId : std::uint8_t {
     show_skins,
     show_other_skins,
     weapon_motion,
+    ability_hints,
     resolution,
     graphics_api,
     antialiasing,
@@ -186,6 +188,13 @@ struct SettingsRowPresentation final {
     std::size_t dropdown_visible_count{};
     std::optional<settings::ControlAction> control_action{};
     SettingsVisualState state{SettingsVisualState::normal};
+    /**
+     * ToggleOptionControl hover: the pointer is over the half that is NOT
+     * selected, which retail paints TOGGLE_OPTION_HOVERED_COLOUR.
+     */
+    bool unselected_half_hovered{};
+    /** EditBoxFloatControl focus: the sensitivity box is taking typed text. */
+    bool text_editing{};
 };
 
 struct SettingsButtonPresentation final {
@@ -199,6 +208,8 @@ struct SettingsButtonPresentation final {
 struct BindingCapturePresentation final {
     settings::ControlAction action{settings::ControlAction::forward};
     std::optional<settings::BindingAssignmentResult> rejection{};
+    /** The input that was refused, for ERROR_CONTROL_ALREADY_BOUND's "{0}". */
+    std::optional<settings::InputBinding> rejected_binding{};
 };
 
 /** Complete renderer-neutral state for one Settings-menu frame. */
@@ -263,6 +274,11 @@ struct SettingsFavoriteServerCommand final {
 
 struct SettingsCloseCommand final {
     bool committed{false};
+    /**
+     * In-game only. Retail settingsMenu.save_pressed (Done) and the Menu key
+     * leave straight to the game; back_pressed (Cancel) reopens EscapeMenu.
+     */
+    bool return_to_game{false};
 };
 
 struct SettingsBindingRejectedEffect final {
@@ -296,6 +312,15 @@ public:
     void set_active_tab(settings::SettingsTab tab);
     /** Refreshes externally discovered language packs without discarding the draft. */
     void set_languages(std::vector<SettingsLanguageOption> languages);
+    /**
+     * Catalogue lookup for KeyControl text (translate_key). With it the
+     * Controls values are final text prefixed by `literal_text_prefix`, so ids
+     * missing from the pack (ESCAPE, RALT) are never humanised; without it
+     * the value is the bare string id.
+     */
+    void set_key_name_lookup(settings::RetailStringLookup lookup) {
+        key_name_lookup_ = std::move(lookup);
+    }
 
     [[nodiscard]] SettingsMenuPresentation presentation() const;
     [[nodiscard]] std::optional<SettingsMenuTarget> focused() const noexcept;
@@ -320,6 +345,23 @@ public:
     void activate_defaults();
     void activate_done();
     void activate_cancel();
+    /**
+     * The bound Menu key (settingsMenu.on_key_press). In game it restores the
+     * draft, plays the back cue and returns straight to the world; in the
+     * frontend it is Cancel.
+     */
+    void activate_menu_key();
+
+    /**
+     * EditBoxFloatControl on the sensitivity row. While it has focus, typed
+     * text lands in the box and Enter or a click elsewhere commits the value
+     * clamped to 0..1 at two decimals.
+     */
+    [[nodiscard]] bool text_editing() const noexcept;
+    [[nodiscard]] bool text_input(std::string_view utf8);
+    /** Backspace (`forward == false`) or Delete at the end of the box. */
+    [[nodiscard]] bool text_erase(bool forward);
+    void commit_text_edit();
 
     /** Moves all queued commands/effects out in their original event order. */
     [[nodiscard]] std::vector<SettingsMenuEffect> take_effects() noexcept;
@@ -342,6 +384,7 @@ private:
     [[nodiscard]] bool activate(SettingsMenuTarget target);
     [[nodiscard]] bool adjust_row(SettingsRowId row, std::int32_t direction);
     [[nodiscard]] bool set_slider_from_pointer(SettingsRowId row, ui::Point point, bool play_sound);
+    [[nodiscard]] bool step_volume(SettingsRowId row, std::int32_t direction);
     [[nodiscard]] std::optional<std::size_t> dropdown_option_at(ui::Point point) const;
     [[nodiscard]] ui::Rect dropdown_panel_bounds() const;
     void open_resolution_dropdown();
@@ -372,17 +415,34 @@ private:
     std::optional<SettingsMenuTarget> pressed_{};
     std::optional<ui::Point> pointer_{};
     std::optional<SettingsRowId> dragged_slider_{};
+    /** RangeBarControl arrow held down: -1 left, +1 right; fires on release. */
+    std::int32_t pressed_range_arrow_{};
+    std::optional<std::string> sensitivity_edit_{};
     bool resolution_dropdown_open_{};
     std::size_t resolution_dropdown_first_index_{};
     std::optional<std::size_t> pressed_dropdown_option_{};
     ScrollbarCapture scrollbar_capture_{ScrollbarCapture::none};
     std::optional<settings::ControlAction> binding_capture_{};
+    settings::RetailStringLookup key_name_lookup_{};
     std::optional<settings::BindingAssignmentResult> binding_rejection_{};
+    std::optional<settings::InputBinding> binding_rejected_input_{};
     std::vector<SettingsMenuEffect> effects_{};
 };
+
+/** Text-command prefix the frontend renders verbatim (no catalogue lookup). */
+inline constexpr std::string_view literal_text_prefix{"LITERAL|"};
+
+/**
+ * KeyControl value text: translate_key() for keys, LMB/RMB for mouse
+ * buttons, strings.NONE when unbound (KeyControl.draw's None/'' branch).
+ */
+[[nodiscard]] std::string settings_binding_text(settings::InputBinding binding,
+                                                const settings::RetailStringLookup& lookup);
 
 [[nodiscard]] std::string_view settings_row_name(SettingsRowId row) noexcept;
 [[nodiscard]] std::optional<settings::ControlAction>
 settings_row_control_action(SettingsRowId row) noexcept;
+/** The Controls row label id (e.g. CHANGE_CLASS) bound to one action. */
+[[nodiscard]] std::string_view settings_control_action_label(settings::ControlAction action) noexcept;
 
 } // namespace battlespades::frontend

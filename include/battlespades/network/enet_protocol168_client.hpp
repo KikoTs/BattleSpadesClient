@@ -10,7 +10,13 @@ namespace battlespades::network {
 struct EnetProtocol168Config final {
     std::string host{"127.0.0.1"};
     std::uint16_t port{32887U};
+    /**
+     * Live connections: LOADING_MENU_NO_PROGRESS_TIMEOUT, restarted by every
+     * accepted handshake packet. The blocking probe keeps it as one deadline.
+     */
     std::uint32_t timeout_ms{30'000U};
+    /** Retail NetworkClient.timeout: ENet CONNECT must arrive within 5 s. */
+    std::uint32_t connect_timeout_ms{5'000U};
 };
 
 struct EnetProtocol168Result final {

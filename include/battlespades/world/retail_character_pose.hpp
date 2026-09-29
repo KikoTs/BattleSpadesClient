@@ -157,17 +157,65 @@ retail_third_person_muzzle_attachment(std::uint8_t tool_id) noexcept;
     std::uint64_t timer_ms, ViewModelVector velocity,
     ViewModelVector orientation, bool crouching) noexcept;
 
+/** Tool.get_arm_pitch_range(): the clamp Character.draw applies to arm pitch. */
+struct RetailArmPitchRange final {
+    double minimum{-90.0};
+    double maximum{70.0};
+};
+
+/**
+ * Recovered get_arm_pitch_range() for a tool `seconds_since_primary` after
+ * its last use: ARMS_PITCH (-90, 70) by default, RiotShieldTool (-80, 0),
+ * and DiggingTool's upper limit lowered by pitch_increase except while the
+ * swing (shoot_interval) is running.
+ */
+[[nodiscard]] RetailArmPitchRange retail_tool_arm_pitch_range(
+    std::uint8_t tool_id, double seconds_since_primary) noexcept;
+
+/**
+ * Recovered Tool.get_pitch() (Character.shoot_pitch) as observers see it:
+ * 0 for ordinary tools, pitch_initial -4 for grenades and resting digging
+ * tools, and DiggingTool.use_spade's from->to interpolation during a swing.
+ */
+[[nodiscard]] double retail_tool_pitch(std::uint8_t tool_id,
+                                       double seconds_since_primary,
+                                       double aim_pitch_degrees) noexcept;
+
 /**
  * Evaluate the retail third-person arm and equipped-tool transforms.
  *
  * The function is pure and safe on every thread. `action_serial` is the
  * number of accepted uses of the equipped tool and selects the alternating
  * Zombie hand exactly as ZombieHandTool.last_used_hand does.
- * `can_display_weapon` suppresses only the held tool, never class arms.
+ * `can_display_weapon` suppresses only the held tool, never class arms; the
+ * arms then take Character.draw's hidden-tool +50 degree pitch.
+ * `mechanism_phase` is the minigun barrel's revolution fraction [0, 1): the
+ * MINIGUN branch rolls only the barrel, about its recovered pivot.
  */
 [[nodiscard]] RetailThirdPersonPose evaluate_retail_third_person_pose(
     std::uint8_t tool_id, std::size_t tool_part_count,
     double seconds_since_primary = 1.0e9, std::uint64_t action_serial = 0U,
-    double aim_pitch_degrees = 0.0, bool can_display_weapon = true) noexcept;
+    double aim_pitch_degrees = 0.0, bool can_display_weapon = true,
+    double mechanism_phase = 0.0) noexcept;
+
+/**
+ * Observer-side MinigunWeapon spin state (remote barrels are never
+ * replicated; retail runs the same update from the WorldUpdate trigger bits).
+ */
+struct RetailRemoteMinigunSpin final {
+    /** |shoot_interval - initial| / range, 0 at rest and 1 at full spin. */
+    double ratio{};
+    /** AnimRoll revolution fraction in [0, 1). */
+    double phase{};
+};
+
+/**
+ * One fixed step of MinigunWeapon.update for an observed character: the
+ * interval alters at -0.15/s while a trigger is held and +0.075/s otherwise
+ * over a -0.2 range (ratio +0.75/s, -0.375/s), and the barrel turns at
+ * ratio * MINIGUN_BARREL_SPIN_SPEED_MAX (5) revolutions per second.
+ */
+[[nodiscard]] RetailRemoteMinigunSpin advance_retail_remote_minigun_spin(
+    RetailRemoteMinigunSpin state, double dt, bool trigger_held) noexcept;
 
 } // namespace battlespades::world

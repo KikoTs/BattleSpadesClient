@@ -339,7 +339,10 @@ double jetpack_tool_icon_y(const ui::PixelExtent& window) noexcept {
 RectF active_equipment_icon(const ui::PixelExtent& window) noexcept {
     constexpr double tool_source_pixels{330.0};
     constexpr double tool_draw_scale{0.15};
-    const auto size = loaded_image_pixels(tool_source_pixels) * tool_draw_scale;
+    // TOOL_IMAGES load at scale 1.0 (no global 0.64 shrink), so
+    // draw_parachute_hud's glScalef(0.15) blits a 49.5 px icon; the shrunk
+    // 31 px one was about 60% of retail's (live A/B 2026-09-29).
+    const auto size = tool_source_pixels * tool_draw_scale;
     const auto centre_x = static_cast<double>(window.width) - 50.0;
     constexpr double centre_y{135.0};
     return RectF{centre_x - size * 0.5, centre_y - size * 0.5, size, size};

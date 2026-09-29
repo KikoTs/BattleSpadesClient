@@ -181,8 +181,15 @@ ui::DrawList FriendsLobbyPresentation::build(
                    HorizontalTextAlignment::center, friends_lobby_assets::title_font));
 
     const auto tabs = draw_rect(layout.tabs);
-    constexpr std::array labels{std::string_view{"FRIENDS"}, std::string_view{"REQUESTS"},
-                                std::string_view{"INVITES"}};
+    // Pending counts on the tabs: an incoming request or invitation used to be
+    // invisible until the player happened to open the right tab.
+    const auto counted = [](std::string_view label, std::size_t count) {
+        return count == 0U ? std::string{label}
+                           : std::string{label} + " (" + std::to_string((std::min)(count, std::size_t{99U})) + ")";
+    };
+    const std::array labels{std::string{"FRIENDS"},
+                            counted("REQUESTS", model.incoming_request_count()),
+                            counted("INVITES", model.snapshot().invitations.size())};
     const auto tab_width = tabs.width / 3.0;
     for (std::size_t index{}; index < labels.size(); ++index) {
         const bool selected = static_cast<std::size_t>(model.tab()) == index;
@@ -190,7 +197,8 @@ ui::DrawList FriendsLobbyPresentation::build(
                               tab_width - 2.0, tabs.height};
         list.push(sprite(selected ? friends_lobby_assets::active_tab : friends_lobby_assets::inactive_tab,
                          bounds));
-        list.push(text(labels[index], bounds, 15.0, selected ? gold : cream,
+        const bool pending = index > 0U && labels[index].find('(') != std::string::npos;
+        list.push(text(labels[index], bounds, 15.0, selected || pending ? gold : cream,
                        HorizontalTextAlignment::center, friends_lobby_assets::tab_font));
     }
 
@@ -330,7 +338,7 @@ ui::DrawList FriendsLobbyPresentation::build(
         case FriendsLobbyActionKind::accept_lobby_invite: message = "Joining your friends..."; break;
         default: message = "Saving your changes..."; break;
         }
-    } else if (!model.service_available()) {
+    } else if (!model.service_available() || !model.connected()) {
         heading = "RECONNECTING";
         message = model.service_status().empty() ? "Connection unavailable. Retrying automatically." : model.service_status();
         accent = amber;
@@ -345,8 +353,9 @@ ui::DrawList FriendsLobbyPresentation::build(
                      white, model.control_hovered(FriendsLobbyControl::back) ? 1'000U : 700U));
     list.push(text("BACK", {back.x + 35.0, back.y, back.width - 35.0, back.height},
                    20.0, back_color, HorizontalTextAlignment::left, friends_lobby_assets::tab_font));
-    list.push(text(model.service_available() ? "CONNECTED" : "RECONNECTING...",
-                   {548.0, 543.0, 190.0, 25.0}, 12.0, model.service_available() ? green : amber,
+    const bool online = model.service_available() && model.connected();
+    list.push(text(online ? "CONNECTED" : "RECONNECTING...",
+                   {548.0, 543.0, 190.0, 25.0}, 12.0, online ? green : amber,
                    HorizontalTextAlignment::right));
     return list;
 }

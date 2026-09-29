@@ -83,9 +83,9 @@ void ResolutionConfirmationModel::cancel_pointer_capture() noexcept {
 }
 
 std::uint32_t ResolutionConfirmationModel::seconds_remaining() const noexcept {
+    // Retail formats int(remaining): 15 only on the first frame, then 14..0.
     const auto whole = std::chrono::duration_cast<std::chrono::seconds>(remaining_).count();
-    const auto remainder = remaining_ - std::chrono::seconds{whole};
-    return static_cast<std::uint32_t>(whole + (remainder > std::chrono::nanoseconds::zero() ? 1 : 0));
+    return static_cast<std::uint32_t>(std::max<std::int64_t>(whole, 0));
 }
 
 bool ResolutionConfirmationModel::keep_hovered() const noexcept {

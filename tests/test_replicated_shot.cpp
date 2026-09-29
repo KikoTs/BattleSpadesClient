@@ -1,4 +1,5 @@
 #include "battlespades/world/replicated_shot.hpp"
+#include "battlespades/world/weapon_catalog.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -69,6 +70,39 @@ void shotgun_contacts_are_unique_and_bounded() {
     }
 }
 
+void every_pellet_gets_its_own_tracer_line() {
+    auto map = empty_world();
+    for (std::uint32_t y{0U}; y < 32U; ++y) {
+        for (std::uint32_t z{8U}; z < 32U; ++z) {
+            expect(map.set_voxel(5U, y, z, stone), "pellet wall must be writable");
+        }
+    }
+    const auto* shotgun = find_weapon_definition(9U);
+    expect(shotgun != nullptr && shotgun->pellet_count > 1U, "the shotgun has pellets");
+    const auto pellets = replicated_hitscan_pellets(
+        map, {10.5F, 16.5F, 20.5F}, {-1.0F, 0.0F, 0.0F}, 9U, 91U, false);
+    expect(pellets.size() == shotgun->pellet_count,
+           "Character.shoot makes one Tracer per pellet, before any cell dedup");
+    std::size_t contacts{};
+    for (const auto& pellet : pellets) {
+        contacts += pellet.contact.has_value() ? 1U : 0U;
+        expect(pellet.direction[0U] < 0.0F, "pellets keep the shot's heading");
+    }
+    const auto impacts = replicated_hitscan_impacts(
+        map, {10.5F, 16.5F, 20.5F}, {-1.0F, 0.0F, 0.0F}, 9U, 91U, false);
+    expect(contacts >= impacts.size(),
+           "the pellet stream is the same one the impacts deduplicate");
+
+    // World.hitscan_accurate's default water_is_solid=True is a plain solid
+    // lookup, so a shot into the water stops on the z = 239 bed.
+    const auto down = replicated_hitscan_pellets(
+        empty_world(), {10.5F, 10.5F, 230.5F}, {0.0F, 0.0F, 1.0F}, 17U, 3U, true);
+    expect(down.size() == 1U && down.front().contact.has_value() &&
+               (*down.front().contact)[2U] >= 239.0F - 1.0e-3F &&
+               (*down.front().contact)[2U] <= 239.0F + 1.0e-3F,
+           "hitscan treats the water bed as solid (retail default)");
+}
+
 void packet_seed_replays_cpython_axis_spread() {
     auto map = empty_world();
     for (std::uint32_t y{90U}; y <= 105U; ++y) {
@@ -95,14 +129,53 @@ void non_hitscan_tools_do_not_invent_contacts() {
            "melee tools must remain on authoritative terrain damage");
 }
 
+void current_bloom_drives_the_replayed_cloud() {
+    auto map = empty_world();
+    for (std::uint32_t y{90U}; y <= 105U; ++y) {
+        for (std::uint32_t z{90U}; z <= 105U; ++z) {
+            expect(map.set_voxel(5U, y, z, stone), "spread wall must be writable");
+        }
+    }
+    const auto centred = replicated_hitscan_impacts(
+        map, {100.5F, 100.5F, 100.5F}, {-1.0F, 0.0F, 0.0F}, 17U, 42U, false, 0.0);
+    expect(centred.size() == 1U && centred.front().cell.y == 100U &&
+               centred.front().cell.z == 100U,
+           "the passed Weapon.accuracy must replace the class base accuracy");
+
+    const auto catalog = weapon_catalog();
+    const WeaponDefinition* bloomer{};
+    for (const auto& weapon : catalog) {
+        if (weapon.retail.aim.variable_accuracy &&
+            weapon.retail.aim.spread_increase_per_shot.value_or(0.0) > 0.0 &&
+            weapon.retail.aim.accuracy_max.value_or(0.0) >
+                weapon.retail.aim.accuracy_min.value_or(0.0)) {
+            bloomer = &weapon;
+            break;
+        }
+    }
+    expect(bloomer != nullptr, "a variable-accuracy weapon must exist");
+    ObservedShotBloom state;
+    const double first = observe_hitscan_bloom(state, bloomer->tool_id, 10.0);
+    const double second = observe_hitscan_bloom(state, bloomer->tool_id, 10.0);
+    expect(second > first, "consecutive remote shots must bloom");
+    const double rested = observe_hitscan_bloom(state, bloomer->tool_id, 1000.0);
+    expect(rested == first, "a rested remote weapon must recover to its minimum");
+    ObservedShotBloom pistol;
+    expect(observe_hitscan_bloom(pistol, 17U, 0.0) ==
+               find_weapon_definition(17U)->retail.aim.accuracy.value_or(0.0),
+           "non-variable weapons replay their class accuracy");
+}
+
 } // namespace
 
 int main() {
     try {
         observer_hit_is_visual_and_non_mutating();
         shotgun_contacts_are_unique_and_bounded();
+        every_pellet_gets_its_own_tracer_line();
         packet_seed_replays_cpython_axis_spread();
         non_hitscan_tools_do_not_invent_contacts();
+        current_bloom_drives_the_replayed_cloud();
         std::cout << "replicated shot tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -159,6 +159,29 @@ void command_line_parses_live_connect_shortcut() {
     const std::vector<std::string_view> missing{"--connect"};
     expect(!static_cast<bool>(battlespades::core::parse_command_line(missing)),
            "live connect shortcut without an endpoint must fail closed");
+
+    // Steam's own launch forms for a friend's Join Game / accepted invite.
+    const std::vector<std::string_view> steam_join{"+connect", "steam:76561198000000001"};
+    const auto joined = battlespades::core::parse_command_line(steam_join);
+    expect(static_cast<bool>(joined) &&
+               joined.options->startup_endpoint == "steam:76561198000000001",
+           "+connect steam:<id> must reach the loader");
+    const std::vector<std::string_view> bare{"steam:76561198000000001"};
+    const auto bare_joined = battlespades::core::parse_command_line(bare);
+    expect(static_cast<bool>(bare_joined) &&
+               bare_joined.options->startup_endpoint == "steam:76561198000000001",
+           "a bare steam:<id> appended by Steam must not close the game");
+    const std::vector<std::string_view> lobby{"+connect_lobby", "109775241021923456"};
+    const auto lobby_joined = battlespades::core::parse_command_line(lobby);
+    expect(static_cast<bool>(lobby_joined) &&
+               lobby_joined.options->startup_steam_lobby == 109775241021923456ULL,
+           "+connect_lobby must carry the lobby id");
+    const std::vector<std::string_view> bad_lobby{"+connect_lobby", "abc"};
+    expect(!static_cast<bool>(battlespades::core::parse_command_line(bad_lobby)),
+           "+connect_lobby with a malformed id must fail closed");
+    const std::vector<std::string_view> bad_bare{"steam:notanid"};
+    expect(!static_cast<bool>(battlespades::core::parse_command_line(bad_bare)),
+           "a malformed steam token is still an unknown option");
 }
 
 void command_line_parses_offline_vfx_oracle() {
@@ -410,6 +433,97 @@ void fixed_step_pacer_still_presents_when_simulation_itself_overruns() {
            "even CPU overload must leave a bounded path to visible input feedback");
 }
 
+void intermediate_frames_fit_between_fixed_ticks() {
+    using namespace std::chrono_literals;
+    using Clock = battlespades::core::FixedStepPacer::Clock;
+    using battlespades::core::intermediate_frame_alpha;
+    using battlespades::core::next_intermediate_frame;
+    constexpr auto tick = 16'666'666ns;
+    constexpr auto hz144 = 6'944'444ns;
+    const Clock::time_point tick_time{};
+    const auto next_tick = tick_time + tick;
+
+    // 144 Hz: frames at +6.9 and +13.9 ms fit; +20.8 would cross the tick.
+    auto previous = tick_time;
+    std::size_t frames{};
+    while (const auto slot = next_intermediate_frame(previous, previous, next_tick, hz144)) {
+        const double alpha = intermediate_frame_alpha(tick_time, slot->at, tick);
+        expect(alpha > 0.0 && alpha < 1.0, "intermediate alpha must stay inside one fixed step");
+        expect(slot->at + hz144 / 4 < next_tick,
+               "interpolation must leave slack before the next fixed tick");
+        previous = slot->at;
+        ++frames;
+    }
+    expect(frames == 2U, "144 Hz fits two render-only frames between 60 Hz ticks");
+
+    expect(!next_intermediate_frame(tick_time, tick_time, next_tick, 0ns).has_value(),
+           "a zero period (retail pacing / 60 Hz display) never adds frames");
+    expect(!next_intermediate_frame(tick_time, tick_time, next_tick, tick).has_value(),
+           "a 60 Hz period never adds frames between 60 Hz ticks");
+    // A slow tick presentation pushes the next frame to 'now', never earlier.
+    const auto late = next_intermediate_frame(tick_time, tick_time + 9ms, next_tick, hz144);
+    expect(late.has_value() && late->at == tick_time + 9ms,
+           "a late tick schedules the next intermediate frame immediately");
+    expect(intermediate_frame_alpha(tick_time, tick_time - 1ms, tick) == 0.0 &&
+               intermediate_frame_alpha(tick_time, tick_time + 40ms, tick) < 1.0,
+           "alpha is clamped to [0, 1)");
+}
+
+class InterpolatingModule final : public RuntimeModule {
+public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "interpolating"; }
+    [[nodiscard]] bool start() override { return true; }
+    [[nodiscard]] battlespades::core::TickDecision tick(const TickContext&) override {
+        ++ticks;
+        return battlespades::core::TickDecision::continue_running;
+    }
+    void stop() noexcept override {}
+    [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const noexcept override {
+        return period;
+    }
+    [[nodiscard]] battlespades::core::TickDecision present_intermediate(double alpha) override {
+        alphas.push_back(alpha);
+        return battlespades::core::TickDecision::continue_running;
+    }
+
+    std::chrono::nanoseconds period{};
+    std::size_t ticks{};
+    std::vector<double> alphas;
+};
+
+void application_presents_intermediate_frames_only_when_requested() {
+    using namespace std::chrono_literals;
+    {
+        RuntimeConfig config;
+        config.tick_limit = 6U;
+        config.pace_to_wall_clock = true;
+        auto module = std::make_unique<InterpolatingModule>();
+        auto* observed = module.get();
+        observed->period = 4ms;
+        Application application{config};
+        expect(application.add_module(std::move(module)), "interpolating module must register");
+        expect(application.run() == RunResult::success, "paced run must succeed");
+        expect(observed->ticks == 6U, "render-only frames must not add or drop fixed ticks");
+        expect(observed->alphas.size() <= 6U * 4U,
+               "intermediate frames stay bounded by the requested period");
+        for (const double alpha : observed->alphas) {
+            expect(alpha >= 0.0 && alpha < 1.0, "intermediate alpha must be in [0, 1)");
+        }
+    }
+    {
+        RuntimeConfig config;
+        config.tick_limit = 3U;
+        auto module = std::make_unique<InterpolatingModule>();
+        auto* observed = module.get();
+        observed->period = 4ms;
+        Application application{config};
+        expect(application.add_module(std::move(module)), "interpolating module must register");
+        expect(application.run() == RunResult::success, "unpaced run must succeed");
+        expect(observed->alphas.empty(),
+               "unpaced (headless/test) runs never render intermediate frames");
+    }
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -444,6 +558,10 @@ int main() {
          fixed_step_pacer_bounds_loading_stall_debt},
         {"fixed_step_pacer_still_presents_when_simulation_itself_overruns",
          fixed_step_pacer_still_presents_when_simulation_itself_overruns},
+        {"intermediate_frames_fit_between_fixed_ticks",
+         intermediate_frames_fit_between_fixed_ticks},
+        {"application_presents_intermediate_frames_only_when_requested",
+         application_presents_intermediate_frames_only_when_requested},
     };
 
     std::size_t failures{};

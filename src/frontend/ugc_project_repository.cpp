@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -52,6 +53,10 @@ constexpr std::array modes{
     for (const auto& value : *found) {
         if (!value.is_string()) continue;
         auto tag = value.get<std::string>();
+        // Retail tags are mode ids; compare them case-insensitively.
+        std::ranges::transform(tag, tag.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
         if (tag.size() <= 64U) output.insert(std::move(tag));
     }
     return output;
@@ -168,6 +173,13 @@ UgcProjectScanResult scan_ugc_projects(const std::filesystem::path& maps_root) {
             map.uid = entry.path().filename().string();
             map.title = bounded_json_string(document, "title", 200U);
             if (map.title.empty()) map.title = entry.path().stem().string();
+            map.author = bounded_json_string(document, "author", 80U);
+            map.baseplate = bounded_json_string(document, "baseplate", 64U);
+            if (const auto prefab = document.find("prefab_set");
+                prefab != document.end() && prefab->is_number_unsigned()) {
+                const auto value = prefab->get<std::uint64_t>();
+                if (value < 6U) map.prefab_set = static_cast<std::uint8_t>(value);
+            }
             auto vxl = entry.path();
             vxl.replace_extension(".vxl");
             auto preview = entry.path();
@@ -215,6 +227,59 @@ UgcProjectScanResult scan_ugc_projects(const std::filesystem::path& maps_root) {
         return left.title < right.title;
     });
     return result;
+}
+
+std::vector<std::string> list_ugc_map_stems(const std::filesystem::path& maps_root) {
+    std::set<std::string> stems;
+    std::error_code code;
+    constexpr std::size_t maximum_entries{16'384U};
+    std::size_t visited{};
+    for (std::filesystem::directory_iterator iterator{maps_root, code}, end;
+         !code && iterator != end && visited < maximum_entries; iterator.increment(code)) {
+        ++visited;
+        const auto& path = iterator->path();
+        auto stem = path.filename().string();
+        // "Custommap_1.ugc.publication.json" still reserves Custommap_1.
+        if (const auto dot = stem.find('.'); dot != std::string::npos) stem.resize(dot);
+        if (!stem.empty()) stems.insert(std::move(stem));
+    }
+    return {stems.begin(), stems.end()};
+}
+
+namespace {
+[[nodiscard]] std::string lowercase(std::string_view value) {
+    std::string output{value};
+    std::ranges::transform(output, output.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return output;
+}
+} // namespace
+
+std::string generate_ugc_map_title(std::string_view base,
+                                   std::span<const std::string> existing_titles) {
+    const auto exists = [&](std::string_view candidate) {
+        return std::ranges::find(existing_titles, candidate) != existing_titles.end();
+    };
+    std::string name{base};
+    for (std::size_t increment{1U}; exists(name) && increment <= existing_titles.size() + 1U;
+         ++increment) {
+        name = std::string{base} + "-" + std::to_string(increment);
+    }
+    return name;
+}
+
+std::string generate_ugc_map_filename(std::span<const std::string> existing_stems) {
+    constexpr std::string_view prefix{"custommap"};
+    std::set<std::string> taken;
+    for (const auto& stem : existing_stems) taken.insert(lowercase(stem));
+    const auto count = static_cast<std::size_t>(std::ranges::count_if(
+        taken, [prefix](const std::string& stem) { return stem.starts_with(prefix); }));
+    if (count == 0U) return "Custommap_1";
+    for (auto number = count + 1U;; ++number) {
+        auto name = "Custommap_" + std::to_string(number);
+        if (!taken.contains(lowercase(name))) return name;
+    }
 }
 
 bool delete_ugc_project(const std::filesystem::path& maps_root,

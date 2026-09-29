@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battlespades/world/player_movement.hpp"
+#include "battlespades/world/vxl_map.hpp"
 
 #include <array>
 #include <cstdint>
@@ -61,6 +62,79 @@ struct RetailJetpackAttachment final {
 [[nodiscard]] constexpr RetailJetpackAttachment retail_jetpack_attachment() noexcept {
     return {6, -0.6, 0.8, 0.075};
 }
+
+/** Retail NO_JETPACK sentinel (A363). */
+inline constexpr std::uint8_t retail_no_jetpack{65U};
+
+/**
+ * Character.__init__ pyx 176-179 / set_crouch pyx 812-849: the Classic CTF
+ * intel carried on the back (INTEL_ENTITY_MODEL, z_offset 6, size 0.1).
+ *
+ * Standing: z 0.9; y -0.38 without a pack, -1.1 for JETPACK_NORMAL (66) and
+ * -1.0 for packs 67..69. Crouched: y -0.65 / z 0.5 without a pack, otherwise
+ * y -1.15 and z 1.0 (every pack branch loads fld1 for z).
+ */
+[[nodiscard]] RetailJetpackAttachment retail_back_intel_attachment(
+    bool crouched, std::optional<std::uint8_t> jetpack_id) noexcept;
+
+/** Character.__init__ pyx 172-174: CLASSIC_CORPSE_MODEL, BODY_PARTS_SIZE, z 2.0. */
+[[nodiscard]] constexpr RetailJetpackAttachment retail_classic_corpse_attachment() noexcept {
+    return {6, 0.0, 2.0, 0.05};
+}
+inline constexpr std::string_view retail_back_intel_model{"intel"};
+inline constexpr std::string_view retail_classic_corpse_model{"ClassicCorpse"};
+
+/**
+ * Character.set_team pyx 667-672: a character's KV6 default colour is the
+ * team colour at half intensity (color and other_color = team * 0.5).
+ * kv6.pyd then draws the three default bands at x1.0/x0.7/x1.3 of it.
+ * Entities keep the full team colour; only characters, their held tools, the
+ * pack, the classic corpse and the back intel use this.
+ */
+[[nodiscard]] VxlColor retail_character_color(VxlColor team_color) noexcept;
+
+/** SPAWN_COLOR_MULTIPLIER (A2208) applied to the character colour. */
+inline constexpr double retail_spawn_color_multiplier{2.0};
+[[nodiscard]] VxlColor retail_spawn_flash_color(VxlColor character_color) noexcept;
+
+/** Character.__init__ pyx 167: spawn_protection_time. */
+inline constexpr double retail_spawn_protection_time{3.0};
+
+/**
+ * Character.spawn_color_blink_timer (pyx 319-320, 1105-1106, 1873-1877).
+ *
+ * While protected, Character.draw doubles the default colour every frame
+ * except the one on which the timer has run out; that frame draws the plain
+ * half colour and re-arms the timer with protection_remaining / 3.0, so the
+ * normal-colour blink accelerates as protection expires.
+ */
+struct RetailSpawnBlink final {
+    double timer{1.0};
+};
+/** Character.spawn: spawn_color_blink_timer = 1. */
+void retail_spawn_blink_reset(RetailSpawnBlink& blink) noexcept;
+/** update_alive: decrement while above zero. */
+void retail_spawn_blink_update(RetailSpawnBlink& blink, double dt) noexcept;
+/** One Character.draw; true when the default colour is doubled this frame. */
+[[nodiscard]] bool retail_spawn_blink_draw(RetailSpawnBlink& blink,
+                                           double protection_remaining) noexcept;
+
+/** Tool.use_color / use_team_color / use_other_team_color (Character.draw 2020/2052). */
+enum class RetailToolColorPath : std::uint8_t {
+    /** Plain KV6 colours. */
+    none,
+    /** MODEL_SHADER blend_color = holder's block colour over the whole model. */
+    block_color,
+    /** set_kv6_default_color(character.color). */
+    team_color,
+    /** set_kv6_default_color(character.other_color). */
+    other_team_color,
+};
+/** `use_team_color` is the catalog's recovered Tool.use_team_color flag. */
+[[nodiscard]] RetailToolColorPath retail_tool_color_path(std::uint8_t tool_id,
+                                                          bool use_team_color) noexcept;
+/** Tool.flash_with_spawn_protection: only ZombieHandTool (24) sets it. */
+[[nodiscard]] bool retail_tool_flashes_with_spawn_protection(std::uint8_t tool_id) noexcept;
 
 /**
  * Generation-safe client presentation for the one-second jetpack death fuse.

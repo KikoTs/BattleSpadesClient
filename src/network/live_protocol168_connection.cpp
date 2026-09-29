@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <chrono>
 #include <deque>
 #include <mutex>
@@ -17,10 +18,15 @@ constexpr std::size_t outbound_capacity{256U};
 constexpr std::size_t outbound_batch{32U};
 
 [[nodiscard]] bool send_datagram(ENetPeer* peer,
-                                 std::span<const std::byte> bytes) {
+                                 std::span<const std::byte> bytes,
+                                 bool unsequenced = false) {
     if (peer == nullptr || bytes.empty()) return false;
-    auto* packet = enet_packet_create(bytes.data(), bytes.size(),
-                                      ENET_PACKET_FLAG_RELIABLE);
+    // NetworkClient.send_packet(packet, unreliable) (network.pyd 0x10008d50):
+    // true selects PACKET_FLAG_UNSEQUENCED, false PACKET_FLAG_RELIABLE; both
+    // go out on channel 0.
+    auto* packet = enet_packet_create(
+        bytes.data(), bytes.size(),
+        unsequenced ? ENET_PACKET_FLAG_UNSEQUENCED : ENET_PACKET_FLAG_RELIABLE);
     if (packet == nullptr) return false;
     if (enet_peer_send(peer, 0U, packet) != 0) {
         enet_packet_destroy(packet);
@@ -43,6 +49,13 @@ struct LiveProtocol168Connection::State final {
         detail::live_inbound_packet_limit, detail::live_inbound_byte_limit};
     std::deque<std::vector<std::byte>> outbound;
 };
+
+bool protocol168_client_packet_unsequenced(std::uint8_t packet_id) noexcept {
+    // Of the 44 send_packet call sites in stock gameScene.pyd only
+    // send_client_data (0x1016d248) and send_clock_sync (0x10181db5) pass
+    // Py_True (unreliable). Every other client packet is reliable.
+    return packet_id == 0U || packet_id == 4U;
+}
 
 LiveProtocol168Connection::LiveProtocol168Connection()
     : state_{std::make_unique<State>()} {}
@@ -128,14 +141,33 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
             const auto ticket_key = session_config.steam_ticket;
             session_config.negotiate_flight_profile = true;
             Protocol168Session session{std::move(session_config)};
-            const auto deadline = std::chrono::steady_clock::now() +
-                                  std::chrono::milliseconds{transport.timeout_ms};
+            // Retail join timing: NetworkClient.timeout = 5 counts down until
+            // EVENT_TYPE_CONNECT (network.pyd 0x10006010, disconnect with
+            // ERROR_TIMEOUT); after that only loadingMenu's 30 s NO-PROGRESS
+            // timer applies, restarted by every step of the handshake.
+            const auto connect_ms = transport.connect_timeout_ms == 0U
+                                        ? transport.timeout_ms
+                                        : (std::min)(transport.connect_timeout_ms,
+                                                     transport.timeout_ms);
+            auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds{connect_ms};
+            bool connected{};
             bool joined{};
             std::vector<std::vector<std::byte>> outgoing;
             outgoing.reserve(outbound_batch);
             while (!state->stop_requested.load()) {
                 if (!joined && std::chrono::steady_clock::now() >= deadline) {
-                    fail("Protocol 168 handshake timed out");
+                    const std::lock_guard lock{state->mutex};
+                    state->status.phase = LiveProtocol168Phase::failed;
+                    if (connected) {
+                        state->status.error = "Protocol 168 handshake made no progress";
+                        state->status.failure_key = "ERROR_TIMEOUT";
+                    } else {
+                        // DISCONNECT.ERROR_TIMEOUT (11) is raised locally.
+                        state->status.error = "Protocol 168 connect timed out";
+                        state->status.disconnect_reason = 11U;
+                    }
+                    state->stop_requested.store(true);
                     break;
                 }
 
@@ -163,6 +195,9 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                             const std::lock_guard lock{state->mutex};
                             state->status.phase = LiveProtocol168Phase::handshaking;
                         }
+                        connected = true;
+                        deadline = std::chrono::steady_clock::now() +
+                                   std::chrono::milliseconds{transport.timeout_ms};
                         const auto ticket = session.connected();
                         if (!send_datagram(peer, ticket)) {
                             fail("cannot send Steam session ticket");
@@ -192,6 +227,22 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                                 ++state->status.sent_datagrams;
                             }
                             if (state->stop_requested.load()) break;
+                            if (ingested.accepted) {
+                                deadline = std::chrono::steady_clock::now() +
+                                           std::chrono::milliseconds{transport.timeout_ms};
+                            }
+                            {
+                                // Loader milestones (loadingMenu.on_packet /
+                                // client.map_percentage) while the join runs.
+                                const std::lock_guard lock{state->mutex};
+                                state->status.loading = session.loading_progress();
+                                if (state->status.initial_info == nullptr &&
+                                    session.initial_info() != nullptr) {
+                                    state->status.initial_info =
+                                        std::make_shared<const Protocol168InitialInfo>(
+                                            *session.initial_info());
+                                }
+                            }
                             if (session.phase() == Protocol168SessionPhase::failed) {
                                 fail(std::string{session.last_error()});
                             } else if (session.bootstrap_ready()) {
@@ -293,7 +344,10 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                 for (const auto& packet : outgoing) {
                     const auto datagram =
                         encode_protocol168_client_datagram(packet, ticket_key);
-                    if (!send_datagram(peer, datagram)) {
+                    const bool unsequenced =
+                        protocol168_client_packet_unsequenced(
+                            std::to_integer<std::uint8_t>(packet.front()));
+                    if (!send_datagram(peer, datagram, unsequenced)) {
                         fail("cannot send live Protocol 168 packet");
                         break;
                     }
@@ -361,9 +415,12 @@ bool LiveProtocol168Connection::send(std::span<const std::byte> plain_packet) {
         }
         return false;
     }
-    // IDA: GameScene.send_client_data passes True to send_packet, selecting
-    // PACKET_FLAG_RELIABLE. The server consumes one observed packet per
-    // physics frame, so dropping a ClientData frame changes simulation time.
+    // IDA: GameScene.send_client_data and send_clock_sync pass True as
+    // send_packet's `unreliable` argument, selecting PACKET_FLAG_UNSEQUENCED
+    // (see protocol168_client_packet_unsequenced). A lost ClientData is never
+    // retransmitted: the server refills the missing loop label with one held
+    // frame (BattleSpades input_gap_fill_limit), instead of a reliable
+    // retransmit stalling channel 0 and ratcheting the input delay up.
     state_->outbound.emplace_back(plain_packet.begin(), plain_packet.end());
     state_->status.queued_outbound = state_->outbound.size();
     return true;

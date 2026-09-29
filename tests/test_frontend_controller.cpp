@@ -189,7 +189,10 @@ void cancel_rolls_back_live_previews_without_writing() {
 
     const auto presentation = controller.settings_menu().presentation();
     const auto volume = row(presentation, SettingsRowId::master_volume).control_bounds;
-    const Point quarter{volume.x + volume.width / 4, volume.y + volume.height / 2};
+    // RangeBarControl maps only the bar between its two arrows.
+    const auto bar_inset = 4 + (volume.height - 8) + 2;
+    const Point quarter{volume.x + bar_inset + (volume.width - bar_inset * 2) / 4,
+                        volume.y + volume.height / 2};
     click(controller, quarter);
     auto effects = controller.take_effects();
     expect(has_effect<RuntimeAudioEffect>(
@@ -383,7 +386,9 @@ void persistence_failure_keeps_settings_open_and_restores_runtime() {
 
     const auto fullscreen =
         row(controller.settings_menu().presentation(), SettingsRowId::fullscreen);
-    click(controller, center(fullscreen.control_bounds));
+    // ToggleOptionControl sets the half that was clicked: the OFF half.
+    click(controller, Point{fullscreen.control_bounds.x + 5,
+                            fullscreen.control_bounds.y + fullscreen.control_bounds.height / 2});
     static_cast<void>(controller.take_effects());
     click(
         controller,

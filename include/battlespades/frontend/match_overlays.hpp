@@ -23,6 +23,48 @@ enum class ChatChannel : std::uint8_t {
     team = 1U,
 };
 
+/**
+ * HUD.add_server_message(text, flag=False) colours: cached hud.pyd tuples
+ * (255,100,100) for the default and (150,150,255) for flag=True.
+ */
+inline constexpr ui::ColorRgba8 retail_server_message_color{255U, 100U, 100U, 255U};
+inline constexpr ui::ColorRgba8 retail_server_chat_color{150U, 150U, 255U, 255U};
+
+/** Retail shared.constants CHAT_ALL/CHAT_TEAM/CHAT_SYSTEM/CHAT_BIG. */
+enum class RetailChatType : std::uint8_t {
+    all = 0U,
+    team = 1U,
+    system = 2U,
+    big = 3U,
+};
+
+/**
+ * Colour of a non-big LocalisedMessage(50) line
+ * (GameScene.process_packet_localised_message, gameScene.pyd 0x1017dda0):
+ * CHAT_SYSTEM -> add_server_message (255,100,100); CHAT_ALL -> white;
+ * CHAT_TEAM -> blend_color(local team colour, white, 0.4); anything else
+ * -> white.
+ */
+[[nodiscard]] ui::ColorRgba8 localised_message_lane_color(
+    std::uint8_t chat_type, ui::ColorRgba8 local_team_color) noexcept;
+
+/** Where one ChatMessage(49) goes (gameScene.pyd 0x1017cf90). */
+enum class ChatMessageLane : std::uint8_t {
+    /** CHAT_SYSTEM: add_server_message(value) in (255,100,100). */
+    server_message,
+    /** CHAT_BIG: add_big_message(value). */
+    big_message,
+    /** CHAT_ALL/TEAM from player -1: add_server_message(value, True). */
+    server_chat,
+    /** CHAT_ALL/TEAM from a player: add_chat(sender prefix + body). */
+    player_chat,
+    /** Unknown chat_type: retail draws nothing. */
+    ignored,
+};
+
+[[nodiscard]] ChatMessageLane chat_message_lane(std::uint8_t chat_type,
+                                                std::uint8_t player_id) noexcept;
+
 /** One independently coloured label inside a retail ChatLine. */
 struct ChatTextRun final {
     std::string text;
@@ -51,11 +93,24 @@ class GameChatModel final {
 public:
     static constexpr std::size_t maximum_entries{50U};
     static constexpr std::size_t shown_lines{10U};
-    /** Counted in characters so Cyrillic input is not cut to half the length. */
-    static constexpr std::size_t maximum_input_code_points{90U};
-    /** ChatMessage(49) wire ceiling in UTF-8 bytes. */
+    /**
+     * HUD.on_text appends while len(text) < MAX_CHAT_MESSAGE_LENGTH (200),
+     * counted in characters so Cyrillic input is not cut to half the length.
+     */
+    static constexpr std::size_t maximum_input_code_points{200U};
+    /** ChatMessage(49) encoder ceiling in UTF-8 bytes (protocol168_runtime). */
     static constexpr std::size_t maximum_input_bytes{200U};
+    /** MAX_CHAT_SIZE: feed lines longer than this wrap onto another line. */
+    static constexpr std::size_t wrap_code_points{90U};
     static constexpr double entry_lifetime_seconds{5.0};
+
+    /**
+     * HUD.on_text drops a character chat_font.contains_character rejects.
+     * Without a filter every printable character is accepted.
+     */
+    void set_glyph_filter(std::function<bool(std::string_view)> filter) {
+        glyph_filter_ = std::move(filter);
+    }
 
     void add(std::string text, ui::ColorRgba8 color = {});
     void add_player_message(std::string sender, ui::ColorRgba8 sender_color,
@@ -77,19 +132,32 @@ public:
     }
 
 private:
+    void push_entry(ChatFeedEntry entry);
+
     std::vector<ChatFeedEntry> entries_;
     std::string input_;
     ChatChannel channel_{ChatChannel::global};
     bool active_{};
+    std::function<bool(std::string_view)> glyph_filter_{};
 };
 
 class GameChatPresentation final {
 public:
+    /** HUD.input: '%s:' % strings.TEAM_CHAT / GLOBAL_CHAT, already localised. */
+    void set_channel_labels(std::string team, std::string global) {
+        team_label_ = std::move(team);
+        global_label_ = std::move(global);
+    }
+
     [[nodiscard]] ui::DrawList build(const GameChatModel& model,
                                      ui::PixelExtent window,
                                      std::function<double(std::string_view,
                                                           double,
                                                           std::string_view)> measure_text = {}) const;
+
+private:
+    std::string team_label_{"Team chat:"};
+    std::string global_label_{"Global chat:"};
 };
 
 struct VoteChoice final {
@@ -147,8 +215,18 @@ public:
 
     [[nodiscard]] static std::string
     decode_retail_literal(std::string_view encoded);
+    /** decode_string with strings.get_by_id bound to the active language. */
+    [[nodiscard]] static std::string
+    decode_retail_literal(std::string_view encoded,
+                          const RetailStringLookup& localize);
+
+    /** Binds the active language pack used by later START/UPDATE/CLOSED. */
+    void set_localizer(RetailStringLookup localize) {
+        localize_ = std::move(localize);
+    }
 
 private:
+    RetailStringLookup localize_{};
     std::vector<VoteChoice> choices_;
     std::string title_;
     std::string description_;
@@ -191,7 +269,10 @@ struct MatchAward final {
 [[nodiscard]] std::string_view
 retail_game_stat_award_label(std::int32_t stat_type) noexcept;
 
-/** Resolve constants_gamemode.MODE_TITLE / InitialInfo.classic exactly. */
+/**
+ * constants_gamemode.MODE_TITLE string-table key for the scoreboard and end
+ * screen title. `classic` is ignored: retail set_mode_text never reads it.
+ */
 [[nodiscard]] std::string_view
 retail_scoreboard_mode_title(std::uint8_t mode_type,
                              bool classic) noexcept;
@@ -389,6 +470,19 @@ public:
           std::string mode_title, const network::Protocol168Roster& roster,
           ui::PixelExtent window,
           MatchScreenshotPreview preview = {}) const;
+
+    /** Localises the ShowTextMessage headline and LEVEL; unset keeps English. */
+    RetailStringLookup localize{};
+    /**
+     * Footer: translate_controls_in_message(strings.SHOW_SCORES), already
+     * resolved by the caller with the live view_scores binding. Empty keeps
+     * the English default binding text.
+     */
+    std::string show_scores_text{};
 };
+
+/** English SHOW_SCORES with the default TAB binding, as retail renders it. */
+inline constexpr std::string_view retail_default_show_scores_text{
+    "Press [TAB] to show scores"};
 
 } // namespace battlespades::frontend

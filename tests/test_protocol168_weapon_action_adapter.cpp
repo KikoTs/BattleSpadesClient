@@ -60,6 +60,15 @@ int main() {
     expect(packet_id(encode_weapon_action(action(WeaponActionKind::melee, 1U),
                                           context)) == 6U,
            "melee hit proposals must map to Shoot(6)");
+    // Retail DiggingTool.use_spade sends seed 0; shoot_bullet sends its draw.
+    expect(std::to_integer<std::uint8_t>(
+               encode_weapon_action(action(WeaponActionKind::melee, 2U), context)
+                   .packets.front().back()) == 0U,
+           "melee Shoot(6) must carry the retail zero seed");
+    expect(std::to_integer<std::uint8_t>(
+               encode_weapon_action(action(WeaponActionKind::hitscan, 6U), context)
+                   .packets.front().back()) == 17U,
+           "firearm Shoot(6) must carry the runtime's shot seed");
     expect(packet_id(encode_weapon_action(
                action(WeaponActionKind::oriented_item, 12U, 75.0), context)) == 10U,
            "launchers and throwables must map to UseOrientedItem(10)");

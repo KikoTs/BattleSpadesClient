@@ -154,6 +154,7 @@ public:
     static constexpr std::size_t maximum_rows{512U};
     static constexpr std::size_t visible_rows{9U};
     static constexpr std::size_t visible_invitation_rows{7U};
+    static constexpr std::chrono::milliseconds error_display_duration{8'000};
 
     FriendsLobbyMenuModel();
 
@@ -166,6 +167,10 @@ public:
     [[nodiscard]] std::string_view error() const noexcept;
     [[nodiscard]] std::string_view service_status() const noexcept;
     [[nodiscard]] bool service_available() const noexcept;
+    /** Whether the last background poll succeeded; purely informational. */
+    [[nodiscard]] bool connected() const noexcept;
+    /** Incoming friend requests awaiting this player's answer. */
+    [[nodiscard]] std::size_t incoming_request_count() const noexcept;
     [[nodiscard]] bool search_focused() const noexcept;
     [[nodiscard]] bool busy() const noexcept;
     [[nodiscard]] bool is_host() const noexcept;
@@ -185,7 +190,13 @@ public:
     void enter(std::chrono::steady_clock::time_point now) noexcept;
     void leave() noexcept;
     void set_tab(FriendsLobbyTab tab) noexcept;
+    /**
+     * `available` gates actions (an online account); it must not follow a
+     * failing background poll, or one slow sync greys out every button.
+     */
     void set_service_status(bool available, std::string status);
+    /** Report background poll health separately from action availability. */
+    void set_connected(bool connected) noexcept;
     void apply_snapshot(FriendsLobbySnapshot snapshot,
                         std::chrono::steady_clock::time_point now);
     /** Replace transient profile-search rows without mutating friendship state. */
@@ -280,7 +291,10 @@ private:
     std::size_t first_visible_friend_row_{};
     std::size_t first_visible_invitation_row_{};
     std::chrono::steady_clock::time_point controls_armed_after_{};
+    /** An action error stays readable, then clears on its own. */
+    std::chrono::steady_clock::time_point error_expires_{};
     bool service_available_{};
+    bool connected_{true};
     bool search_focused_{};
     bool entered_{};
 };
