@@ -129,7 +129,6 @@ struct SteamApi final {
     void* handle{};
     ESteamAPIInitResult(S_CALLTYPE* init_flat)(SteamErrMsg*){};
     void(S_CALLTYPE* shutdown)(){};
-    void(S_CALLTYPE* run_callbacks)(){};
     void(S_CALLTYPE* manual_dispatch_init)(){};
     HSteamPipe(S_CALLTYPE* steam_pipe)(){};
     void(S_CALLTYPE* dispatch_run_frame)(HSteamPipe){};
@@ -183,7 +182,6 @@ struct SteamApi final {
     bool(S_CALLTYPE* set_lobby_data)(ISteamMatchmaking*, uint64, const char*,
                                      const char*){};
     const char*(S_CALLTYPE* get_lobby_data)(ISteamMatchmaking*, uint64, const char*){};
-    bool(S_CALLTYPE* set_lobby_joinable)(ISteamMatchmaking*, uint64, bool){};
     void(S_CALLTYPE* leave_lobby)(ISteamMatchmaking*, uint64){};
     SteamAPICall_t(S_CALLTYPE* request_lobby_list)(ISteamMatchmaking*){};
     uint64(S_CALLTYPE* lobby_by_index)(ISteamMatchmaking*, int){};
@@ -304,7 +302,6 @@ void announce_app_id(const std::string& app_id) noexcept {
     const std::array bindings{
         Binding{"SteamAPI_InitFlat", reinterpret_cast<void**>(&api.init_flat)},
         Binding{"SteamAPI_Shutdown", reinterpret_cast<void**>(&api.shutdown)},
-        Binding{"SteamAPI_RunCallbacks", reinterpret_cast<void**>(&api.run_callbacks)},
         Binding{"SteamAPI_ManualDispatch_Init",
                 reinterpret_cast<void**>(&api.manual_dispatch_init)},
         Binding{"SteamAPI_GetHSteamPipe", reinterpret_cast<void**>(&api.steam_pipe)},
@@ -333,8 +330,6 @@ void announce_app_id(const std::string& app_id) noexcept {
                 reinterpret_cast<void**>(&api.set_lobby_data)},
         Binding{"SteamAPI_ISteamMatchmaking_GetLobbyData",
                 reinterpret_cast<void**>(&api.get_lobby_data)},
-        Binding{"SteamAPI_ISteamMatchmaking_SetLobbyJoinable",
-                reinterpret_cast<void**>(&api.set_lobby_joinable)},
         Binding{"SteamAPI_ISteamMatchmaking_LeaveLobby",
                 reinterpret_cast<void**>(&api.leave_lobby)},
         Binding{"SteamAPI_ISteamMatchmaking_RequestLobbyList",
@@ -1071,6 +1066,10 @@ bool SteamNetworkingRuntime::unlock_achievement(const std::string& name) {
     // An achievement must exist in the attached application's schema, which
     // belongs to whoever owns that id. Steam refuses a name it does not know,
     // so a refusal here says the schema lacks it, not that the call is wrong.
+    // Steam keeps an unlock forever, so writing one twice only costs a store.
+    if (bool earned{}; impl_->api.get_achievement(stats, name.c_str(), &earned) && earned) {
+        return true;
+    }
     if (!impl_->api.set_achievement(stats, name.c_str())) {
         core::diagnostic("steam", "Steam does not know the achievement " + name);
         return false;
