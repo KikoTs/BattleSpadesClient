@@ -170,6 +170,11 @@ template <typename Integer>
                      tag_present(value, "classic");
     result.official = boolean_value(value, "official");
     result.identity_ticket = tag_present(value, "identity=ticket-v1");
+    // The server's master heartbeat carries the tag `password`; its A2S_INFO
+    // visibility byte says the same (1) to anything that speaks A2S.
+    result.password_protected =
+        tag_present(value, "password") || boolean_value(value, "password") ||
+        bounded_integer<std::uint16_t>(value, "visibility") == 1U;
     // The master sends this only for a player-hosted match that had a Steam
     // session; a listing without it stays reachable through the relay alone.
     if (const auto steam = bounded_string(value, "steam_host_id"); !steam.empty()) {

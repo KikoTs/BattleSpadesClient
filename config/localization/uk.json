@@ -52,6 +52,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Парашут розкриється під час зниження",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: розкрити парашут у повітрі",
     "ABILITY_HINT_JETPACK": "{0}: тяга",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; відпустіть і приземліться для перезарядки"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; відпустіть і приземліться для перезарядки",
+    "SERVER_PASSWORD_PROMPT": "Введіть пароль сервера та натисніть Enter, щоб продовжити.",
+    "SERVER_PASSWORD_WRONG": "Неправильний пароль. Спробуйте ще раз.",
+    "SERVER_PASSWORD_REFUSED": "Неправильний пароль сервера",
+    "SERVER_PASSWORD_TIMEOUT": "Пароль сервера не було введено вчасно",
+    "ARENA": "Арена",
+    "ARENA_DESCRIPTION": "Знищте всіх ворогів, щоб виграти раунд!",
+    "LOAD_FAILED": "Не вдалося завантажити"
   }
 }

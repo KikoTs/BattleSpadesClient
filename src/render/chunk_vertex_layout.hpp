@@ -4,6 +4,13 @@
 
 #include <bgfx/bgfx.h>
 
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+
 namespace battlespades::render {
 
 /**
@@ -54,6 +61,126 @@ namespace battlespades::render {
  */
 [[nodiscard]] inline bool chunk_vertex_layout_matches_struct(const bgfx::VertexLayout& layout) {
     return layout.getStride() == sizeof(world::ChunkVertex);
+}
+
+/**
+ * The 40-byte GPU form of a terrain vertex (RenderTuning::packed_terrain).
+ *
+ * The same six attributes reach vs_world.sc with the same values; only the
+ * position's storage narrows. Terrain positions are voxel corners (integers
+ * up to 512), which a 16-bit float holds exactly, so the half -> float
+ * conversion the GPU performs gives back the identical float32.
+ *
+ * The atlas coordinates and the baked light stay float32. Most atlas cells
+ * are multiples of 1/512 and would fit a half, but retail's cells 0 and 1
+ * carry 0.49 and 0.484140635, which do not, and nearly every chunk uses
+ * them. Narrowing those needs the shader to look the cell up from a code,
+ * which is a shader change and not this layout's business.
+ *
+ * KV6 models, effect cubes and the view model keep ChunkVertex: their
+ * positions are not on the voxel grid.
+ */
+struct PackedTerrainVertex final {
+    /** x, y, z and a constant 1.0; the shader reads the first three. */
+    std::array<std::uint16_t, 4U> position{};
+    std::uint32_t abgr{};
+    std::uint8_t face{};
+    std::uint8_t occlusion{};
+    std::uint8_t noise_corner{};
+    std::uint8_t directional_influence{};
+    std::uint32_t static_light{};
+    /** ao_u, ao_v, edge_u, edge_v. */
+    std::array<float, 4U> atlas{};
+    float retail_baked_light{1.0F};
+};
+
+static_assert(sizeof(PackedTerrainVertex) == 40U,
+              "the packed terrain layout stride must match this exactly");
+
+[[nodiscard]] inline bgfx::VertexLayout packed_terrain_vertex_layout() {
+    bgfx::VertexLayout layout;
+    layout.begin()
+        .add(bgfx::Attrib::Position, 4U, bgfx::AttribType::Half)
+        .add(bgfx::Attrib::Color0, 4U, bgfx::AttribType::Uint8, true)
+        .add(bgfx::Attrib::Color1, 4U, bgfx::AttribType::Uint8, true)
+        .add(bgfx::Attrib::Color2, 4U, bgfx::AttribType::Uint8, true)
+        .add(bgfx::Attrib::TexCoord0, 4U, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord1, 1U, bgfx::AttribType::Float)
+        .end();
+    return layout;
+}
+
+/**
+ * The IEEE 754 binary16 encoding of `value`, or nothing when `value` is not
+ * exactly representable (rounding is never acceptable here: the packed layout
+ * exists only on the promise that the shader sees the same number).
+ */
+[[nodiscard]] constexpr std::optional<std::uint16_t> exact_half(float value) noexcept {
+    const auto bits = std::bit_cast<std::uint32_t>(value);
+    const auto sign = static_cast<std::uint16_t>((bits >> 16U) & 0x8000U);
+    const std::uint32_t exponent_field = (bits >> 23U) & 0xFFU;
+    const std::uint32_t mantissa = bits & 0x007FFFFFU;
+    if (exponent_field == 0U) {
+        // Zero keeps its sign; a float32 subnormal is far below half's range.
+        return mantissa == 0U ? std::optional<std::uint16_t>{sign} : std::nullopt;
+    }
+    if (exponent_field == 0xFFU) {
+        return std::nullopt;
+    }
+    const int exponent = static_cast<int>(exponent_field) - 127;
+    if (exponent > 15) {
+        return std::nullopt;
+    }
+    if (exponent >= -14) {
+        if ((mantissa & 0x1FFFU) != 0U) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint16_t>(
+            sign | (static_cast<std::uint32_t>(exponent + 15) << 10U) | (mantissa >> 13U));
+    }
+    if (exponent < -24) {
+        return std::nullopt;
+    }
+    // Half subnormal: value = h * 2^-24 with h in [1, 1023].
+    const auto shift = static_cast<std::uint32_t>(-exponent - 1);
+    const std::uint32_t significand = 0x00800000U | mantissa;
+    if ((significand & ((1U << shift) - 1U)) != 0U) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint16_t>(sign | (significand >> shift));
+}
+
+/**
+ * Packs `source` into `target` (same length). False, with `target` left
+ * partly written, when any position is not exactly a half float; the caller
+ * then uploads the chunk in the wide layout instead.
+ */
+[[nodiscard]] inline bool pack_terrain_vertices(std::span<const world::ChunkVertex> source,
+                                                std::span<PackedTerrainVertex> target) noexcept {
+    if (source.size() != target.size()) {
+        return false;
+    }
+    constexpr std::uint16_t half_one{0x3C00U};
+    for (std::size_t index{}; index < source.size(); ++index) {
+        const auto& vertex = source[index];
+        const auto x = exact_half(vertex.x);
+        const auto y = exact_half(vertex.y);
+        const auto z = exact_half(vertex.z);
+        if (!x || !y || !z) {
+            return false;
+        }
+        target[index] = PackedTerrainVertex{{*x, *y, *z, half_one},
+                                            vertex.abgr,
+                                            vertex.face,
+                                            vertex.occlusion,
+                                            vertex.noise_corner,
+                                            vertex.directional_influence,
+                                            vertex.static_light,
+                                            {vertex.ao_u, vertex.ao_v, vertex.edge_u,
+                                             vertex.edge_v},
+                                            vertex.retail_baked_light};
+    }
+    return true;
 }
 
 } // namespace battlespades::render

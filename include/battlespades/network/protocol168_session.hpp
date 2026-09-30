@@ -63,7 +63,37 @@ struct Protocol168SessionConfig final {
      * complete snapshot. UGC maps always send 0. Empty keeps local_map_crc.
      */
     std::filesystem::path local_map_directory;
+    /**
+     * A server password the player already gave (`--password`, a join link,
+     * the connect dialog). It answers the first PasswordNeeded(112) without a
+     * prompt; a second 112 means it was wrong and the prompt takes over.
+     */
+    std::string server_password;
 };
+
+/** Passwords longer than this are wrong without comparison on the server. */
+inline constexpr std::size_t maximum_server_password_bytes{64U};
+
+/**
+ * Where the PasswordNeeded(112) / PasswordProvided(113) exchange stands. The
+ * server sends nothing else until the password is accepted, and answers a
+ * wrong one with another 112.
+ */
+struct Protocol168PasswordPrompt final {
+    /** The server is waiting for an answer the player has to type. */
+    bool pending{};
+    /** The last answer was refused. */
+    bool rejected{};
+    /** How many 112 packets arrived on this connection. */
+    std::uint8_t requests{};
+
+    friend bool operator==(const Protocol168PasswordPrompt&,
+                           const Protocol168PasswordPrompt&) = default;
+};
+
+/** PasswordProvided(113): id, then the NUL-terminated UTF-8 password. */
+[[nodiscard]] std::vector<std::byte>
+encode_password_provided_packet(std::string_view password);
 
 /**
  * Retail loadingMenu milestones, published while the handshake runs:
@@ -282,6 +312,8 @@ public:
     void disconnected() noexcept;
 
     [[nodiscard]] Protocol168SessionPhase phase() const noexcept;
+    /** Advances when InitialInfo replaces a map on the authenticated peer. */
+    [[nodiscard]] std::uint64_t map_generation() const noexcept;
     /** Map and StateData are complete, so an interactive chooser can open. */
     [[nodiscard]] bool bootstrap_ready() const noexcept;
     [[nodiscard]] bool ready() const noexcept;
@@ -313,6 +345,14 @@ public:
     [[nodiscard]] Protocol168LoadingProgress loading_progress() const noexcept;
     /** CRC sent in MapDataValidation (0 forces a complete snapshot). */
     [[nodiscard]] std::uint32_t sent_map_crc() const noexcept;
+    /** The server password exchange; all false on an open server. */
+    [[nodiscard]] Protocol168PasswordPrompt password_prompt() const noexcept;
+    /**
+     * Answer a pending prompt. Returns the PasswordProvided(113) datagram, or
+     * nothing when no prompt is pending or the text cannot be a password
+     * (empty, over 64 bytes, or holding a NUL).
+     */
+    [[nodiscard]] std::vector<std::byte> provide_password(std::string_view password);
 
 private:
     [[nodiscard]] Protocol168IngestResult
@@ -324,6 +364,7 @@ private:
 
     Protocol168SessionConfig config_;
     Protocol168SessionPhase phase_{Protocol168SessionPhase::disconnected};
+    std::uint64_t map_generation_{};
     std::optional<Protocol168InitialInfo> initial_info_;
     std::optional<Protocol168StateInfo> state_info_;
     std::optional<Protocol168SkyboxInfo> skybox_info_;
@@ -345,6 +386,9 @@ private:
     std::vector<std::byte> local_map_raw_;
     std::uint32_t sent_map_crc_{};
     std::optional<std::uint32_t> server_map_crc_;
+    Protocol168PasswordPrompt password_prompt_{};
+    /** The configured password already answered one request. */
+    bool configured_password_sent_{};
 };
 
 /**

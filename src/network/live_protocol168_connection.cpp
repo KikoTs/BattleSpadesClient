@@ -48,7 +48,21 @@ struct LiveProtocol168Connection::State final {
     detail::Protocol168PacketQueue inbound{
         detail::live_inbound_packet_limit, detail::live_inbound_byte_limit};
     std::deque<std::vector<std::byte>> outbound;
+    /** The typed answer to PasswordNeeded, taken by the worker. */
+    std::optional<std::string> password_answer;
 };
+
+PasswordJoinFailure
+protocol168_password_failure(const LiveProtocol168Status& status) noexcept {
+    if (status.password.requests == 0U || status.initial_info != nullptr ||
+        status.phase != LiveProtocol168Phase::disconnected ||
+        !status.disconnect_reason.has_value()) {
+        return PasswordJoinFailure::none;
+    }
+    if (*status.disconnect_reason == 2U) return PasswordJoinFailure::wrong_password;
+    if (*status.disconnect_reason == 11U) return PasswordJoinFailure::timed_out;
+    return PasswordJoinFailure::none;
+}
 
 bool protocol168_client_packet_unsequenced(std::uint8_t packet_id) noexcept {
     // Of the 44 send_packet call sites in stock gameScene.pyd only
@@ -74,6 +88,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
         state_->bootstrap.reset();
         state_->inbound.clear();
         state_->outbound.clear();
+        state_->password_answer.reset();
         if (transport.host.empty() || transport.port == 0U || transport.timeout_ms == 0U) {
             state_->status.phase = LiveProtocol168Phase::failed;
             state_->status.error = "invalid ENet Protocol 168 endpoint";
@@ -156,6 +171,32 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
             std::vector<std::vector<std::byte>> outgoing;
             outgoing.reserve(outbound_batch);
             while (!state->stop_requested.load()) {
+                if (!joined && session.password_prompt().pending) {
+                    // The server runs its own clock on the prompt
+                    // (password_timeout_seconds); the no-progress timer must
+                    // not cut the player off while they type.
+                    deadline = std::chrono::steady_clock::now() +
+                               std::chrono::milliseconds{transport.timeout_ms};
+                    std::optional<std::string> answer;
+                    {
+                        const std::lock_guard lock{state->mutex};
+                        answer = std::exchange(state->password_answer, std::nullopt);
+                    }
+                    if (answer.has_value()) {
+                        const auto datagram = session.provide_password(*answer);
+                        std::fill(answer->begin(), answer->end(), '\0');
+                        if (!datagram.empty()) {
+                            if (!send_datagram(peer, datagram)) {
+                                fail("cannot send the server password");
+                                break;
+                            }
+                            enet_host_flush(host);
+                            const std::lock_guard lock{state->mutex};
+                            ++state->status.sent_datagrams;
+                            state->status.password = session.password_prompt();
+                        }
+                    }
+                }
                 if (!joined && std::chrono::steady_clock::now() >= deadline) {
                     const std::lock_guard lock{state->mutex};
                     state->status.phase = LiveProtocol168Phase::failed;
@@ -215,9 +256,36 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                             const std::lock_guard lock{state->mutex};
                             ++state->status.received_datagrams;
                         }
+                        std::optional<std::vector<std::byte>> plain;
+                        if (joined) {
+                            std::string error;
+                            plain = decode_protocol168_server_datagram(bytes, error);
+                            if (!plain.has_value()) {
+                                enet_packet_destroy(event.packet);
+                                fail("malformed live Protocol 168 datagram: " + error);
+                                break;
+                            }
+                            if (!plain->empty() && plain->front() == std::byte{114U})
+                                joined = false;
+                        }
                         if (!joined) {
                             auto ingested = session.ingest(bytes);
                             enet_packet_destroy(event.packet);
+                            if (ingested.accepted) {
+                                const std::lock_guard lock{state->mutex};
+                                if (state->status.map_generation != session.map_generation()) {
+                                    // Nothing queued for the previous map may
+                                    // mutate or send input into its replacement.
+                                    state->inbound.clear();
+                                    state->outbound.clear();
+                                    state->bootstrap.reset();
+                                    state->status.initial_info.reset();
+                                    state->status.map_generation = session.map_generation();
+                                    state->status.phase = LiveProtocol168Phase::handshaking;
+                                    state->status.queued_inbound = 0U;
+                                    state->status.queued_outbound = 0U;
+                                }
+                            }
                             for (const auto& handshake_packet : ingested.outbound_datagrams) {
                                 if (!send_datagram(peer, handshake_packet)) {
                                     fail("cannot send Protocol 168 handshake packet");
@@ -236,6 +304,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                                 // client.map_percentage) while the join runs.
                                 const std::lock_guard lock{state->mutex};
                                 state->status.loading = session.loading_progress();
+                                state->status.password = session.password_prompt();
                                 if (state->status.initial_info == nullptr &&
                                     session.initial_info() != nullptr) {
                                     state->status.initial_info =
@@ -255,6 +324,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                                 }
                                 auto bootstrap =
                                     std::make_unique<Protocol168WorldBootstrap>();
+                                bootstrap->map_generation = session.map_generation();
                                 bootstrap->initial_info = *session.initial_info();
                                 if (session.state_info() != nullptr) {
                                     bootstrap->state_info = *session.state_info();
@@ -291,13 +361,7 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                                 joined = true;
                             }
                         } else {
-                            std::string error;
-                            auto plain = decode_protocol168_server_datagram(bytes, error);
                             enet_packet_destroy(event.packet);
-                            if (!plain.has_value()) {
-                                fail("malformed live Protocol 168 datagram: " + error);
-                                break;
-                            }
                             const std::lock_guard lock{state->mutex};
                             if (!state->inbound.push(std::move(*plain))) {
                                 state->status.phase = LiveProtocol168Phase::failed;
@@ -396,17 +460,38 @@ LiveProtocol168Connection::take_bootstrap() {
 }
 
 std::vector<std::vector<std::byte>>
-LiveProtocol168Connection::take_inbound(std::size_t limit) {
+LiveProtocol168Connection::take_inbound(
+    std::size_t limit, std::optional<std::uint64_t> expected_generation) {
     const std::lock_guard lock{state_->mutex};
+    // Status and the render tick are independent of the worker. Keep a new
+    // map's packets queued until its bootstrap is adopted by the right scene.
+    if (state_->bootstrap != nullptr ||
+        (expected_generation.has_value() &&
+         *expected_generation != state_->status.map_generation)) {
+        return {};
+    }
     auto result = state_->inbound.take(limit);
     state_->status.queued_inbound = state_->inbound.size();
     return result;
 }
 
+bool LiveProtocol168Connection::provide_password(std::string password) {
+    if (encode_password_provided_packet(password).empty()) return false;
+    const std::lock_guard lock{state_->mutex};
+    if (state_->status.phase != LiveProtocol168Phase::handshaking ||
+        !state_->status.password.pending) {
+        return false;
+    }
+    state_->password_answer = std::move(password);
+    // The prompt closes at once; a wrong answer reopens it with the next 112.
+    state_->status.password.pending = false;
+    return true;
+}
+
 bool LiveProtocol168Connection::send(std::span<const std::byte> plain_packet) {
     if (plain_packet.empty()) return false;
     const std::lock_guard lock{state_->mutex};
-    if (state_->status.phase != LiveProtocol168Phase::ready ||
+    if (state_->status.phase != LiveProtocol168Phase::ready || state_->bootstrap != nullptr ||
         state_->outbound.size() >= outbound_capacity) {
         if (state_->outbound.size() >= outbound_capacity) {
             state_->status.phase = LiveProtocol168Phase::failed;

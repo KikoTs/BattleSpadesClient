@@ -2546,6 +2546,31 @@ int main() {
                        found->pitch == -14.25 && found->aim_yaw == 72.5 &&
                        found->aim_pitch == -14.25,
                    "turret model must follow the server angle, not the local camera");
+            auto snapshot = *found;
+            snapshot.position.x += 1.0;
+            snapshot.yaw = 10.0;
+            expect(session.apply_server_entity_snapshot(snapshot, 100) &&
+                       session.apply_server_turret_aim(turret.id, 30.0, -5.0, 100),
+                   "full entity and turret aim rows both apply in the same split tick");
+            const auto accepted_x = found->position.x;
+            snapshot.position.x += 10.0;
+            expect(!session.apply_server_entity_snapshot(snapshot, 99) &&
+                       !session.apply_server_entity_snapshot(snapshot, 100) &&
+                       !session.apply_server_turret_aim(turret.id, 90.0, 15.0, 99) &&
+                       found->position.x == accepted_x && found->yaw == 30.0,
+                   "stale and duplicate entity rows leave position and turret aim unchanged");
+            expect(session.apply_server_entity_snapshot(mine, 99),
+                   "an independent entity is not rejected by another entity's newer loop");
+            expect(session.apply_server_turret_aim(turret.id, 45.0, -10.0, 102) &&
+                       session.apply_server_entity_snapshot(snapshot, 101) &&
+                       found->yaw == 45.0 && found->pitch == -10.0,
+                   "a delayed full row cannot overwrite newer compact turret aim");
+            expect(session.apply_server_entity_snapshot(snapshot, 102) && found->yaw == 45.0,
+                   "compact turret aim wins even when its same-tick full row arrives later");
+            snapshot.id = 99'999U;
+            expect(!session.apply_server_entity_snapshot(snapshot, 200) &&
+                       !session.apply_server_turret_aim(snapshot.id, 0.0, 0.0, 200),
+                   "unreliable rows cannot recreate a missing entity");
         }
 
         // Bootstrap: Training.vxl parses and meshes off-thread with bounded

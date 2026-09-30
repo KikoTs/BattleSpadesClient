@@ -33,6 +33,11 @@ void expect(bool value, const char* message) {
                      (a.z - b.z) * (a.z - b.z));
 }
 
+[[nodiscard]] Vec3 camera_position(Vec3 eye) {
+    eye.y -= 0.5;
+    return eye;
+}
+
 [[nodiscard]] std::shared_ptr<VxlMap> empty_world() {
     std::vector<std::byte> bytes;
     bytes.reserve(static_cast<std::size_t>(VxlMap::width) * VxlMap::depth * 4U);
@@ -63,33 +68,40 @@ int main() {
         // body, locked -- retail never lets a dead player browse the map.
         {
             DeathCameraController camera;
-            camera.begin_death(death_eye, 30.0, 10.0,
+            camera.begin_death(death_eye,
                                DeathKillerInfo{9U, {120.0, 100.0, 200.0}, 0U, 1U}, true);
             expect(camera.mode() == DeathCameraMode::grave,
                    "a killer's first kill must not open the killer view");
             expect(!camera.can_cycle_targets(),
                    "an ordinary death locks the chase camera to our own body");
             const auto pose = camera.pose();
-            expect(std::abs(distance(pose.eye, death_eye) - 5.0) < 1.0e-6,
+            expect(std::abs(distance(camera_position(pose.eye), death_eye) - 5.0) < 1.0e-6,
                    "the chase camera sits five blocks from the body with no wall behind");
             const auto basis =
                 battlespades::render::world_camera_basis(pose.yaw_degrees, pose.pitch_degrees);
-            const Vec3 look{death_eye.x - pose.eye.x, death_eye.y - pose.eye.y,
+            const Vec3 look{death_eye.x - pose.eye.x, death_eye.y + 0.5 - pose.eye.y,
                             death_eye.z - pose.eye.z};
             expect((basis.forward[0U] * look.x + basis.forward[1U] * look.y +
                     basis.forward[2U] * look.z) / 5.0 > 0.999,
                    "the chase camera aims at the retail focus, not 0.9 above it");
-            expect(std::abs(pose.yaw_degrees - 30.0) < 1.0e-9 &&
-                       std::abs(pose.pitch_degrees - 10.0) < 1.0e-9,
-                   "the chase camera keeps the view the player died with");
+            expect(std::abs(pose.yaw_degrees - 90.0) < 1.0e-9 &&
+                       std::abs(pose.pitch_degrees) < 1.0e-9,
+                   "the scene camera starts with retail r_x/r_y zero, looking along -y");
+            camera.on_mouse_move(120.0, 40.0);
+            const auto turned = camera.pose();
+            camera.end_life();
+            camera.begin_death(death_eye, std::nullopt, false);
+            expect(camera.pose().yaw_degrees == turned.yaw_degrees &&
+                       camera.pose().pitch_degrees == turned.pitch_degrees,
+                   "respawn and the next death preserve the scene camera's own angles");
         }
 
         // Second consecutive kill: the killer view faces the killer from the
-        // death eye, and never moves.
+        // body orbit. Its aim does not follow later killer movements.
         {
             DeathCameraController camera;
             const Vec3 killer{80.0, 100.0, 200.0};
-            camera.begin_death(death_eye, 180.0, 0.0,
+            camera.begin_death(death_eye,
                                DeathKillerInfo{9U, killer, 1U, 2U}, true);
             expect(camera.mode() == DeathCameraMode::killer_view,
                    "streak 2 must open the killer view");
@@ -97,15 +109,18 @@ int main() {
                    "chase is not available before 1.5 s");
             for (int tick{}; tick < 60; ++tick) camera.tick(1.0 / 60.0);
             const auto pose = camera.pose();
-            expect(distance(pose.eye, death_eye) < 1.0e-9,
-                   "streak 2 only turns to face the killer");
+            expect(std::abs(distance(camera_position(pose.eye), death_eye) - 5.0) < 1.0e-9,
+                   "streak 2 keeps the chase eye five blocks behind the body");
             // The killer lies along -x, which is yaw 0 in this basis.
             expect(std::abs(pose.yaw_degrees) < 1.0,
                    "one second of angle lerp 10 must turn most of the way to the killer");
+            camera.set_killer_position(Vec3{100.0, 80.0, 200.0});
             camera.on_mouse_press();
             expect(camera.mode() == DeathCameraMode::killer_view,
                    "a click before 1.5 s must not leave the killer view");
             for (int tick{}; tick < 31; ++tick) camera.tick(1.0 / 60.0);
+            expect(std::abs(camera.pose().yaw_degrees) < 0.1,
+                   "a non-zooming killer view retains its initial aim");
             expect(camera.chase_available(), "chase becomes available after 1.5 s");
             camera.on_mouse_move(60.0, 0.0);
             expect(camera.mode() == DeathCameraMode::killer_view,
@@ -116,22 +131,28 @@ int main() {
         }
 
         // Third consecutive kill with the killer far away: fly toward them
-        // after 0.25 s. set_killer_view keeps aiming 5 short while the killer
-        // is more than 7 away, then freezes (zoom_possible = False).
+        // after 0.25 s, toward a fixed endpoint five short of the initial killer.
         {
             DeathCameraController camera;
             const Vec3 killer{60.0, 100.0, 200.0};
-            camera.begin_death(death_eye, 0.0, 0.0,
+            camera.begin_death(death_eye,
                                DeathKillerInfo{9U, killer, 0U, 3U}, true);
             for (int tick{}; tick < 14; ++tick) camera.tick(1.0 / 60.0);
-            expect(distance(camera.pose().eye, death_eye) < 1.0e-9,
-                   "the fly-in waits for DEATHCAM_TIME_TILL_POSITION_CHANGE");
+            expect(std::abs(distance(camera_position(camera.pose().eye), death_eye) - 5.0) < 1.0e-9,
+                   "before the fly-in the camera uses the chase eye behind the body");
+            camera.set_killer_position(Vec3{60.0, 70.0, 200.0});
             for (int tick{}; tick < 250; ++tick) camera.tick(1.0 / 60.0);
             expect(camera.mode() == DeathCameraMode::killer_view,
                    "4.4 s is still before the forced switch");
-            const double left = distance(camera.pose().eye, killer);
-            expect(left > 6.5 && left <= 7.0,
-                   "the fly-in stops once the killer is within RANGE + 2");
+            const double left = distance(camera_position(camera.pose().eye), killer);
+            expect(left > 5.0 && left < 5.001,
+                   "the fly-in approaches five short of the original killer despite their movement");
+            expect(camera.pose().yaw_degrees > 60.0,
+                   "while zooming the aim follows the live killer");
+            camera.set_killer_position(std::nullopt);
+            camera.tick(1.0 / 60.0);
+            expect(distance(camera_position(camera.pose().eye), killer) < 5.001,
+                   "a missing killer does not discard the fixed zoom endpoint");
             for (int tick{}; tick < 40; ++tick) camera.tick(1.0 / 60.0);
             expect(camera.mode() == DeathCameraMode::grave,
                    "the chase camera is forced at five seconds");
@@ -140,12 +161,12 @@ int main() {
         // An invalid kill type or disabled deathcam goes straight to chase.
         {
             DeathCameraController camera;
-            camera.begin_death(death_eye, 0.0, 0.0,
+            camera.begin_death(death_eye,
                                DeathKillerInfo{9U, {90.0, 100.0, 200.0}, 7U, 4U}, true);
             expect(camera.mode() == DeathCameraMode::grave,
                    "kill types outside DEATHCAM_VALID_TYPES skip the killer view");
             camera.end_life();
-            camera.begin_death(death_eye, 0.0, 0.0,
+            camera.begin_death(death_eye,
                                DeathKillerInfo{9U, {90.0, 100.0, 200.0}, 0U, 4U}, false);
             expect(camera.mode() == DeathCameraMode::grave,
                    "enable_deathcam off activates CHASE directly");
@@ -154,7 +175,7 @@ int main() {
         // A KillAction that trails the SetHp death still opens the killer view.
         {
             DeathCameraController camera;
-            camera.begin_death(death_eye, 0.0, 0.0, std::nullopt, true);
+            camera.begin_death(death_eye, std::nullopt, true);
             expect(camera.mode() == DeathCameraMode::grave, "no killer: chase");
             camera.tick(0.1);
             camera.set_killer_info(DeathKillerInfo{9U, {90.0, 100.0, 200.0}, 0U, 2U});
@@ -164,22 +185,22 @@ int main() {
         }
 
         // The dead VIP (never_respawn) may cycle teammates; the followed
-        // player dying drops the camera back onto our own body.
+        // player's removal falls back onto our own body.
         {
             DeathCameraController camera;
-            camera.begin_death(death_eye, 0.0, 0.0, std::nullopt, true, true);
+            camera.begin_death(death_eye, std::nullopt, true, true);
             expect(camera.can_cycle_targets(),
                    "never_respawn unlocks LMB/RMB teammate cycling");
             camera.set_chase_target(DeathCameraTarget{4U, {50.0, 60.0, 200.0}, {-1.0, 0.0, 0.0}});
             expect(camera.mode() == DeathCameraMode::chase && camera.chase_player_id() == 4U,
                    "a chosen teammate is followed");
-            expect(std::abs(distance(camera.pose().eye, {50.0, 60.0, 200.0}) - 5.0) < 1.0e-6,
+            expect(std::abs(distance(camera_position(camera.pose().eye), {50.0, 60.0, 200.0}) - 5.0) < 1.0e-6,
                    "the teammate chase uses the same five-block orbit");
             camera.set_chase_target(std::nullopt);
             expect(camera.mode() == DeathCameraMode::grave,
-                   "a dead/disconnected teammate falls back to our own body");
+                   "a removed teammate falls back to our own body");
             DeathCameraController late;
-            late.begin_death(death_eye, 0.0, 0.0, std::nullopt, true);
+            late.begin_death(death_eye, std::nullopt, true);
             expect(!late.can_cycle_targets(), "locked before the KillAction");
             late.set_never_respawn(true);
             expect(late.can_cycle_targets(), "a trailing NEVER_RESPAWN_TIME unlocks it");
@@ -208,7 +229,8 @@ int main() {
             expect(edge.x <= 512.0 + 1.0e-9, "the eye is scaled back inside the map box");
 
             DeathCameraController camera;
-            camera.begin_death(focus, 0.0, 0.0, std::nullopt, true);
+            camera.begin_death(focus, std::nullopt, true);
+            camera.on_mouse_move(-900.0, 0.0);
             camera.set_terrain(map.get());
             expect(camera.pose().eye.x < 103.0, "the controller uses the terrain pull-in");
         }
@@ -218,15 +240,15 @@ int main() {
         // clamped to the map box.
         {
             DeathCameraController camera;
-            camera.enter_spectator({256.0, 256.0, 100.0}, 0.0, std::nullopt);
+            camera.enter_spectator({256.0, 256.0, 100.0}, std::nullopt);
             expect(camera.mode() == DeathCameraMode::spectator_free && camera.spectating() &&
                        camera.can_cycle_targets(),
                    "a spectator without a target flies and may browse everyone");
             camera.set_fly_key(FlyCameraKey::forward, true);
             for (int tick{}; tick < 120; ++tick) camera.tick(1.0 / 60.0);
             const auto moved = camera.pose().eye;
-            expect(moved.x < 256.0 - 40.0 && moved.x > 256.0 - 60.0 &&
-                       std::abs(moved.y - 256.0) < 1.0e-6,
+            expect(moved.y < 256.5 - 40.0 && moved.y > 256.5 - 60.0 &&
+                       std::abs(moved.x - 256.0) < 1.0e-6,
                    "forward flies along the view at about 30 blocks per second");
             camera.set_fly_key(FlyCameraKey::forward, false);
             camera.set_fly_key(FlyCameraKey::jump, true);
@@ -234,6 +256,42 @@ int main() {
             expect(camera.pose().eye.z >= 0.0 && camera.pose().eye.z < 1.0e-9,
                    "jump rises until the map top clamps it");
             camera.set_fly_key(FlyCameraKey::jump, false);
+        }
+
+        // The first fly tick: speed 3, target moves .05, draw moves .005.
+        // Strafe carries retail's 0.7 factor and movement exits chase without a jump.
+        {
+            DeathCameraController forward;
+            DeathCameraController strafe;
+            forward.enter_spectator({100.0, 100.0, 100.0}, std::nullopt);
+            strafe.enter_spectator({100.0, 100.0, 100.0}, std::nullopt);
+            forward.set_fly_key(FlyCameraKey::forward, true);
+            strafe.set_fly_key(FlyCameraKey::right, true);
+            forward.tick(1.0 / 60.0);
+            strafe.tick(1.0 / 60.0);
+            expect(std::abs(forward.pose().eye.y - 100.495) < 1.0e-9 &&
+                       std::abs(strafe.pose().eye.x - 100.0035) < 1.0e-9,
+                   "fly translation smooths by 1/10 and strafe travels at 0.7 speed");
+            const DeathCameraTarget target{4U, {150.0, 150.0, 200.0}, {-1.0, 0.0, 0.0}};
+            forward.set_chase_target(target);
+            const auto before = forward.pose();
+            forward.set_fly_key(FlyCameraKey::jump, true);
+            expect(forward.mode() == DeathCameraMode::spectator_free &&
+                       !forward.chase_player_id().has_value() && !forward.wants_chase_target() &&
+                       distance(before.eye, forward.pose().eye) < 1.0e-9,
+                   "spectator movement selects persistent free flight without shifting the eye");
+            forward.set_fly_key(FlyCameraKey::jump, false);
+            forward.tick(1.0 / 60.0);
+            expect(!forward.wants_chase_target(), "releasing movement does not force chase");
+            forward.set_chase_target(target);
+            expect(forward.mode() == DeathCameraMode::chase && forward.wants_chase_target(),
+                   "mouse target selection returns from free flight to chase");
+            forward.end_life();
+            forward.begin_death(death_eye, std::nullopt, true, true);
+            forward.set_chase_target(target);
+            forward.set_fly_key(FlyCameraKey::forward, true);
+            expect(forward.mode() == DeathCameraMode::chase,
+                   "a dead player with a character cannot leave chase with movement keys");
         }
 
         // The initial local CreatePlayer precedes both world construction and
@@ -259,7 +317,7 @@ int main() {
                    !local_player_is_spectator(3U, true) &&
                    !local_player_is_spectator(0U, false),
                "ordinary team lives and disabled spectator must retain their lifecycle");
-        camera.enter_spectator(local->position, 0.0, std::nullopt);
+        camera.enter_spectator(local->position, std::nullopt);
         expect(camera.mode() == DeathCameraMode::spectator_free,
                "spectators without a target need a safe free-camera fallback");
         for (std::int32_t loop = 0; loop < 3; ++loop) {

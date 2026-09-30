@@ -1,15 +1,21 @@
 #include "battlespades/network/protocol168_session.hpp"
+#include "battlespades/network/live_protocol168_connection.hpp"
+
+#include <enet/enet.h>
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <span>
 #include <stdexcept>
 #include <string_view>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -53,7 +59,8 @@ std::vector<std::byte> initial_info(
     bool enable_numeric_hp = true, bool enable_player_score = true,
     bool friendly_fire = false,
     std::array<std::string_view, 5U> mode_strings = {
-        "TDM", "Description", "One", "Two", "Three"}) {
+        "TDM", "Description", "One", "Two", "Three"},
+    std::string_view map_name = "Training") {
     std::vector<std::byte> packet{std::byte{114U}};
     integer<std::uint64_t>(packet, 0U);
     integer<std::uint32_t>(packet, 0U);
@@ -61,8 +68,8 @@ std::vector<std::byte> initial_info(
     for (const auto value : mode_strings) {
         string(packet, value);
     }
-    string(packet, "Training");
-    string(packet, "Training.vxl");
+    string(packet, map_name);
+    string(packet, std::string{map_name} + ".vxl");
     integer<std::uint32_t>(packet, 0x12345678U);
     packet.push_back(std::byte{1U}); // mode key
     packet.push_back(static_cast<std::byte>(static_cast<std::uint8_t>(role))); // exact UGC role
@@ -603,6 +610,177 @@ void audio_arriving_during_join_is_deferred_in_order() {
            "deferred audio transfer must consume the bounded queue");
 }
 
+void replacement_initial_info_discards_an_unfinished_map() {
+    using namespace battlespades::network;
+    Protocol168Session session;
+    static_cast<void>(session.connected());
+    expect(session.ingest(server_datagram(initial_info())).accepted, "begin interrupted transfer");
+    expect(session.ingest(server_datagram(std::array{std::byte{27U}})).accepted,
+           "retain deferred old-map audio");
+    expect(session.ingest(server_datagram(std::array{std::byte{55U}})).accepted,
+           "start interrupted MapSync");
+    std::vector<std::byte> chunk{std::byte{57U}, std::byte{1U}, std::byte{3U}, std::byte{0U},
+                                 std::byte{1U}, std::byte{2U}, std::byte{3U}};
+    expect(session.ingest(server_datagram(chunk)).accepted && session.compressed_map_bytes() == 3U,
+           "accumulate part of old map stream");
+    const auto replacement = session.ingest(server_datagram(initial_info(
+        UgcRole::none, true, true, false, {"TDM", "Description", "One", "Two", "Three"}, "NextMap")));
+    expect(replacement.accepted && replacement.outbound_datagrams.size() == 1U &&
+               replacement.outbound_datagrams.front()[1U] == std::byte{60U},
+           "replacement restarts validation without another authentication");
+    expect(session.map_generation() == 1U && session.compressed_map_bytes() == 0U &&
+               session.initial_info()->map_name == "NextMap" && session.state_info() == nullptr &&
+               !session.local_player_id().has_value() && session.take_deferred_runtime_packets().empty() &&
+               !session.loading_progress().sync_started && !session.bootstrap_ready(),
+           "all partial-map state is discarded at InitialInfo");
+    expect(!session.ingest(server_datagram(std::array{std::byte{114U}})).accepted &&
+               session.phase() == Protocol168SessionPhase::failed,
+           "malformed replacement InitialInfo still fails closed");
+}
+
+void live_connection_loads_two_maps_on_one_authenticated_peer() {
+    using namespace battlespades::network;
+    expect(enet_initialize() == 0, "initialize rollover fixture ENet");
+    struct EnetGuard { ~EnetGuard() { enet_deinitialize(); } } enet_guard;
+    const auto directory = std::filesystem::temp_directory_path() /
+                           "aos_protocol168_same_peer_rollover";
+    std::filesystem::create_directories(directory);
+    struct FilesGuard {
+        std::filesystem::path path;
+        ~FilesGuard() { std::error_code error; std::filesystem::remove_all(path, error); }
+    } files_guard{directory};
+    std::array<std::uint32_t, 2U> crcs{};
+    for (std::size_t index{}; index < crcs.size(); ++index) {
+        auto raw = flat_stock_map();
+        if (index == 1U) {
+            // Change one column while retaining the stock 240-high extent;
+            // shorter worlds intentionally cannot use the local-CRC path.
+            const auto column = (5U * 512U + 5U) * 8U;
+            raw[column + 1U] = std::byte{220U};
+            raw[column + 2U] = std::byte{220U};
+        }
+        crcs[index] = protocol168_map_crc32(raw);
+        std::ofstream file{directory / (index == 0U ? "Training.vxl" : "NextMap.vxl"),
+                           std::ios::binary | std::ios::trunc};
+        file.write(reinterpret_cast<const char*>(raw.data()),
+                   static_cast<std::streamsize>(raw.size()));
+    }
+    ENetAddress address{};
+    expect(enet_address_set_host_ip(&address, "127.0.0.1") == 0, "rollover loopback");
+    const std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> server{
+        enet_host_create(&address, 1U, 1U, 0U, 0U), &enet_host_destroy};
+    expect(server != nullptr && enet_socket_get_address(server->socket, &address) == 0,
+           "bind rollover server on an ephemeral port");
+    expect(enet_host_compress_with_range_coder(server.get()) == 0, "rollover compression");
+    LiveProtocol168Connection connection;
+    Protocol168SessionConfig config;
+    config.auto_join = false;
+    config.local_map_directory = directory;
+    config.steam_ticket = {std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
+    expect(connection.start({"127.0.0.1", address.port, 5'000U}, config), "start rollover client");
+    ENetPeer* peer{};
+    unsigned connects{}, tickets{}, validations{};
+    const auto send = [&](std::span<const std::byte> plain) {
+        const auto bytes = server_datagram(plain);
+        auto* packet = enet_packet_create(bytes.data(), bytes.size(), ENET_PACKET_FLAG_RELIABLE);
+        expect(packet != nullptr, "allocate rollover packet");
+        if (enet_peer_send(peer, 0U, packet) != 0) {
+            enet_packet_destroy(packet);
+            throw std::runtime_error{"send rollover packet"};
+        }
+        enet_host_flush(server.get());
+    };
+    const auto service = [&] {
+        ENetEvent event{};
+        expect(enet_host_service(server.get(), &event, 2U) >= 0, "service rollover fixture");
+        if (event.type == ENET_EVENT_TYPE_CONNECT) {
+            ++connects;
+            peer = event.peer;
+        } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+            throw std::runtime_error{"same-peer rollover must not disconnect"};
+        } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+            std::vector<std::byte> bytes{
+                reinterpret_cast<const std::byte*>(event.packet->data),
+                reinterpret_cast<const std::byte*>(event.packet->data + event.packet->dataLength)};
+            enet_packet_destroy(event.packet);
+            expect(bytes.size() >= 2U && bytes.front() == std::byte{0x30U}, "client packet framing");
+            if (tickets == 0U) {
+                expect(bytes[1U] == std::byte{105U}, "authenticate exactly once");
+                ++tickets;
+                send(initial_info());
+                return;
+            }
+            for (std::size_t index{1U}; index < bytes.size(); ++index)
+                bytes[index] ^= config.steam_ticket[(index - 1U) % config.steam_ticket.size()];
+            expect(bytes[1U] == std::byte{60U}, "rollover keeps the same ticket key and sends validation, not reauthentication");
+            expect(validations < 2U && bytes.size() == 6U, "one validation per map");
+            std::uint32_t crc{};
+            for (std::size_t index{}; index < 4U; ++index)
+                crc |= std::to_integer<std::uint32_t>(bytes[2U + index]) << (index * 8U);
+            expect(crc == crcs[validations], "new map validates its own local VXL");
+            std::vector<std::byte> validation{std::byte{60U}};
+            integer(validation, crc);
+            send(validation);
+            send(std::array{std::byte{55U}});
+            send(std::array{std::byte{59U}});
+            auto state = state_data();
+            state[1U] = static_cast<std::byte>(17U + validations);
+            send(state);
+            if (validations == 1U)
+                send(std::array{std::byte{27U}, std::byte{42U}});
+            ++validations;
+        }
+    };
+    const auto wait_bootstrap = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        std::unique_ptr<Protocol168WorldBootstrap> bootstrap;
+        while (std::chrono::steady_clock::now() < deadline && !bootstrap) {
+            service();
+            bootstrap = connection.take_bootstrap();
+        }
+        expect(bootstrap != nullptr, "InitialInfo on an existing peer must complete another map bootstrap");
+        return bootstrap;
+    };
+    auto first = wait_bootstrap();
+    expect(first->map_generation == 0U && first->initial_info.map_name == "Training" && first->local_player_id == 17U &&
+               first->map->solid(5U, 5U, 239U) && !first->map->solid(5U, 5U, 220U),
+           "first bootstrap is the old map");
+    first.reset();
+    send(std::array{std::byte{27U}}); // old-map runtime packet intentionally left queued
+    const auto queued_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    while (connection.status().queued_inbound == 0U && std::chrono::steady_clock::now() < queued_deadline)
+        service();
+    expect(connection.status().queued_inbound != 0U, "old-map packet was queued before rollover");
+    send(std::array{std::byte{52U}});
+    send(initial_info(UgcRole::none, true, true, false,
+                      {"TDM", "Description", "One", "Two", "Three"}, "NextMap"));
+    const auto rollover_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    bool ready{};
+    while (std::chrono::steady_clock::now() < rollover_deadline && !ready) {
+        service();
+        const auto status = connection.status();
+        ready = status.map_generation == 1U && status.phase == LiveProtocol168Phase::ready &&
+                status.queued_inbound != 0U;
+    }
+    expect(ready, "InitialInfo on an existing peer must complete another map bootstrap");
+    expect(connection.take_inbound().empty() && !connection.send(std::array{std::byte{27U}}),
+           "pending bootstrap quarantines new-map packets and old-scene sends");
+    auto second = connection.take_bootstrap();
+    expect(second != nullptr && second->map_generation == 1U &&
+               second->initial_info.map_name == "NextMap" && second->local_player_id == 18U &&
+               second->next_client_loop_count == 0U && second->map->solid(5U, 5U, 220U),
+           "second bootstrap resets identity labels and loads the new VXL");
+    expect(connects == 1U && tickets == 1U && validations == 2U,
+           "rotation uses one peer, one authentication, two map validations");
+    expect(connection.take_inbound(64U, 0U).empty(),
+           "a stale render tick cannot drain replacement-map packets");
+    const auto inbound = connection.take_inbound(64U, second->map_generation);
+    expect(inbound == std::vector<std::vector<std::byte>>{{std::byte{27U}, std::byte{42U}}},
+           "new scene receives only its own queued runtime packets");
+    expect(connection.status().phase == LiveProtocol168Phase::ready,
+           "same transport is playable after the second bootstrap");
+}
+
 void deferred_runtime_memory_is_bounded_independently_of_map_transfer() {
     using namespace battlespades::network;
     Protocol168Session session;
@@ -637,10 +815,10 @@ void deferred_runtime_memory_is_bounded_independently_of_map_transfer() {
     Protocol168Session replacement;
     static_cast<void>(replacement.connected());
     static_cast<void>(replacement.ingest(server_datagram(initial_info())));
-    const auto small = server_datagram(std::array{std::byte{27U}});
+    const auto small_packet = server_datagram(std::array{std::byte{27U}});
     for (std::size_t index{}; index < detail::deferred_runtime_packet_limit; ++index)
-        expect(replacement.ingest(small).accepted, "fresh session must retain its normal packet capacity");
-    expect(!replacement.ingest(small).accepted && replacement.phase() == Protocol168SessionPhase::failed,
+        expect(replacement.ingest(small_packet).accepted, "fresh session must retain its normal packet capacity");
+    expect(!replacement.ingest(small_packet).accepted && replacement.phase() == Protocol168SessionPhase::failed,
            "the existing deferred packet-count bound must remain enforced");
 }
 
@@ -661,6 +839,8 @@ int main() {
         ugc_source_stream_is_framed_before_map_sync();
         local_map_crc_answers_validation_and_becomes_the_world_base();
         audio_arriving_during_join_is_deferred_in_order();
+        replacement_initial_info_discards_an_unfinished_map();
+        live_connection_loads_two_maps_on_one_authenticated_peer();
         deferred_runtime_memory_is_bounded_independently_of_map_transfer();
         std::cout << "Protocol 168 session tests passed\n";
         return 0;

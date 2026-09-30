@@ -11,6 +11,22 @@
 
 namespace battlespades::frontend {
 
+/** MinimapZone's reversible half-second world-billboard animation. */
+class ObjectiveZoneAnimation final {
+public:
+    void activate() noexcept { state_ = State::appearing; }
+    void deactivate() noexcept { state_ = State::vanishing; }
+    void tick(double seconds) noexcept;
+    [[nodiscard]] double scale() const noexcept { return scale_; }
+    [[nodiscard]] bool vanished() const noexcept { return state_ == State::vanished; }
+
+private:
+    enum class State { appearing, full_size, vanishing, vanished };
+    State state_{State::appearing};
+    double time_{};
+    double scale_{};
+};
+
 /** Retail world-billboard art selected by a server packet-43 icon ordinal. */
 struct ObjectiveBillboardStyle final {
     std::string_view icon_asset;

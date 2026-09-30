@@ -31,6 +31,8 @@ struct LiveProtocol168Status final {
     std::size_t sent_datagrams{};
     std::size_t queued_inbound{};
     std::size_t queued_outbound{};
+    /** InitialInfo begins another map without replacing the ENet peer. */
+    std::uint64_t map_generation{};
     std::string error;
     /**
      * Raw retail ENet disconnect data, including ERROR_MATCH_ENDED (18). A
@@ -44,7 +46,22 @@ struct LiveProtocol168Status final {
     Protocol168LoadingProgress loading;
     /** InitialInfo as soon as it decodes (loadingMenu CHECKING_MAP). */
     std::shared_ptr<const Protocol168InitialInfo> initial_info;
+    /**
+     * PasswordNeeded(112) state. It survives the disconnect, so a kick during
+     * the exchange can be told apart from an ordinary one.
+     */
+    Protocol168PasswordPrompt password;
 };
+
+/**
+ * What a handshake that ended during the password exchange means. The server
+ * has no "wrong password" reason: it kicks (2, ERROR_KICKED) after too many
+ * wrong answers or while the address is locked out, and times out (11,
+ * ERROR_TIMEOUT) a prompt left unanswered.
+ */
+enum class PasswordJoinFailure : std::uint8_t { none, wrong_password, timed_out };
+[[nodiscard]] PasswordJoinFailure
+protocol168_password_failure(const LiveProtocol168Status& status) noexcept;
 
 /**
  * NetworkClient.send_packet(packet, unreliable): true only for ClockSync(0)
@@ -87,8 +104,10 @@ protocol168_inbound_apply_budget(std::size_t queued_inbound,
     return std::max(queued_inbound, minimum_budget);
 }
 
-/** Immutable join result transferred once from the ENet worker to gameplay. */
+/** Immutable result transferred once per map from the ENet worker to gameplay. */
 struct Protocol168WorldBootstrap final {
+    /** Identifies the map transfer independently of a status snapshot. */
+    std::uint64_t map_generation{};
     Protocol168InitialInfo initial_info;
     Protocol168StateInfo state_info;
     /** Packet 51 is independent of fog and selects the authored mesh layers. */
@@ -130,9 +149,16 @@ public:
 
     [[nodiscard]] LiveProtocol168Status status() const;
     [[nodiscard]] std::unique_ptr<Protocol168WorldBootstrap> take_bootstrap();
+    /** Wait for bootstrap adoption; an older scene cannot consume a new map's packets. */
     [[nodiscard]] std::vector<std::vector<std::byte>>
-    take_inbound(std::size_t limit = 64U);
+    take_inbound(std::size_t limit = 64U,
+                 std::optional<std::uint64_t> expected_generation = std::nullopt);
     [[nodiscard]] bool send(std::span<const std::byte> plain_packet);
+    /**
+     * Answer the pending password prompt with PasswordProvided(113). False
+     * when no prompt is pending or the text cannot be a password.
+     */
+    [[nodiscard]] bool provide_password(std::string password);
 
 private:
     struct State;

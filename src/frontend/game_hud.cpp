@@ -735,6 +735,13 @@ void GameHudModel::set_block_cost_state(std::int32_t cost, bool can_place,
     ammo_.enough = can_place;
 }
 
+void GameHudModel::set_flare_cost_state(std::string image_asset, std::int32_t cost,
+                                        ui::ColorRgba8 tint, bool visible) noexcept {
+    set_ammo_state(std::move(image_asset), cost, std::nullopt, visible);
+    ammo_.image_color = tint;
+    ammo_.enough = true;
+}
+
 void GameHudModel::set_palette_state(
     std::vector<ui::ColorRgba8> colors, std::size_t columns,
     std::optional<std::size_t> selected, bool visible,

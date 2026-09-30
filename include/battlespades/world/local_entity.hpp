@@ -47,6 +47,11 @@ struct LocalEntity final {
     double health{};
     /** Seconds left on the fuse; negative means no fuse is running. */
     double fuse{-1.0};
+    /**
+     * AttachedStickyGrenadeEntity.draw_fuse: set_packet clears it, only a
+     * ChangeEntity SET_FUSE (set_fuse) shows the countdown digits.
+     */
+    bool fuse_label{};
     /** Seconds until a trap arms. */
     double arm_remaining{};
     /** Seconds until self-removal; negative means it never expires. */
@@ -126,6 +131,9 @@ struct LocalEntity final {
     double spin_degrees{};
     /** IntelPickup.floating_offset: rise out of the water, up to 0.7 blocks. */
     double floating_offset{};
+    /** Independently ordered split WorldUpdate rows, reset by reliable creation. */
+    std::optional<std::int32_t> world_update_loop;
+    std::optional<std::int32_t> turret_update_loop;
 };
 
 /** SpinningEntity.update: rotate(Vector3(0, 1, 0), dt * 10). */

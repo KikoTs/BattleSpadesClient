@@ -108,6 +108,13 @@ struct SpriteDrawCommand final {
      * not equivalent for rotated sprites such as the minimap view cone.
      */
     std::optional<DrawRect> clip_pixels{};
+    /**
+     * One-based index of the world point this command was projected from, or
+     * zero for ordinary screen-space UI. A frontend that presents frames
+     * between two fixed ticks uses it to keep the command on its world point
+     * in those frames; nothing else reads it.
+     */
+    std::uint16_t world_anchor{};
 };
 
 enum class HorizontalTextAlignment : std::uint8_t {
@@ -193,6 +200,8 @@ struct TextDrawCommand final {
     TextLayout layout{TextLayout::single_line};
     /** Rasterize through retail FTTextureGlyph's outside stroke path. */
     bool retail_outline_stroke{false};
+    /** See SpriteDrawCommand::world_anchor. */
+    std::uint16_t world_anchor{};
 };
 
 /**

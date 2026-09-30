@@ -116,6 +116,42 @@ int main() {
                "forced/team-change kills must clear both retail relationship markers");
 
         battlespades::network::WorldPlayerWeaponRow world_row;
+        {
+            battlespades::network::Protocol168Roster ordered;
+            expect(ordered.apply(fixtures[0U]) && ordered.apply(fixtures[1U]),
+                   "split snapshot fixture players");
+            battlespades::network::WorldPlayerWeaponRow row;
+            row.player_id = fixtures[0U].player_id;
+            row.health = 100;
+            row.position = {10.0F, 20.0F, 30.0F};
+            expect(ordered.update_world_state(row, 100), "first observer row accepted");
+            row.position[0U] = 99.0F;
+            expect(!ordered.update_world_state(row, 98) &&
+                       !ordered.update_world_state(row, 100) &&
+                       ordered.player(row.player_id)->position.x == 10.0,
+                   "reordered and duplicate observer rows never rewind state");
+            row.player_id = fixtures[1U].player_id;
+            expect(ordered.update_world_state(row, 100),
+                   "another player in a same-loop split chunk is still accepted");
+            row.player_id = fixtures[0U].player_id;
+            row.acknowledged_client_loop = 8;
+            expect(ordered.update_world_state(row, 100, true),
+                   "owner ACK can advance while its observer prefix stays unchanged");
+            row.acknowledged_client_loop = 9;
+            row.position[0U] = 101.0F;
+            expect(ordered.update_world_state(row, 98, true),
+                   "a newer owner ACK is valid even with an older observer prefix");
+            row.acknowledged_client_loop = 8;
+            row.position[0U] = 102.0F;
+            expect(!ordered.update_world_state(row, 102, true) &&
+                       ordered.player(row.player_id)->position.x == 101.0,
+                   "newer global loops cannot authorize a stale owner ACK");
+            expect(ordered.apply(fixtures[0U]) && ordered.update_world_state(row, 1, true),
+                   "reliable respawn resets per-life snapshot ordering");
+            ordered.remove(row.player_id);
+            expect(!ordered.update_world_state(row, 200),
+                   "an unreliable row cannot recreate a removed player");
+        }
         world_row.player_id = 100U;
         world_row.position = {4.0F, 5.0F, 6.0F};
         world_row.orientation = {0.0F, 1.0F, 0.25F};

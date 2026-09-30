@@ -159,6 +159,26 @@ void command_line_parses_live_connect_shortcut() {
     const std::vector<std::string_view> missing{"--connect"};
     expect(!static_cast<bool>(battlespades::core::parse_command_line(missing)),
            "live connect shortcut without an endpoint must fail closed");
+    expect(!parsed.options->startup_password.has_value(),
+           "no password is sent unless one was given");
+
+    // The server password of the --connect target, in both spellings.
+    for (const std::string_view flag : {"--password", "+password"}) {
+        const std::vector<std::string_view> locked{
+            "--connect", "play.example.net:27015", flag, "open sesame"};
+        const auto with_password = battlespades::core::parse_command_line(locked);
+        expect(static_cast<bool>(with_password) &&
+                   with_password.options->startup_endpoint == "play.example.net:27015" &&
+                   with_password.options->startup_password == "open sesame",
+               "the server password must reach the loader unchanged");
+    }
+    const std::vector<std::string_view> no_password{"--connect", "h:1", "--password"};
+    const std::string too_long(65U, 'a');
+    const std::vector<std::string_view> long_password{
+        "--connect", "h:1", "--password", too_long};
+    expect(!static_cast<bool>(battlespades::core::parse_command_line(no_password)) &&
+               !static_cast<bool>(battlespades::core::parse_command_line(long_password)),
+           "a missing password or one over 64 bytes must fail closed");
 
     // Steam's own launch forms for a friend's Join Game / accepted invite.
     const std::vector<std::string_view> steam_join{"+connect", "steam:76561198000000001"};

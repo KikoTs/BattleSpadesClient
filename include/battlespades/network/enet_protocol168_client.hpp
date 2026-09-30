@@ -9,7 +9,8 @@ namespace battlespades::network {
 
 struct EnetProtocol168Config final {
     std::string host{"127.0.0.1"};
-    std::uint16_t port{32887U};
+    /** `default_game_port`: the port BattleSpades servers listen on. */
+    std::uint16_t port{27015U};
     /**
      * Live connections: LOADING_MENU_NO_PROGRESS_TIMEOUT, restarted by every
      * accepted handshake packet. The blocking probe keeps it as one deadline.

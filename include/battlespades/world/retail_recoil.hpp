@@ -15,7 +15,7 @@ namespace battlespades::world {
  *     else:                          side = ((timer & 511) - 255.5) * -recoil_side
  *     if self.walking and not self.is_crouching(): up *= 2; side *= 2
  *     if self.airborne:                            up *= 2; side *= 2
- *     if self.is_crouching():                      up /= 2; side /= 2
+ *     elif self.is_crouching():                    up /= 2; side /= 2
  *     self.set_view(self.pitch + up * 60, self.yaw + side * 60)
  *
  * The side kick is a deterministic sawtooth on the scene's millisecond
@@ -48,8 +48,7 @@ inline constexpr double retail_recoil_side_centre{255.5};
     if (airborne) {
         up *= 2.0;
         side *= 2.0;
-    }
-    if (crouching) {
+    } else if (crouching) {
         up /= 2.0;
         side /= 2.0;
     }

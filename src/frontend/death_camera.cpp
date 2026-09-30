@@ -116,8 +116,7 @@ world::Vec3 chase_camera_eye(const world::VxlMap* map, world::Vec3 focus, double
     return {focus.x + offset.x * scale, focus.y + offset.y * scale, focus.z + offset.z * scale};
 }
 
-void DeathCameraController::begin_death(world::Vec3 death_eye, double yaw_degrees,
-                                        double pitch_degrees,
+void DeathCameraController::begin_death(world::Vec3 death_eye,
                                         std::optional<DeathKillerInfo> killer,
                                         bool deathcam_enabled, bool never_respawn) noexcept {
     fallback_anchor_ = death_eye;
@@ -135,8 +134,6 @@ void DeathCameraController::begin_death(world::Vec3 death_eye, double yaw_degree
     spectator_ = false;
     fly_keys_ = {};
     fly_speed_ = 0.0;
-    yaw_ = wrap_degrees(yaw_degrees);
-    pitch_ = std::clamp(pitch_degrees, -pitch_limit, pitch_limit);
     if (deathcam_enabled_) {
         activate_death_controller();
     } else {
@@ -154,13 +151,14 @@ void DeathCameraController::activate_death_controller() noexcept {
         return;
     }
     working_position_ = fallback_anchor_;
+    killer_eye_ = chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_);
     target_position_ = working_position_;
     zoom_possible_ = false;
     mode_ = DeathCameraMode::killer_view;
-    set_killer_view(killer_->position);
+    set_killer_view(killer_->position, true);
 }
 
-void DeathCameraController::set_killer_view(world::Vec3 killer_position) noexcept {
+void DeathCameraController::set_killer_view(world::Vec3 killer_position, bool initial) noexcept {
     const world::Vec3 diff{killer_position.x - working_position_.x,
                            killer_position.y - working_position_.y,
                            killer_position.z - working_position_.z};
@@ -171,6 +169,7 @@ void DeathCameraController::set_killer_view(world::Vec3 killer_position) noexcep
     target_pitch_ = std::clamp(std::asin(std::clamp(direction.z, -1.0, 1.0)) * 180.0 /
                                    std::numbers::pi,
                                -pitch_limit, pitch_limit);
+    if (!initial) return;
     if (distance > killer_range + 2.0) {
         const double travel = distance - killer_range;
         target_position_ = {working_position_.x + direction.x * travel,
@@ -179,6 +178,7 @@ void DeathCameraController::set_killer_view(world::Vec3 killer_position) noexcep
         zoom_possible_ = true;
     } else {
         target_position_ = working_position_;
+        zoom_possible_ = false;
     }
 }
 
@@ -209,7 +209,7 @@ void DeathCameraController::set_killer_position(std::optional<world::Vec3> posit
     }
 }
 
-void DeathCameraController::enter_spectator(world::Vec3 fallback_anchor, double yaw_degrees,
+void DeathCameraController::enter_spectator(world::Vec3 fallback_anchor,
                                             std::optional<DeathCameraTarget> target) noexcept {
     fallback_anchor_ = fallback_anchor;
     grave_position_ = fallback_anchor;
@@ -224,10 +224,10 @@ void DeathCameraController::enter_spectator(world::Vec3 fallback_anchor, double 
     locked_ = false;
     spectator_ = true;
     fly_position_ = fallback_anchor;
+    fly_draw_position_ = fallback_anchor;
+    fly_requested_ = false;
     fly_speed_ = 0.0;
     fly_keys_ = {};
-    yaw_ = wrap_degrees(yaw_degrees);
-    pitch_ = 0.0;
     mode_ = chase_target_.has_value() ? DeathCameraMode::chase : DeathCameraMode::spectator_free;
 }
 
@@ -243,6 +243,7 @@ void DeathCameraController::end_life() noexcept {
     spectator_ = false;
     fly_keys_ = {};
     fly_speed_ = 0.0;
+    fly_requested_ = false;
     terrain_ = nullptr;
 }
 
@@ -267,10 +268,13 @@ void DeathCameraController::set_chase_target(std::optional<DeathCameraTarget> ta
         return;
     }
     if (chase_target_.has_value()) {
+        fly_requested_ = false;
+        fly_keys_ = {};
         mode_ = DeathCameraMode::chase;
     } else if (mode_ == DeathCameraMode::chase) {
         if (spectator_) {
-            fly_position_ = previous_eye;
+            fly_position_ = {previous_eye.x, previous_eye.y - 0.5, previous_eye.z};
+            fly_draw_position_ = fly_position_;
             mode_ = DeathCameraMode::spectator_free;
         } else {
             mode_ = DeathCameraMode::grave;
@@ -306,9 +310,10 @@ void DeathCameraController::tick(double dt) noexcept {
         working_position_ = {interpolate(working_position_.x, target_position_.x, position_lerp, dt),
                              interpolate(working_position_.y, target_position_.y, position_lerp, dt),
                              interpolate(working_position_.z, target_position_.z, position_lerp, dt)};
-    }
-    if (killer_present_ && killer_.has_value()) {
-        set_killer_view(killer_->position);
+        killer_eye_ = working_position_;
+        if (killer_present_) set_killer_view(killer_->position, false);
+    } else {
+        killer_eye_ = chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_);
     }
     pitch_ = std::clamp(interpolate_angle(pitch_, target_pitch_, angle_lerp, dt), -pitch_limit,
                         pitch_limit);
@@ -336,8 +341,8 @@ void DeathCameraController::tick_fly(double dt) noexcept {
     };
     if (held(FlyCameraKey::forward)) add(basis.forward, step);
     if (held(FlyCameraKey::backward)) add(basis.forward, -step);
-    if (held(FlyCameraKey::left)) add(basis.right, -step);
-    if (held(FlyCameraKey::right)) add(basis.right, step);
+    if (held(FlyCameraKey::left)) add(basis.right, -step * fly_vertical_factor);
+    if (held(FlyCameraKey::right)) add(basis.right, step * fly_vertical_factor);
     // Jump rises (z-down world) and crouch sinks, at 0.7 of the travel speed.
     if (held(FlyCameraKey::jump)) position.z -= step * fly_vertical_factor;
     if (held(FlyCameraKey::crouch)) position.z += step * fly_vertical_factor;
@@ -345,6 +350,11 @@ void DeathCameraController::tick_fly(double dt) noexcept {
     position.y = std::clamp(position.y, 0.0, map_y_extent);
     position.z = std::clamp(position.z, 0.0, fly_z_extent);
     fly_position_ = position;
+    // Camera.translate: rendered position trails the fly target by 1/10 per tick.
+    fly_draw_position_ = {
+        interpolate(fly_draw_position_.x, position.x, 10.0, dt),
+        interpolate(fly_draw_position_.y, position.y, 10.0, dt),
+        interpolate(fly_draw_position_.z, position.z, 10.0, dt)};
 }
 
 void DeathCameraController::on_mouse_move(double delta_x, double delta_y,
@@ -371,6 +381,17 @@ void DeathCameraController::on_mouse_press() noexcept {
 }
 
 void DeathCameraController::set_fly_key(FlyCameraKey key, bool held) noexcept {
+    if (held && spectating()) {
+        fly_requested_ = true;
+        if (mode_ == DeathCameraMode::chase) {
+            const auto eye = pose().eye;
+            fly_position_ = {eye.x, eye.y - 0.5, eye.z};
+            fly_draw_position_ = fly_position_;
+            chase_target_.reset();
+            fly_speed_ = 0.0;
+            mode_ = DeathCameraMode::spectator_free;
+        }
+    }
     fly_keys_[static_cast<std::size_t>(key)] = held;
 }
 
@@ -398,6 +419,10 @@ bool DeathCameraController::spectating() const noexcept {
     return active() && spectator_;
 }
 
+bool DeathCameraController::wants_chase_target() const noexcept {
+    return active() && !(mode_ == DeathCameraMode::spectator_free && fly_requested_);
+}
+
 std::optional<std::uint8_t> DeathCameraController::chase_player_id() const noexcept {
     return chase_target_.has_value() ? std::optional<std::uint8_t>{chase_target_->player_id}
                                      : std::nullopt;
@@ -416,24 +441,24 @@ world::Vec3 DeathCameraController::own_body_focus() const noexcept {
 }
 
 DeathCameraPose DeathCameraController::pose() const noexcept {
+    // Camera.set_position stores (-x, z, -y - 0.5): every controller eye
+    // therefore draws half a block further along world y.
+    const auto drawn_pose = [this](world::Vec3 eye) {
+        eye.y += 0.5;
+        return DeathCameraPose{eye, yaw_, pitch_};
+    };
     switch (mode_) {
     case DeathCameraMode::killer_view:
-        if (!killer_present_) {
-            // DeathController.update: without a live killer the controller
-            // places itself behind the chase player (our own body).
-            return {chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_), yaw_, pitch_};
-        }
-        return {working_position_, yaw_, pitch_};
+        return drawn_pose(killer_eye_);
     case DeathCameraMode::chase:
         if (chase_target_.has_value()) {
-            return {chase_camera_eye(terrain_, chase_target_->position, yaw_, pitch_), yaw_,
-                    pitch_};
+            return drawn_pose(chase_camera_eye(terrain_, chase_target_->position, yaw_, pitch_));
         }
         [[fallthrough]];
     case DeathCameraMode::grave:
-        return {chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_), yaw_, pitch_};
+        return drawn_pose(chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_));
     case DeathCameraMode::spectator_free:
-        return {fly_position_, yaw_, pitch_};
+        return drawn_pose(fly_draw_position_);
     case DeathCameraMode::inactive:
         break;
     }

@@ -2110,6 +2110,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Paraşüt inişte açılır",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: havada paraşütü aç",
     "ABILITY_HINT_JETPACK": "{0}: itki",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: itki; bırak ve şarj için yere in"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: itki; bırak ve şarj için yere in",
+    "SERVER_PASSWORD_PROMPT": "Sunucu şifresini yazın ve devam etmek için Enter'a basın.",
+    "SERVER_PASSWORD_WRONG": "Yanlış şifre. Tekrar deneyin.",
+    "SERVER_PASSWORD_REFUSED": "Sunucu şifresi yanlış",
+    "SERVER_PASSWORD_TIMEOUT": "Sunucu şifresi zamanında girilmedi",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Raundu kazanmak için tüm düşmanları yok edin!",
+    "LOAD_FAILED": "Yükleme başarısız"
   }
 }

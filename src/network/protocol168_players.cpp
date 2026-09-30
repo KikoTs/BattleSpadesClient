@@ -321,11 +321,27 @@ bool Protocol168Roster::update_transform(std::uint8_t player_id,
 }
 
 bool Protocol168Roster::update_world_state(
-    const WorldPlayerWeaponRow& row) noexcept {
+    const WorldPlayerWeaponRow& row, std::optional<std::int32_t> world_loop,
+    bool local_owner) noexcept {
     if (row.player_id >= players_.size() || !players_[row.player_id].has_value()) {
         return false;
     }
     auto& player = *players_[row.player_id];
+    if (world_loop.has_value()) {
+        if (*world_loop < 0) return false;
+        if (player.world_update_loop.has_value()) {
+            // Split owner packets carry the last observer loop, which may lag
+            // behind newer observer packets. Their ACK orders reconciliation.
+            if (local_owner) {
+                if (row.acknowledged_client_loop < player.acknowledged_client_loop ||
+                    (row.acknowledged_client_loop == player.acknowledged_client_loop &&
+                     *world_loop <= *player.world_update_loop)) return false;
+            } else if (*world_loop <= *player.world_update_loop) {
+                return false;
+            }
+        }
+        player.world_update_loop = world_loop;
+    }
     player.position = {row.position[0U], row.position[1U], row.position[2U]};
     player.orientation = {row.orientation[0U], row.orientation[1U],
                           row.orientation[2U]};

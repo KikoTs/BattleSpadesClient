@@ -211,7 +211,16 @@ void append_scrollbar(ui::DrawList& list, const ClassSelectionMenuModel& menu) {
     if (name == world::flare_block_construct) {
         return class_selection_item_icon(world::flare_block_tool);
     }
-    return "prefabs/" + std::string{name} + ".png";
+    // prefab_manager.get_prefab_image: the palette is keyed by the lower-case
+    // file stem, and a name without `prefab_` (a map's own list may carry
+    // either form) matches the stem after that prefix.
+    std::string stem{name};
+    std::ranges::transform(stem, stem.begin(), [](unsigned char character) {
+        return static_cast<char>(character >= 'A' && character <= 'Z' ? character + 32
+                                                                      : character);
+    });
+    if (stem.find("prefab_") == std::string::npos) stem.insert(0U, "prefab_");
+    return "prefabs/" + stem + ".png";
 }
 
 [[nodiscard]] std::vector<std::string> split_lines(std::string_view value) {

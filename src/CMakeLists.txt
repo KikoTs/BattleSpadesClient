@@ -4,6 +4,7 @@ add_library(
         core/application.cpp
         core/command_line.cpp
         core/diagnostics.cpp
+        core/precise_sleep.cpp
         core/resource_paths.cpp
         core/utf8.cpp
 )
@@ -80,10 +81,13 @@ add_library(
         world/weapon_models.cpp
         world/class_voice.cpp
         world/class_voice.generated.cpp
+        world/entity_attachment.cpp
         world/entity_catalog.cpp
         world/entity_catalog.generated.cpp
         world/local_entity.cpp
         world/footstep_audio.cpp
+        world/jetpack_audio.cpp
+        world/machine_gun_deployment.cpp
         world/remote_character_audio.cpp
         world/weapon_fire_sound.cpp
         world/weapon_presentation.cpp
@@ -163,6 +167,8 @@ add_library(
         frontend/create_match_presentation.cpp
         frontend/custom_match_menu.cpp
         frontend/custom_match_presentation.cpp
+        frontend/server_password_prompt.cpp
+        frontend/class_loadout_store.cpp
         frontend/class_selection_menu.cpp
         frontend/class_selection_presentation.cpp
         frontend/change_team_menu.cpp
@@ -513,6 +519,17 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::NetworkEnet
     )
     aos_enable_strict_warnings(aos_protocol168_live_session_smoke)
+
+    add_executable(
+        aos_protocol168_password_live_smoke
+        "${PROJECT_SOURCE_DIR}/tools/protocol168_password_live_smoke.cpp"
+    )
+    target_link_libraries(
+        aos_protocol168_password_live_smoke
+        PRIVATE
+            BattleSpades::NetworkEnet
+    )
+    aos_enable_strict_warnings(aos_protocol168_password_live_smoke)
 
     add_executable(
         aos_protocol168_deployable_live_smoke

@@ -1,4 +1,5 @@
 #include "battlespades/world/tutorial_session.hpp"
+#include "battlespades/world/build_wallet.hpp"
 #include "battlespades/world/retail_effects.hpp"
 #include "battlespades/world/class_catalog.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
@@ -614,6 +615,7 @@ void TutorialWorldSession::tick() {
         zoomed_ = false;
         attack_events_.zoom_dropped = true;
     }
+    advance_machine_gun_deployment();
     update_reload_aim();
     sprint_pullout_remaining_ = std::max(0.0, sprint_pullout_remaining_ - config_.fixed_dt);
     // GameScene.update drives the sight ramp from the same fixed 60 Hz
@@ -645,6 +647,16 @@ void TutorialWorldSession::tick() {
     press_latch_.fill(false);
     primary_tick_held_ = primary_held_ || primary_press_latch_;
     primary_press_latch_ = false;
+    if (machine_gun_.locks_movement()) {
+        // Character.set_walk / set_jump / set_crouch return at once while
+        // is_weapon_deployed or is_deploying_weapon is set.
+        for (const auto action : {TutorialAction::forward, TutorialAction::backward,
+                                  TutorialAction::left, TutorialAction::right,
+                                  TutorialAction::jump, TutorialAction::crouch}) {
+            tick_held_[static_cast<std::size_t>(action)] = false;
+        }
+        jump_requested_ = false;
+    }
     const auto tick_held = [this](TutorialAction action) {
         return tick_held_[static_cast<std::size_t>(action)];
     };
@@ -1027,10 +1039,11 @@ void TutorialWorldSession::update_weapon_sandbox() {
         }
     }
     runtime.set_context({action_held(TutorialAction::sprint),
-                         machine_gun_deployed_,
+                         machine_gun_.deployed(),
                          disguise_active_,
                          deployable_target_valid});
-    runtime.set_primary(primary_held_ || primary_tick_held_);
+    // MGWeapon.update: set_primary_shoot(False) while either timer counts.
+    runtime.set_primary((primary_held_ || primary_tick_held_) && !machine_gun_.blocks_primary());
     runtime.set_custom(custom_held_);
     sandbox_inventory_.tick(config_.fixed_dt);
     const auto actions = runtime.take_actions();
@@ -1104,9 +1117,11 @@ void TutorialWorldSession::process_weapon_action(const WeaponAction& action) {
         action.kind == WeaponActionKind::dry_fire) {
         return;
     }
-    if (action.kind == WeaponActionKind::deployable_place &&
-        weapon->mechanism == WeaponMechanism::deployed_machine_gun) {
-        machine_gun_deployed_ = !machine_gun_deployed_;
+    if (weapon->mechanism == WeaponMechanism::deployed_machine_gun &&
+        (action.kind == WeaponActionKind::deployable_place ||
+         action.kind == WeaponActionKind::objective_use)) {
+        // The mounted gun unfolds where its carrier stands (MGWeapon); the
+        // two actions only tell a server about it.
         return;
     }
     // Deployables and objectives are what turn a tool into a thing in the
@@ -1692,11 +1707,12 @@ void TutorialWorldSession::step_entity_timers(LocalEntity& entity,
         // retail presentation gravity between snapshots. In particular it
         // must never arm a friendly mine or make a turret target its observer.
         if ((entity.type == 14U || entity.type == 15U || entity.type == 16U ||
-             entity.type == 36U) &&
+             entity.type == 35U || entity.type == 36U) &&
             entity.fuse > 0.0) {
-            // BombPickup / DiamondPickup / IntelPickup / RadarStationEntity
-            // count their packet fuse down locally between server updates
-            // (their 3D label reads it); a later packet simply overwrites it.
+            // BombPickup / DiamondPickup / IntelPickup / RadarStationEntity /
+            // AttachedStickyGrenadeEntity count their packet fuse down
+            // locally between server updates (their 3D label reads it); a
+            // later packet simply overwrites it.
             entity.fuse = std::max(0.0, entity.fuse - dt);
         }
         const auto physics = step_entity_terrain_physics(entity, definition, *map_, dt);
@@ -2346,9 +2362,12 @@ void TutorialWorldSession::swing_spade() {
 }
 
 void TutorialWorldSession::place_block(bool emits_light) {
-    if (!infinite_blocks_ &&
-        ((debug_full_loadout_ && sandbox_inventory_.blocks() == 0U) ||
-         (!debug_full_loadout_ && blocks_remaining_ <= 0))) {
+    // BlockTool costs one block, FlareBlockTool FLAREBLOCK_COST (10); both
+    // refuse when the wallet cannot pay (get_has_enough_ammo).
+    const int cost = emits_light ? retail_flare_block_cost : 1;
+    const int wallet = debug_full_loadout_ ? static_cast<int>(sandbox_inventory_.blocks())
+                                           : blocks_remaining_;
+    if (!infinite_blocks_ && wallet < cost) {
         return;
     }
     const auto hit =
@@ -2393,10 +2412,10 @@ void TutorialWorldSession::place_block(bool emits_light) {
     tool_cooldown_ = tool_definition(retail_block_tool_id).fire_interval;
     since_primary_ = 0.0;
     if (debug_full_loadout_ && !infinite_blocks_) {
-        static_cast<void>(sandbox_inventory_.spend_blocks());
+        static_cast<void>(sandbox_inventory_.spend_blocks(static_cast<std::uint16_t>(cost)));
         blocks_remaining_ = static_cast<int>(sandbox_inventory_.blocks());
     } else if (!debug_full_loadout_ && !infinite_blocks_) {
-        --blocks_remaining_;
+        blocks_remaining_ -= cost;
     }
     ++blocks_built_;
     attack_events_.block_placed = true;
@@ -2689,6 +2708,8 @@ void TutorialWorldSession::equip_tool(TutorialTool tool, InventorySelectionOrigi
 }
 
 bool TutorialWorldSession::equip_inventory_slot(std::size_t index) noexcept {
+    // MGWeapon.can_swap: not while the gun is deployed or unfolding.
+    if (machine_gun_.blocks_swap()) return false;
     set_secondary_held(false);
     const bool selected =
         debug_full_loadout_
@@ -2701,6 +2722,7 @@ bool TutorialWorldSession::equip_inventory_slot(std::size_t index) noexcept {
 }
 
 void TutorialWorldSession::cycle_tool(int direction) noexcept {
+    if (machine_gun_.blocks_swap()) return;
     set_secondary_held(false);
     const bool selected =
         debug_full_loadout_ ? sandbox_inventory_.cycle(direction) : inventory_.cycle(direction);
@@ -2891,7 +2913,79 @@ MovementStepResult TutorialWorldSession::take_movement_events() noexcept {
 }
 
 bool TutorialWorldSession::machine_gun_deployed() const noexcept {
-    return machine_gun_deployed_;
+    return machine_gun_.deployed();
+}
+
+bool TutorialWorldSession::machine_gun_deploying() const noexcept {
+    return machine_gun_.deploying();
+}
+
+std::optional<double> TutorialWorldSession::machine_gun_deployment_progress() const noexcept {
+    if (!machine_gun_.timer_running()) return std::nullopt;
+    const auto progress = machine_gun_.progress();
+    // draw_weapon_deployment_hud returns while the progress is still 1.
+    return progress < 1.0 ? std::optional<double>{progress} : std::nullopt;
+}
+
+double TutorialWorldSession::weapon_deployment_yaw() const noexcept {
+    if (!machine_gun_.locks_movement()) return 0.0;
+    // to_pitch_yaw: yaw = degrees(atan2(x, y)) of the view vector, which is
+    // (-cos a, -sin a) for the session's own yaw a.
+    const double radians = machine_gun_.deployment_yaw() * degrees_to_radians;
+    return std::atan2(-std::cos(radians), -std::sin(radians)) / degrees_to_radians;
+}
+
+void TutorialWorldSession::fold_machine_gun() {
+    const bool was_deployed = machine_gun_.reset();
+    if (!was_deployed) return;
+    zoomed_ = false;
+    if (config_.network_authoritative) {
+        process_weapon_action(WeaponAction{WeaponActionKind::objective_use, 15U});
+    }
+}
+
+void TutorialWorldSession::advance_machine_gun_deployment() {
+    const auto selected = selected_tool_id();
+    const auto* weapon = selected.has_value() ? find_weapon_definition(*selected) : nullptr;
+    if (weapon == nullptr || weapon->mechanism != WeaponMechanism::deployed_machine_gun ||
+        !alive()) {
+        fold_machine_gun();
+        return;
+    }
+    MachineGunDeployInput input;
+    input.trigger_held = secondary_held_ || custom_held_;
+    input.crouching = player_.crouch;
+    input.yaw_degrees = yaw_;
+    input.position = player_.position;
+    input.position_tolerance = config_.network_authoritative ? 1.0 / 32.0 : 0.0;
+    input.space_available =
+        machine_gun_.deployed() || machine_gun_deployment_space(*map_, player_.position, yaw_);
+    const auto event = machine_gun_.tick(input, config_.fixed_dt);
+
+    if (machine_gun_.timer_running()) {
+        // MGWeapon.update: world_object.velocity.set(0, 0, 0) while it counts.
+        player_.velocity = {};
+    }
+    yaw_ = machine_gun_.constrained_yaw(yaw_);
+    pitch_ = machine_gun_.constrained_pitch(pitch_);
+    if (!machine_gun_.timer_running()) {
+        // The deployed gunner always looks down the sight; the carried gun
+        // has none.
+        zoomed_ = machine_gun_.deployed();
+    }
+
+    if (event == MachineGunDeployEvent::none) return;
+    // Completion clears Character.weapon_custom and shoot_secondary.
+    custom_held_ = false;
+    sandbox_inventory_.weapons().set_secondary(false);
+    if (!config_.network_authoritative) return;
+    // The BattleSpades server keeps the gun as an entity its carrier is
+    // mounted on: PlaceMG(87) then UseCommand(86) to man it, UseCommand to
+    // leave it.
+    if (event == MachineGunDeployEvent::deployed) {
+        process_weapon_action(WeaponAction{WeaponActionKind::deployable_place, 15U});
+    }
+    process_weapon_action(WeaponAction{WeaponActionKind::objective_use, 15U});
 }
 
 const ToolAmmoState* TutorialWorldSession::selected_ammo() const noexcept {
@@ -3254,7 +3348,8 @@ void TutorialWorldSession::refresh_patch_lights() {
     }
 }
 
-bool TutorialWorldSession::apply_server_entity_snapshot(const LocalEntity& entity) {
+bool TutorialWorldSession::apply_server_entity_snapshot(
+    const LocalEntity& entity, std::optional<std::int32_t> world_loop) {
     const auto found = std::ranges::find(entities_, entity.id, &LocalEntity::id);
     if (found == entities_.end() || found->type != entity.type || entity.face > 5U ||
         !std::isfinite(entity.position.x) || !std::isfinite(entity.position.y) ||
@@ -3262,6 +3357,11 @@ bool TutorialWorldSession::apply_server_entity_snapshot(const LocalEntity& entit
         !std::isfinite(entity.velocity.y) || !std::isfinite(entity.velocity.z) ||
         !std::isfinite(entity.yaw) || !std::isfinite(entity.fuse)) {
         return false;
+    }
+    if (world_loop.has_value()) {
+        if (*world_loop < 0 || (found->world_update_loop.has_value() &&
+                               *world_loop <= *found->world_update_loop)) return false;
+        found->world_update_loop = world_loop;
     }
     const auto* definition = find_entity_definition(found->type);
     const auto same_server_anchor = [](const Vec3& left, const Vec3& right) noexcept {
@@ -3293,8 +3393,11 @@ bool TutorialWorldSession::apply_server_entity_snapshot(const LocalEntity& entit
             found->grounded = false;
         }
     }
-    found->yaw = entity.yaw;
-    found->aim_yaw = entity.yaw;
+    if (!world_loop.has_value() || !found->turret_update_loop.has_value() ||
+        *world_loop > *found->turret_update_loop) {
+        found->yaw = entity.yaw;
+        found->aim_yaw = entity.yaw;
+    }
     found->team = entity.team;
     found->owner = entity.owner;
     found->face = entity.face;
@@ -3306,13 +3409,22 @@ bool TutorialWorldSession::apply_server_entity_snapshot(const LocalEntity& entit
 
 bool TutorialWorldSession::apply_server_turret_aim(std::uint64_t id,
                                                    double yaw,
-                                                   double pitch) noexcept {
+                                                   double pitch,
+                                                   std::optional<std::int32_t> world_loop) noexcept {
     if (!std::isfinite(yaw) || !std::isfinite(pitch)) {
         return false;
     }
     const auto found = std::ranges::find(entities_, id, &LocalEntity::id);
     if (found == entities_.end() || found->type != 8U) {
         return false;
+    }
+    if (world_loop.has_value()) {
+        if (*world_loop < 0 ||
+            (found->turret_update_loop.has_value() && *world_loop <= *found->turret_update_loop) ||
+            (found->world_update_loop.has_value() && *world_loop < *found->world_update_loop)) {
+            return false;
+        }
+        found->turret_update_loop = world_loop;
     }
     // These are already retail degrees from WorldUpdate. Do not derive them
     // from the observing player's camera: that was the friendly-target bug.
@@ -3398,6 +3510,8 @@ bool TutorialWorldSession::apply_server_entity_update(const ServerEntityMutation
         if (!std::isfinite(mutation.scalar))
             return false;
         found->fuse = mutation.scalar;
+        // AttachedStickyGrenadeEntity.set_fuse: draw_fuse = True.
+        if (found->type == 35U) found->fuse_label = true;
         return true;
     case ServerEntityProperty::ammo:
         if (!std::isfinite(mutation.scalar) || mutation.scalar < 0.0 ||
@@ -3417,6 +3531,47 @@ bool TutorialWorldSession::despawn_entity(std::uint64_t id) noexcept {
     }
     entity_events_.push_back({EntityEventKind::expired, found->id, found->type, found->position});
     entities_.erase(found);
+    return true;
+}
+
+void TutorialWorldSession::present_projectile_blast(
+    const LocalEntity& entity, std::optional<std::uint8_t> explosion_sound_tool) {
+    const auto tool = projectile_tool_for_entity(entity.type);
+    if (!tool.has_value()) return;
+    const auto* weapon = find_weapon_definition(*tool);
+    TutorialProjectile blast;
+    blast.id = next_projectile_id_++;
+    blast.tool_id = *tool;
+    blast.position = entity.position;
+    blast.velocity = entity.velocity;
+    blast.block_damage = weapon != nullptr ? weapon->block_damage : 0.0;
+    blast.crater_radius = weapon != nullptr ? projectile_crater_radius(*weapon) : 3U;
+    blast.explosion_sound_tool = explosion_sound_tool.value_or(std::uint8_t{0U});
+    // explode_projectile is presentation-only in a network session.
+    explode_projectile(blast, std::nullopt);
+}
+
+void TutorialWorldSession::present_server_entity_blast(const LocalEntity& entity) {
+    present_projectile_blast(entity, std::nullopt);
+}
+
+std::optional<LocalEntity> TutorialWorldSession::take_server_entity(std::uint64_t id) {
+    const auto found = std::ranges::find(entities_, id, &LocalEntity::id);
+    if (found == entities_.end()) return std::nullopt;
+    auto entity = *found;
+    entity_events_.push_back({EntityEventKind::expired, found->id, found->type, found->position});
+    entities_.erase(found);
+    return entity;
+}
+
+bool TutorialWorldSession::carry_server_entity(std::uint64_t id, Vec3 position) noexcept {
+    if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)) {
+        return false;
+    }
+    const auto found = std::ranges::find(entities_, id, &LocalEntity::id);
+    if (found == entities_.end()) return false;
+    found->position = position;
+    found->velocity = {};
     return true;
 }
 
@@ -3443,20 +3598,11 @@ bool TutorialWorldSession::destroy_server_entity(
         return false;
     }
     const auto* definition = find_entity_definition(found->type);
-    if (definition != nullptr && is_server_projectile(*found, *definition)) {
-        if (const auto tool = projectile_tool_for_entity(found->type); tool.has_value()) {
-            const auto* weapon = find_weapon_definition(*tool);
-            TutorialProjectile blast;
-            blast.id = next_projectile_id_++;
-            blast.tool_id = *tool;
-            blast.position = found->position;
-            blast.velocity = found->velocity;
-            blast.block_damage = weapon != nullptr ? weapon->block_damage : 0.0;
-            blast.crater_radius = weapon != nullptr ? projectile_crater_radius(*weapon) : 3U;
-            blast.explosion_sound_tool = explosion_sound_tool.value_or(std::uint8_t{0U});
-            // explode_projectile is presentation-only in a network session.
-            explode_projectile(blast, std::nullopt);
-        }
+    // AttachedStickyGrenadeEntity.on_delete is the sticky grenade's explosion:
+    // the stuck grenade (35) blasts exactly like the projectile it came from.
+    if (definition != nullptr &&
+        (is_server_projectile(*found, *definition) || found->type == 35U)) {
+        present_projectile_blast(*found, explosion_sound_tool);
     }
     if (found->type == 11U) {
         // Entity 11 is the retained grave created after ExplodeCorpse(36).
@@ -3913,18 +4059,23 @@ std::uint8_t TutorialWorldSession::movement_flags() const noexcept {
         flags |= 0x40U;
     if (sent_held(TutorialAction::sprint))
         flags |= 0x80U;
+    // A deploying or deployed gunner sends no movement: Character.set_walk,
+    // set_jump and set_crouch ignore the keys, and any movement bit makes the
+    // server take the gunner off the gun.
+    if (machine_gun_.locks_movement())
+        flags = 0U;
     return flags;
 }
 
 std::uint8_t TutorialWorldSession::action_flags() const noexcept {
     std::uint8_t flags{0x10U}; // can_display_weapon, required for observers
-    if (primary_held_ || primary_tick_held_)
+    if ((primary_held_ || primary_tick_held_) && !machine_gun_.blocks_primary())
         flags |= 0x01U;
     if (secondary_held_)
         flags |= 0x02U;
     if (zoomed_)
         flags |= 0x04U;
-    if (machine_gun_deployed_)
+    if (machine_gun_.deployed())
         flags |= 0x40U;
     if (sent_held(TutorialAction::hover))
         flags |= 0x80U;

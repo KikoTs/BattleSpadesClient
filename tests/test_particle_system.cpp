@@ -308,6 +308,49 @@ void rocket_and_grenade_blasts_match_retail_compositions() {
            "the bomb must emit twelve glow blocks plus fifteen particles");
 }
 
+void sticky_blast_debris_keeps_its_retail_size_speed_and_lifetime() {
+    ParticleSystem particles;
+    particles.set_gravity(0.0F); // Isolate the emitted speed from gravity.
+    const std::array<float, 3U> origin{40.2F, 40.7F, 60.1F};
+    TerrainImpactEvent impact{
+        TerrainImpactKind::explosion, {40U, 40U, 60U},
+        VxlColor{48U, 48U, 48U, 255U}, {0, 0, -1}, true, 4.0F, 57U, origin};
+    emit_explosion(particles, impact);
+    expect(particles.live_count() == 18U,
+           "AttachedStickyGrenadeEntity must emit eight glow blocks plus ten debris");
+
+    const auto check_debris = [&](float expected_size, float expected_distance) {
+        particles.build_draw_list({}, 0.0F);
+        std::uint32_t count{};
+        for (const auto& batch : particles.batches()) {
+            if (batch.atlas != ParticleAtlas::tumbling_cube) continue;
+            for (std::uint32_t offset{}; offset < batch.count; ++offset) {
+                const auto& piece = particles.instances()[batch.first + offset];
+                expect(std::abs(piece.size - expected_size) < 0.001F,
+                       "sticky debris must use authored size 5 and the default two-second decay");
+                const auto dx = piece.position[0U] - origin[0U];
+                const auto dy = piece.position[1U] - origin[1U];
+                const auto dz = piece.position[2U] - origin[2U];
+                expect(std::abs(std::sqrt(dx * dx + dy * dy + dz * dz) -
+                                expected_distance) < 0.01F,
+                       "sticky debris must scatter at native explode_velocity 1.5");
+                ++count;
+            }
+        }
+        expect(count == 10U, "all ten sticky debris pieces must survive beyond one second");
+    };
+
+    check_debris(0.5F, 0.0F);
+    for (int tick{}; tick < 72; ++tick) particles.tick_unbounded(1.0 / 60.0);
+    // Rocket's old fallback had already retired all debris after one second.
+    check_debris(0.2F, 1.5F * 32.0F * 1.2F);
+    for (int tick{}; tick < 54; ++tick) particles.tick_unbounded(1.0 / 60.0);
+    particles.build_draw_list({}, 0.0F);
+    expect(std::ranges::none_of(particles.batches(), [](const auto& batch) {
+        return batch.atlas == ParticleAtlas::tumbling_cube;
+    }), "sticky debris must retire at its two-second lifetime");
+}
+
 void glow_trail_children_grow_like_the_spawn_point() {
     // GLOW_SMOKE_TRAIL_SPAWN_POINT: decay_rate -1 (size doubles over the one
     // second life), 60 fps, and sub_10033C00's forward flag is rand() != 0.
@@ -477,6 +520,50 @@ void observer_shot_has_a_compact_muzzle_burst() {
                        {0.0F, 1.0F, 0.0F}, 0x168U);
     expect(particles.live_count() == 4U,
            "one server-confirmed shot must emit three flashes and one smoke puff");
+}
+
+void sticky_fragments_sample_raw_model_tuples_in_the_display_pose() {
+    std::string error;
+    const auto model = Kv6Model::load_file(
+        std::filesystem::path{AOS_TEST_ASSET_ROOT} / "kv6" / "stickygrenade.kv6",
+        &error);
+    expect(model.has_value() && model->voxels().size() == 138U,
+           "the retained retail sticky fixture must contain 138 tuples");
+    // A 90-degree turn, 0.06 display size and a nonzero translation. The
+    // retail first tuple is (0,2,3), pivot (3.5,3.5,6), RGB (228,200,104).
+    const std::array<float, 16U> display{
+        0.0F, 0.06F, 0.0F, 0.0F,
+        0.0F, 0.0F, -0.06F, 0.0F,
+        -0.06F, 0.0F, 0.0F, 0.0F,
+        10.0F, 20.0F, 30.0F, 1.0F};
+    ParticleSystem particles;
+    particles.set_gravity(0.0F);
+    emit_sticky_model_explosion(particles, *model, display, 0x57168U);
+    expect(particles.live_count() == 28U,
+           "sticky deletion must use get_points()[::5], including the last partial stride");
+    particles.build_draw_list({}, 0.0F);
+    expect(std::ranges::any_of(particles.instances(), [](const auto& particle) {
+        return std::abs(particle.position[0U] - 10.56F) < 0.00001F &&
+               std::abs(particle.position[1U] - 20.32F) < 0.00001F &&
+               std::abs(particle.position[2U] - 30.32F) < 0.00001F &&
+               std::abs(particle.rgba[0U] - 228.0F / 255.0F) < 0.00001F &&
+               std::abs(particle.rgba[1U] - 200.0F / 255.0F) < 0.00001F &&
+               std::abs(particle.rgba[2U] - 104.0F / 255.0F) < 0.00001F;
+    }), "fragment positions must truncate half pivots, rotate, and add retail's half-cell offset");
+    expect(particles.batches().size() == 1U &&
+               particles.batches().front().atlas == ParticleAtlas::tumbling_cube &&
+               std::ranges::all_of(particles.instances(), [](const auto& particle) {
+        return std::abs(particle.size - 0.3F) < 0.00001F;
+    }), "model fragments must use authored size 3, independently of blast debris size 5");
+    for (int step{}; step < 12; ++step)
+        particles.tick_unbounded(0.1);
+    particles.build_draw_list({}, 0.0F);
+    expect(particles.live_count() == 28U &&
+               std::abs(particles.instances().front().size - 0.12F) < 0.0001F,
+           "model fragments must retain their default two-second lifetime and linear size decay");
+    for (int step{}; step < 9; ++step)
+        particles.tick_unbounded(0.1);
+    expect(particles.live_count() == 0U, "sticky model fragments must retire after two seconds");
 }
 
 void block_gadgets_have_their_recovered_directional_feedback() {
@@ -909,10 +996,12 @@ int main() {
         block_debris_matches_retail_spawn_debris();
         digging_break_uses_the_same_retail_composition();
         rocket_and_grenade_blasts_match_retail_compositions();
+        sticky_blast_debris_keeps_its_retail_size_speed_and_lifetime();
         rocket_glow_emits_the_native_child_smoke_trails();
         glow_trail_children_grow_like_the_spawn_point();
         rocket_smoke_uses_native_growth_and_fade();
         corpse_and_grave_have_distinct_retail_bursts();
+        sticky_fragments_sample_raw_model_tuples_in_the_display_pose();
         observer_shot_has_a_compact_muzzle_burst();
         block_gadgets_have_their_recovered_directional_feedback();
         retail_lut_smoke_and_rings_follow_constants();

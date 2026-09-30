@@ -1,8 +1,11 @@
 // Round 2 camera/feel/building parity (docs/RETAIL_PARITY_GAPS_2026-09-27.md):
 // recoil, empty-magazine un-zoom, crosshair visibility, block bridging and
 // refusal hints, the block wallet multiplier and the predicted blast push.
+#include "battlespades/audio/retail_event_cues.hpp"
+#include "battlespades/audio/server_audio_catalog.hpp"
 #include "battlespades/frontend/retail_hud_rules.hpp"
 #include "battlespades/world/block_placement.hpp"
+#include "battlespades/world/build_wallet.hpp"
 #include "battlespades/world/class_catalog.hpp"
 #include "battlespades/world/player_inventory.hpp"
 #include "battlespades/world/retail_blast.hpp"
@@ -70,11 +73,15 @@ void recoil_tests() {
     const auto walking = retail_recoil_kick(-0.05, 0.001, 0U, true, false, false);
     const auto airborne_walk = retail_recoil_kick(-0.05, 0.001, 0U, true, false, true);
     const auto crouched = retail_recoil_kick(-0.05, 0.001, 0U, true, true, false);
+    const auto crouch_jump = retail_recoil_kick(-0.05, 0.001, 0U, true, true, true);
     expect(near(walking.pitch_degrees, base.pitch_degrees * 2.0) &&
                near(airborne_walk.pitch_degrees, base.pitch_degrees * 4.0) &&
                near(crouched.pitch_degrees, base.pitch_degrees * 0.5) &&
                near(crouched.yaw_degrees, base.yaw_degrees * 0.5),
            "walking x2, airborne x2 again, crouching /2 (and no walking bonus)");
+    expect(near(crouch_jump.pitch_degrees, base.pitch_degrees * 2.0) &&
+               near(crouch_jump.yaw_degrees, base.yaw_degrees * 2.0),
+           "airborne recoil wins over crouching: crouch-jump never halves the kick");
     expect(retail_scene_timer_ms(60U) == 1000U, "60 ticks are one second of scene timer");
 }
 
@@ -256,6 +263,87 @@ void wallet_tests() {
            "the default multiplier keeps the class wallet");
 }
 
+/**
+ * Player report (Beta 0.1): "with zero blocks you can still place them".
+ * The retail tools refuse before anything is sent (blockTool.py:78,
+ * flareBlockTool.py:66, prefabTool.py:145, tool.py:210).
+ */
+void build_wallet_tests() {
+    // Tool.can_draw_ghosting: no ghost, no hint on an empty wallet.
+    expect(!can_draw_build_ghost(0, false) && can_draw_build_ghost(1, false) &&
+               can_draw_build_ghost(0, true),
+           "block_count > 0 or team.infinite_blocks");
+
+    // BlockTool.get_has_enough_ammo.
+    expect(!block_line_affordable(0, 1U, false), "an empty wallet places nothing");
+    expect(!block_line_affordable(0, 1U, true),
+           "block_count > 0 is required even on an infinite-blocks team");
+    expect(block_line_affordable(1, 1U, false) && !block_line_affordable(1, 2U, false) &&
+               block_line_affordable(3, 3U, false) && block_line_affordable(1, 40U, true),
+           "block_count >= len(line) unless the team has infinite blocks");
+
+    // FlareBlockTool / PrefabTool.
+    expect(retail_flare_block_cost == 10, "FLAREBLOCK_COST");
+    expect(!flare_block_affordable(9, false) && flare_block_affordable(10, false) &&
+               flare_block_affordable(0, true),
+           "the Flare Block needs ten blocks");
+    expect(!prefab_affordable(35, 36, false) && prefab_affordable(36, 36, false) &&
+               prefab_affordable(0, 36, true),
+           "a construct needs its whole voxel count");
+
+    const auto map = platform_world();
+    const BlockOccupiedPredicate nobody = [](BlockTargetCell) { return false; };
+    const auto target =
+        resolve_block_target(*map, {130.5, 75.5, 230.75}, {0.0, 0.0, 1.0}, 10.0, nobody);
+    expect(target.valid && target.cell == BlockTargetCell{130, 75, 232}, "fixture hit cube");
+    const std::vector<VoxelCell> single{{130U, 75U, 232U}};
+
+    // A single block with an empty wallet: the ghost refuses and nothing is sent.
+    auto ghost = evaluate_block_line_ghost(*map, target, single, 0, false, true, nobody);
+    expect(!ghost.valid && ghost.hint == BlockPlaceHint::not_enough_blocks &&
+               !block_line_placement_allowed(ghost, 0, false),
+           "zero blocks: BLOCK_PLACE_FAIL_NOT_ENOUGH_BLOCKS and no BlockLine");
+    ghost = evaluate_block_line_ghost(*map, target, single, 0, true, true, nobody);
+    expect(ghost.valid && !block_line_placement_allowed(ghost, 0, true),
+           "zero blocks on an infinite team still sends nothing");
+    ghost = evaluate_block_line_ghost(*map, target, single, 1, false, true, nobody);
+    expect(block_line_placement_allowed(ghost, 1, false), "one block places one block");
+    const std::vector<VoxelCell> line{{130U, 75U, 232U}, {131U, 75U, 232U}, {132U, 75U, 232U}};
+    ghost = evaluate_block_line_ghost(*map, target, line, 2, false, true, nobody);
+    expect(!block_line_placement_allowed(ghost, 2, false),
+           "a line longer than the wallet is not sent");
+
+    // The Flare Block ghost is the single hit cube at ten blocks a piece.
+    auto flare = evaluate_flare_block_ghost(*map, target, 9, false, true, nobody);
+    expect(flare.cells.size() == 1U && !flare.valid &&
+               flare.hint == BlockPlaceHint::not_enough_blocks &&
+               !flare_block_placement_allowed(flare, 9, false),
+           "nine blocks cannot pay for a Flare Block");
+    flare = evaluate_flare_block_ghost(*map, target, 10, false, true, nobody);
+    expect(flare.valid && !flare.draw_red() && flare_block_placement_allowed(flare, 10, false),
+           "ten blocks place one Flare Block");
+    flare = evaluate_flare_block_ghost(*map, target, 0, true, true, nobody);
+    expect(flare_block_placement_allowed(flare, 0, true),
+           "an infinite-blocks team places Flare Blocks for free");
+    // A refused cube (a player is standing in it) is refused for the flare too.
+    const BlockOccupiedPredicate everyone = [](BlockTargetCell) { return true; };
+    const auto blocked =
+        resolve_block_target(*map, {130.5, 75.5, 230.75}, {0.0, 0.0, 1.0}, 10.0, everyone);
+    flare = evaluate_flare_block_ghost(*map, blocked, 50, false, true, everyone);
+    expect(!flare_block_placement_allowed(flare, 50, false),
+           "a Flare Block cannot be placed inside a player");
+
+    // Placement cues: the server's PlaySound ids and the local cues.
+    expect(battlespades::audio::server_sound_group(46U) == "build" &&
+               battlespades::audio::server_sound_group(32U) == "prefabbuild" &&
+               battlespades::audio::server_sound_group(33U) == "hitground" &&
+               battlespades::audio::server_sound_group(38U) == "hitground_zombie",
+           "SOUND_MAP: BUILD 46, PREFABBUILD 32, dig hits 33..38");
+    expect(battlespades::audio::build_error_cue.group == std::string_view{"build_error"} &&
+               battlespades::audio::build_light_cue.group == std::string_view{"build_light"},
+           "local cues: build_error on a refusal, build_light for the Flare Block");
+}
+
 void blast_tests() {
     const auto grenade = retail_blast_for_damage_type(7U);
     expect(grenade.has_value() && near(grenade->radius, 4.0) &&
@@ -295,6 +383,7 @@ int main() {
         crosshair_tests();
         block_placement_tests();
         wallet_tests();
+        build_wallet_tests();
         blast_tests();
         std::cout << "retail feel tests passed\n";
         return 0;

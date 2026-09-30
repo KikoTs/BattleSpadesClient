@@ -82,6 +82,8 @@ struct RemotePlayerReplica final {
     std::vector<std::string> prefabs;
     /** Persisted from SetClassLoadout; CreatePlayer does not carry this suffix. */
     std::vector<std::uint8_t> ugc_tools;
+    /** Per-life snapshot order; split packets share loops across different players. */
+    std::optional<std::int32_t> world_update_loop;
 };
 
 struct RemoteMotionSample final {
@@ -234,7 +236,9 @@ public:
                                         world::Vec3 orientation) noexcept;
     /** Atomically consume every replicated WorldUpdate field for one player. */
     [[nodiscard]] bool update_world_state(
-        const WorldPlayerWeaponRow& row) noexcept;
+        const WorldPlayerWeaponRow& row,
+        std::optional<std::int32_t> world_loop = std::nullopt,
+        bool local_owner = false) noexcept;
     /** Apply SetHP(5) without fabricating a complete WorldUpdate row. */
     [[nodiscard]] bool update_health(std::uint8_t player_id,
                                      std::int16_t health) noexcept;

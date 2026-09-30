@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -301,7 +302,84 @@ struct ChunkSlot final {
     std::array<float, 3U> minimum{};
     std::array<float, 3U> maximum{};
     bool resident{};
+    /** Uploaded in the half-float position layout (RenderTuning::packed_terrain). */
+    bool packed{};
+    std::uint32_t vertex_bytes{};
+    std::uint32_t index_bytes{};
 };
+
+/**
+ * Sends each world uniform only when its value changes within one submit().
+ *
+ * bgfx keeps uniform values as renderer-global state and applies a draw's
+ * recorded updates in render order, so inside a ViewMode::Sequential view a
+ * value set for one draw is still in force for the next. Re-sending ~25
+ * unchanged uniforms per chunk and model part made every draw re-commit and
+ * re-upload both constant buffers. The writer is rebuilt for each submit(), so
+ * the first draw of a frame always sends everything: nothing a previous frame,
+ * the view-model pass or another renderer left behind is relied upon.
+ */
+class UniformWriter final {
+public:
+    explicit UniformWriter(bool cached) noexcept : cached_{cached} {
+        index_.fill(unset);
+    }
+
+    /** `count` vec4s (or mat4s when `floats_each` is 16). */
+    void set(bgfx::UniformHandle handle, const void* data, std::uint16_t count = 1U,
+             std::size_t floats_each = 4U) {
+        const std::size_t floats = static_cast<std::size_t>(count) * floats_each;
+        if (cached_ && handle.idx < index_.size() && floats <= Entry::capacity) {
+            auto& slot = index_[handle.idx];
+            if (slot == unset) {
+                if (used_ == entries_.size()) {
+                    bgfx::setUniform(handle, data, count);
+                    return;
+                }
+                slot = static_cast<std::uint8_t>(used_++);
+            } else if (entries_[slot].floats == floats &&
+                       std::memcmp(entries_[slot].values.data(), data,
+                                   floats * sizeof(float)) == 0) {
+                return;
+            }
+            entries_[slot].floats = floats;
+            std::memcpy(entries_[slot].values.data(), data, floats * sizeof(float));
+        }
+        bgfx::setUniform(handle, data, count);
+    }
+
+private:
+    struct Entry final {
+        /** Eight vec4 point lights is the largest world uniform. */
+        static constexpr std::size_t capacity{32U};
+        std::array<float, capacity> values{};
+        std::size_t floats{};
+    };
+    static constexpr std::uint8_t unset{0xFFU};
+
+    bool cached_{};
+    std::size_t used_{};
+    std::array<Entry, 48U> entries_{};
+    /** Uniform handle index -> entry; bgfx allows at most 512 uniforms. */
+    std::array<std::uint8_t, 512U> index_{};
+};
+
+/** `BATTLESPADES_RENDER_TUNING=legacy` selects RenderTuning::legacy(). */
+[[nodiscard]] bool legacy_render_tuning_requested() {
+#if defined(_WIN32)
+    char* buffer{};
+    std::size_t size{};
+    if (_dupenv_s(&buffer, &size, "BATTLESPADES_RENDER_TUNING") != 0 || buffer == nullptr) {
+        return false;
+    }
+    const std::string value{buffer};
+    std::free(buffer);
+    return value == "legacy";
+#else
+    const auto* value = std::getenv("BATTLESPADES_RENDER_TUNING");
+    return value != nullptr && std::string_view{value} == "legacy";
+#endif
+}
 
 /** One corner of the shared billboard quad, expanded per instance in vs_particle. */
 struct ParticleQuadVertex final {
@@ -389,6 +467,14 @@ struct WorldRenderer::Impl final {
     std::string last_error;
     std::filesystem::path asset_root;
     bgfx::VertexLayout layout{};
+    /** Terrain-only 40-byte layout; models and effects keep `layout`. */
+    bgfx::VertexLayout packed_layout{};
+    bool packed_supported{};
+    RenderTuning tuning{};
+    /** Reused by upload_chunk so a live remesh does not allocate per chunk. */
+    std::vector<PackedTerrainVertex> pack_scratch;
+    /** Visible chunk slots of the current submit(), nearest first. */
+    std::vector<std::pair<float, std::uint16_t>> visible_chunks;
     bgfx::ProgramHandle program = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle camera_uniform = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle fog_uniform = BGFX_INVALID_HANDLE;
@@ -791,6 +877,68 @@ struct WorldRenderer::Impl final {
             slot.resident = false;
             --resident_count;
         }
+        slot.packed = false;
+        slot.vertex_bytes = 0U;
+        slot.index_bytes = 0U;
+    }
+
+    /**
+     * Creates one terrain chunk's buffers, packed when the tuning, the backend
+     * and the chunk's own values all allow it. `replacement` keeps invalid
+     * handles on failure.
+     */
+    [[nodiscard]] bool create_chunk_buffers(const world::ChunkMesh& mesh, ChunkSlot& replacement) {
+        if (mesh.empty()) {
+            return true;
+        }
+        const bool pack = tuning.packed_terrain && packed_supported;
+        bool packed = false;
+        if (pack) {
+            pack_scratch.resize(mesh.vertices.size());
+            packed = pack_terrain_vertices(mesh.vertices, pack_scratch);
+        }
+        if (packed) {
+            replacement.vertex_bytes = static_cast<std::uint32_t>(
+                pack_scratch.size() * sizeof(PackedTerrainVertex));
+            replacement.vertices = bgfx::createVertexBuffer(
+                bgfx::copy(pack_scratch.data(), replacement.vertex_bytes), packed_layout);
+        } else {
+            replacement.vertex_bytes = static_cast<std::uint32_t>(
+                mesh.vertices.size() * sizeof(world::ChunkVertex));
+            replacement.vertices = bgfx::createVertexBuffer(
+                bgfx::copy(mesh.vertices.data(), replacement.vertex_bytes), layout);
+        }
+        // Sixteen-bit indices address every vertex of all but the densest
+        // chunks and halve the index buffer; the triangles are the same.
+        if (pack && mesh.vertices.size() <= 0x10000U) {
+            replacement.index_bytes = static_cast<std::uint32_t>(
+                mesh.indices.size() * sizeof(std::uint16_t));
+            const auto* memory = bgfx::alloc(replacement.index_bytes);
+            auto* narrow = reinterpret_cast<std::uint16_t*>(memory->data);
+            for (std::size_t index{}; index < mesh.indices.size(); ++index) {
+                narrow[index] = static_cast<std::uint16_t>(mesh.indices[index]);
+            }
+            replacement.indices = bgfx::createIndexBuffer(memory);
+        } else {
+            replacement.index_bytes = static_cast<std::uint32_t>(
+                mesh.indices.size() * sizeof(std::uint32_t));
+            replacement.indices = bgfx::createIndexBuffer(
+                bgfx::copy(mesh.indices.data(), replacement.index_bytes), BGFX_BUFFER_INDEX32);
+        }
+        if (!bgfx::isValid(replacement.vertices) || !bgfx::isValid(replacement.indices)) {
+            if (bgfx::isValid(replacement.vertices)) {
+                bgfx::destroy(replacement.vertices);
+                replacement.vertices = BGFX_INVALID_HANDLE;
+            }
+            if (bgfx::isValid(replacement.indices)) {
+                bgfx::destroy(replacement.indices);
+                replacement.indices = BGFX_INVALID_HANDLE;
+            }
+            return false;
+        }
+        replacement.packed = packed;
+        replacement.resident = true;
+        return true;
     }
 };
 
@@ -832,6 +980,14 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
     impl_->layout = chunk_vertex_layout();
     if (!chunk_vertex_layout_matches_struct(impl_->layout)) {
         return impl_->fail("world vertex layout stride does not match ChunkVertex");
+    }
+    impl_->packed_layout = packed_terrain_vertex_layout();
+    impl_->packed_supported =
+        impl_->packed_layout.getStride() == sizeof(PackedTerrainVertex) &&
+        (bgfx::getCaps()->supported & BGFX_CAPS_VERTEX_ATTRIB_HALF) != 0U;
+    // Field fallback: the pre-tuning submission path, without a rebuild.
+    if (legacy_render_tuning_requested()) {
+        impl_->tuning = RenderTuning::legacy();
     }
 
     const auto skydome_vertex = impl_->load_shader(backend_root / "vs_skydome.bin");
@@ -1544,6 +1700,27 @@ const QualityProfile& WorldRenderer::quality_profile() const noexcept {
     return impl_->profile;
 }
 
+void WorldRenderer::set_render_tuning(const RenderTuning& tuning) noexcept {
+    impl_->tuning = tuning;
+}
+
+const RenderTuning& WorldRenderer::render_tuning() const noexcept {
+    return impl_->tuning;
+}
+
+TerrainMemory WorldRenderer::terrain_memory() const noexcept {
+    TerrainMemory memory;
+    for (const auto& slot : impl_->chunks) {
+        if (!slot.resident) {
+            continue;
+        }
+        memory.vertex_bytes += slot.vertex_bytes;
+        memory.index_bytes += slot.index_bytes;
+        ++(slot.packed ? memory.packed_chunks : memory.wide_chunks);
+    }
+    return memory;
+}
+
 bool WorldRenderer::upload_chunk(const world::ChunkMesh& mesh) {
     if (!impl_->initialized) {
         return impl_->fail("world renderer upload before initialization");
@@ -1552,19 +1729,17 @@ bool WorldRenderer::upload_chunk(const world::ChunkMesh& mesh) {
         return impl_->fail("chunk key outside the 32x32 world grid");
     }
     if (!valid_mesh_upload(mesh)) return impl_->fail("invalid chunk mesh coordinates, bounds or indices");
-    Impl::ModelSlot replacement;
-    if (!impl_->create_model_slot(mesh, replacement)) {
+    ChunkSlot replacement;
+    if (!impl_->create_chunk_buffers(mesh, replacement)) {
         return impl_->fail("bgfx could not create chunk terrain buffers");
     }
     // Keep the resident mesh until both replacement buffers are available.
     // Invalid updates and resource pressure must not erase working terrain.
     auto& slot = impl_->chunks[mesh.key.x + static_cast<std::size_t>(mesh.key.y) * 32U];
     impl_->release_chunk(slot);
+    slot = replacement;
     slot.minimum = mesh.minimum;
     slot.maximum = mesh.maximum;
-    slot.vertices = replacement.vertices;
-    slot.indices = replacement.indices;
-    slot.resident = replacement.resident;
     if (slot.resident) ++impl_->resident_count;
     impl_->last_error.clear();
     return true;
@@ -1751,7 +1926,13 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         // before each layer's own authored translation. The Retail tier keeps
         // that offset; the horizon mountains otherwise sit ~10 px too high.
         const float sky_drop = impl_->profile.enhanced_lighting ? 0.0F : 35.0F;
-        bx::mtxTranslate(sky_transform.data(), eye.x, eye.y, eye.z + sky_drop);
+        const bx::Vec3 sky_center = camera.sky_anchor.has_value()
+            ? bx::Vec3{static_cast<float>((*camera.sky_anchor)[0U]),
+                       static_cast<float>((*camera.sky_anchor)[1U]),
+                       static_cast<float>((*camera.sky_anchor)[2U])}
+            : eye;
+        bx::mtxTranslate(
+            sky_transform.data(), sky_center.x, sky_center.y, sky_center.z + sky_drop);
         const auto elapsed_seconds =
             std::chrono::duration<float>(std::chrono::steady_clock::now() - impl_->skydome_clock)
                 .count();
@@ -2169,38 +2350,41 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const auto viewmodel_model_light =
         model_light_at({eye.x, eye.y, eye.z}, true);
 
+    // One writer for the whole submit: world, particle and view-model draws
+    // are all in Sequential views submitted in render order.
+    UniformWriter uniforms{impl_->tuning.cached_uniforms};
     const auto push_atmosphere = [&] {
-        bgfx::setUniform(impl_->sun_direction_uniform, sun_direction.data());
-        bgfx::setUniform(impl_->sun_color_uniform, sun_color.data());
+        uniforms.set(impl_->sun_direction_uniform, sun_direction.data());
+        uniforms.set(impl_->sun_color_uniform, sun_color.data());
         // Fail closed: every terrain, world-model and shadow submit gets world
         // up whether or not its call site remembers to.
-        bgfx::setUniform(impl_->up_axis_uniform, world_up.data());
+        uniforms.set(impl_->up_axis_uniform, world_up.data());
         // Terrain carries its own placed light in the vertex bake; only model
         // draws override this after push_atmosphere.
-        bgfx::setUniform(impl_->model_light_uniform, no_model_light.data());
-        bgfx::setUniform(impl_->sky_ambient_uniform, sky_ambient.data());
-        bgfx::setUniform(impl_->ground_ambient_uniform, ground_ambient.data());
-        bgfx::setUniform(impl_->fog_horizon_uniform, fog_horizon.data());
-        bgfx::setUniform(impl_->fog_curve_uniform, fog_curve.data());
-        bgfx::setUniform(impl_->shadow_matrix_uniform, shadow_matrix.data());
-        bgfx::setUniform(impl_->shadow_params_uniform, shadow_params.data());
-        bgfx::setUniform(impl_->skylight_params_uniform, skylight_params.data());
-        bgfx::setUniform(impl_->emissive_params_uniform, emissive_params.data());
-        bgfx::setUniform(impl_->indirect_params_uniform, indirect_params.data());
-        bgfx::setUniform(impl_->point_light_position_radius_uniform,
+        uniforms.set(impl_->model_light_uniform, no_model_light.data());
+        uniforms.set(impl_->sky_ambient_uniform, sky_ambient.data());
+        uniforms.set(impl_->ground_ambient_uniform, ground_ambient.data());
+        uniforms.set(impl_->fog_horizon_uniform, fog_horizon.data());
+        uniforms.set(impl_->fog_curve_uniform, fog_curve.data());
+        uniforms.set(impl_->shadow_matrix_uniform, shadow_matrix.data(), 1U, 16U);
+        uniforms.set(impl_->shadow_params_uniform, shadow_params.data());
+        uniforms.set(impl_->skylight_params_uniform, skylight_params.data());
+        uniforms.set(impl_->emissive_params_uniform, emissive_params.data());
+        uniforms.set(impl_->indirect_params_uniform, indirect_params.data());
+        uniforms.set(impl_->point_light_position_radius_uniform,
                          point_light_position_radius.data(),
                          static_cast<std::uint16_t>(maximum_dynamic_lights));
-        bgfx::setUniform(impl_->point_light_color_intensity_uniform,
+        uniforms.set(impl_->point_light_color_intensity_uniform,
                          point_light_color_intensity.data(),
                          static_cast<std::uint16_t>(maximum_dynamic_lights));
-        bgfx::setUniform(impl_->retail_light0_direction_uniform,
+        uniforms.set(impl_->retail_light0_direction_uniform,
                          retail_light0_direction.data());
-        bgfx::setUniform(impl_->retail_light1_direction_uniform,
+        uniforms.set(impl_->retail_light1_direction_uniform,
                          retail_light1_direction.data());
-        bgfx::setUniform(impl_->retail_light0_color_uniform, retail_light0_color.data());
-        bgfx::setUniform(impl_->retail_light1_color_uniform, retail_light1_color.data());
-        bgfx::setUniform(impl_->retail_ambient_uniform, retail_ambient.data());
-        bgfx::setUniform(impl_->retail_view_direction_uniform,
+        uniforms.set(impl_->retail_light0_color_uniform, retail_light0_color.data());
+        uniforms.set(impl_->retail_light1_color_uniform, retail_light1_color.data());
+        uniforms.set(impl_->retail_ambient_uniform, retail_ambient.data());
+        uniforms.set(impl_->retail_view_direction_uniform,
                          retail_view_direction.data());
         bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture);
         if (volume_ready) {
@@ -2218,7 +2402,10 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const auto fog_limit = static_cast<float>(camera.fog_distance);
     std::array<float, 16U> identity{};
     bx::mtxIdentity(identity.data());
-    for (const auto& slot : impl_->chunks) {
+    auto& visible_chunks = impl_->visible_chunks;
+    visible_chunks.clear();
+    for (std::size_t chunk{}; chunk < impl_->chunks.size(); ++chunk) {
+        const auto& slot = impl_->chunks[chunk];
         if (!slot.resident) {
             continue;
         }
@@ -2226,8 +2413,9 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         const float nearest_x = std::clamp(eye.x, slot.minimum[0U], slot.maximum[0U]) - eye.x;
         const float nearest_y = std::clamp(eye.y, slot.minimum[1U], slot.maximum[1U]) - eye.y;
         const float nearest_z = std::clamp(eye.z, slot.minimum[2U], slot.maximum[2U]) - eye.z;
-        if (nearest_x * nearest_x + nearest_y * nearest_y + nearest_z * nearest_z >
-            fog_limit * fog_limit) {
+        const float nearest_squared =
+            nearest_x * nearest_x + nearest_y * nearest_y + nearest_z * nearest_z;
+        if (nearest_squared > fog_limit * fog_limit) {
             continue;
         }
         bool culled = false;
@@ -2240,13 +2428,25 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         if (culled) {
             continue;
         }
+        visible_chunks.emplace_back(nearest_squared, static_cast<std::uint16_t>(chunk));
+    }
+    // Opaque terrain drawn nearest first lets the depth test reject the
+    // fragments behind it before they are shaded. The image is the same in any
+    // order: chunks never share a surface, and the test is a strict LESS.
+    if (impl_->tuning.front_to_back_terrain) {
+        std::ranges::stable_sort(visible_chunks, {},
+                                 [](const auto& entry) { return entry.first; });
+    }
+    for (const auto& [distance_squared, chunk] : visible_chunks) {
+        static_cast<void>(distance_squared);
+        const auto& slot = impl_->chunks[chunk];
         bgfx::setTransform(identity.data());
         bgfx::setVertexBuffer(0U, slot.vertices);
         bgfx::setIndexBuffer(slot.indices);
-        bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
-        bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
-        bgfx::setUniform(impl_->light_uniform, terrain_light.data());
-        bgfx::setUniform(impl_->model_opacity_uniform, opaque_model.data());
+        uniforms.set(impl_->camera_uniform, camera_uniform.data());
+        uniforms.set(impl_->fog_uniform, fog_uniform.data());
+        uniforms.set(impl_->light_uniform, terrain_light.data());
+        uniforms.set(impl_->model_opacity_uniform, opaque_model.data());
         push_atmosphere();
         bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
                        BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_CULL_CW | BGFX_STATE_MSAA);
@@ -2289,10 +2489,10 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         bgfx::setTransform(identity.data());
         bgfx::setVertexBuffer(0U, &vertices);
         bgfx::setIndexBuffer(&index_buffer);
-        bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
-        bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
-        bgfx::setUniform(impl_->light_uniform, terrain_light.data());
-        bgfx::setUniform(impl_->model_opacity_uniform, sea_mode.data());
+        uniforms.set(impl_->camera_uniform, camera_uniform.data());
+        uniforms.set(impl_->fog_uniform, fog_uniform.data());
+        uniforms.set(impl_->light_uniform, terrain_light.data());
+        uniforms.set(impl_->model_opacity_uniform, sea_mode.data());
         push_atmosphere();
         // draw_sea binds the atlas with GL_REPEAT (the map pass uses CLAMP).
         bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture,
@@ -2400,22 +2600,22 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setTransform(draw.transform.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
             bgfx::setIndexBuffer(slot.indices);
-            bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
-            bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
-            bgfx::setUniform(impl_->light_uniform, model_light.data());
+            uniforms.set(impl_->camera_uniform, camera_uniform.data());
+            uniforms.set(impl_->fog_uniform, fog_uniform.data());
+            uniforms.set(impl_->light_uniform, model_light.data());
             const std::array<float, 4U> model_opacity{
                 std::clamp(draw.opacity, 0.0F, 1.0F),
                 std::clamp(draw.albedo_gain, 0.0F, 2.0F),
                 std::clamp(draw.albedo_contrast, 0.25F, 2.0F),
                 0.0F};
-            bgfx::setUniform(impl_->model_opacity_uniform, model_opacity.data());
+            uniforms.set(impl_->model_opacity_uniform, model_opacity.data());
             push_atmosphere();
             // The part origin is its world position (row-vector translation).
             // World-space models probe the emissive volume in the shader, so
             // only the placed light is added here.
             const auto placed_model_light = model_light_at(
                 {draw.transform[12U], draw.transform[13U], draw.transform[14U]}, false);
-            bgfx::setUniform(impl_->model_light_uniform, placed_model_light.data());
+            uniforms.set(impl_->model_light_uniform, placed_model_light.data());
             const auto state = pass == 1U
                                    ? (BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA)
                                    : translucent
@@ -2752,20 +2952,20 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setInstanceDataBuffer(&instance_buffer);
             bgfx::setTexture(0U, impl_->particle_sampler, impl_->particle_textures[atlas_index]);
             bgfx::setTexture(1U, impl_->particle_lut_sampler, lut_texture);
-            bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
-            bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
+            uniforms.set(impl_->camera_uniform, camera_uniform.data());
+            uniforms.set(impl_->fog_uniform, fog_uniform.data());
             // These are the same bounded lights already selected for opaque
             // world shading.  Particle lighting is profile-gated in
             // u_particleMode, but the arrays are always refreshed so a tier
             // change cannot reuse stale light data from an earlier frame.
-            bgfx::setUniform(impl_->point_light_position_radius_uniform,
+            uniforms.set(impl_->point_light_position_radius_uniform,
                              point_light_position_radius.data(),
                              maximum_dynamic_lights);
-            bgfx::setUniform(impl_->point_light_color_intensity_uniform,
+            uniforms.set(impl_->point_light_color_intensity_uniform,
                              point_light_color_intensity.data(),
                              maximum_dynamic_lights);
-            bgfx::setUniform(impl_->particle_grid, grid.data());
-            bgfx::setUniform(impl_->particle_mode, mode.data());
+            uniforms.set(impl_->particle_grid, grid.data());
+            uniforms.set(impl_->particle_mode, mode.data());
             bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
                            blend);
             bgfx::submit(world_view_id, impl_->particle_program);
@@ -2808,30 +3008,30 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setTransform(draw.transform.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
             bgfx::setIndexBuffer(slot.indices);
-            bgfx::setUniform(impl_->camera_uniform, viewmodel_camera.data());
-            bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
+            uniforms.set(impl_->camera_uniform, viewmodel_camera.data());
+            uniforms.set(impl_->fog_uniform, fog_uniform.data());
             // Lighting mode 0 is fs_world's unlit branch (lit = albedo):
             // retail binds PASSTHROUGH_SHADER around Weapon.draw_muzzle.
             const std::array<float, 4U> unlit_light{0.0F, viewmodel_light[1U],
                                                     viewmodel_light[2U], viewmodel_light[3U]};
-            bgfx::setUniform(impl_->light_uniform,
+            uniforms.set(impl_->light_uniform,
                              draw.unlit ? unlit_light.data() : viewmodel_light.data());
-            bgfx::setUniform(impl_->model_opacity_uniform, opaque_model.data());
+            uniforms.set(impl_->model_opacity_uniform, opaque_model.data());
             push_atmosphere();
             // These MUST follow push_atmosphere: bgfx takes the last value set
             // before submit, and each one replaces something the world pass
             // expresses in a space this pass is not drawn in.
-            bgfx::setUniform(impl_->retail_light0_direction_uniform, viewmodel_retail_light0.data());
-            bgfx::setUniform(impl_->retail_light1_direction_uniform, viewmodel_retail_light1.data());
-            bgfx::setUniform(impl_->retail_view_direction_uniform, viewmodel_retail_eye.data());
-            bgfx::setUniform(impl_->skylight_params_uniform, viewmodel_skylight.data());
-            bgfx::setUniform(impl_->sun_direction_uniform, viewmodel_sun_direction.data());
-            bgfx::setUniform(impl_->up_axis_uniform, viewmodel_up.data());
-            bgfx::setUniform(impl_->shadow_params_uniform, viewmodel_shadow_params.data());
-            bgfx::setUniform(impl_->indirect_params_uniform, viewmodel_indirect.data());
-            bgfx::setUniform(impl_->model_light_uniform,
+            uniforms.set(impl_->retail_light0_direction_uniform, viewmodel_retail_light0.data());
+            uniforms.set(impl_->retail_light1_direction_uniform, viewmodel_retail_light1.data());
+            uniforms.set(impl_->retail_view_direction_uniform, viewmodel_retail_eye.data());
+            uniforms.set(impl_->skylight_params_uniform, viewmodel_skylight.data());
+            uniforms.set(impl_->sun_direction_uniform, viewmodel_sun_direction.data());
+            uniforms.set(impl_->up_axis_uniform, viewmodel_up.data());
+            uniforms.set(impl_->shadow_params_uniform, viewmodel_shadow_params.data());
+            uniforms.set(impl_->indirect_params_uniform, viewmodel_indirect.data());
+            uniforms.set(impl_->model_light_uniform,
                              draw.unlit ? no_model_light.data() : viewmodel_model_light.data());
-            bgfx::setUniform(impl_->point_light_position_radius_uniform,
+            uniforms.set(impl_->point_light_position_radius_uniform,
                              viewmodel_point_light_position_radius.data(),
                              static_cast<std::uint16_t>(maximum_dynamic_lights));
             // Retail keeps GL_CULL_FACE enabled for model display lists

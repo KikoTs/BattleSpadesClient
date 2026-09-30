@@ -2110,6 +2110,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Il paracadute si apre in discesa",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: apri il paracadute in aria",
     "ABILITY_HINT_JETPACK": "{0}: spinta",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: spinta; rilascia e atterra per ricaricare"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: spinta; rilascia e atterra per ricaricare",
+    "SERVER_PASSWORD_PROMPT": "Digita la password del server e premi Invio per continuare.",
+    "SERVER_PASSWORD_WRONG": "Password errata. Riprova.",
+    "SERVER_PASSWORD_REFUSED": "Password del server errata",
+    "SERVER_PASSWORD_TIMEOUT": "La password del server non è stata inserita in tempo",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Elimina tutti i nemici per vincere il round!",
+    "LOAD_FAILED": "Caricamento non riuscito"
   }
 }

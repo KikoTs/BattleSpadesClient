@@ -2090,6 +2090,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "El paracaídas se abre al descender",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir el paracaídas en el aire",
     "ABILITY_HINT_JETPACK": "{0}: empuje",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: empuje; suelta y aterriza para recargar"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: empuje; suelta y aterriza para recargar",
+    "SERVER_PASSWORD_PROMPT": "Escribe la contraseña del servidor y presiona Enter para continuar.",
+    "SERVER_PASSWORD_WRONG": "Contraseña incorrecta. Intenta de nuevo.",
+    "SERVER_PASSWORD_REFUSED": "Contraseña del servidor incorrecta",
+    "SERVER_PASSWORD_TIMEOUT": "No se ingresó la contraseña del servidor a tiempo",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "¡Elimina a todos los enemigos para ganar la ronda!",
+    "LOAD_FAILED": "Error al cargar"
   }
 }

@@ -449,14 +449,9 @@ void WeaponRuntime::process_edges(const WeaponDefinition& weapon) noexcept {
             secondary_cooldown_ = weapon.retail.use.secondary_shoot_interval
                                       .value_or(weapon.fire_interval);
         } else if (weapon.mechanism == WeaponMechanism::deployed_machine_gun) {
-            // Retail secondary toggles MG deployment while primary remains a
-            // normal hitscan in either the carried or deployed profile.
-            if (!context_.deployed && !context_.deployable_target_valid) {
-                return;
-            }
-            emit(context_.deployed ? WeaponActionKind::objective_use
-                                   : WeaponActionKind::deployable_place,
-                 weapon, true);
+            // MGWeapon: RMB has to stay down for MG_DEPLOYMENT_TIME (or
+            // MG_WITHDRAWAL_TIME). The press alone does nothing; the carrier's
+            // MachineGunDeployment counts the hold and reports the result.
         } else if (weapon.mechanism == WeaponMechanism::paintbrush) {
             activate(weapon, true);
         } else if (weapon.mechanism == WeaponMechanism::prefab_builder ||

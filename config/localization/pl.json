@@ -2110,6 +2110,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Spadochron otworzy się przy opadaniu",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otwórz spadochron w powietrzu",
     "ABILITY_HINT_JETPACK": "{0}: ciąg",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: ciąg; puść i wyląduj, aby naładować"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: ciąg; puść i wyląduj, aby naładować",
+    "SERVER_PASSWORD_PROMPT": "Wpisz hasło serwera i naciśnij Enter, aby kontynuować.",
+    "SERVER_PASSWORD_WRONG": "Błędne hasło. Spróbuj ponownie.",
+    "SERVER_PASSWORD_REFUSED": "Błędne hasło serwera",
+    "SERVER_PASSWORD_TIMEOUT": "Nie podano hasła serwera na czas",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Wyeliminuj wszystkich wrogów, aby wygrać rundę!",
+    "LOAD_FAILED": "Wczytywanie nie powiodło się"
   }
 }

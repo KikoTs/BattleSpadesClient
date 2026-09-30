@@ -365,12 +365,12 @@ void mounted_machine_gun_keeps_fire_and_deployment_separate() {
     WeaponRuntime runtime{12U};
     runtime.replace_loadout(std::array<std::uint8_t, 1U>{15U},
                             std::uint8_t{15U});
+    // MGWeapon: RMB has to be HELD for MG_DEPLOYMENT_TIME / MG_WITHDRAWAL_TIME
+    // (world::MachineGunDeployment); the press itself is no tool action.
     runtime.set_secondary(true);
     runtime.tick(0.01);
     auto actions = runtime.take_actions();
-    expect(actions.size() == 1U &&
-               actions.front().kind == WeaponActionKind::deployable_place,
-           "undeployed MG secondary must request placement");
+    expect(actions.empty(), "an MG secondary press alone must not place anything");
 
     runtime.set_secondary(false);
     runtime.tick(0.01);
@@ -378,9 +378,14 @@ void mounted_machine_gun_keeps_fire_and_deployment_separate() {
     runtime.set_secondary(true);
     runtime.tick(0.01);
     actions = runtime.take_actions();
-    expect(actions.size() == 1U &&
-               actions.front().kind == WeaponActionKind::objective_use,
-           "deployed MG secondary must request dismount/use toggle");
+    expect(actions.empty(), "a deployed MG secondary press alone must not dismount");
+
+    runtime.set_secondary(false);
+    runtime.set_primary(true);
+    runtime.tick(0.01);
+    actions = runtime.take_actions();
+    expect(count(actions, WeaponActionKind::hitscan) == 1U,
+           "the deployed gun still fires with the primary trigger");
 }
 
 void invalid_deployable_targets_do_not_spend_stock_or_emit_packets() {
@@ -953,6 +958,54 @@ void melee_right_click_sends_no_secondary_attack() {
            "the UGC super spade RMB is an immediate alternate dig");
 }
 
+/**
+ * Player report (Beta 0.1): pressing both mouse buttons a few milliseconds
+ * apart made a zombie dig twice in one swing. Retail DiggingTool has one
+ * action on one shoot_delay (tool.py use_primary / zombieHandTool.py), so
+ * however the two buttons are pressed a digging tool swings once per
+ * shoot_interval and never sends a secondary ShootPacket.
+ */
+void both_mouse_buttons_never_double_a_dig() {
+    // Every digging tool without a retail secondary (tool ids as on the wire).
+    for (const std::uint8_t tool : std::array<std::uint8_t, 10U>{
+             0U, 1U, 2U, 3U, 24U, 34U, 44U, 49U, 50U, 52U}) {
+        const auto& weapon = weapon_catalog()[tool];
+        expect(weapon.fire_interval > 0.0, "a digging tool has a swing interval");
+        constexpr double dt{1.0 / 60.0};
+        constexpr double duration{3.0};
+
+        WeaponRuntime held{91U};
+        held.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
+        held.set_primary(true);
+        for (double elapsed{}; elapsed < duration; elapsed += dt) held.tick(dt);
+        const auto baseline = held.take_actions();
+
+        WeaponRuntime both{91U};
+        both.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
+        both.set_primary(true);
+        both.tick(dt);
+        bool secondary{};
+        std::size_t frame{};
+        for (double elapsed{dt}; elapsed < duration; elapsed += dt, ++frame) {
+            // RMB hammered every other frame, starting one frame after LMB.
+            secondary = !secondary;
+            both.set_secondary(secondary);
+            both.tick(dt);
+        }
+        const auto actions = both.take_actions();
+        expect(count(actions, WeaponActionKind::melee) ==
+                   count(baseline, WeaponActionKind::melee),
+               "RMB must not add swings to a held dig");
+        expect(std::ranges::none_of(actions,
+                                    [](const WeaponAction& action) { return action.secondary; }),
+               "a digging tool must never emit a secondary action");
+        const auto limit =
+            static_cast<std::size_t>(std::floor(duration / weapon.fire_interval)) + 1U;
+        expect(count(actions, WeaponActionKind::melee) <= limit,
+               "one swing per shoot_interval, whatever the buttons do");
+    }
+}
+
 /** P2-19: a dry weapon asks to switch away; a crate restock auto-reloads. */
 void empty_weapons_auto_switch_and_crates_auto_reload() {
     WeaponRuntime runtime{4444U};
@@ -1042,6 +1095,7 @@ int main() {
         a_shell_reload_press_fires_after_the_current_shell();
         a_held_trigger_stops_the_shell_chain_and_resumes_fire();
         melee_right_click_sends_no_secondary_attack();
+        both_mouse_buttons_never_double_a_dig();
         empty_weapons_auto_switch_and_crates_auto_reload();
         hitscan_actions_carry_the_current_bloom();
         std::cout << "All-tool weapon runtime tests passed\n";

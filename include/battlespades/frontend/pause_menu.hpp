@@ -64,7 +64,8 @@ struct PauseMenuEnvironment final {
 /** The server-owned subset used by retail EscapeMenu visibility/gating. */
 struct PauseMenuServerState final {
     std::uint8_t mode_type{};
-    std::uint8_t player_team{};
+    /** No player/team yet; team 0 is an admitted spectator when enabled. */
+    std::uint8_t player_team{255U};
     std::uint8_t player_class{};
     std::size_t available_class_count{};
     bool active_team_locks_class{};

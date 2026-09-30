@@ -36,6 +36,8 @@ struct LaunchOptions final {
     bool tutorial_debug_aim{false};
     /** Developer/live-smoke shortcut through the normal Protocol 168 loader. */
     std::optional<std::string> startup_endpoint;
+    /** `--password TEXT` / `+password TEXT`: the startup server's password. */
+    std::optional<std::string> startup_password;
     /**
      * Steam lobby to join at startup.
      *

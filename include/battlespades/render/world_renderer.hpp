@@ -3,6 +3,7 @@
 #include "battlespades/render/texture_quality.hpp"
 
 #include "battlespades/render/quality_profile.hpp"
+#include "battlespades/render/render_tuning.hpp"
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/dynamic_light.hpp"
 #include "battlespades/world/emissive_volume.hpp"
@@ -39,6 +40,17 @@ struct WorldCamera final {
     double near_plane{0.1};
     /** Radial fog end; the retail Draw Distance setting in blocks. */
     double fog_distance{192.0};
+    /**
+     * Map position the authored skydome is centred on; unset follows the eye.
+     *
+     * Retail GameScene.draw always translates the dome to
+     * camera.get_position(), but the view matrix comes from the active
+     * controller or the character. With neither (LoadingMenu, SelectTeam and
+     * SelectClass before create_player) the modelview stays identity, so the
+     * eye sits at the map origin while the dome stays on the camera's
+     * constructor position.
+     */
+    std::optional<std::array<double, 3U>> sky_anchor{};
 };
 
 struct WorldFrameStats final {
@@ -102,6 +114,13 @@ struct WorldModelDraw final {
     /** Optional client-side albedo treatment; characters use a restrained silhouette boost. */
     float albedo_gain{1.0F};
     float albedo_contrast{1.0F};
+    /**
+     * Which moving object this part belongs to, for render-rate interpolation
+     * between fixed ticks (frontend/world_draw_interpolation.hpp); zero is
+     * anonymous. The renderer never reads it: it changes no pixel of a frame
+     * drawn from one tick's state.
+     */
+    std::uint32_t motion_key{};
 };
 
 /** One retail sniper LaserAttachment already clipped against the live world. */
@@ -200,6 +219,15 @@ public:
      */
     void set_model_culling(bool enabled) noexcept;
     [[nodiscard]] const QualityProfile& quality_profile() const noexcept;
+
+    /**
+     * Selects the submission path (see RenderTuning); never the image.
+     * `packed_terrain` applies to chunks uploaded after the call, so a
+     * harness comparing both paths re-uploads its terrain.
+     */
+    void set_render_tuning(const RenderTuning& tuning) noexcept;
+    [[nodiscard]] const RenderTuning& render_tuning() const noexcept;
+    [[nodiscard]] TerrainMemory terrain_memory() const noexcept;
 
     /**
      * The per-map atmosphere driving enhanced lighting.

@@ -83,11 +83,26 @@ std::optional<SteamJoinTarget> parse_steam_join_target(std::string_view value) {
     if (value.size() > 1'024U) return std::nullopt;
     const auto parts = tokens(value);
     if (parts.empty()) return std::nullopt;
+    // `+password <text>`: at most one, and only text a server could accept.
+    std::string_view password;
+    for (std::size_t index{}; index < parts.size(); ++index) {
+        if (parts[index] != "+password" && parts[index] != "--password") continue;
+        if (index + 1U >= parts.size() || !password.empty()) return std::nullopt;
+        password = parts[index + 1U];
+        if (password.size() > 64U || !std::ranges::all_of(password, [](char c) {
+                const auto byte = static_cast<unsigned char>(c);
+                return byte > 0x20U && byte != 0x7FU;
+            })) {
+            return std::nullopt;
+        }
+    }
     for (std::size_t index{}; index < parts.size(); ++index) {
         const auto part = parts[index];
         if (part == "+connect" || part == "--connect") {
             if (index + 1U >= parts.size()) return std::nullopt;
-            return single_target(parts[index + 1U]);
+            auto target = single_target(parts[index + 1U]);
+            if (target.has_value()) target->password = std::string{password};
+            return target;
         }
         if (part == "+connect_lobby" || part == "--connect-lobby") {
             if (index + 1U >= parts.size()) return std::nullopt;

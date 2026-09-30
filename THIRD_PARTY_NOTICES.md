@@ -79,6 +79,20 @@ credit files at the time of writing:
   **GPL-3.0-or-later**; and
 - 31 items record "No licence supplied; original archive retained".
 
+Audit of 29 September 2026 (catalogue `collection-v5`, 159 shipped items from
+72 sources), item by item in
+[`docs/COMMUNITY_COSMETICS_LICENCES.md`](docs/COMMUNITY_COSMETICS_LICENCES.md):
+
+| Group | Items |
+|---|---|
+| Clear to ship (GPL-3.0-or-later; "free to use with credit") | 2 |
+| CC BY-NC-ND 4.0: unmodified files only, with credit, never sold | 112 |
+| Needs the author's permission (no licence supplied, or custom terms) | 31 |
+| The author's GameBanana permissions say no redistribution or modification | 14 |
+
+Authors are credited by name, source and licence in the credit files above and
+on <https://www.aosplay.net/credits>.
+
 Importing a pack does not grant permission to redistribute it. Remove any item
 whose author has not permitted redistribution before shipping it; see
 [`docs/COMMUNITY_COSMETICS.md`](docs/COMMUNITY_COSMETICS.md).

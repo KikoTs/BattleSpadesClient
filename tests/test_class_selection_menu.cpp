@@ -196,7 +196,7 @@ int main() {
                    menu.selection().loadout == engineer_selection.loadout,
                "browsing another class must preserve the previous class choices");
         menu.configure(advertised, 2U, 12U, no_flare);
-        menu.restore_loadout(engineer_selection.loadout, engineer_selection.prefabs);
+        menu.restore_playing_loadout(2U, 12U, engineer_selection.loadout, engineer_selection.prefabs);
         expect(menu.selection().prefabs == engineer_selection.prefabs &&
                    menu.selection().loadout == engineer_selection.loadout,
                "reopening SelectClass must restore the authoritative loadout and constructs");

@@ -84,7 +84,7 @@ Model column: only paths I verified on disk under `G:/AoSRevival/BattleSpadesCli
 | 32 | CHEMICAL_BOMB | `kv6/chemicalbomb.kv6` (`models.py:392`) | projectile | Already covered (`native_frontend_module.cpp:136`). |
 | 33 | GL_GRENADE | `kv6/grenade.kv6` — *inferred*; our client already uses it for tool 55 (`native_frontend_module.cpp:134`) | projectile | Already covered. |
 | 34 | STICKY_GRENADE | `kv6/stickygrenade.kv6` (`models.py:413`) | projectile | Already covered (`:137`). |
-| 35 | ATTACHED_STICKY_GRENADE | `kv6/stickygrenade.kv6` | hazard | The stuck form; our `TutorialProjectileBehavior::stick` already models it (`tutorial_session.hpp:64`). |
+| 35 | ATTACHED_STICKY_GRENADE | `kv6/stickygrenade.kv6` | hazard | Network stuck form: follows ChangeEntity SET_TARGET, counts its fuse down, and explodes on deletion. Recovered tool-57 particle recipe: 8 glow parents plus 10 debris, velocity 1.5, authored size 5, lifetime 2 s (`AttachedStickyGrenadeEntity.on_delete`, gameScene 0x100FB730). Deletion also samples every fifth raw model tuple through the displayed transform: 28 model fragments at full model quality, velocity 1, authored size 3, lifetime 2 s (`explode_display` 0x101687B0). |
 | 36 | RADAR_STATION | `kv6/radar_station.kv6` (`models.py:419`) | deployable | 45 HP, 250 s lifetime, 45 range. |
 | 37 | PROJECTILE_MINE | `kv6/projectilemine.kv6` (`models.py:417`) | deployable | Already fired as a projectile (`native_frontend_module.cpp:131`); the *landed* mine is new. |
 | 38 | C4 | `kv6/c4.kv6` (`C4_VIEW_MODEL`, `models.py:425`) — the held detonator is the separate `kv6/c4_detonator.kv6` | deployable | 2 live max, no fuse, secondary detonates, 300 dmg / r=8, sticks to face 0..5. |

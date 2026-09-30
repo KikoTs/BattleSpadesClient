@@ -115,6 +115,10 @@ void ParticleSystem::emit(const ParticleSpawn& spawn) {
                                               spawn.position[2U] * 4099.0F)));
     particle.child_emissions = 0U;
     particle.alive = true;
+    // A particle is born where it is: nothing to blend from before that.
+    particle.previous_position = particle.position;
+    particle.previous_rotation_degrees = particle.rotation_degrees;
+    particle.previous_age = particle.age;
 
     const auto cells =
         static_cast<std::uint32_t>(particle.frames_x) * particle.frames_y;
@@ -215,6 +219,10 @@ void ParticleSystem::tick_impl(double dt, const VxlMap* map) {
         if (!particle.alive) {
             continue;
         }
+        // Presentation only: the state a render-rate frame blends from.
+        particle.previous_position = particle.position;
+        particle.previous_rotation_degrees = particle.rotation_degrees;
+        particle.previous_age = particle.age;
         particle.age += seconds;
         if (particle.age >= particle.lifetime) {
             particle.alive = false;
@@ -377,9 +385,16 @@ void ParticleSystem::clear() noexcept {
     child_spawns_.clear();
 }
 
-void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distance) {
+void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distance,
+                                     double alpha) {
     instances_.clear();
     batches_.clear();
+    // Below 1 the instance is drawn between its last two simulated states;
+    // at 1 (every frame of a 60 Hz presentation) it is the simulated state
+    // itself, with no arithmetic applied to it.
+    const bool blended = alpha < 1.0;
+    const float blend_weight =
+        blended && std::isfinite(alpha) ? static_cast<float>(std::max(alpha, 0.0)) : 1.0F;
     const float cull = fog_distance > 0.0F ? fog_distance : 0.0F;
     const float cull_squared = cull * cull;
 
@@ -448,9 +463,13 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                 }
 
                 const auto first = static_cast<std::uint32_t>(instances_.size());
-                const auto append_instance = [this](const Particle& particle) {
-                    const float life01 =
-                        std::clamp(particle.age / particle.lifetime, 0.0F, 1.0F);
+                const auto append_instance = [this, blended,
+                                              blend_weight](const Particle& particle) {
+                    const float age =
+                        blended ? particle.previous_age +
+                                      (particle.age - particle.previous_age) * blend_weight
+                                : particle.age;
+                    const float life01 = std::clamp(age / particle.lifetime, 0.0F, 1.0F);
                     const float size =
                         particle.size_begin +
                         (particle.size_end - particle.size_begin) * life01;
@@ -459,6 +478,19 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                          (particle.alpha_end - particle.alpha_begin) * life01);
                     ParticleInstance instance;
                     instance.position = particle.position;
+                    float rotation_degrees = particle.rotation_degrees;
+                    if (blended) {
+                        for (std::size_t axis{}; axis < 3U; ++axis) {
+                            instance.position[axis] =
+                                particle.previous_position[axis] +
+                                (particle.position[axis] - particle.previous_position[axis]) *
+                                    blend_weight;
+                        }
+                        rotation_degrees =
+                            particle.previous_rotation_degrees +
+                            (particle.rotation_degrees - particle.previous_rotation_degrees) *
+                                blend_weight;
+                    }
                     instance.size = std::max(0.0F, size);
                     instance.rgba = {particle.color[0U], particle.color[1U],
                                      particle.color[2U],
@@ -469,8 +501,7 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                         }
                     }
                     instance.rotation_radians =
-                        particle.rotation_degrees *
-                        static_cast<float>(std::numbers::pi / 180.0);
+                        rotation_degrees * static_cast<float>(std::numbers::pi / 180.0);
                     instance.life01 = life01;
                     instance.frame = std::floor(particle.frame);
                     instance.atlas_grid_x = static_cast<float>(particle.frames_x);

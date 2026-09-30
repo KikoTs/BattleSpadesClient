@@ -2147,6 +2147,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Fallschirm öffnet sich beim Sinken",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: Fallschirm in der Luft öffnen",
     "ABILITY_HINT_JETPACK": "{0}: Schub",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: Schub; loslassen und landen zum Aufladen"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: Schub; loslassen und landen zum Aufladen",
+    "SERVER_PASSWORD_PROMPT": "Gib das Serverpasswort ein und drücke Enter, um fortzufahren.",
+    "SERVER_PASSWORD_WRONG": "Falsches Passwort. Versuche es erneut.",
+    "SERVER_PASSWORD_REFUSED": "Falsches Serverpasswort",
+    "SERVER_PASSWORD_TIMEOUT": "Das Serverpasswort wurde nicht rechtzeitig eingegeben",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Schalte alle Gegner aus, um die Runde zu gewinnen!",
+    "LOAD_FAILED": "Laden fehlgeschlagen"
   }
 }

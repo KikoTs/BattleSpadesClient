@@ -86,4 +86,32 @@ inline constexpr std::chrono::nanoseconds render_interpolation_minimum_period{2'
                                                         : period;
 }
 
+/**
+ * The same, as the period handed to the frame pacer, which spaces frames
+ * evenly across the fixed step.
+ *
+ * Without VSync the display period is passed through and the pacer rounds the
+ * frame count up, so every refresh has a new frame (144 Hz: three frames a
+ * tick). With VSync a frame that arrives faster than the display blocks in
+ * present and would hold up the fixed step, so the count is rounded down to
+ * what the display can take (144 Hz: two frames a tick) and zero is returned
+ * when that leaves only the tick's own frame.
+ */
+[[nodiscard]] constexpr std::chrono::nanoseconds render_interpolation_paced_period(
+    bool enabled, std::uint32_t refresh_millihertz, bool vertical_sync,
+    std::chrono::nanoseconds fixed_delta) noexcept {
+    const auto period = render_interpolation_period(enabled, refresh_millihertz);
+    if (!vertical_sync || period <= std::chrono::nanoseconds::zero() ||
+        fixed_delta <= std::chrono::nanoseconds::zero()) {
+        return period;
+    }
+    // A tenth of a frame of tolerance: 120 Hz is two frames however the two
+    // periods were rounded.
+    const auto frames = (fixed_delta.count() * 10 / period.count() + 1) / 10;
+    if (frames <= 1) {
+        return std::chrono::nanoseconds::zero();
+    }
+    return fixed_delta / frames;
+}
+
 } // namespace battlespades::frontend

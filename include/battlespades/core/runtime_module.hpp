@@ -13,6 +13,12 @@ struct TickContext final {
     // Catch-up steps still poll input and advance simulation, but must not
     // submit another expensive presentation. Unpaced runs keep true.
     bool present{true};
+    // Wall-clock time this step was scheduled for, when the run is paced to
+    // the wall clock. A module that presents render-only frames uses it to
+    // place its own tick frame on the same time line as those frames.
+    // Simulation must never read it.
+    bool paced{false};
+    std::chrono::steady_clock::time_point scheduled_at{};
 };
 
 enum class TickDecision {
@@ -55,6 +61,17 @@ public:
     [[nodiscard]] virtual TickDecision present_intermediate(double alpha) {
         static_cast<void>(alpha);
         return TickDecision::continue_running;
+    }
+
+    /**
+     * Offered while the loop would otherwise sleep before the next frame or
+     * tick, with render-only frames active. A module may spend the time on
+     * presentation work that would otherwise land inside a tick (rebuilding
+     * terrain meshes after an edit) and must return by `deadline`. The same
+     * limits as present_intermediate() apply: no input, simulation or network.
+     */
+    virtual void idle(std::chrono::steady_clock::time_point deadline) {
+        static_cast<void>(deadline);
     }
 };
 

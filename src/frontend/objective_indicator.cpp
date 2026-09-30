@@ -25,6 +25,29 @@ namespace {
 
 } // namespace
 
+void ObjectiveZoneAnimation::tick(double seconds) noexcept {
+    if (!std::isfinite(seconds) || seconds < 0.0 || state_ == State::vanished)
+        return;
+    // hud.pyd MinimapZone.update 0x1001FAC0, minimap.py:274-297.
+    // The sine overshoots 1 before settling; activate/deactivate only reverse
+    // direction, so a replacement packet must retain the current progress.
+    if (state_ == State::full_size) {
+        time_ = 1.0;
+        scale_ = 1.0;
+        return;
+    }
+    time_ += seconds * (state_ == State::appearing ? 2.0 : -2.0);
+    if (time_ > 1.0) {
+        time_ = 1.0;
+        state_ = State::full_size;
+    } else if (time_ < 0.0) {
+        time_ = 0.0;
+        state_ = State::vanished;
+    }
+    constexpr double angle = std::numbers::pi * 0.7;
+    scale_ = std::sin(time_ * angle) / std::sin(angle);
+}
+
 std::optional<ObjectiveBillboardStyle>
 objective_zone_billboard_style(std::uint8_t icon_id) noexcept {
     // shared.constants_gamemode.MODE_ZONE_ICONS, second column. H/I/J really

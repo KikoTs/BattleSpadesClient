@@ -90,9 +90,15 @@ public:
                    world::ClassSelectionRules rules = {},
                    bool locked_class = false,
                    bool in_game = false);
-    /** Restore the authoritative player's choices when reopening SelectClass. */
-    void restore_loadout(std::span<const std::uint8_t> loadout,
-                         std::span<const std::string> prefabs);
+    /**
+     * Restore a playing replica's matching class when reopening SelectClass.
+     * Spectator/default replicas have no active playing loadout and must not
+     * replace the saved choices loaded by configure().
+     */
+    void restore_playing_loadout(std::uint8_t player_team,
+                                 std::uint8_t player_class,
+                                 std::span<const std::uint8_t> loadout,
+                                 std::span<const std::string> prefabs);
 
     [[nodiscard]] std::span<const std::uint8_t> classes() const noexcept;
     [[nodiscard]] std::uint8_t team() const noexcept;
@@ -105,12 +111,20 @@ public:
     [[nodiscard]] std::array<std::size_t, 4U> option_indices() const noexcept;
     /** One loadout row after the server's disabled tools were removed. */
     [[nodiscard]] std::span<const std::uint16_t> row_options(std::size_t group) const noexcept;
-    /** Constructs table: flare tile (if enabled) then the class constructs. */
+    /** Constructs table: flare tile (if enabled), class constructs, map prefabs. */
     [[nodiscard]] std::span<const std::string> construct_options() const noexcept;
     [[nodiscard]] std::size_t construct_page() const noexcept { return construct_page_; }
     [[nodiscard]] std::size_t construct_page_count() const noexcept;
     [[nodiscard]] std::span<const std::string> selected_prefabs() const noexcept;
     [[nodiscard]] world::ClassSelection selection() const;
+    /**
+     * What SelectClass.create_loadout_list wrote to the config during this
+     * visit: every class the player switched away from (on_class_selected
+     * saves before it changes the class) and, once SELECT is pressed
+     * (`confirmed`), the shown class.
+     */
+    [[nodiscard]] std::map<std::uint8_t, world::SavedClassLoadout>
+    session_loadouts(bool confirmed) const;
     [[nodiscard]] const world::ClassSelectionRules& rules() const noexcept { return rules_; }
     [[nodiscard]] bool in_game() const noexcept { return in_game_; }
     /** selectClass.draw: SELECT is disabled while the team is locked_class. */

@@ -32,6 +32,11 @@ struct SteamJoinTarget final {
     std::uint64_t steam_id{};
     /** `host:port` for endpoint. */
     std::string endpoint;
+    /**
+     * The server password from `+password <text>` behind the address, if the
+     * link carried one. The client never publishes one in its own presence.
+     */
+    std::string password;
 
     [[nodiscard]] friend bool operator==(const SteamJoinTarget&,
                                          const SteamJoinTarget&) = default;
@@ -47,6 +52,9 @@ struct SteamJoinTarget final {
  * a bare `steam:<id>` (what builds before 2026-09-28 published) and a bare
  * `host:port`. Anything else is nullopt: a value Steam relays comes from
  * another player's presence and is never trusted beyond this shape check.
+ * A `+password <text>` (or `--password`) pair behind a `+connect` target is
+ * kept as the target's password; one that cannot be a password (over 64
+ * bytes, control characters) refuses the whole value.
  */
 [[nodiscard]] std::optional<SteamJoinTarget> parse_steam_join_target(std::string_view value);
 

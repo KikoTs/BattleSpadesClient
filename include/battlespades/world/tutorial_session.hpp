@@ -4,6 +4,7 @@
 #include "battlespades/world/footstep_audio.hpp"
 #include "battlespades/world/flight_profile.hpp"
 #include "battlespades/world/local_entity.hpp"
+#include "battlespades/world/machine_gun_deployment.hpp"
 #include "battlespades/world/player_inventory.hpp"
 #include "battlespades/world/player_movement.hpp"
 #include "battlespades/world/retail_inventory.hpp"
@@ -351,6 +352,15 @@ public:
     void set_view_model_suppressed(bool suppressed) noexcept { view_model_suppressed_ = suppressed; }
     /** Mounted gun deployment; it switches the weapon's whole sound shape. */
     [[nodiscard]] bool machine_gun_deployed() const noexcept;
+    /** Character.is_deploying_weapon: the gun is unfolding. */
+    [[nodiscard]] bool machine_gun_deploying() const noexcept;
+    /**
+     * HUD.draw_weapon_deployment_hud: MGWeapon.get_deployment_progress while
+     * it is below 1, i.e. while the deploy or withdraw timer counts.
+     */
+    [[nodiscard]] std::optional<double> machine_gun_deployment_progress() const noexcept;
+    /** Character.weapon_deployment_yaw for ClientData, in retail degrees. */
+    [[nodiscard]] double weapon_deployment_yaw() const noexcept;
     /**
      * Movement state for footstep selection, as a ready-made input.
      *
@@ -459,9 +469,12 @@ public:
      * object; reliable packet 21 remains the
      * sole creation edge.
      */
-    bool apply_server_entity_snapshot(const LocalEntity& entity);
+    bool apply_server_entity_snapshot(
+        const LocalEntity& entity, std::optional<std::int32_t> world_loop = std::nullopt);
     /** Apply the compact server-owned rocket-turret yaw/pitch row. */
-    bool apply_server_turret_aim(std::uint64_t id, double yaw, double pitch) noexcept;
+    bool apply_server_turret_aim(
+        std::uint64_t id, double yaw, double pitch,
+        std::optional<std::int32_t> world_loop = std::nullopt) noexcept;
     /**
      * Apply one validated ChangeEntity(16) field mutation.
      *
@@ -487,6 +500,19 @@ public:
      */
     bool destroy_server_entity(std::uint64_t id,
                                std::optional<std::uint8_t> explosion_sound_tool = std::nullopt);
+    /**
+     * Remove a server entity without any delete effect and hand it back. The
+     * flying sticky grenade (34) has no on_delete in retail: the server
+     * destroys it when it sticks and the stuck grenade (35) explodes later.
+     */
+    [[nodiscard]] std::optional<LocalEntity> take_server_entity(std::uint64_t id);
+    /** The delete effect `destroy_server_entity` gives a projectile. */
+    void present_server_entity_blast(const LocalEntity& entity);
+    /**
+     * Carry an attached entity (AttachedStickyGrenadeEntity.update,
+     * RiotShieldEntity.get_position) to where its player now is. Position only.
+     */
+    bool carry_server_entity(std::uint64_t id, Vec3 position) noexcept;
     void clear_entities() noexcept;
     [[nodiscard]] std::span<const LocalEntity> entities() const noexcept;
     [[nodiscard]] std::vector<EntityEvent> take_entity_events();
@@ -915,7 +941,13 @@ private:
     /** Ramped sight state; 0 is hip fire. Advanced on the fixed tick only. */
     double zoom_level_{};
     std::optional<std::pair<std::uint8_t,double>> skin_zoom_;
-    bool machine_gun_deployed_{};
+    void present_projectile_blast(const LocalEntity& entity,
+                                  std::optional<std::uint8_t> explosion_sound_tool);
+    /** MGWeapon deployment of the held mounted gun (tool 15). */
+    MachineGunDeployment machine_gun_;
+    void advance_machine_gun_deployment();
+    /** MGWeapon.on_unset: a tool change or a death folds the gun at once. */
+    void fold_machine_gun();
     /** Last server-authoritative WorldUpdate disguise bit for action gating. */
     bool disguise_active_{};
     double tool_cooldown_{};

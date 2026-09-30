@@ -1050,8 +1050,32 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
         return result;
     }
     const auto id = std::to_integer<std::uint8_t>(packet.front());
+    if (id == 112U) {
+        // PasswordNeeded: only before InitialInfo, only the id byte. A
+        // repeated request is the server's "wrong password".
+        if (phase_ != Protocol168SessionPhase::awaiting_initial_info || packet.size() != 1U) {
+            static_cast<void>(note_malformed(
+                "malformed or out-of-phase PasswordNeeded", result, true));
+            return result;
+        }
+        if (password_prompt_.requests < 255U) ++password_prompt_.requests;
+        password_prompt_.rejected = password_prompt_.requests > 1U;
+        const bool configured = !configured_password_sent_ &&
+                                !encode_password_provided_packet(config_.server_password).empty();
+        if (configured) {
+            configured_password_sent_ = true;
+            password_prompt_.pending = false;
+            result.outbound_datagrams.push_back(encode_protocol168_client_datagram(
+                encode_password_provided_packet(config_.server_password),
+                config_.steam_ticket));
+        } else {
+            password_prompt_.pending = true;
+        }
+        result.accepted = true;
+        return result;
+    }
     if (id == 114U) {
-        if (phase_ != Protocol168SessionPhase::awaiting_initial_info) {
+        if (phase_ == Protocol168SessionPhase::disconnected) {
             static_cast<void>(note_malformed(
                 "InitialInfo arrived outside its handshake phase", result, true));
             return result;
@@ -1062,7 +1086,20 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
             static_cast<void>(note_malformed(std::move(error), result, true));
             return result;
         }
+        if (initial_info_.has_value()) {
+            // Stock GameClient handles 114 by destroying the old map and
+            // opening LoadingMenu on the existing authenticated connection.
+            // Reset every map-owned stream/roster/label, retaining the ticket
+            // and local-map configuration. No second packet 105 is sent.
+            const auto next_generation = map_generation_ + 1U;
+            auto config = config_;
+            *this = Protocol168Session{std::move(config)};
+            map_generation_ = next_generation;
+        }
         initial_info_ = std::move(info);
+        // InitialInfo is the only "password accepted" signal there is.
+        password_prompt_.pending = false;
+        password_prompt_.rejected = false;
         phase_ = Protocol168SessionPhase::awaiting_map_validation;
         // GameClient.packet_received (network.pyd 0x1000d900) opens the local
         // map on InitialInfo and send_map_validation replies crc32(file), or
@@ -1388,7 +1425,34 @@ void Protocol168Session::disconnected() noexcept {
     }
 }
 
+std::vector<std::byte> encode_password_provided_packet(std::string_view password) {
+    if (password.empty() || password.size() > maximum_server_password_bytes ||
+        password.find('\0') != std::string_view::npos) {
+        return {};
+    }
+    Writer writer;
+    writer.u8(113U);
+    writer.string(password);
+    return std::move(writer).take();
+}
+
+Protocol168PasswordPrompt Protocol168Session::password_prompt() const noexcept {
+    return password_prompt_;
+}
+
+std::vector<std::byte> Protocol168Session::provide_password(std::string_view password) {
+    if (!password_prompt_.pending ||
+        phase_ != Protocol168SessionPhase::awaiting_initial_info) {
+        return {};
+    }
+    const auto packet = encode_password_provided_packet(password);
+    if (packet.empty()) return {};
+    password_prompt_.pending = false;
+    return encode_protocol168_client_datagram(packet, config_.steam_ticket);
+}
+
 Protocol168SessionPhase Protocol168Session::phase() const noexcept { return phase_; }
+std::uint64_t Protocol168Session::map_generation() const noexcept { return map_generation_; }
 bool Protocol168Session::bootstrap_ready() const noexcept {
     if (!map_.has_value() || !local_player_id_.has_value() ||
         !initial_info_.has_value() || !state_info_.has_value()) {

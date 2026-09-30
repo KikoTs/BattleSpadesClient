@@ -270,6 +270,7 @@ void MatchLoadingModel::begin(std::string expected_map,
     preload_ = {};
     last_observed_progress_ = 0.0;
     no_progress_remaining_ = no_progress_timeout_seconds;
+    waiting_for_player_ = false;
     score_expanded_ = {true, true};
     score_scroll_ = 0U;
     friendly_fire_ = false;
@@ -426,6 +427,13 @@ void MatchLoadingModel::fail(std::string status_key) {
     status_key_ = std::move(status_key);
 }
 
+void MatchLoadingModel::set_waiting_for_player(bool waiting) noexcept {
+    if (waiting_for_player_ && !waiting) {
+        no_progress_remaining_ = no_progress_timeout_seconds;
+    }
+    waiting_for_player_ = waiting;
+}
+
 void MatchLoadingModel::tick(double delta_seconds) noexcept {
     if (!std::isfinite(delta_seconds) || delta_seconds <= 0.0 ||
         state_ == MatchLoadingState::failed || state_ == MatchLoadingState::timed_out) {
@@ -433,9 +441,10 @@ void MatchLoadingModel::tick(double delta_seconds) noexcept {
     }
     const auto progress = clamp_progress((map_progress_ + sync_progress_ +
         initialising_progress()) / 3.0);
-    if (state_ == MatchLoadingState::ready) {
+    if (state_ == MatchLoadingState::ready || waiting_for_player_) {
         // A finished load waits for START without a timeout, and the tabs
-        // keep cycling until then (loadingMenu.update).
+        // keep cycling until then (loadingMenu.update). A password prompt
+        // waits on the server's own clock.
     } else if (progress > last_observed_progress_ + 1.0e-9) {
         last_observed_progress_ = progress;
         no_progress_remaining_ = no_progress_timeout_seconds;

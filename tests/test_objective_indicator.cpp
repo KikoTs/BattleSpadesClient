@@ -42,6 +42,40 @@ void retail_zone_table_covers_every_server_objective() {
            "unknown server icon ordinals must fail closed");
 }
 
+void zone_lifecycle_overshoots_and_reverses_without_restarting() {
+    battlespades::frontend::ObjectiveZoneAnimation zone;
+    expect(zone.scale() == 0.0 && !zone.vanished(),
+           "new zones must start appearing at zero scale");
+    zone.tick(0.25);
+    expect(std::abs(zone.scale() - 1.1013446323) < 0.000001,
+           "the half-grown zone must already overshoot full scale");
+    const auto midway = zone.scale();
+    zone.deactivate();
+    zone.tick(0.125);
+    expect(zone.scale() < 1.0 && !zone.vanished(),
+           "clear must shrink the retained billboard rather than erase it");
+    zone.activate();
+    zone.tick(0.125);
+    expect(std::abs(zone.scale() - midway) < 0.000001,
+           "same-bounds replacement must reverse the animation in place");
+    zone.tick(3.0 / 28.0);
+    expect(std::abs(zone.scale() - 1.2360679775) < 0.000001,
+           "retail's sine curve reaches its authored overshoot peak");
+    zone.tick(0.2);
+    expect(std::abs(zone.scale() - 1.0) < 0.000001,
+           "appearing must clamp and settle at full scale after half a second");
+    zone.activate();
+    zone.tick(0.1);
+    expect(std::abs(zone.scale() - 1.0) < 0.000001,
+           "a full-size zone detail update must not pop back to zero");
+    zone.deactivate();
+    zone.tick(0.5);
+    expect(zone.scale() == 0.0 && !zone.vanished(),
+           "retail uses a strict below-zero retirement boundary");
+    zone.tick(0.001);
+    expect(zone.vanished(), "the next update must retire the vanished zone");
+}
+
 void packet_icons_and_visibility_are_bounded() {
     using battlespades::frontend::objective_packet_billboard_asset;
     using battlespades::frontend::objective_visible_to_team;
@@ -164,6 +198,7 @@ void base_zone_bounds_and_tint_match_retail() {
 int main() {
     try {
         retail_zone_table_covers_every_server_objective();
+        zone_lifecycle_overshoots_and_reverses_without_restarting();
         packet_icons_and_visibility_are_bounded();
         projection_draws_world_icons_and_directional_pointers();
         base_zone_bounds_and_tint_match_retail();

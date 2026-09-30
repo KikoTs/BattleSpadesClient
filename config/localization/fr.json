@@ -2147,6 +2147,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Le parachute s'ouvre en descente",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0} : déployer le parachute en l'air",
     "ABILITY_HINT_JETPACK": "{0} : poussée",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0} : poussée ; relâchez et atterrissez pour recharger"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0} : poussée ; relâchez et atterrissez pour recharger",
+    "SERVER_PASSWORD_PROMPT": "Saisissez le mot de passe du serveur et appuyez sur Entrée pour continuer.",
+    "SERVER_PASSWORD_WRONG": "Mot de passe incorrect. Réessayez.",
+    "SERVER_PASSWORD_REFUSED": "Mot de passe du serveur incorrect",
+    "SERVER_PASSWORD_TIMEOUT": "Le mot de passe du serveur n'a pas été saisi à temps",
+    "ARENA": "Arène",
+    "ARENA_DESCRIPTION": "Éliminez tous les ennemis pour gagner la manche !",
+    "LOAD_FAILED": "Échec du chargement"
   }
 }

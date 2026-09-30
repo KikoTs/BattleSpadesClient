@@ -465,6 +465,24 @@ void append_server_table(ui::DrawList& list,
                              UiTextureAnchor::center,
                              global_scale));
         }
+        if (server.password_protected) {
+            // A password server is a BattleSpades addition and retail ships
+            // no padlock art: four quads in the row's text colour, at the
+            // right end of the NAME column beside the favourite star.
+            constexpr std::array<DrawRect, 4U> padlock{{{138.0, 8.0, 9.0, 7.0},
+                                                        {139.0, 4.0, 2.0, 4.0},
+                                                        {144.0, 4.0, 2.0, 4.0},
+                                                        {139.0, 3.0, 7.0, 2.0}}};
+            for (const auto& part : padlock) {
+                list.push(sprite(white_pixel,
+                                 DrawRect{part.x, y + part.y, part.width, part.height},
+                                 DrawSpace::design_pixels,
+                                 TextureFilter::nearest,
+                                 UiTextureAnchor::top_left,
+                                 1.0,
+                                 color(menu_text)));
+            }
+        }
         y += row_height;
     }
     append_server_scrollbar(list, browser, context);

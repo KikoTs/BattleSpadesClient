@@ -19,9 +19,27 @@ void expect(bool condition, std::string_view message) {
 void endpoints_are_strict_and_retail_local_is_supported() {
     battlespades::network::ServerEndpoint endpoint;
     std::string error;
+    expect(battlespades::network::default_game_port == 27015U &&
+               battlespades::network::retail_game_port == 32887U,
+           "BattleSpades servers listen on 27015; 32887 is retail's default");
     expect(battlespades::network::parse_server_endpoint("local", endpoint, error) &&
-               endpoint.host == "127.0.0.1" && endpoint.port == 32887U,
-           "retail local alias must resolve to the historical port");
+               endpoint.host == "127.0.0.1" && endpoint.port == 27015U,
+           "the local alias resolves to the port BattleSpades servers use");
+    expect(battlespades::network::parse_server_endpoint("play.example.net", endpoint, error) &&
+               endpoint.identifier() == "aos://play.example.net:27015",
+           "a bare host means port 27015");
+    expect(battlespades::network::parse_server_endpoint(
+               " aos://88.80.155.252 ", endpoint, error) &&
+               endpoint.host == "88.80.155.252" && endpoint.port == 27015U,
+           "a bare address with the scheme means port 27015");
+    expect(battlespades::network::parse_server_endpoint(
+               "play.example.net:32887", endpoint, error) &&
+               endpoint.port == 32887U,
+           "an explicit retail port is taken as typed");
+    expect(battlespades::network::parse_server_endpoint(
+               "play.example.net", endpoint, error, battlespades::network::retail_game_port) &&
+               endpoint.port == 32887U,
+           "a caller can still ask for the retail default");
     expect(battlespades::network::parse_server_endpoint(
                "aos://play.example.net:27015", endpoint, error) &&
                endpoint.identifier() == "aos://play.example.net:27015",

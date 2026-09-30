@@ -2110,6 +2110,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "O paraquedas abre na descida",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir o paraquedas no ar",
     "ABILITY_HINT_JETPACK": "{0}: impulso",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: impulso; solte e aterrisse para recarregar"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: impulso; solte e aterrisse para recarregar",
+    "SERVER_PASSWORD_PROMPT": "Digite a senha do servidor e pressione Enter para continuar.",
+    "SERVER_PASSWORD_WRONG": "Senha incorreta. Tente novamente.",
+    "SERVER_PASSWORD_REFUSED": "Senha do servidor incorreta",
+    "SERVER_PASSWORD_TIMEOUT": "A senha do servidor não foi digitada a tempo",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Elimine todos os inimigos para vencer a rodada!",
+    "LOAD_FAILED": "Falha ao carregar"
   }
 }

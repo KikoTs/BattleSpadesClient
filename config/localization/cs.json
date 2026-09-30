@@ -52,6 +52,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Padák se otevře při klesání",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otevřít padák ve vzduchu",
     "ABILITY_HINT_JETPACK": "{0}: tah",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: tah; pusťte a přistaňte pro dobití"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: tah; pusťte a přistaňte pro dobití",
+    "SERVER_PASSWORD_PROMPT": "Zadejte heslo serveru a pokračujte stisknutím klávesy Enter.",
+    "SERVER_PASSWORD_WRONG": "Nesprávné heslo. Zkuste to znovu.",
+    "SERVER_PASSWORD_REFUSED": "Nesprávné heslo serveru",
+    "SERVER_PASSWORD_TIMEOUT": "Heslo serveru nebylo zadáno včas",
+    "ARENA": "Aréna",
+    "ARENA_DESCRIPTION": "Zlikvidujte všechny nepřátele a vyhrajte kolo!",
+    "LOAD_FAILED": "Načítání se nezdařilo"
   }
 }

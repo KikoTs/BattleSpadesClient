@@ -79,6 +79,8 @@ struct NativeFrontendConfig final {
     std::vector<std::uint16_t> local_server_ports{27015U, 32887U};
     /** Optional automation shortcut; uses the same loader as Direct Connect. */
     std::optional<std::string> startup_endpoint;
+    /** `--password`: answers the startup server's password request. */
+    std::optional<std::string> startup_password;
     /** Steam lobby from "+connect_lobby <id>", resolved once Steam is attached. */
     std::optional<std::uint64_t> startup_steam_lobby;
     /**
@@ -126,6 +128,7 @@ public:
     void stop() noexcept override;
     [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const noexcept override;
     [[nodiscard]] core::TickDecision present_intermediate(double alpha) override;
+    void idle(std::chrono::steady_clock::time_point deadline) override;
 
     [[nodiscard]] bool is_started() const noexcept;
     [[nodiscard]] std::string_view last_error() const noexcept;

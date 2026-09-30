@@ -128,6 +128,15 @@ void emit_grave_explosion(ParticleSystem& particles,
                           const TerrainImpactEvent& impact,
                           const Kv6Model* grave_model = nullptr);
 
+/** AttachedStickyGrenadeEntity.on_delete: explode_display(display, 1.0, 5).
+ * `display_transform` is the current model draw transform in map coordinates.
+ * Fragments use raw, truncated KV6 tuples, not recoloured mesh vertices.
+ */
+void emit_sticky_model_explosion(ParticleSystem& particles,
+                                  const Kv6Model& model,
+                                  const std::array<float, 16U>& display_transform,
+                                  std::uint32_t seed);
+
 /**
  * Observer-side muzzle feedback for ShootFeedback(8).
  *

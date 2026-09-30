@@ -12,10 +12,20 @@
 
 namespace battlespades::network {
 
+/** Retail's own default game port. */
+inline constexpr std::uint16_t retail_game_port{32887U};
+/**
+ * The port an address without one means. BattleSpades servers listen on 27015
+ * (the server's config default and the whole public fleet), so a bare host in
+ * Direct Connect, `--connect` or a join link resolves to it. An explicit
+ * `host:port` is always taken as typed.
+ */
+inline constexpr std::uint16_t default_game_port{27015U};
+
 /** A validated IPv4/DNS endpoint accepted by the retail direct-connect flow. */
 struct ServerEndpoint final {
     std::string host;
-    std::uint16_t port{32887U};
+    std::uint16_t port{default_game_port};
 
     [[nodiscard]] std::string identifier() const;
     [[nodiscard]] friend bool operator==(const ServerEndpoint&, const ServerEndpoint&) = default;
@@ -46,6 +56,8 @@ struct DiscoveredServer final {
     std::uint64_t steam_host_id{};
     /** Humans only, when the listing separates them from bots. */
     std::uint16_t human_players{};
+    /** The listing says the server asks for a password (tag `password`). */
+    bool password_protected{};
 };
 
 struct DiscoveryResult final {
@@ -73,7 +85,7 @@ struct LanDiscoveryConfig final {
 [[nodiscard]] bool parse_server_endpoint(std::string_view text,
                                          ServerEndpoint& endpoint,
                                          std::string& error,
-                                         std::uint16_t default_port = 32887U);
+                                         std::uint16_t default_port = default_game_port);
 
 /** Strict parser kept public so malformed web/LAN responses are unit-testable. */
 [[nodiscard]] DiscoveryResult parse_public_server_list(std::string_view json,

@@ -22,8 +22,8 @@ namespace battlespades::frontend {
 enum class DeathCameraMode : std::uint8_t {
     inactive,
     /**
-     * Retail DeathController (camera id 5): a fixed eye at the death position
-     * turning to face a repeat killer, optionally flying toward them.
+     * Retail DeathController (camera id 5): an orbit around the body turning
+     * to face a repeat killer, optionally flying toward their initial position.
      */
     killer_view,
     /**
@@ -31,13 +31,13 @@ enum class DeathCameraMode : std::uint8_t {
      * mouse orbit around the corpse/grave, pulled in front of walls.
      */
     grave,
-    /** ChaseController following one living replicated player. */
+    /** ChaseController following a replicated character, including its corpse. */
     chase,
-    /** Spectator FlyController while no legal chase target exists. */
+    /** Spectator FlyController, selected by movement keys or no chase target. */
     spectator_free,
 };
 
-/** One generation-safe living player that the camera may follow. */
+/** One replicated character that the camera may follow. */
 struct DeathCameraTarget final {
     std::uint8_t player_id{};
     world::Vec3 position{};
@@ -92,7 +92,7 @@ enum class FlyCameraKey : std::uint8_t { forward, backward, left, right, jump, c
  *   the local player, with `locked = not never_respawn`;
  * - DeathController switches straight to chase unless the killer is known,
  *   the kill type is valid and the killer's streak is >= 2; otherwise it keeps
- *   the death eye, faces the killer (angle lerp 10) and, from a streak of 3
+ *   the body orbit, faces the killer (angle lerp 10) and, from a streak of 3
  *   with the killer more than 7 blocks away, flies toward them after 0.25 s,
  *   stopping 5 short (position lerp 20);
  * - chase becomes available at 1.5 s (a click, or more than 100 counts of
@@ -105,8 +105,8 @@ enum class FlyCameraKey : std::uint8_t { forward, backward, left, right, jump, c
  */
 class DeathCameraController final {
 public:
-    void begin_death(world::Vec3 death_eye, double yaw_degrees, double pitch_degrees,
-                     std::optional<DeathKillerInfo> killer, bool deathcam_enabled,
+    void begin_death(world::Vec3 death_eye, std::optional<DeathKillerInfo> killer,
+                     bool deathcam_enabled,
                      bool never_respawn = false) noexcept;
     /** A KillAction that arrives after the SetHp-driven death began. */
     void set_killer_info(std::optional<DeathKillerInfo> killer) noexcept;
@@ -114,7 +114,7 @@ public:
     void set_never_respawn(bool never_respawn) noexcept;
     /** The killer's live interpolated position, or nullopt once they are gone. */
     void set_killer_position(std::optional<world::Vec3> position) noexcept;
-    void enter_spectator(world::Vec3 fallback_anchor, double yaw_degrees,
+    void enter_spectator(world::Vec3 fallback_anchor,
                          std::optional<DeathCameraTarget> target) noexcept;
     void end_life() noexcept;
 
@@ -123,7 +123,7 @@ public:
     void update_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
 
     /**
-     * Follow a living replicated player, or nullopt to fall back to the
+     * Follow a replicated character, or nullopt to fall back to the
      * local player's own body (spectators: the free fly camera).
      */
     void set_chase_target(std::optional<DeathCameraTarget> target) noexcept;
@@ -143,6 +143,8 @@ public:
     /** ChaseController.on_mouse_press cycles only when not locked. */
     [[nodiscard]] bool can_cycle_targets() const noexcept;
     [[nodiscard]] bool spectating() const noexcept;
+    /** A deliberate switch to fly must not be undone by a roster refresh. */
+    [[nodiscard]] bool wants_chase_target() const noexcept;
     [[nodiscard]] std::optional<std::uint8_t> chase_player_id() const noexcept;
     [[nodiscard]] std::optional<std::uint8_t> killer_player_id() const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> grave_entity_id() const noexcept;
@@ -150,7 +152,7 @@ public:
 
 private:
     void activate_death_controller() noexcept;
-    void set_killer_view(world::Vec3 killer_position) noexcept;
+    void set_killer_view(world::Vec3 killer_position, bool initial) noexcept;
     void switch_to_chase() noexcept;
     void tick_fly(double dt) noexcept;
     [[nodiscard]] world::Vec3 own_body_focus() const noexcept;
@@ -163,19 +165,24 @@ private:
     std::optional<DeathKillerInfo> killer_;
     bool killer_present_{};
     world::Vec3 working_position_{};
+    world::Vec3 killer_eye_{};
     world::Vec3 target_position_{};
     bool zoom_possible_{};
     double target_yaw_{};
     double target_pitch_{};
     double elapsed_{};
     bool chase_available_{};
-    double yaw_{};
+    // Camera r_x/r_y start at zero: native yaw = 90 - r_y, pitch = -r_x.
+    // These angles belong to the scene camera and survive respawn.
+    double yaw_{90.0};
     double pitch_{};
     double mouse_movement_{};
     bool deathcam_enabled_{true};
     bool locked_{true};
     bool spectator_{};
     world::Vec3 fly_position_{};
+    world::Vec3 fly_draw_position_{};
+    bool fly_requested_{};
     double fly_speed_{};
     std::array<bool, 6U> fly_keys_{};
     const world::VxlMap* terrain_{};

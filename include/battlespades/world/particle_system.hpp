@@ -193,8 +193,13 @@ public:
      *
      * Particles beyond `fog_distance` are dropped: the radial distance is
      * already computed for the sort key, so the cull is free.
+     *
+     * `alpha` below 1 draws each particle that fraction of the way from its
+     * previous simulated state to its current one, for render-only frames
+     * between two fixed ticks. It reads the simulation and never changes it;
+     * the default draws the simulated state itself.
      */
-    void build_draw_list(std::array<float, 3U> eye, float fog_distance);
+    void build_draw_list(std::array<float, 3U> eye, float fog_distance, double alpha = 1.0);
 
     [[nodiscard]] std::span<const ParticleInstance> instances() const noexcept;
     [[nodiscard]] std::span<const ParticleBatch> batches() const noexcept;
@@ -229,6 +234,10 @@ private:
         std::uint32_t child_seed{};
         std::uint32_t child_emissions{};
         bool alive{};
+        /** State before the last tick; read by blended draw lists only. */
+        std::array<float, 3U> previous_position{};
+        float previous_rotation_degrees{};
+        float previous_age{};
     };
 
     [[nodiscard]] std::size_t claim_slot() noexcept;

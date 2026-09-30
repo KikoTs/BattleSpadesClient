@@ -11,7 +11,7 @@ enum class MovementSound : std::uint8_t {
     wade,
     jump,
     water_jump,
-    /** JP_lowthrust_rel on the first grounded edge after active thrust. */
+    /** JETPACK_LAND_SOUND (JP_lowthrust_rel): the jetpack's passive flag cleared. */
     jetpack_land,
     land,
     water_land,

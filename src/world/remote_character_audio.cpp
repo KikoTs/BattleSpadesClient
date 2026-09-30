@@ -58,7 +58,6 @@ observe_remote_character_audio(RemoteCharacterAudioState& state,
 
     const bool was_airborne = state.airborne;
     const bool was_jump_held = state.jump_was_held;
-    const bool was_jetpack_active = state.jetpack_was_active;
     const std::int16_t old_health = state.health;
 
     // WorldUpdate has no grounded bit. Use the same two-settled-row latch as
@@ -116,9 +115,8 @@ observe_remote_character_audio(RemoteCharacterAudioState& state,
             break;
         }
     }
-    if (edge.landed && was_jetpack_active) {
-        result.add_movement(MovementSound::jetpack_land);
-    }
+    // JETPACK_LAND_SOUND is not a landing event here: retail plays it when
+    // Player.set_jetpack_passive clears the flag (world::step_jetpack_audio).
     if (sounds.fall_hurt) {
         result.add_movement(MovementSound::fall_hurt);
         result.add_voice(ClassVoice::fall_hurt);

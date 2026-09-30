@@ -11,8 +11,15 @@
 //       [fov=75] [fog_distance=192] [fog=r,g,b]
 //       [light=r,g,b] [light_dir=x,y,z] [back=r,g,b] [back_dir=x,y,z]
 //       [ambient=r,g,b] [ambient_intensity=f] [tier=compatibility|low|...]
-//       [backend=direct3d11] [shaders=<bin root>]
+//       [backend=direct3d11] [shaders=<bin root>] [sky=x,y,z]
+//       [explosion_tool=57 effect_position=x,y,z effect_ticks=12]
+//       [effect_color=r,g,b] [effect_gravity=1] [effect_collision=1]
+//       [sticky_fragments=1] (include the attached model breakup for tool 57)
 // Colours are 0..255 bytes; directions are StateData (retail GL basis) values.
+// sky= centres the skydome on a map position instead of the eye (the retail
+// menu backdrop before create_player).
+// The optional explosion fixture runs the production particle emitter at an
+// exact fixed-tick age, independent of frame timing, network and user input.
 
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/quality_profile.hpp"
@@ -21,10 +28,13 @@
 #include "battlespades/settings/client_settings.hpp"
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/emissive_set.hpp"
+#include "battlespades/world/local_entity.hpp"
 #include "battlespades/world/map_atmosphere.hpp"
 #include "battlespades/world/map_catalog.hpp"
+#include "battlespades/world/particle_effects.hpp"
 #include "battlespades/world/skylight_map.hpp"
 #include "battlespades/world/static_light_field.hpp"
+#include "battlespades/world/terrain_effects.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
 #include <SDL3/SDL.h>
@@ -261,12 +271,75 @@ int main(int argc, char** argv) {
         camera.pitch_degrees = std::atan2(ori[2], horizontal) * degrees;
         camera.fov_y_degrees = std::stod(get("fov", "75"));
         camera.fog_distance = std::stod(get("fog_distance", "192"));
+        if (args.contains("sky")) {
+            const auto sky = numbers(args["sky"], 3U);
+            camera.sky_anchor = std::array<double, 3U>{sky[0], sky[1], sky[2]};
+        }
+
+        world::ParticleSystem particles;
+        if (args.contains("explosion_tool")) {
+            expect(args.contains("effect_position"), "effect_position= required for explosion");
+            const int tool = std::stoi(args["explosion_tool"]);
+            const int ticks = std::stoi(get("effect_ticks", "0"));
+            expect(tool >= 0 && tool <= 255, "explosion_tool must be a byte");
+            expect(ticks >= 0 && ticks <= 600, "effect_ticks must be 0..600");
+            const auto position = vec3f(args["effect_position"]);
+            expect(std::ranges::all_of(position, [](float value) {
+                return std::isfinite(value) && value >= 0.0F && value < 512.0F;
+            }), "effect_position must be finite map coordinates");
+            const auto effect_color = numbers(get("effect_color", "48,48,48"), 3U);
+            expect(std::ranges::all_of(effect_color, [](double value) {
+                return std::isfinite(value) && value >= 0.0 && value <= 255.0;
+            }), "effect_color must contain bytes");
+            world::TerrainImpactEvent impact{
+                world::TerrainImpactKind::explosion,
+                {static_cast<std::uint32_t>(position[0U]),
+                 static_cast<std::uint32_t>(position[1U]),
+                 static_cast<std::uint32_t>(position[2U])},
+                {static_cast<std::uint8_t>(effect_color[0U]),
+                 static_cast<std::uint8_t>(effect_color[1U]),
+                 static_cast<std::uint8_t>(effect_color[2U]), 255U},
+                {0, 0, -1}, true, 4.0F, static_cast<std::uint8_t>(tool), position};
+            particles.set_gravity(std::stof(get("effect_gravity", "1")));
+            world::emit_explosion(particles, impact);
+            if (get("sticky_fragments", "0") == "1") {
+                expect(tool == 57, "sticky_fragments requires explosion_tool=57");
+                std::string model_error;
+                const auto model = world::Kv6Model::load_file(
+                    config.asset_root / "kv6" / "stickygrenade.kv6", &model_error);
+                expect(model.has_value(), model_error);
+                const auto* definition = world::find_entity_definition(35U);
+                expect(definition != nullptr && !definition->parts.empty(),
+                       "missing sticky entity definition");
+                world::LocalEntity sticky;
+                sticky.type = 35U;
+                sticky.position = {position[0U], position[1U], position[2U]};
+                world::emit_sticky_model_explosion(
+                    particles, *model,
+                    world::entity_presentation_transform(
+                        sticky, *definition, definition->parts.front()),
+                    0x571C168U);
+            }
+            for (int tick{}; tick < ticks; ++tick) {
+                if (get("effect_collision", "1") == "0") {
+                    particles.tick_unbounded(1.0 / 60.0);
+                } else {
+                    particles.tick(1.0 / 60.0, *map.map);
+                }
+            }
+            particles.build_draw_list(
+                {static_cast<float>(eye[0U]), static_cast<float>(eye[1U]),
+                 static_cast<float>(eye[2U])}, static_cast<float>(camera.fog_distance));
+            std::cout << "explosion_tool=" << tool << " effect_ticks=" << ticks
+                      << " particles=" << particles.live_count() << '\n';
+        }
 
         std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4U);
         // Two frames: the first uploads resources and settles the skydome.
         for (int pass = 0; pass < 3; ++pass) {
             expect(ui.begin_frame(), std::string{ui.last_error()});
-            expect(scene.submit(camera, config.drawable_extent, {}, {}),
+            expect(scene.submit(camera, config.drawable_extent, {}, {},
+                                particles.instances(), particles.batches()),
                    std::string{scene.last_error()});
             for (const auto id : {render::backdrop_clear_view_id, render::world_view_id,
                                   render::view_model_view_id, render::ui_window_view_id,

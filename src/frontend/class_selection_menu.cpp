@@ -109,12 +109,45 @@ void ClassSelectionMenuModel::rebuild_options() {
 }
 
 void ClassSelectionMenuModel::reset_loadout() {
-    option_indices_.fill(0U);
+    // GameClass(config): each row opens on the saved item (config loadout<N>).
+    option_indices_ = world::saved_row_indices(selected_class(), rules_);
     prefabs_ = world::default_class_constructs(selected_class(), rules_);
 }
 
-void ClassSelectionMenuModel::restore_loadout(
+std::map<std::uint8_t, world::SavedClassLoadout>
+ClassSelectionMenuModel::session_loadouts(bool confirmed) const {
+    std::map<std::uint8_t, world::SavedClassLoadout> result;
+    const auto record = [this, &result](std::uint8_t class_id,
+                                        const std::array<std::size_t, 4U>& options,
+                                        const std::vector<std::string>& constructs) {
+        std::vector<std::uint16_t> chosen;
+        for (std::size_t group{}; group < options.size(); ++group) {
+            const auto row = world::class_row_options(class_id, group, rules_);
+            if (!row.empty()) chosen.push_back(row[options[group] % row.size()]);
+        }
+        auto selection = world::make_class_selection(class_id, chosen, constructs, rules_);
+        world::SavedClassLoadout saved;
+        if (std::ranges::find(selection.loadout, world::flare_block_tool) !=
+            selection.loadout.end()) {
+            saved.prefabs.emplace_back(world::flare_block_construct);
+        }
+        for (auto& name : selection.prefabs) saved.prefabs.push_back(std::move(name));
+        saved.loadout = std::move(selection.loadout);
+        result.insert_or_assign(class_id, std::move(saved));
+    };
+    for (const auto& [class_id, saved] : class_loadouts_) {
+        record(class_id, saved.options, saved.prefabs);
+    }
+    if (confirmed && !classes_.empty()) record(selected_class(), option_indices_, prefabs_);
+    return result;
+}
+
+void ClassSelectionMenuModel::restore_playing_loadout(
+    std::uint8_t player_team, std::uint8_t player_class,
     std::span<const std::uint8_t> loadout, std::span<const std::string> prefabs) {
+    if ((player_team != 2U && player_team != 3U) || player_class != selected_class()) {
+        return;
+    }
     for (std::size_t group{}; group < option_indices_.size(); ++group) {
         const auto& options = row_options_[group];
         const auto found = std::ranges::find_if(options, [loadout](std::uint16_t item) {

@@ -74,6 +74,14 @@ target_link_libraries(aos_death_camera_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_death_camera_tests)
 add_test(NAME aos_death_camera_tests COMMAND aos_death_camera_tests)
 
+# Render-rate interpolation between fixed ticks and even frame pacing. The
+# interpolation is header-only, so the frontend library is not linked.
+add_executable(aos_world_draw_interpolation_tests test_world_draw_interpolation.cpp)
+target_link_libraries(aos_world_draw_interpolation_tests PRIVATE
+    BattleSpades::World BattleSpades::Core)
+aos_enable_strict_warnings(aos_world_draw_interpolation_tests)
+add_test(NAME aos_world_draw_interpolation_tests COMMAND aos_world_draw_interpolation_tests)
+
 add_executable(aos_retail_feel_tests test_retail_feel.cpp)
 target_link_libraries(aos_retail_feel_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_retail_feel_tests)
@@ -90,6 +98,18 @@ target_compile_definitions(aos_tutorial_session_tests PRIVATE
     AOS_TRAINING_VXL="${PROJECT_SOURCE_DIR}/../BattleSpades/maps/Training.vxl")
 aos_enable_strict_warnings(aos_tutorial_session_tests)
 add_test(NAME aos_tutorial_session_tests COMMAND aos_tutorial_session_tests)
+
+add_executable(aos_machine_gun_deployment_tests test_machine_gun_deployment.cpp)
+target_link_libraries(aos_machine_gun_deployment_tests PRIVATE BattleSpades::World)
+aos_enable_strict_warnings(aos_machine_gun_deployment_tests)
+add_test(NAME aos_machine_gun_deployment_tests COMMAND aos_machine_gun_deployment_tests)
+
+add_executable(aos_entity_attachment_tests test_entity_attachment.cpp)
+target_link_libraries(aos_entity_attachment_tests PRIVATE BattleSpades::World)
+target_compile_definitions(aos_entity_attachment_tests PRIVATE
+    AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}")
+aos_enable_strict_warnings(aos_entity_attachment_tests)
+add_test(NAME aos_entity_attachment_tests COMMAND aos_entity_attachment_tests)
 
 add_executable(aos_retail_view_model_tests test_retail_view_model.cpp)
 target_link_libraries(aos_retail_view_model_tests PRIVATE BattleSpades::World)
@@ -351,6 +371,13 @@ target_compile_definitions(aos_footstep_audio_tests PRIVATE
 aos_enable_strict_warnings(aos_footstep_audio_tests)
 add_test(NAME aos_footstep_audio_tests COMMAND aos_footstep_audio_tests)
 
+add_executable(aos_jetpack_audio_tests test_jetpack_audio.cpp)
+target_link_libraries(aos_jetpack_audio_tests PRIVATE BattleSpades::World)
+target_compile_definitions(aos_jetpack_audio_tests PRIVATE
+    AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}")
+aos_enable_strict_warnings(aos_jetpack_audio_tests)
+add_test(NAME aos_jetpack_audio_tests COMMAND aos_jetpack_audio_tests)
+
 add_executable(aos_remote_character_audio_tests test_remote_character_audio.cpp)
 target_link_libraries(aos_remote_character_audio_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_remote_character_audio_tests)
@@ -394,6 +421,11 @@ add_executable(aos_class_selection_menu_tests test_class_selection_menu.cpp)
 target_link_libraries(aos_class_selection_menu_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_class_selection_menu_tests)
 add_test(NAME aos_class_selection_menu_tests COMMAND aos_class_selection_menu_tests)
+
+add_executable(aos_class_loadout_store_tests test_class_loadout_store.cpp)
+target_link_libraries(aos_class_loadout_store_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_class_loadout_store_tests)
+add_test(NAME aos_class_loadout_store_tests COMMAND aos_class_loadout_store_tests)
 
 add_executable(aos_retail_menus_tests test_retail_menus.cpp)
 target_link_libraries(aos_retail_menus_tests PRIVATE BattleSpades::Frontend BattleSpades::Settings)
@@ -798,7 +830,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     target_link_libraries(
         aos_protocol168_session_tests
-        PRIVATE BattleSpades::NetworkEnet
+        PRIVATE BattleSpades::NetworkEnet unofficial::enet::enet
     )
     aos_enable_strict_warnings(aos_protocol168_session_tests)
     add_test(NAME aos_protocol168_session_tests COMMAND aos_protocol168_session_tests)
@@ -815,6 +847,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_server_discovery_tests PRIVATE BattleSpades::NetworkEnet)
     aos_enable_strict_warnings(aos_server_discovery_tests)
     add_test(NAME aos_server_discovery_tests COMMAND aos_server_discovery_tests)
+
+    add_executable(aos_server_password_tests test_server_password.cpp)
+    target_link_libraries(aos_server_password_tests PRIVATE
+        BattleSpades::Frontend BattleSpades::NetworkEnet BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_server_password_tests)
+    add_test(NAME aos_server_password_tests COMMAND aos_server_password_tests)
 
     add_executable(aos_aosplay_scores_tests test_aosplay_scores.cpp)
     target_link_libraries(aos_aosplay_scores_tests PRIVATE BattleSpades::NetworkEnet)
@@ -1032,6 +1070,17 @@ if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
         AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
         AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
     aos_enable_strict_warnings(aos_retail_scene_capture)
+    # Developer tool (not a test): headless frame-time, terrain memory and
+    # remesh-cost benchmark over a real map, with legacy/tuned A/B captures.
+    add_executable(aos_render_benchmark "${PROJECT_SOURCE_DIR}/tools/render_benchmark.cpp")
+    target_link_libraries(aos_render_benchmark PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World
+        BattleSpades::Core SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_render_benchmark SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_render_benchmark PRIVATE
+        AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_render_benchmark)
     # Offscreen before/after capture of third-person characters, packs, back
     # intel, classic corpse and spawn flash (docs/RETAIL_PARITY_GAPS round 2).
     add_executable(aos_character_scene_capture

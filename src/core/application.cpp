@@ -44,6 +44,7 @@ RunResult Application::run() {
         }
 
         FixedStepPacer pacer{FixedStepPacer::Clock::now(), config_.fixed_delta};
+        IntermediateFramePacer frame_pacer;
         std::chrono::nanoseconds elapsed{};
         std::uint64_t tick_index{};
         bool stop_requested{false};
@@ -58,6 +59,10 @@ RunResult Application::run() {
                 .fixed_delta = config_.fixed_delta,
                 .elapsed = elapsed,
                 .present = pacing.present,
+                .paced = config_.pace_to_wall_clock,
+                .scheduled_at = config_.pace_to_wall_clock
+                                    ? pacing.next_tick - config_.fixed_delta
+                                    : FixedStepPacer::Clock::time_point{},
             };
 
             for (auto& module : modules_) {
@@ -70,6 +75,20 @@ RunResult Application::run() {
             ++tick_index;
             elapsed += config_.fixed_delta;
 
+            bool render_only_frames{false};
+            // Time the loop would sleep is offered to the modules first, less
+            // a margin so their work can never make the next frame late.
+            const auto offer_idle = [this](FixedStepPacer::Clock::time_point wake) {
+                constexpr std::chrono::nanoseconds margin{500'000};
+                constexpr std::chrono::nanoseconds worthwhile{1'000'000};
+                const auto deadline = wake - margin;
+                if (deadline - FixedStepPacer::Clock::now() < worthwhile) {
+                    return;
+                }
+                for (auto& module : modules_) {
+                    module->idle(deadline);
+                }
+            };
             if (config_.pace_to_wall_clock && !stop_requested && pacing.present) {
                 // Optional render-only frames for high-refresh displays. They
                 // never poll input or advance simulation, and scheduling keeps
@@ -82,19 +101,26 @@ RunResult Application::run() {
                         period = requested;
                     }
                 }
-                if (period > std::chrono::nanoseconds::zero()) {
+                render_only_frames = period > std::chrono::nanoseconds::zero();
+                if (render_only_frames) {
                     const auto tick_time = pacing.next_tick - config_.fixed_delta;
-                    auto previous_frame = FixedStepPacer::Clock::now();
-                    while (!stop_requested) {
-                        const auto slot = next_intermediate_frame(
-                            previous_frame, FixedStepPacer::Clock::now(), pacing.next_tick, period);
-                        if (!slot.has_value()) {
+                    const auto tick_presented = FixedStepPacer::Clock::now();
+                    frame_pacer.record_tick_work(tick_presented - tick_time);
+                    const auto plan = frame_pacer.plan(config_.fixed_delta, period);
+                    for (std::uint32_t frame = 1U;
+                         !stop_requested && frame < plan.frames_per_tick; ++frame) {
+                        const auto start = frame_pacer.start_of(
+                            frame, plan, tick_presented, FixedStepPacer::Clock::now(),
+                            pacing.next_tick);
+                        if (!start.has_value()) {
                             break;
                         }
-                        std::this_thread::sleep_until(slot->at);
+                        offer_idle(*start);
+                        precise_sleep_until(*start);
                         const auto woke = FixedStepPacer::Clock::now();
-                        if (woke + period / 4 >= pacing.next_tick) {
-                            // A coarse OS timer overslept; the tick has priority.
+                        if (woke + frame_pacer.frame_work() + plan.spacing / 8 >=
+                            pacing.next_tick) {
+                            // Woken late; the tick has priority.
                             break;
                         }
                         const double alpha =
@@ -105,12 +131,18 @@ RunResult Application::run() {
                                 break;
                             }
                         }
-                        previous_frame = slot->at;
+                        frame_pacer.record_frame_work(FixedStepPacer::Clock::now() - woke);
                     }
                 }
             }
             if (config_.pace_to_wall_clock && !stop_requested) {
-                std::this_thread::sleep_until(pacing.next_tick);
+                // A plain sleep wakes about a millisecond late on Windows, and
+                // that lateness is different every tick: it is frame-time
+                // jitter the player sees as micro-stutter.
+                if (render_only_frames) {
+                    offer_idle(pacing.next_tick);
+                }
+                precise_sleep_until(pacing.next_tick);
             }
         }
     } catch (const std::exception& exception) {

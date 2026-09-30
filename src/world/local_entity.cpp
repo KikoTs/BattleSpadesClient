@@ -179,6 +179,11 @@ EntityWorldLabel entity_world_label(const LocalEntity& entity,
             result = {true, ceil_value(entity.fuse), at(1.0)};
         }
         break;
+    case 35U: // AttachedStickyGrenadeEntity: only after set_fuse (draw_fuse), z - 1.0.
+        if (entity.fuse_label && std::isfinite(entity.fuse) && entity.fuse >= 0.0) {
+            result = {true, ceil_value(entity.fuse), at(1.0)};
+        }
+        break;
     case 8U: { // RocketTurret.update: own team within A1626 (20) blocks.
         constexpr double radius{20.0};
         if (!local_team.has_value() || !local_position.has_value() ||

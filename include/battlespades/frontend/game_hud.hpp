@@ -587,6 +587,13 @@ public:
     void set_block_cost_state(std::int32_t cost, bool can_place,
                               ui::ColorRgba8 tint, bool visible) noexcept;
     /**
+     * Flare Block row: the tool's own image over FLAREBLOCK_COST. HUD draw
+     * (hud.pyd 0x100936E0) takes this branch for tool_id == FLAREBLOCK_TOOL
+     * and, unlike the block row, never asks is_placement_valid.
+     */
+    void set_flare_cost_state(std::string image_asset, std::int32_t cost,
+                              ui::ColorRgba8 tint, bool visible) noexcept;
+    /**
      * Replaces the weapon-ammo row with retail's selected-prefab preview.
      *
      * `cost` is the KV6 voxel count and `affordable` compares it with the

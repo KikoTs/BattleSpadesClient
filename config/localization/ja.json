@@ -2147,6 +2147,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "降下中にパラシュートが開きます",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: 空中でパラシュートを開く",
     "ABILITY_HINT_JETPACK": "{0}: 推進",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: 推進（離して着地で回復）"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: 推進（離して着地で回復）",
+    "SERVER_PASSWORD_PROMPT": "サーバーのパスワードを入力し、Enterキーを押して続行してください。",
+    "SERVER_PASSWORD_WRONG": "パスワードが違います。もう一度入力してください。",
+    "SERVER_PASSWORD_REFUSED": "サーバーのパスワードが違います",
+    "SERVER_PASSWORD_TIMEOUT": "時間内にサーバーのパスワードが入力されませんでした",
+    "ARENA": "アリーナ",
+    "ARENA_DESCRIPTION": "敵を全滅させてラウンドに勝利しよう！",
+    "LOAD_FAILED": "読み込みに失敗しました"
   }
 }

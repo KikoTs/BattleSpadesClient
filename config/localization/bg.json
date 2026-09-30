@@ -91,6 +91,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Парашутът се отваря при спускане",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: отвори парашута във въздуха",
     "ABILITY_HINT_JETPACK": "{0}: тяга",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; пусни и кацни за презареждане"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: тяга; пусни и кацни за презареждане",
+    "SERVER_PASSWORD_PROMPT": "Въведете паролата на сървъра и натиснете Enter, за да продължите.",
+    "SERVER_PASSWORD_WRONG": "Грешна парола. Опитайте отново.",
+    "SERVER_PASSWORD_REFUSED": "Грешна парола за сървъра",
+    "SERVER_PASSWORD_TIMEOUT": "Паролата на сървъра не беше въведена навреме",
+    "ARENA": "Арена",
+    "ARENA_DESCRIPTION": "Елиминирайте всички врагове, за да спечелите рунда!",
+    "LOAD_FAILED": "Зареждането е неуспешно"
   }
 }

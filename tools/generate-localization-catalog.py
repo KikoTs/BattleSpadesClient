@@ -923,6 +923,140 @@ PARITY_HUD_OVERLAYS: dict[str, dict[str, str]] = {
 }
 
 
+# Joining a server: the password prompt, the Arena mode and a failed load.
+# SERVER_PASSWORD_PROMPT is retail's own English hint (loadingMenu.py
+# EditBoxControl empty_text); retail has no string id for it and none for the
+# rest, so every locale ships them.
+SERVER_JOIN_OVERLAYS: dict[str, dict[str, str]] = {
+    "en": {
+        "SERVER_PASSWORD_PROMPT": "Type the server password and press enter to continue.",
+        "SERVER_PASSWORD_WRONG": "Wrong password. Try again.",
+        "SERVER_PASSWORD_REFUSED": "Wrong server password",
+        "SERVER_PASSWORD_TIMEOUT": "No server password was entered in time",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Eliminate all enemies to win the round!",
+        "LOAD_FAILED": "Loading failed",
+    },
+    "bg": {
+        "SERVER_PASSWORD_PROMPT": "Въведете паролата на сървъра и натиснете Enter, за да продължите.",
+        "SERVER_PASSWORD_WRONG": "Грешна парола. Опитайте отново.",
+        "SERVER_PASSWORD_REFUSED": "Грешна парола за сървъра",
+        "SERVER_PASSWORD_TIMEOUT": "Паролата на сървъра не беше въведена навреме",
+        "ARENA": "Арена",
+        "ARENA_DESCRIPTION": "Елиминирайте всички врагове, за да спечелите рунда!",
+        "LOAD_FAILED": "Зареждането е неуспешно",
+    },
+    "ru": {
+        "SERVER_PASSWORD_PROMPT": "Введите пароль сервера и нажмите Enter, чтобы продолжить.",
+        "SERVER_PASSWORD_WRONG": "Неверный пароль. Попробуйте ещё раз.",
+        "SERVER_PASSWORD_REFUSED": "Неверный пароль сервера",
+        "SERVER_PASSWORD_TIMEOUT": "Пароль сервера не был введён вовремя",
+        "ARENA": "Арена",
+        "ARENA_DESCRIPTION": "Уничтожьте всех врагов, чтобы выиграть раунд!",
+        "LOAD_FAILED": "Не удалось загрузить",
+    },
+    "uk": {
+        "SERVER_PASSWORD_PROMPT": "Введіть пароль сервера та натисніть Enter, щоб продовжити.",
+        "SERVER_PASSWORD_WRONG": "Неправильний пароль. Спробуйте ще раз.",
+        "SERVER_PASSWORD_REFUSED": "Неправильний пароль сервера",
+        "SERVER_PASSWORD_TIMEOUT": "Пароль сервера не було введено вчасно",
+        "ARENA": "Арена",
+        "ARENA_DESCRIPTION": "Знищте всіх ворогів, щоб виграти раунд!",
+        "LOAD_FAILED": "Не вдалося завантажити",
+    },
+    "pl": {
+        "SERVER_PASSWORD_PROMPT": "Wpisz hasło serwera i naciśnij Enter, aby kontynuować.",
+        "SERVER_PASSWORD_WRONG": "Błędne hasło. Spróbuj ponownie.",
+        "SERVER_PASSWORD_REFUSED": "Błędne hasło serwera",
+        "SERVER_PASSWORD_TIMEOUT": "Nie podano hasła serwera na czas",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Wyeliminuj wszystkich wrogów, aby wygrać rundę!",
+        "LOAD_FAILED": "Wczytywanie nie powiodło się",
+    },
+    "cs": {
+        "SERVER_PASSWORD_PROMPT": "Zadejte heslo serveru a pokračujte stisknutím klávesy Enter.",
+        "SERVER_PASSWORD_WRONG": "Nesprávné heslo. Zkuste to znovu.",
+        "SERVER_PASSWORD_REFUSED": "Nesprávné heslo serveru",
+        "SERVER_PASSWORD_TIMEOUT": "Heslo serveru nebylo zadáno včas",
+        "ARENA": "Aréna",
+        "ARENA_DESCRIPTION": "Zlikvidujte všechny nepřátele a vyhrajte kolo!",
+        "LOAD_FAILED": "Načítání se nezdařilo",
+    },
+    "de": {
+        "SERVER_PASSWORD_PROMPT": "Gib das Serverpasswort ein und drücke Enter, um fortzufahren.",
+        "SERVER_PASSWORD_WRONG": "Falsches Passwort. Versuche es erneut.",
+        "SERVER_PASSWORD_REFUSED": "Falsches Serverpasswort",
+        "SERVER_PASSWORD_TIMEOUT": "Das Serverpasswort wurde nicht rechtzeitig eingegeben",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Schalte alle Gegner aus, um die Runde zu gewinnen!",
+        "LOAD_FAILED": "Laden fehlgeschlagen",
+    },
+    "fr": {
+        "SERVER_PASSWORD_PROMPT": "Saisissez le mot de passe du serveur et appuyez sur Entrée pour continuer.",
+        "SERVER_PASSWORD_WRONG": "Mot de passe incorrect. Réessayez.",
+        "SERVER_PASSWORD_REFUSED": "Mot de passe du serveur incorrect",
+        "SERVER_PASSWORD_TIMEOUT": "Le mot de passe du serveur n'a pas été saisi à temps",
+        "ARENA": "Arène",
+        "ARENA_DESCRIPTION": "Éliminez tous les ennemis pour gagner la manche !",
+        "LOAD_FAILED": "Échec du chargement",
+    },
+    "es": {
+        "SERVER_PASSWORD_PROMPT": "Escribe la contraseña del servidor y pulsa Intro para continuar.",
+        "SERVER_PASSWORD_WRONG": "Contraseña incorrecta. Inténtalo de nuevo.",
+        "SERVER_PASSWORD_REFUSED": "Contraseña del servidor incorrecta",
+        "SERVER_PASSWORD_TIMEOUT": "No se introdujo la contraseña del servidor a tiempo",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "¡Elimina a todos los enemigos para ganar la ronda!",
+        "LOAD_FAILED": "Error al cargar",
+    },
+    "es-MX": {
+        "SERVER_PASSWORD_PROMPT": "Escribe la contraseña del servidor y presiona Enter para continuar.",
+        "SERVER_PASSWORD_WRONG": "Contraseña incorrecta. Intenta de nuevo.",
+        "SERVER_PASSWORD_REFUSED": "Contraseña del servidor incorrecta",
+        "SERVER_PASSWORD_TIMEOUT": "No se ingresó la contraseña del servidor a tiempo",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "¡Elimina a todos los enemigos para ganar la ronda!",
+        "LOAD_FAILED": "Error al cargar",
+    },
+    "pt-BR": {
+        "SERVER_PASSWORD_PROMPT": "Digite a senha do servidor e pressione Enter para continuar.",
+        "SERVER_PASSWORD_WRONG": "Senha incorreta. Tente novamente.",
+        "SERVER_PASSWORD_REFUSED": "Senha do servidor incorreta",
+        "SERVER_PASSWORD_TIMEOUT": "A senha do servidor não foi digitada a tempo",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Elimine todos os inimigos para vencer a rodada!",
+        "LOAD_FAILED": "Falha ao carregar",
+    },
+    "it": {
+        "SERVER_PASSWORD_PROMPT": "Digita la password del server e premi Invio per continuare.",
+        "SERVER_PASSWORD_WRONG": "Password errata. Riprova.",
+        "SERVER_PASSWORD_REFUSED": "Password del server errata",
+        "SERVER_PASSWORD_TIMEOUT": "La password del server non è stata inserita in tempo",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Elimina tutti i nemici per vincere il round!",
+        "LOAD_FAILED": "Caricamento non riuscito",
+    },
+    "tr": {
+        "SERVER_PASSWORD_PROMPT": "Sunucu şifresini yazın ve devam etmek için Enter'a basın.",
+        "SERVER_PASSWORD_WRONG": "Yanlış şifre. Tekrar deneyin.",
+        "SERVER_PASSWORD_REFUSED": "Sunucu şifresi yanlış",
+        "SERVER_PASSWORD_TIMEOUT": "Sunucu şifresi zamanında girilmedi",
+        "ARENA": "Arena",
+        "ARENA_DESCRIPTION": "Raundu kazanmak için tüm düşmanları yok edin!",
+        "LOAD_FAILED": "Yükleme başarısız",
+    },
+    "ja": {
+        "SERVER_PASSWORD_PROMPT": "サーバーのパスワードを入力し、Enterキーを押して続行してください。",
+        "SERVER_PASSWORD_WRONG": "パスワードが違います。もう一度入力してください。",
+        "SERVER_PASSWORD_REFUSED": "サーバーのパスワードが違います",
+        "SERVER_PASSWORD_TIMEOUT": "時間内にサーバーのパスワードが入力されませんでした",
+        "ARENA": "アリーナ",
+        "ARENA_DESCRIPTION": "敵を全滅させてラウンドに勝利しよう！",
+        "LOAD_FAILED": "読み込みに失敗しました",
+    },
+}
+
+
 # The shipped Japanese module accidentally mixed six Simplified-Chinese
 # characters into sixteen labels. The retail Japanese fonts correctly omit
 # those glyphs, so preserving the typos produces visible question marks.
@@ -1084,6 +1218,7 @@ def main() -> None:
         strings.update(NATIVE_FLOW_OVERLAYS.get(locale, {}))
         strings.update(APPEARANCE_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(PARITY_HUD_OVERLAYS.get(locale, {}))
+        strings.update(SERVER_JOIN_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,

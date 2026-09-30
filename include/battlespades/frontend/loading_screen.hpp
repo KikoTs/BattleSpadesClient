@@ -151,6 +151,11 @@ public:
     void set_map_preview_override(std::string asset) { map_preview_override_ = std::move(asset); }
     /** loadingMenu: any mouse press or key sets tab_timer_interupted. */
     void interrupt_tab_cycle() noexcept { tab_cycle_interrupted_ = true; }
+    /**
+     * The server asked for its password and sends nothing until it has one:
+     * the no-progress timeout waits with it. Releasing restarts the 30 s.
+     */
+    void set_waiting_for_player(bool waiting) noexcept;
     void tick(double delta_seconds) noexcept;
     [[nodiscard]] bool select_tab(std::size_t index) noexcept;
     [[nodiscard]] bool handle_score_click(double design_x, double design_y);
@@ -181,6 +186,7 @@ private:
     assets::PreloadSnapshot preload_{};
     double last_observed_progress_{};
     double no_progress_remaining_{no_progress_timeout_seconds};
+    bool waiting_for_player_{};
     std::array<bool, 2U> score_expanded_{true, true};
     std::size_t score_scroll_{};
     bool friendly_fire_{};

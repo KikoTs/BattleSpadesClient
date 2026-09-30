@@ -2147,6 +2147,13 @@
     "ABILITY_HINT_PARACHUTE_PENDING": "Parachute opens on descent",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: deploy parachute in air",
     "ABILITY_HINT_JETPACK": "{0}: thrust",
-    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: thrust; release + land to recharge"
+    "ABILITY_HINT_JETPACK_RECHARGE": "{0}: thrust; release + land to recharge",
+    "SERVER_PASSWORD_PROMPT": "Type the server password and press enter to continue.",
+    "SERVER_PASSWORD_WRONG": "Wrong password. Try again.",
+    "SERVER_PASSWORD_REFUSED": "Wrong server password",
+    "SERVER_PASSWORD_TIMEOUT": "No server password was entered in time",
+    "ARENA": "Arena",
+    "ARENA_DESCRIPTION": "Eliminate all enemies to win the round!",
+    "LOAD_FAILED": "Loading failed"
   }
 }

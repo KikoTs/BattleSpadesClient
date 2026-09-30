@@ -100,9 +100,9 @@ int main(int argc, char** argv) {
         std::int32_t input_loop = static_cast<std::int32_t>(initial->next_client_loop_count);
         const auto until = Clock::now() + std::chrono::seconds{80};
         auto next_input = Clock::now();
-        bool reconnected{};
-        while (Clock::now() < until && !reconnected) {
-            for (const auto& packet : connection.take_inbound(256U)) {
+        bool rolled_over{}, same_peer{};
+        while (Clock::now() < until && !rolled_over) {
+            for (const auto& packet : connection.take_inbound(256U, initial->map_generation)) {
                 if (packet.empty()) continue;
                 const auto id = std::to_integer<std::uint8_t>(packet.front());
                 const auto applied = terrain.apply(packet);
@@ -159,24 +159,36 @@ int main(int argc, char** argv) {
                 }
             }
             const auto status = connection.status();
+            auto replacement = connection.take_bootstrap();
+            if (replacement != nullptr) {
+                require(replacement->map_generation > initial->map_generation,
+                        "replacement bootstrap must belong to a later map");
+                same_peer = true;
+            }
             if (network::protocol168_should_reconnect_after_map_change(status, map_ended)) {
-                require(vote_closed && kill_seen && personal_score_seen && team_score_seen,
-                        "rollover arrived before verified score/vote events");
+                // Compatibility fallback for servers that explicitly close
+                // with MATCH_ENDED. Stock rotation sends InitialInfo on this
+                // authenticated peer and takes the path above.
                 connection.stop();
                 require(connection.start(transport, session), "local map-rejoin failed");
-                auto replacement = bootstrap(connection);
+                replacement = bootstrap(connection);
+            }
+            if (replacement != nullptr) {
+                require(vote_closed && kill_seen && personal_score_seen && team_score_seen,
+                        "rollover arrived before verified score/vote events");
                 verify_flight_profile(replacement->initial_info);
                 require(replacement->initial_info.map_name == world::map_display_name(chosen_map) &&
                             replacement->initial_info.map_name != initial_map,
-                        "map vote winner differs from rejoined map");
-                reconnected = true;
+                        "map vote winner differs from replacement map");
+                rolled_over = true;
                 std::cout << "next_map=" << replacement->initial_info.map_name << '\n';
                 break;
             }
             require(status.phase != network::LiveProtocol168Phase::failed &&
                         status.phase != network::LiveProtocol168Phase::disconnected,
                     "live fixture disconnected unexpectedly: " + status.error);
-            if (Clock::now() >= next_input) {
+            if (status.phase == network::LiveProtocol168Phase::ready &&
+                status.map_generation == initial->map_generation && Clock::now() >= next_input) {
                 network::ClientDataPacket input;
                 input.loop_count = input_loop++;
                 input.player_id = initial->local_player_id;
@@ -184,19 +196,26 @@ int main(int argc, char** argv) {
                 input.opaque_state = network::protocol168_client_data_opaque_state(input.loop_count);
                 input.orientation = {1.0F, 0.0F, 0.0F};
                 input.action_flags = 0x10U;
-                require(connection.send(network::encode_packet(input)), "ClientData send failed");
+                if (!connection.send(network::encode_packet(input))) {
+                    // InitialInfo may land after the status snapshot. The
+                    // transport rejects old input until its new world is
+                    // adopted; a real failure is still checked next tick.
+                    require(connection.status().map_generation != initial->map_generation,
+                            "ClientData send failed");
+                }
                 next_input += std::chrono::milliseconds{16};
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{5});
         }
         connection.stop();
-        require(reconnected, "score/vote/map rollover did not finish before deadline");
+        require(rolled_over, "score/vote/map rollover did not finish before deadline");
         std::cout << "PASS local turret packets=" << terrain_packets << " removed_cells=" << removed_cells
                   << " dirty_chunk=" << dirty_wall << " rebuilt_mesh=" << rebuilt_mesh
                   << " collision_ray_clear=" << ray_clear
                   << " supported_floor_retained=1 flight_profile_verified=1"
                   << " personal_score=100 team_score=1 vote_closed=" << vote_closed
-                  << " map_ended=" << map_ended << " rejoined=" << reconnected << '\n';
+                  << " map_ended=" << map_ended << " rolled_over=" << rolled_over
+                  << " same_peer=" << same_peer << '\n';
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Local gameplay gate failed: " << error.what() << '\n';

@@ -156,6 +156,8 @@ struct ServerBrowserEntry final {
      * which is the old behaviour rather than a claim of zero humans.
      */
     std::uint16_t human_players{};
+    /** The listing says the server asks for a password; drawn as a padlock. */
+    bool password_protected{};
 
     [[nodiscard]] std::string identifier() const;
 };
@@ -180,6 +182,12 @@ struct ServerConnectRequest final {
      * compiling and simply leave it zero.
      */
     std::uint64_t steam_host_id{};
+    /**
+     * A server password the player already supplied (`--password`, a join
+     * link's `?password=`). It answers the server's first request; empty
+     * leaves the answer to the loading screen's prompt.
+     */
+    std::string password;
 };
 
 enum class DirectConnectActionKind : std::uint8_t {

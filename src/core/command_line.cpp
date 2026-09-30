@@ -234,6 +234,17 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             options.startup_endpoint = std::string{arguments[index]};
             continue;
         }
+        // The password of the server named by --connect. The server refuses
+        // anything over 64 bytes without comparing it.
+        if (argument == "--password" || argument == "+password") {
+            if (++index >= arguments.size() || arguments[index].empty() ||
+                arguments[index].size() > 64U) {
+                return failure(std::string{argument} +
+                               " requires a server password of 1 to 64 bytes");
+            }
+            options.startup_password = std::string{arguments[index]};
+            continue;
+        }
         // A lobby invite accepted while the game is closed launches it with
         // "+connect_lobby <lobby id>"; the frontend reads the lobby's connect
         // value once Steam is attached.
@@ -400,6 +411,8 @@ std::string_view command_line_usage() noexcept {
            "                      steam:STEAMID to join a player-hosted match\n"
            "                      (+connect is the same switch, which is how\n"
            "                      Steam launches a friend who clicks Join)\n"
+           "  --password TEXT     The password of the --connect server (also\n"
+           "                      +password, or ADDRESS?password=TEXT)\n"
            "  +connect_lobby ID   Join the match behind a Steam lobby invite\n"
            "  --steam-only        Host a Local Match over Steam alone, with no\n"
            "                      AoSPlay relay lobby (testing the Steam path)\n"

@@ -380,12 +380,14 @@ struct ExplosionRecipe final {
     case 32U:
         return {8U, 10U, 1.3F, 5.0F, 2.0F};
     // LandmineEntity.on_delete 0x100A8E00, DynamiteEntity.on_delete
-    // 0x100AC230, Drill.delete 0x100C5C30, C4Entity.on_delete 0x100EBA90:
+    // 0x100AC230, Drill.delete 0x100C5C30, C4Entity.on_delete 0x100EBA90,
+    // AttachedStickyGrenadeEntity.on_delete 0x100FB730:
     // create(8) + (10, 1.5, 5.0), default lifetime 2.0.
     case 14U:
     case 20U:
     case 21U:
     case 47U:
+    case 57U:
     case 59U:
         return {8U, 10U, 1.5F, 5.0F, 2.0F};
     // BombPickup.explode 0x100D4980: create(12) + (15, 1.3, 10.0).
@@ -574,6 +576,46 @@ void emit_grave_explosion(ParticleSystem& particles,
     dark_chunks.size_begin = 0.13F;
     dark_chunks.lifetime = 0.95F;
     particles.emit_burst(dark_chunks, 10U, seed + 41U);
+}
+
+void emit_sticky_model_explosion(ParticleSystem& particles,
+                                  const Kv6Model& model,
+                                  const std::array<float, 16U>& display_transform,
+                                  std::uint32_t seed) {
+    // gameScene 0x100FB730 -> explode_display 0x101687B0. The slice is [::5],
+    // speed 1.0, one size-3 particle per tuple, default lifetime 2 seconds.
+    // kv6.get_points 0x10015000 stores (coordinate - pivot) as signed shorts;
+    // it neither applies VBO centre correction nor the model-quality scale.
+    const auto& pivot = model.pivot();
+    const auto& voxels = model.voxels();
+    for (std::size_t index{}; index < voxels.size(); index += 5U) {
+        const auto& voxel = voxels[index];
+        const std::array<float, 3U> point{
+            std::trunc(static_cast<float>(voxel.x) - pivot[0U]),
+            -std::trunc(static_cast<float>(voxel.z) - pivot[2U]),
+            std::trunc(static_cast<float>(voxel.y) - pivot[1U])};
+        ParticleSpawn chunk;
+        for (std::size_t axis{}; axis < 3U; ++axis) {
+            chunk.position[axis] = display_transform[12U + axis] + 0.5F;
+            for (std::size_t component{}; component < 3U; ++component)
+                chunk.position[axis] += point[component] *
+                    display_transform[component * 4U + axis];
+        }
+        chunk.color = voxel.color;
+        chunk.explode_velocity = 1.0F;
+        chunk.size_begin = 0.30F;
+        chunk.size_end = 0.0F;
+        chunk.alpha_begin = 1.0F;
+        chunk.alpha_end = 0.0F;
+        chunk.rotation_degrees = 180.0F;
+        chunk.lifetime = 2.0F;
+        chunk.gravity_scale = 1.0F;
+        chunk.atlas = ParticleAtlas::tumbling_cube;
+        chunk.blend = ParticleBlend::alpha;
+        chunk.collide = true;
+        particles.emit_burst(chunk, 1U,
+                             seed ^ mix(static_cast<std::uint32_t>(index) + 1U));
+    }
 }
 
 void emit_weapon_muzzle(ParticleSystem& particles,

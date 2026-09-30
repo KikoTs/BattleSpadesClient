@@ -71,6 +71,49 @@ void expect(bool value, const char* message) {
 int main() {
     using namespace battlespades::frontend;
     try {
+        PauseMenuServerState spectator;
+        spectator.mode_type = 6U;
+        spectator.player_team = 0U;
+        spectator.spectator_enabled = true;
+        PauseMenuModel spectator_menu{pause_menu_environment_for(spectator)};
+        const auto team_bounds = PauseMenuModel::action_bounds(PauseMenuAction::change_team);
+        const battlespades::ui::Point team_point{team_bounds.x + 20, team_bounds.y + 20};
+        spectator_menu.pointer_press(team_point);
+        expect(spectator_menu.pointer_release(team_point) == PauseMenuAction::change_team,
+               "an admitted spectator must be able to click CHANGE TEAM in the pause menu");
+        expect(!spectator_menu.action_enabled(PauseMenuAction::change_class),
+               "enabling spectator team selection must not enable playing-class actions");
+        spectator.team1_locked = spectator.team2_locked = true;
+        spectator.lock_team_swap = spectator.lock_spectator_swap = true;
+        expect(pause_menu_environment_for(spectator).allow_team_change,
+               "retail opens ChangeTeam so its choices, not the pause entry, enforce locks");
+        ChangeTeamServerState locked_spectator;
+        locked_spectator.current_team = 0U;
+        locked_spectator.spectator_enabled = true;
+        locked_spectator.team1_locked = locked_spectator.team2_locked = true;
+        locked_spectator.lock_spectator_swap = true;
+        ChangeTeamMenuModel locked_choices;
+        locked_choices.configure(locked_spectator);
+        expect(!locked_choices.enabled(ChangeTeamAction::team1) &&
+                   !locked_choices.enabled(ChangeTeamAction::team2) &&
+                   !locked_choices.enabled(ChangeTeamAction::spectator),
+               "opening the menu must not bypass authoritative choice locks");
+        PauseMenuServerState absent;
+        absent.spectator_enabled = true;
+        expect(!pause_menu_environment_for(absent).allow_team_change,
+               "a missing player/team must stay disabled even on a spectator-enabled server");
+        spectator.spectator_enabled = false;
+        expect(!pause_menu_environment_for(spectator).allow_team_change,
+               "team zero must not enable a spectator route when spectators are disabled");
+        spectator.spectator_enabled = true;
+        spectator.map_ended = true;
+        expect(!pause_menu_environment_for(spectator).allow_team_change,
+               "match statistics must still disable a spectator's team entry");
+        spectator.map_ended = false;
+        spectator.ugc_mode = true;
+        expect(!pause_menu_environment_for(spectator).allow_team_change,
+               "UGC must retain its existing selector gates");
+
         PauseMenuServerState normal;
         normal.mode_type = 6U;
         normal.player_team = 2U;
@@ -84,8 +127,8 @@ int main() {
         normal.active_team_locks_class = true;
         normal.lock_team_swap = true;
         const auto locked = pause_menu_environment_for(normal);
-        expect(!locked.allow_class_change && !locked.allow_team_change,
-               "StateData locks must disable pause actions");
+        expect(!locked.allow_class_change && locked.allow_team_change,
+               "class locks gate the pause action; team locks gate choices inside ChangeTeam");
 
         normal.active_team_locks_class = false;
         normal.lock_team_swap = false;

@@ -64,6 +64,8 @@ PauseMenuEnvironment pause_menu_environment_for(
     PauseMenuEnvironment result;
     result.ugc_host = state.ugc_host;
     const bool has_playing_team = state.player_team == 2U || state.player_team == 3U;
+    const bool has_player_team = has_playing_team ||
+                                (state.player_team == 0U && state.spectator_enabled);
     if (state.mode_type == tutorial_mode) {
         PauseMenuEnvironment tutorial{false, false, false, false};
         tutorial.ugc_host = state.ugc_host;
@@ -97,14 +99,9 @@ PauseMenuEnvironment pause_menu_environment_for(
     result.allow_class_change = result.show_class_change && has_playing_team &&
                                 !state.active_team_locks_class &&
                                 state.available_class_count > 1U;
-    const bool another_team_open = state.player_team == 2U
-                                       ? !state.team2_locked
-                                       : !state.team1_locked;
-    const bool spectator_open = state.spectator_enabled &&
-                                !state.lock_spectator_swap;
-    result.allow_team_change = result.show_team_change && has_playing_team &&
-                               !state.lock_team_swap &&
-                               (another_team_open || spectator_open);
+    // EscapeMenu and GameScene.team_selection_has_choices allow an admitted
+    // spectator to open the selector. Team locks belong to its actual choices.
+    result.allow_team_change = result.show_team_change && has_player_team;
     if (state.map_ended) {
         // EscapeMenu.update disables both selectors while the server owns the
         // post-match statistics screen, but keeps the normal buttons visible.

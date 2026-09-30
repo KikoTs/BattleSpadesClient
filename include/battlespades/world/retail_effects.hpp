@@ -125,6 +125,8 @@ struct TracerState final {
     std::array<float, 3U> direction{1.0F, 0.0F, 0.0F};
     float remaining{};
     std::uint8_t tool_id{};
+    /** Presentation identity given by the owner of the tracer list; not simulated. */
+    std::uint32_t serial{};
 };
 
 /** Build a tracer from muzzle to target; nothing for a zero-length shot. */
