@@ -4,8 +4,8 @@
 // The JSON is authoritative: it was extracted by executing the retail
 // Ace of Spades: Battle Builder shared/constants.py and aoslib/weapons/*.py
 // with real Python 2.7. Regenerate with:
-//   node tools/generate_retail_constants.mjs <retail_constants.json> \
-//       include/battlespades/shared/retail_constants.hpp
+//   node tools/generate_retail_constants.mjs <retail_constants.json> <output.hpp>
+// with <output.hpp> = include/battlespades/shared/retail_constants.hpp
 #pragma once
 
 #include <array>

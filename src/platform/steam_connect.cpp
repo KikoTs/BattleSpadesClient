@@ -58,10 +58,10 @@ namespace {
     if (value.starts_with("steam:")) {
         const auto id = parse_id(value.substr(6U));
         if (!id.has_value()) return std::nullopt;
-        return SteamJoinTarget{SteamJoinTargetKind::steam_host, *id, {}};
+        return SteamJoinTarget{SteamJoinTargetKind::steam_host, *id, {}, {}};
     }
     if (looks_like_endpoint(value)) {
-        return SteamJoinTarget{SteamJoinTargetKind::endpoint, 0U, std::string{value}};
+        return SteamJoinTarget{SteamJoinTargetKind::endpoint, 0U, std::string{value}, {}};
     }
     return std::nullopt;
 }
@@ -108,7 +108,7 @@ std::optional<SteamJoinTarget> parse_steam_join_target(std::string_view value) {
             if (index + 1U >= parts.size()) return std::nullopt;
             const auto lobby = parse_id(parts[index + 1U]);
             if (!lobby.has_value()) return std::nullopt;
-            return SteamJoinTarget{SteamJoinTargetKind::lobby, *lobby, {}};
+            return SteamJoinTarget{SteamJoinTargetKind::lobby, *lobby, {}, {}};
         }
     }
     // No switch: only a lone address is meaningful. Several loose tokens are

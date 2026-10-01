@@ -122,7 +122,7 @@ std::vector<std::uint8_t> cosmetic_preview(const ChunkMesh& mesh,double yaw,doub
         unsigned alpha=0;std::array<unsigned,3> rgb{};
         for(unsigned j=0;j<usamples;++j)for(unsigned k=0;k<usamples;++k){
             const auto p=(static_cast<std::size_t>(y*usamples+j)*stride+x*usamples+k)*4;
-            const auto a=pixels[p+3];alpha+=a;for(unsigned c=0;c<3;++c)rgb[c]+=pixels[p+c]*a;
+            const unsigned a=pixels[p+3];alpha+=a;for(unsigned c=0;c<3;++c)rgb[c]+=static_cast<unsigned>(pixels[p+c])*a;
         }
         const auto p=(y*style.width+x)*4;
         if(alpha){for(unsigned c=0;c<3;++c)result[p+c]=static_cast<std::uint8_t>(rgb[c]/alpha);result[p+3]=static_cast<std::uint8_t>(alpha/(usamples*usamples));}

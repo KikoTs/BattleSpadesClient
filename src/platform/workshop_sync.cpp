@@ -135,9 +135,10 @@ std::vector<unsigned char> build_aos_container(std::span<const unsigned char> vx
 
 bool workshop_safe_file_name(std::string_view name) noexcept {
     if (name.empty() || name.size() > 200U || name == "." || name == "..") return false;
-    for (const unsigned char character : name) {
-        if (character < 0x20U || character == 0x7FU) return false;
-        if (std::strchr("/\\:*?\"<>|", static_cast<char>(character)) != nullptr) return false;
+    for (const char character : name) {
+        const auto code = static_cast<unsigned char>(character);
+        if (code < 0x20U || code == 0x7FU) return false;
+        if (std::strchr("/\\:*?\"<>|", character) != nullptr) return false;
     }
     // Windows strips trailing dots and spaces, which would alias another name.
     if (name.back() == '.' || name.back() == ' ' || name.front() == ' ') return false;

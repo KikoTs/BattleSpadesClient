@@ -384,8 +384,8 @@ lines.push('// Produced from retail_constants.json by tools/generate_retail_cons
 lines.push('// The JSON is authoritative: it was extracted by executing the retail');
 lines.push('// Ace of Spades: Battle Builder shared/constants.py and aoslib/weapons/*.py');
 lines.push('// with real Python 2.7. Regenerate with:');
-lines.push('//   node tools/generate_retail_constants.mjs <retail_constants.json> \\');
-lines.push('//       include/battlespades/shared/retail_constants.hpp');
+lines.push('//   node tools/generate_retail_constants.mjs <retail_constants.json> <output.hpp>');
+lines.push('// with <output.hpp> = include/battlespades/shared/retail_constants.hpp');
 lines.push('#pragma once');
 lines.push('');
 lines.push('#include <array>');
