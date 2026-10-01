@@ -33,6 +33,15 @@
       }
     },
     {
+      "name": "native-windows-arm64-base",
+      "hidden": true,
+      "inherits": "native-windows-base",
+      "cacheVariables": {
+        "VCPKG_HOST_TRIPLET": "arm64-windows",
+        "VCPKG_TARGET_TRIPLET": "arm64-windows"
+      }
+    },
+    {
       "name": "native-linux-base",
       "hidden": true,
       "generator": "Ninja Multi-Config",
@@ -125,6 +134,24 @@
       }
     },
     {
+      "name": "native-windows-arm64-dev",
+      "displayName": "Native Development (Windows on Arm)",
+      "description": "Graphical optimized developer build with symbols for arm64 Windows",
+      "inherits": "native-windows-arm64-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "dev"
+      }
+    },
+    {
+      "name": "native-windows-arm64-release",
+      "displayName": "Native Release (Windows on Arm)",
+      "description": "Graphical optimized distribution build for arm64 Windows",
+      "inherits": "native-windows-arm64-base",
+      "cacheVariables": {
+        "AOS_BUILD_PROFILE": "release"
+      }
+    },
+    {
       "name": "native-linux-dev",
       "displayName": "Linux Native Development",
       "description": "Graphical Linux build using SDL3, bgfx, Vulkan/OpenGL and OpenAL",
@@ -193,6 +220,16 @@
       "configuration": "Release"
     },
     {
+      "name": "native-windows-arm64-dev",
+      "configurePreset": "native-windows-arm64-dev",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "native-windows-arm64-release",
+      "configurePreset": "native-windows-arm64-release",
+      "configuration": "Release"
+    },
+    {
       "name": "native-linux-dev",
       "configurePreset": "native-linux-dev",
       "configuration": "RelWithDebInfo"
@@ -257,6 +294,22 @@
     {
       "name": "native-release",
       "configurePreset": "native-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-windows-arm64-dev",
+      "configurePreset": "native-windows-arm64-dev",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-windows-arm64-release",
+      "configurePreset": "native-windows-arm64-release",
       "configuration": "Release",
       "output": {
         "outputOnFailure": true

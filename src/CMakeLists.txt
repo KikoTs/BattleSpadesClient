@@ -443,14 +443,32 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
 
         # Players need the library beside the executable; it is loaded at run
         # time, so a copy that is missing only disables the Steam transport.
+        # Match the build's own architecture: a foreign one can never load.
+        # Valve ships no Windows on Arm library, so those builds go without
+        # one and use the AoSPlay relay.
+        set(_aos_steam_arch "${CMAKE_SYSTEM_PROCESSOR}")
+        if(MSVC_CXX_ARCHITECTURE_ID)
+            set(_aos_steam_arch "${MSVC_CXX_ARCHITECTURE_ID}")
+        endif()
+        string(TOLOWER "${_aos_steam_arch}" _aos_steam_arch)
+        set(_aos_steam_library "")
         if(WIN32)
-            set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/win64/steam_api64.dll")
+            if(_aos_steam_arch MATCHES "^(x64|amd64|x86_64)$")
+                set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/win64/steam_api64.dll")
+            endif()
         elseif(APPLE)
+            # Universal (arm64 and x86_64).
             set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/osx/libsteam_api.dylib")
+        elseif(_aos_steam_arch MATCHES "^(aarch64|arm64)$")
+            set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/linuxarm64/libsteam_api.so")
         else()
             set(_aos_steam_library "${steamworks_SOURCE_DIR}/redistributable_bin/linux64/libsteam_api.so")
         endif()
-        install(FILES "${_aos_steam_library}" DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT Runtime)
+        if(_aos_steam_library)
+            install(FILES "${_aos_steam_library}" DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT Runtime)
+        else()
+            message(STATUS "No Steamworks runtime for ${_aos_steam_arch}; the Steam transport is unavailable")
+        endif()
 
         add_executable(aos_steam_p2p_smoke "${PROJECT_SOURCE_DIR}/tools/steam_p2p_smoke.cpp")
         target_link_libraries(aos_steam_p2p_smoke PRIVATE BattleSpades::SteamNet)

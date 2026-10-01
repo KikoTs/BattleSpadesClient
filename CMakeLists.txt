@@ -66,6 +66,24 @@ if(WIN32 AND MSVC)
         LIST_DIRECTORIES FALSE
         "${_aos_vc_root}/Redist/MSVC/${_aos_msvc_toolset_version}/${_aos_msvc_redist_arch}/Microsoft.VC*.CRT/*.dll"
     )
+    # Visual Studio 2022 numbers its redist folder apart from the toolset
+    # (Tools/MSVC/14.44.35207 vs Redist/MSVC/14.44.35112). The developer
+    # environment that selected this cl.exe names the matching folder; accept
+    # it only when it belongs to the same Visual Studio installation.
+    if(NOT _aos_compiler_crt AND DEFINED ENV{VCToolsRedistDir})
+        file(TO_CMAKE_PATH "$ENV{VCToolsRedistDir}" _aos_env_redist_dir)
+        get_filename_component(_aos_env_redist_dir "${_aos_env_redist_dir}" ABSOLUTE)
+        string(TOLOWER "${_aos_env_redist_dir}/" _aos_env_redist_prefix)
+        string(TOLOWER "${_aos_vc_root}/Redist/MSVC/" _aos_vc_redist_prefix)
+        string(FIND "${_aos_env_redist_prefix}" "${_aos_vc_redist_prefix}" _aos_redist_match)
+        if(_aos_redist_match EQUAL 0)
+            file(
+                GLOB _aos_compiler_crt
+                LIST_DIRECTORIES FALSE
+                "${_aos_env_redist_dir}/${_aos_msvc_redist_arch}/Microsoft.VC*.CRT/*.dll"
+            )
+        endif()
+    endif()
     if(NOT _aos_compiler_crt)
         message(
             FATAL_ERROR
