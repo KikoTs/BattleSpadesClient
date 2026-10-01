@@ -14,3 +14,7 @@
 *.ttf binary
 *.vox binary
 *.vxl binary
+
+# Fixtures whose exact bytes (including CRLF) are under test.
+tests/fixtures/steam/*_crlf.vdf -text
+tests/fixtures/zip/** -text
