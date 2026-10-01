@@ -49,18 +49,39 @@ inline constexpr std::array<JetpackProperties, 5U> retail_jetpack_properties{{
 inline constexpr std::uint8_t jetpack_activation_defer_frames{2U};
 inline constexpr std::uint8_t jetpack_exhaustion_tail_frames{3U};
 
-/** Resource policy negotiated with BattleSpades; native thrust stays retail. */
+/** Stock world.pyd literals: active Engineer air accel (0x10012DC8), canopy gravity (0x10012EFD). */
+inline constexpr float retail_engineer_flight_accel{0.1F};
+inline constexpr float retail_canopy_gravity_scale{0.05F};
+
+/**
+ * Resource policy negotiated with BattleSpades (InitialInfo BSFP trailer).
+ * Version 1 carries fuel policy only. Version 2 (BS/server/flight_profile.py
+ * BALANCED_FLIGHT_V2) also tunes two native-mover literals, so prediction and
+ * authority use the identical numbers: the active Engineer pack's air
+ * acceleration and the canopy gravity with its free-fall floor. A stock or v1
+ * server leaves them at the world.pyd values.
+ */
 struct FlightProfile final {
     std::array<double, 5U> drain{0.0, 75.0, 17.0, 18.0, 0.0};
     std::array<double, 5U> refill{0.0, 10.0, 9.0, 3.0, 100.0};
     bool grounded_refill_only{};
     double refill_idle_seconds{};
     bool descending_parachute_only{};
+    float engineer_flight_accel{retail_engineer_flight_accel};
+    float canopy_gravity_scale{retail_canopy_gravity_scale};
+    /** Below canopy terminal speed the body falls with ordinary gravity. */
+    bool canopy_free_fall_floor{};
 };
 
-/** Requested local balance, distinct from the recovered original resource table. */
+/**
+ * Requested local balance (BSFP v2), distinct from the recovered original
+ * tables: longer fuel, an Engineer that flies at its walking speed (0.25 vs
+ * stock 0.1) and a 5 blocks/s canopy (0.15625 vs stock 0.05) that a slow fall
+ * reaches at once. Offline and training sessions use it too.
+ */
 [[nodiscard]] constexpr FlightProfile balanced_flight_profile() noexcept {
-    return {{0.0, 30.0, 9.0, 7.5, 0.0}, {0.0, 20.0, 20.0, 20.0, 100.0}, true, 1.0, true};
+    return {{0.0, 30.0, 9.0, 7.5, 0.0}, {0.0, 20.0, 20.0, 20.0, 100.0}, true, 1.0, true,
+            0.25F, 0.15625F, true};
 }
 
 } // namespace battlespades::world

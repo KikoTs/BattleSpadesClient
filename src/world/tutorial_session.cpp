@@ -422,6 +422,7 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
       movement_class_{
           movement_config_for_class(config.initial_class_id, config.movement_speed_scale,
                                     config.fall_on_water_damage)} {
+    apply_flight_profile(movement_class_, config_.flight_profile);
     const auto& pistol = tool_definition(retail_pistol_tool_id);
     pistol_clip_ = static_cast<int>(pistol.clip_size);
     pistol_stock_ = static_cast<int>(pistol.reserve_ammo);
@@ -2849,6 +2850,7 @@ void TutorialWorldSession::debug_cycle_class(int direction) noexcept {
     movement_class_ = movement_config_for_class(classes[index].class_id,
                                                config_.movement_speed_scale,
                                                config_.fall_on_water_damage);
+    apply_flight_profile(movement_class_, config_.flight_profile);
     // The developer arsenal contains handheld tools only. Movement equipment
     // still comes from the selected class's original default equipment slot.
     std::vector<std::uint8_t> equipment;
@@ -4710,6 +4712,7 @@ void TutorialWorldSession::apply_server_class(std::uint8_t class_id,
     }
     movement_class_ = movement_config_for_class(class_id, config_.movement_speed_scale,
                                                 config_.fall_on_water_damage);
+    apply_flight_profile(movement_class_, config_.flight_profile);
 }
 
 } // namespace battlespades::world

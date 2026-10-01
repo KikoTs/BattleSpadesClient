@@ -210,7 +210,9 @@ private:
     /**
      * Character.shoot_primary_held: the shot that emptied the magazine had
      * the trigger down. end_reload stops a shell chain on it and resumes fire
-     * (set_primary_shoot(True)) once rounds are back.
+     * (set_primary_shoot(True)) once rounds are back. Releasing the trigger
+     * clears it (set_primary_shoot(False), character.pyd 0x10028290), so a
+     * tapped single-shot weapon never re-fires on its own after the reload.
      */
     bool shoot_primary_held_{};
     /** set_primary_shoot(True) from end_reload, honoured once cooldown allows. */
@@ -256,10 +258,24 @@ private:
     double block_sucker_shake_amplitude_{};
     double block_sucker_settle_remaining_{};
     double block_sucker_settle_start_amplitude_{};
-    /** A primary press during a clip_reload shell cycle (retail end_reload stop). */
-    bool reload_interrupt_latched_{};
-    /** Retail Character.reload_next_update, set by an ammo-crate restock. */
+    /**
+     * Retail Character.reload_next_update, set by the shot that empties a
+     * reloadable magazine (Weapon.use_primary) and by an ammo-crate restock.
+     * Character.update_alive starts the reload only once the weapon_shoot
+     * animation has stopped playing.
+     */
     bool reload_next_update_{};
+    /**
+     * Remaining time of the retail weapon_shoot animation (AnimWeaponShoot,
+     * started with the shot's shoot_interval). It gates reload_next_update.
+     */
+    double shoot_animation_remaining_{};
+    /**
+     * Weapon.use_primary cleared Character.shoot_primary after a refused
+     * Character.shoot (invalid deployable ghost): the held trigger stops
+     * repeating until it is pressed again.
+     */
+    bool primary_repeat_blocked_{};
     bool auto_switch_requested_{};
     double swap_lock_remaining_{};
     std::array<double, 3U> block_sucker_shake_{};

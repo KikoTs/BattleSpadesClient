@@ -17,6 +17,7 @@
 #include <string_view>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -259,8 +260,8 @@ void flight_profile_is_negotiated_bounded_and_separate_from_the_ticket() {
     const auto ticket = session.connected();
     expect(ticket.size() == 14U && ticket[2U] == std::byte{3U} &&
                ticket[6U] == std::byte{'k'} && ticket[9U] == std::byte{'B'} &&
-               ticket.back() == std::byte{1U},
-           "flight support must be explicit and outside the length-delimited auth key");
+               ticket.back() == std::byte{2U},
+           "flight support (BSCF v2) must be explicit and outside the length-delimited auth key");
     // Exact server.flight_profile.BALANCED_FLIGHT.encode() bytes.
     const std::array<unsigned char, 20U> trailer{
         0x42,0x53,0x46,0x50,0x01,0x03,0x40,0x00,0x80,0x07,
@@ -295,6 +296,41 @@ void flight_profile_is_negotiated_bounded_and_separate_from_the_ticket() {
     }
     packet.push_back(std::byte{});
     expect(!decode_protocol168_initial_info(packet, error), "extra profile bytes must not be ignored");
+    expect(profile.engineer_flight_accel == 0.1F && profile.canopy_gravity_scale == 0.05F &&
+               !profile.canopy_free_fall_floor,
+           "a v1 profile keeps the stock Engineer flight and canopy literals");
+
+    // Exact server.flight_profile.BALANCED_FLIGHT_V2.encode() bytes
+    // (tests/test_flight_balance.py::test_v2_profile_wire_golden).
+    const std::array<unsigned char, 24U> trailer_v2{
+        0x42,0x53,0x46,0x50,0x02,0x07,0x40,0x00,0x80,0x07,0x40,0x02,
+        0xE0,0x01,0x00,0x05,0x00,0x05,0x00,0x05,0x00,0x01,0xA0,0x00};
+    auto packet_v2 = initial_info();
+    for (const auto value : trailer_v2) packet_v2.push_back(static_cast<std::byte>(value));
+    const auto v2 = decode_protocol168_initial_info(packet_v2, error);
+    expect(v2 && v2->flight_profile.drain[3U] == 7.5 && v2->flight_profile.grounded_refill_only &&
+               v2->flight_profile.descending_parachute_only &&
+               v2->flight_profile.engineer_flight_accel == 0.25F &&
+               v2->flight_profile.canopy_gravity_scale == 0.15625F &&
+               v2->flight_profile.canopy_free_fall_floor,
+           "BSFP v2 must deliver the exact Engineer flight and canopy tuning");
+    const auto local = battlespades::world::balanced_flight_profile();
+    expect(local.engineer_flight_accel == v2->flight_profile.engineer_flight_accel &&
+               local.canopy_gravity_scale == v2->flight_profile.canopy_gravity_scale &&
+               local.canopy_free_fall_floor == v2->flight_profile.canopy_free_fall_floor,
+           "offline balance must equal the server's BALANCED_FLIGHT_V2");
+    for (std::size_t size{1U}; size < trailer_v2.size(); ++size) {
+        expect(!decode_protocol168_initial_info(std::span{packet_v2}.first(original_size + size), error),
+               "every truncated v2 profile must fail closed");
+    }
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, unsigned>, 6U>{{
+             {4U, 3U}, {5U, 8U}, {20U, 0U}, {21U, 0U}, {21U, 0x05U}, {23U, 0x05U}}}) {
+        auto invalid = packet_v2;
+        if (offset == 20U) invalid[original_size + 21U] = std::byte{0U};  // accel = 0
+        invalid[original_size + offset] = static_cast<std::byte>(value);
+        expect(!decode_protocol168_initial_info(invalid, error),
+               "unknown versions/flags and zero or >1 mover tunings must be rejected");
+    }
 }
 
 void initial_info_retains_bounded_loading_metadata() {

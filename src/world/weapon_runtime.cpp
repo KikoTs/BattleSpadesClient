@@ -9,20 +9,39 @@ namespace battlespades::world {
 namespace {
 
 [[nodiscard]] bool repeats_while_held(const WeaponDefinition& weapon) noexcept {
-    return weapon.mechanism == WeaponMechanism::melee ||
-           weapon.mechanism == WeaponMechanism::firearm_automatic ||
-           weapon.mechanism == WeaponMechanism::shotgun_automatic ||
-           weapon.mechanism == WeaponMechanism::deployed_machine_gun ||
-           weapon.mechanism == WeaponMechanism::paintbrush ||
-           // SnowBlowerWeapon inherits the launcher's wire shape but not its
-           // one-shot trigger policy. Retail calls use_primary continuously,
-           // bounded by SNOWBLOWER_SHOOT_INTERVAL, while LMB remains held.
-           ((weapon.tool_id == 29U || weapon.tool_id == 48U) &&
-            weapon.mechanism == WeaponMechanism::oriented_launcher);
+    // Character.update_weapon (character.pyd 0x10034FF0) calls
+    // use_weapon_primary (0x10034460) on EVERY update while
+    // Character.can_shoot_primary() -- i.e. while shoot_primary is set -- and
+    // that fires whenever Tool.can_shoot_primary (shoot_delay <= 0) allows.
+    // Retail has no semi-automatic flag: every Weapon subclass keeps firing
+    // at its shoot_interval while LMB stays down. Only an explicit
+    // `character.shoot_primary = False` stops it: the throwables and
+    // BlockTool/DisguiseTool, an emptied magazine (Weapon.use_primary) and a
+    // refused Character.shoot (an invalid deployable ghost).
+    switch (weapon.mechanism) {
+    case WeaponMechanism::melee:
+    case WeaponMechanism::firearm_semi:
+    case WeaponMechanism::firearm_automatic:
+    case WeaponMechanism::firearm_burst:
+    case WeaponMechanism::shotgun_semi:
+    case WeaponMechanism::shotgun_automatic:
+    case WeaponMechanism::deployed_machine_gun:
+    case WeaponMechanism::paintbrush:
+    // Every launcher (RPG, RPG2, Drillgun, Grenade/Mine Launcher, the Block
+    // Cannon and the UGC variants) is a plain Weapon.
+    case WeaponMechanism::oriented_launcher:
+    // C4/Dynamite/Landmine/MedPack/RadarStation/RocketTurret are Weapons:
+    // a valid ghost keeps placing at shoot_interval while held.
+    case WeaponMechanism::deployable:
+    case WeaponMechanism::c4:
+        return true;
+    default:
+        return false;
+    }
 }
 
-[[nodiscard]] bool automatically_reloads(WeaponMechanism mechanism) noexcept {
-    switch (mechanism) {
+[[nodiscard]] bool automatically_reloads(const WeaponDefinition& weapon) noexcept {
+    switch (weapon.mechanism) {
     case WeaponMechanism::firearm_semi:
     case WeaponMechanism::firearm_automatic:
     case WeaponMechanism::firearm_burst:
@@ -31,6 +50,15 @@ namespace {
     case WeaponMechanism::shotgun_automatic:
     case WeaponMechanism::deployed_machine_gun:
         return true;
+    case WeaponMechanism::oriented_launcher:
+        // RPGWeapon, RPG2Weapon, DrillgunWeapon, GrenadeLauncherWeapon and
+        // MineLauncherWeapon are plain Weapon subclasses with an
+        // (ammo, clip) tuple, so Weapon.use_primary schedules the same
+        // reload_next_update auto reload as any gun once the round is gone.
+        // SnowBlowerWeapon overrides is_reloadable (it spends blocks) and has
+        // no magazine tuple.
+        return weapon.retail.ammo.magazine_capacity.value_or(0U) != 0U &&
+               weapon.retail.ammo.reserve_capacity.value_or(0U) != 0U;
     default:
         return false;
     }
@@ -83,9 +111,22 @@ void WeaponRuntime::set_primary(bool held) noexcept {
     primary_held_ = held;
     primary_pressed_ = held;
     primary_released_ = !held;
+    if (held) {
+        // A new press is a new shoot_primary: it may try again.
+        primary_repeat_blocked_ = false;
+    }
     if (!held) {
         // Re-arm the empty cue: the next press is a new trigger pull.
         dry_fire_latched_ = false;
+        // Character.set_primary_shoot(False) (character.pyd 0x10028290):
+        // `self.shoot_primary = value; if not value: self.shoot_primary_held
+        // = False`, during a reload as well. Releasing the trigger after the
+        // round that emptied the magazine therefore cancels end_reload's
+        // set_primary_shoot(True): a tapped single-shot weapon reloads and
+        // waits for the next press instead of firing on its own.
+        shoot_primary_held_ = false;
+        resume_fire_pending_ = false;
+        primary_repeat_blocked_ = false;
     }
 }
 
@@ -148,6 +189,9 @@ WeaponStateResult WeaponRuntime::request_reload() noexcept {
     if (result == WeaponStateResult::accepted) {
         reload_remaining_ = weapon.retail.use.reload_time.value_or(
             weapon.reload_time);
+        // A reload that is already running owns the magazine; a pending
+        // automatic one would only be refused when it came due.
+        reload_next_update_ = false;
         emit(WeaponActionKind::reload_started, weapon);
     }
     return result;
@@ -176,7 +220,7 @@ bool WeaponRuntime::restock_from_ammo_crate() noexcept {
         const auto* ammo = replication_.ammo(*selected);
         const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(
             weapon.clip_size);
-        if (automatically_reloads(weapon.mechanism) && ammo != nullptr &&
+        if (automatically_reloads(weapon) && ammo != nullptr &&
             capacity != 0U && ammo->magazine == 0U && ammo->reserve > 0U) {
             reload_next_update_ = true;
         }
@@ -228,6 +272,7 @@ void WeaponRuntime::tick(double dt) noexcept {
     dt = std::min(dt, 0.25);
     cooldown_ = std::max(0.0, cooldown_ - dt);
     secondary_cooldown_ = std::max(0.0, secondary_cooldown_ - dt);
+    shoot_animation_remaining_ = std::max(0.0, shoot_animation_remaining_ - dt);
     block_sucker_reactivate_ = std::max(0.0, block_sucker_reactivate_ - dt);
     // Releasing RMB runs on_stop_secondary, clearing active_secondary. The
     // release is honoured here, after this frame's tool-switch input, so a
@@ -242,22 +287,26 @@ void WeaponRuntime::tick(double dt) noexcept {
     }
     const auto& weapon = weapon_catalog()[*selected];
 
-    if (reload_next_update_) {
+    // Character.update_alive (character.pyd 0x1007CAE0, character.pyx
+    // 1091-1094): `if self.reload_next_update and not
+    // self.weapon_object.animations['weapon_shoot'].is_playing():
+    // self.reload(); self.reload_next_update = False`. The automatic reload
+    // after the round that emptied the magazine therefore begins one
+    // shoot_interval after that round, not on the same frame.
+    if (reload_next_update_ && shoot_animation_remaining_ == 0.0) {
         reload_next_update_ = false;
         static_cast<void>(request_reload());
     }
 
     if (reload_remaining_ > 0.0) {
-        // Weapon.use_primary still refuses while reloading, but a press during
-        // a clip_reload cycle makes Character.end_reload stop the chain after
-        // the shell in progress (BS/server/player.py _reload_blocks_shot). The
-        // press is latched here and replayed once that shell is loaded.
-        if (primary_pressed_ && weapon.retail.ammo.clip_reload) {
-            reload_interrupt_latched_ = true;
-        }
+        // Weapon.use_primary refuses every action while Character.reloading.
+        // A press made during the reload only sets shoot_primary
+        // (set_primary_shoot, character.pyd 0x10028290: its reloading branch
+        // writes `reload_cancel`, which nothing ever reads). A TAP during a
+        // clip_reload shell is therefore forgotten on release; only a trigger
+        // still down when end_reload runs stops the chain.
         reload_remaining_ = std::max(0.0, reload_remaining_ - dt);
         if (reload_remaining_ == 0.0) {
-            const bool interrupted = std::exchange(reload_interrupt_latched_, false);
             if (replication_.finish_reload(*selected) == WeaponStateResult::accepted) {
                 // Rounds are back, so the weapon can click again the next time
                 // it runs dry -- even if the trigger was never released.
@@ -267,14 +316,16 @@ void WeaponRuntime::tick(double dt) noexcept {
                 const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(
                     weapon.clip_size);
                 // Character.end_reload (character.pyd 0x1001FC00) transfers
-                // exactly one round for clip_reload weapons, sends the finished
-                // edge, and invokes Character.reload again while another shell
-                // will fit -- unless `reloaded_cancel or shoot_primary_held or
-                // shoot_primary`: a new press, the empty-while-held latch, or
-                // a trigger that is simply HELD at the shell boundary all stop
-                // the chain after the shell in progress.
-                const bool fire_resume = std::exchange(shoot_primary_held_, false);
-                const bool stop_chain = interrupted || fire_resume || primary_held_;
+                // one round for clip_reload weapons, sends the finished edge,
+                // and invokes Character.reload again while another shell will
+                // fit -- unless `reloaded_cancel or shoot_primary_held or
+                // shoot_primary`. shoot_primary_held only survives while the
+                // trigger has stayed down since the emptying round (set_primary
+                // clears it on release) and shoot_primary is the trigger held
+                // now, so both reduce to "LMB is down at the shell boundary".
+                const bool fire_resume =
+                    std::exchange(shoot_primary_held_, false) || primary_held_;
+                const bool stop_chain = fire_resume;
                 const bool continue_shell_reload =
                     !stop_chain && weapon.retail.ammo.clip_reload && ammo != nullptr &&
                     ammo->magazine < capacity && ammo->reserve > 0U;
@@ -289,10 +340,6 @@ void WeaponRuntime::tick(double dt) noexcept {
                     reload_remaining_ = weapon.retail.use.reload_time.value_or(
                         weapon.reload_time);
                     emit(WeaponActionKind::reload_started, weapon);
-                } else if (interrupted && ammo != nullptr && ammo->magazine > 0U) {
-                    // Let the latched trigger pull through with the shells
-                    // loaded so far, on this same update.
-                    primary_pressed_ = true;
                 } else if (fire_resume && ammo != nullptr && ammo->magazine > 0U) {
                     // end_reload's set_primary_shoot(True), for magazine
                     // weapons as well: shoot_primary stays set, so the gun
@@ -304,7 +351,7 @@ void WeaponRuntime::tick(double dt) noexcept {
     }
     if (resume_fire_pending_ && reload_remaining_ == 0.0 && cooldown_ == 0.0) {
         resume_fire_pending_ = false;
-        primary_pressed_ = true;
+        primary_pressed_ = primary_pressed_ || primary_held_;
     }
 
     const auto& aim = weapon.retail.aim;
@@ -561,8 +608,8 @@ void WeaponRuntime::process_held(const WeaponDefinition& weapon,
         }
         return;
     }
-    if (primary_held_ && !primary_pressed_ && cooldown_ == 0.0 &&
-        repeats_while_held(weapon)) {
+    if (primary_held_ && !primary_pressed_ && !primary_repeat_blocked_ &&
+        cooldown_ == 0.0 && repeats_while_held(weapon)) {
         activate(weapon, false);
     }
     if (secondary_held_ && !secondary_pressed_ && secondary_cooldown_ == 0.0 &&
@@ -613,6 +660,9 @@ void WeaponRuntime::update_minigun_motor(const WeaponDefinition& weapon,
     if (input_enabled && primary_held_ && spin > threshold && cooldown_ == 0.0) {
         activate(weapon, false);
         cooldown_ = minigun_interval_;
+        // Weapon.use_primary starts weapon_shoot with the current (spun-up)
+        // shoot_interval.
+        shoot_animation_remaining_ = std::min(shoot_animation_remaining_, cooldown_);
     }
 }
 
@@ -630,9 +680,15 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         // Retail Weapon.shoot returns False when its ghost target is absent;
         // base weapon logic therefore leaves both stock and cooldown intact.
         // c4Weapon.py / dynamiteWeapon.py / landmineWeapon.py /
-        // medPackWeapon.py play BUILD_ERROR_SOUND on that refusal. Only a
-        // trigger press reports it, and it draws no seed.
-        if (secondary ? secondary_pressed_ : primary_pressed_) {
+        // medPackWeapon.py play BUILD_ERROR_SOUND on that refusal, and
+        // Weapon.use_primary then clears shoot_primary: a held trigger stops
+        // repeating until the next press. It draws no seed.
+        if (secondary) {
+            if (secondary_pressed_) {
+                report_placement_rejected(weapon, secondary);
+            }
+        } else if (!primary_repeat_blocked_) {
+            primary_repeat_blocked_ = true;
             report_placement_rejected(weapon, secondary);
         }
         return;
@@ -645,7 +701,7 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         // reserve but no round left in the magazine. This edge must precede
         // the dry-fire latch: otherwise holding an automatic after its last
         // round leaves it permanently empty until the player presses R.
-        if (automatically_reloads(weapon.mechanism) &&
+        if (automatically_reloads(weapon) &&
             request_reload() == WeaponStateResult::accepted) {
             burst_remaining_ = 0U;
             return;
@@ -747,6 +803,12 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
                             context_.deployed
                         ? named_value(weapon, "MG_DEPLOYED_SHOOT_INTERVAL", 0.1)
                         : weapon.fire_interval;
+        // Weapon.use_primary: animations['weapon_shoot'].start(shoot_interval)
+        // -- the same interval that just became the trigger cooldown. Block
+        // Sucker sets play_shoot_animation = False (and never reloads).
+        if (weapon.mechanism != WeaponMechanism::block_sucker) {
+            shoot_animation_remaining_ = cooldown_;
+        }
     }
     if (weapon.mechanism == WeaponMechanism::firearm_burst &&
         burst_remaining_ == 0U) {
@@ -755,8 +817,14 @@ void WeaponRuntime::activate(const WeaponDefinition& weapon,
         burst_remaining_ = static_cast<std::uint8_t>(burst_size - 1U);
         burst_cooldown_ = named_value(weapon, "A1935", 0.1);
     }
-    if (emptied_magazine && automatically_reloads(weapon.mechanism) &&
-        request_reload() == WeaponStateResult::accepted) {
+    if (emptied_magazine && automatically_reloads(weapon)) {
+        // Weapon.use_primary: `if not self.get_ammo()[0]: if
+        // self.is_reloadable(): ...; self.character.reload_next_update =
+        // True`. The reload itself waits for the weapon_shoot animation
+        // (tick()), so a single-shot weapon's earliest next round is
+        // shoot_interval + reload_time after this one -- the cadence the
+        // server's reload model also enforces.
+        reload_next_update_ = true;
         // An empty magazine terminates an incomplete burst. The new rounds
         // belong to the next trigger pull, never to a stale scheduled round.
         burst_remaining_ = 0U;
@@ -882,10 +950,11 @@ void WeaponRuntime::reset_selected_runtime() noexcept {
     reload_remaining_ = 0.0;
     burst_cooldown_ = 0.0;
     block_sucker_reactivate_ = 0.0;
-    reload_interrupt_latched_ = false;
     shoot_primary_held_ = false;
     resume_fire_pending_ = false;
     reload_next_update_ = false;
+    shoot_animation_remaining_ = 0.0;
+    primary_repeat_blocked_ = false;
     auto_switch_requested_ = false;
     swap_lock_remaining_ = 0.0;
     const auto selected = replication_.selected_tool();

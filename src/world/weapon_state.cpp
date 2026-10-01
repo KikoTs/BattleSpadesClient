@@ -5,6 +5,9 @@
 namespace battlespades::world {
 namespace {
 
+constexpr std::uint8_t ugc_rpg2_tool_id{46U};
+constexpr std::uint8_t ugc_drillgun_tool_id{47U};
+
 [[nodiscard]] ToolAmmoState initial_ammo(const WeaponDefinition& definition) noexcept {
     const auto& retail = definition.retail.ammo;
     if (retail.maximum_count.value_or(0U) != 0U) {
@@ -69,7 +72,12 @@ WeaponReplicationState::observe_shot(std::uint8_t tool_id) noexcept {
         if (state.magazine == 0U) {
             return WeaponStateResult::no_ammunition;
         }
-        --state.magazine;
+        // UGCRPG2Weapon (aoslib/weapons/ugcRPG2Weapon.py): use_an_ammo is
+        // `pass` and get_has_enough_ammo returns True -- the editor rocket
+        // never spends its loaded round, so it never reloads either.
+        if (tool_id != ugc_rpg2_tool_id) {
+            --state.magazine;
+        }
     }
     state.reloading = false;
     ++shot_sequence_;
@@ -117,6 +125,13 @@ WeaponReplicationState::finish_reload(std::uint8_t tool_id) noexcept {
     const auto moved = std::min(wanted, state.reserve);
     state.magazine = static_cast<std::uint16_t>(state.magazine + moved);
     state.reserve = static_cast<std::uint16_t>(state.reserve - moved);
+    if (tool_id == ugc_drillgun_tool_id) {
+        // UGCDrillgunWeapon.get_ammo_after_reload returns (1, 1): every
+        // reload leaves one round loaded and one in reserve, so the editor
+        // drill never runs dry.
+        state.magazine = 1U;
+        state.reserve = 1U;
+    }
     state.reloading = false;
     return WeaponStateResult::accepted;
 }

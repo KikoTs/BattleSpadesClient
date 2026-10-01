@@ -29,7 +29,28 @@ struct MovementClassConfig final {
     double falling_damage_max_distance{40.0};
     double falling_damage_max_damage{100.0};
     double fall_on_water_damage_multiplier{0.5};
+    /**
+     * Native-mover literals a negotiated BSFP v2 profile may tune (see
+     * flight_profile.hpp). Defaults are stock world.pyd: active Engineer air
+     * acceleration 0.1, canopy gravity 0.05, no canopy free-fall floor.
+     */
+    float engineer_flight_accel{0.1F};
+    float parachute_gravity_scale{0.05F};
+    bool parachute_free_fall_floor{};
 };
+
+struct FlightProfile;
+
+/** Copy a negotiated profile's mover tunings into one class configuration. */
+void apply_flight_profile(MovementClassConfig& config, const FlightProfile& profile) noexcept;
+
+/**
+ * One canopy frame of vertical speed, as step_player computes it: the stock
+ * `(vz + scale*dt*g) / (1 + dt)`, and with the free-fall floor never less than
+ * the ordinary free-fall step capped at the canopy terminal `scale * g`.
+ */
+[[nodiscard]] double canopy_vertical_step(double vz, double dt, double gravity,
+                                          const MovementClassConfig& config) noexcept;
 
 /**
  * Exact Battle Builder class profile (0..17), with server rule scaling.
