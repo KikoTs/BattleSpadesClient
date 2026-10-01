@@ -1,0 +1,585 @@
+name: Build client
+
+# Manual only: Actions tab -> "Build client" -> Run workflow, or
+#   gh workflow run build.yml -f targets=all -f run_tests=smoke
+# docs/BUILDING.md describes the inputs, outputs, caches and timings.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "all, or a comma list of: windows-x64, windows-arm64, linux-x64, linux-arm64, macos-arm64, macos-x64"
+        type: string
+        default: all
+      run_tests:
+        description: "smoke = payload checks + fast unit tests on every target; full = complete CTest on linux-x64 (smoke elsewhere)"
+        type: choice
+        options: [smoke, full]
+        default: smoke
+      publish:
+        description: "draft-release = attach every package to a DRAFT GitHub release (never published automatically)"
+        type: choice
+        options: [none, draft-release]
+        default: none
+      version:
+        description: "Release version for draft-release (e.g. 0.2.0-beta.1). Must equal the built version; empty = use the built version."
+        type: string
+        default: ""
+
+concurrency:
+  group: build-client-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # vcpkg pinned to vcpkg.json's builtin-baseline.
+  VCPKG_COMMIT: f14401ca0f2754347c3864da7488a9b955b4e47a
+  VCPKG_DISABLE_METRICS: "1"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+  DEBIAN_FRONTEND: noninteractive
+  # Tests and smokes never touch an audio device or a display.
+  ALSOFT_DRIVERS: "null"
+  SDL_AUDIODRIVER: dummy
+  SDL_VIDEODRIVER: dummy
+  # Fast unit tests that need neither retail assets nor a GPU, run on every
+  # target. They cover the paths that previously broke only on one platform.
+  SMOKE_TESTS: "^aos_(core|asset_install|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
+
+jobs:
+  plan:
+    name: Plan targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          all='[
+            {"target":"windows-x64",  "os":"windows-2025",     "family":"windows","arch":"x64",  "preset":"native-release",               "triplet":"x64-windows"},
+            {"target":"windows-arm64","os":"windows-11-arm",   "family":"windows","arch":"arm64","preset":"native-windows-arm64-release", "triplet":"arm64-windows"},
+            {"target":"linux-x64",    "os":"ubuntu-24.04",     "family":"linux",  "arch":"x64",  "preset":"native-linux-release",         "triplet":"x64-linux"},
+            {"target":"linux-arm64",  "os":"ubuntu-24.04-arm", "family":"linux",  "arch":"arm64","preset":"native-linux-release",         "triplet":"arm64-linux"},
+            {"target":"macos-arm64",  "os":"macos-15",         "family":"macos",  "arch":"arm64","preset":"native-macos-release",         "triplet":"arm64-osx"},
+            {"target":"macos-x64",    "os":"macos-15-intel",   "family":"macos",  "arch":"x64",  "preset":"native-macos-release",         "triplet":"x64-osx"}
+          ]'
+          requested="$(echo "${TARGETS:-all}" | tr -d ' ' | tr 'A-Z' 'a-z')"
+          if [[ -z "$requested" || "$requested" == "all" ]]; then
+            matrix="$(jq -c '{include: .}' <<<"$all")"
+          else
+            known="$(jq -r '.[].target' <<<"$all")"
+            IFS=',' read -ra wanted <<<"$requested"
+            for t in "${wanted[@]}"; do
+              grep -qx "$t" <<<"$known" || { echo "::error::Unknown target '$t'. Known: $(echo $known)"; exit 1; }
+            done
+            list="$(printf '%s\n' "${wanted[@]}" | jq -R . | jq -sc .)"
+            matrix="$(jq -c --argjson want "$list" '{include: [.[] | select(.target as $t | $want | index($t))]}' <<<"$all")"
+          fi
+          if [[ "$PUBLISH" == "draft-release" && "$(jq '.include | length' <<<"$matrix")" -ne 6 ]]; then
+            echo "::error::draft-release needs targets=all so the release is complete."
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          jq . <<<"$matrix"
+
+  build:
+    name: ${{ matrix.target }}
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      TARGET: ${{ matrix.target }}
+      PRESET: ${{ matrix.preset }}
+      TRIPLET: ${{ matrix.triplet }}
+      BUILD_DIR: out/build/${{ matrix.preset }}
+      INSTALL_DIR: out/install/${{ matrix.preset }}
+      FULL_TESTS: ${{ inputs.run_tests == 'full' && matrix.target == 'linux-x64' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up paths
+        run: |
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-archives" >> "$GITHUB_ENV"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-archives,readwrite" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-archives" "$RUNNER_TEMP/ccache"
+
+      # ---------------------------------------------------------------- tools
+      - name: Install Linux build dependencies
+        if: matrix.family == 'linux'
+        run: |
+          # Packages come from the runner image's Ubuntu 24.04 archive. vcpkg
+          # builds the libraries; these are the system headers SDL3 (X11,
+          # Wayland, IBus, EGL), libsystemd/libmount/alsa (autotools, meson,
+          # jinja2) and bgfx need, plus the build tools.
+          bash .github/ci/retry.sh sudo apt-get update -q
+          bash .github/ci/retry.sh sudo apt-get install -y -q --no-install-recommends \
+            build-essential ninja-build cmake pkg-config ccache file git curl zip unzip tar \
+            autoconf autoconf-archive automake libtool autopoint gettext bison flex gperf nasm \
+            python3 python3-venv python3-jinja2 linux-libc-dev \
+            libx11-dev libxft-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libibus-1.0-dev libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
+          if [[ "$(uname -m)" == "aarch64" ]]; then
+            # vcpkg publishes no arm64 Linux builds of its helper tools.
+            echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
+          fi
+          cmake --version | head -1; ninja --version; gcc --version | head -1
+          echo "COMPILER_ID=$(gcc --version | head -1)" >> "$GITHUB_ENV"
+
+      - name: Select the C++20-capable Apple toolchain
+        if: matrix.family == 'macos'
+        run: |
+          # libc++ in Xcode 16 still hides jthread/stop_token behind its
+          # experimental library; Xcode 26 ships libc++ 20 where they work.
+          xcode=/Applications/Xcode_26.3.app
+          if [[ ! -d "$xcode" ]]; then
+            echo "::error::$xcode is not on this image. Available:"; ls -d /Applications/Xcode_* ; exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+          c++ --version
+          # vcpkg's libsodium port uses autotools on macOS.
+          for f in cmake ninja autoconf automake libtool pkg-config ccache; do
+            brew list --formula "$f" >/dev/null 2>&1 || bash .github/ci/retry.sh brew install "$f"
+          done
+          echo "COMPILER_ID=$(xcodebuild -version | tr '\n' ' ') $(uname -m)" >> "$GITHUB_ENV"
+
+      - name: Identify the Windows compiler
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
+          "COMPILER_ID=MSVC $env:VCToolsVersion ${{ matrix.arch }}" >> $env:GITHUB_ENV
+
+      - name: Compute cache keys
+        id: keys
+        run: |
+          compiler="$(printf '%s' "$COMPILER_ID" | sha256sum 2>/dev/null || printf '%s' "$COMPILER_ID" | shasum -a 256)"
+          compiler="${compiler:0:12}"
+          echo "Compiler: $COMPILER_ID ($compiler)"
+          echo "vcpkg=vcpkg-v1-$TARGET-$compiler-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'cmake/vcpkg-ports/**') }}" >> "$GITHUB_OUTPUT"
+          echo "vcpkg_prefix=vcpkg-v1-$TARGET-$compiler-" >> "$GITHUB_OUTPUT"
+          echo "ccache=ccache-v1-$TARGET-$compiler-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "ccache_prefix=ccache-v1-$TARGET-$compiler-" >> "$GITHUB_OUTPUT"
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-archives
+          key: ${{ steps.keys.outputs.vcpkg }}
+          # A partial save from a failed run, then any older archive set:
+          # vcpkg rebuilds only packages whose ABI hash changed.
+          restore-keys: |
+            ${{ steps.keys.outputs.vcpkg }}
+            ${{ steps.keys.outputs.vcpkg_prefix }}
+
+      - name: Restore ccache
+        if: matrix.family != 'windows'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ${{ steps.keys.outputs.ccache }}
+          restore-keys: ${{ steps.keys.outputs.ccache_prefix }}
+
+      - name: Fetch pinned vcpkg
+        run: |
+          # Full commit graph without file contents (fast), then the exact
+          # baseline commit. vcpkg reads older port versions from this history.
+          bash .github/ci/retry.sh git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          bash .github/ci/retry.sh git -C "$VCPKG_ROOT" checkout --quiet "$VCPKG_COMMIT"
+          git -C "$VCPKG_ROOT" log -1 --format='vcpkg %H (%cs)'
+
+      - name: Bootstrap vcpkg (Linux/macOS)
+        if: matrix.family != 'windows'
+        run: bash .github/ci/retry.sh "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Bootstrap vcpkg (Windows)
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          Invoke-WithNetworkRetry {
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          }
+
+      # ---------------------------------------------------------- dependencies
+      - name: Install vcpkg dependencies (Linux/macOS)
+        id: vcpkg-unix
+        if: matrix.family != 'windows'
+        run: |
+          bash .github/ci/retry.sh "$VCPKG_ROOT/vcpkg" install \
+            --triplet="$TRIPLET" --host-triplet="$TRIPLET" \
+            --overlay-triplets=cmake/triplets \
+            --x-install-root=out/vcpkg_installed \
+            --clean-after-build
+
+      - name: Install vcpkg dependencies (Windows)
+        id: vcpkg-windows
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
+          Invoke-WithNetworkRetry {
+            & "$env:VCPKG_ROOT\vcpkg.exe" install "--triplet=$env:TRIPLET" "--host-triplet=$env:TRIPLET" `
+              --overlay-triplets=cmake/triplets --x-install-root=out/vcpkg_installed --clean-after-build
+          }
+
+      - name: Upload vcpkg build logs
+        if: failure() && (steps.vcpkg-unix.outcome == 'failure' || steps.vcpkg-windows.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vcpkg-logs-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Saved right after the dependencies, before our own sources compile: a
+      # new compiler warning must never cost the next run a vcpkg rebuild.
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true' && (steps.vcpkg-unix.outcome == 'success' || steps.vcpkg-windows.outcome == 'success')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-archives
+          key: ${{ steps.keys.outputs.vcpkg }}
+
+      - name: Save partial vcpkg binary cache
+        if: failure() && steps.vcpkg-cache.outputs.cache-hit != 'true' && (steps.vcpkg-unix.outcome == 'failure' || steps.vcpkg-windows.outcome == 'failure')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-archives
+          key: ${{ steps.keys.outputs.vcpkg }}-partial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # ----------------------------------------------------------------- build
+      - name: Fetch the server's maps beside the client
+        if: env.FULL_TESTS == 'true'
+        run: |
+          # The tutorial tests replay movement on the server's Training map and
+          # look for the server repository beside this one.
+          bash .github/ci/retry.sh git clone --depth 1 --filter=blob:none --sparse https://github.com/KikoTs/BattleSpades.git ../BattleSpades
+          git -C ../BattleSpades sparse-checkout set maps
+          test -f ../BattleSpades/maps/Training.vxl
+
+      - name: Configure and build (Linux/macOS)
+        id: build-unix
+        if: matrix.family != 'windows'
+        run: |
+          export CCACHE_BASEDIR="$GITHUB_WORKSPACE" CCACHE_NOHASHDIR=1 CCACHE_MAXSIZE=500M CCACHE_COMPRESS=1
+          ccache --zero-stats >/dev/null
+          bash .github/ci/retry.sh cmake --fresh --preset "$PRESET" \
+            -DVCPKG_TARGET_TRIPLET="$TRIPLET" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          cmake --build --preset "$PRESET" --parallel
+          ccache --show-stats | head -20 || true
+
+      - name: Build the x86 Steam bridge
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          ./scripts/build-steam-bridge.ps1 -Configuration Release
+
+      - name: Configure and build (Windows)
+        id: build-windows
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
+          Invoke-WithNetworkRetry {
+            cmake --fresh --preset $env:PRESET "-DVCPKG_TARGET_TRIPLET=$env:TRIPLET"
+            if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
+          }
+          cmake --build --preset $env:PRESET --parallel
+          if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
+
+      - name: Save ccache
+        if: always() && matrix.family != 'windows' && steps.build-unix.outcome != 'skipped'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ${{ steps.keys.outputs.ccache }}
+
+      - name: Install
+        run: |
+          cmake --install "$BUILD_DIR" --config Release --prefix "$INSTALL_DIR"
+          version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$INSTALL_DIR/bin/battlespades-version.json" | head -1)"
+          [[ -n "$version" ]] || { echo "::error::No version in battlespades-version.json"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "PACKAGE_BASE=BattleSpadesClient-$version-$TARGET" >> "$GITHUB_ENV"
+          echo "Built BattleSpadesClient $version for $TARGET"
+
+      # ----------------------------------------------------------------- tests
+      - name: Verify installed payload
+        run: |
+          bin="$INSTALL_DIR/bin"
+          exe=""; [[ "$RUNNER_OS" == "Windows" ]] && exe=".exe"
+          test -f "$bin/BattleSpadesClient$exe"
+          test -f "$bin/BattleSpadesAssetInstaller$exe"
+          test -f "$bin/asset-manifest.json"
+          test -f "$bin/battlespades-version.json"
+          test -f "$bin/LICENSE"
+          test ! -e "$bin/assets/original"   # retail assets never ship
+          test -d "$bin/shaders"
+          test -f "$bin/assets/client/fonts/NotoSansJP-SemiBold.ttf"
+          test -f "$bin/localization/ru.json"
+          test -f "$bin/localization/ja.json"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            for f in BattleSpadesLauncher.exe BattleSpadesSetupHelper.exe BattleSpadesSteamBridge32.exe aos.exe; do
+              test -f "$bin/$f"
+            done
+          else
+            test -x "$bin/BattleSpadesClient"
+            test -x "$bin/BattleSpadesAssetInstaller"
+            file "$bin/BattleSpadesClient"
+            case "$TARGET" in
+              linux-x64)   file "$bin/BattleSpadesClient" | grep -q 'x86-64' ;;
+              linux-arm64) file "$bin/BattleSpadesClient" | grep -q 'aarch64' ;;
+              macos-x64)   file "$bin/BattleSpadesClient" | grep -q 'x86_64' ;;
+              macos-arm64) file "$bin/BattleSpadesClient" | grep -q 'arm64' ;;
+            esac
+          fi
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            if ldd "$bin/BattleSpadesClient" | grep 'not found'; then
+              echo "::error::Unresolved shared libraries"; exit 1
+            fi
+          fi
+
+      - name: Run the client and asset installer (Linux/macOS)
+        if: matrix.family != 'windows'
+        run: |
+          bin="$INSTALL_DIR/bin"
+          "$bin/BattleSpadesClient" --version
+          "$bin/BattleSpadesClient" --headless --ticks 1
+          "$bin/BattleSpadesAssetInstaller" --help
+
+      - name: Run the client and asset installer (Windows)
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          $bin = Join-Path $env:INSTALL_DIR 'bin'
+          foreach ($exe in 'BattleSpadesClient.exe', 'BattleSpadesAssetInstaller.exe', 'BattleSpadesLauncher.exe') {
+            Assert-PeMachine (Join-Path $bin $exe) '${{ matrix.arch }}'
+          }
+          Assert-PeMachine (Join-Path $bin 'BattleSpadesSteamBridge32.exe') 'x86'
+          # Release executables use the GUI subsystem, so wait explicitly.
+          foreach ($run in @(
+              @{ Exe = 'BattleSpadesClient.exe'; Args = @('--version') },
+              @{ Exe = 'BattleSpadesClient.exe'; Args = @('--headless', '--ticks', '1') },
+              @{ Exe = 'BattleSpadesAssetInstaller.exe'; Args = @('--help') })) {
+            $p = Start-Process -FilePath (Join-Path $bin $run.Exe) -ArgumentList $run.Args `
+              -WorkingDirectory $bin -NoNewWindow -Wait -PassThru `
+              -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt"
+            Get-Content "$env:RUNNER_TEMP\out.txt", "$env:RUNNER_TEMP\err.txt" -ErrorAction SilentlyContinue
+            if ($p.ExitCode -ne 0) { throw "$($run.Exe) $($run.Args -join ' ') exited $($p.ExitCode)" }
+            Write-Host "OK: $($run.Exe) $($run.Args -join ' ')"
+          }
+
+      - name: Smoke unit tests
+        if: env.FULL_TESTS != 'true'
+        run: |
+          ctest --test-dir "$BUILD_DIR" -C Release -R "$SMOKE_TESTS" \
+            --output-on-failure --timeout 300 --no-tests=error
+
+      - name: Full test suite
+        if: env.FULL_TESTS == 'true'
+        run: |
+          # Tests listed in .github/ci/full-tests-skip.txt need files a runner
+          # never has (retail assets, a GPU); the file says why for each.
+          skip="$(grep -Ev '^\s*(#|$)' .github/ci/full-tests-skip.txt | awk '{print $1}' | paste -sd'|' -)"
+          args=()
+          [[ -n "$skip" ]] && args=(-E "^(${skip})$")
+          echo "Skipping: ${skip:-nothing}"
+          ctest --test-dir "$BUILD_DIR" -C Release "${args[@]}" \
+            --output-on-failure --timeout 600 --no-tests=error \
+            --output-junit "$GITHUB_WORKSPACE/out/ctest-junit.xml"
+
+      - name: Upload test report
+        if: failure() && env.FULL_TESTS == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-report-${{ matrix.target }}
+          path: out/ctest-junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # ------------------------------------------------------------- packaging
+      - name: Package (Linux)
+        if: matrix.family == 'linux'
+        run: |
+          mkdir -p out/package out/dist
+          cp -a "$INSTALL_DIR/bin" "out/package/$PACKAGE_BASE"
+          # tar keeps the executable bits that upload-artifact would drop.
+          tar -C out/package -czf "out/dist/$PACKAGE_BASE.tar.gz" "$PACKAGE_BASE"
+          mkdir -p out/package-smoke
+          tar -C out/package-smoke -xzf "out/dist/$PACKAGE_BASE.tar.gz"
+          test -x "out/package-smoke/$PACKAGE_BASE/BattleSpadesClient"
+          "out/package-smoke/$PACKAGE_BASE/BattleSpadesClient" --headless --ticks 1
+
+      - name: Package (macOS)
+        if: matrix.family == 'macos'
+        run: |
+          app="out/package/BattleSpadesClient.app"
+          macos="$app/Contents/MacOS"
+          mkdir -p "$macos" out/dist
+          cp -R "$INSTALL_DIR/bin/." "$macos/"
+          cp packaging/macos/Info.plist "$app/Contents/Info.plist"
+          plutil -replace CFBundleShortVersionString -string "${VERSION%%-*}" "$app/Contents/Info.plist"
+          chmod 755 "$macos/BattleSpadesClient" "$macos/BattleSpadesAssetInstaller"
+          # Unsigned: Gatekeeper asks once (right-click -> Open).
+          tar -C out/package -czf "out/dist/$PACKAGE_BASE.tar.gz" BattleSpadesClient.app
+          mkdir -p out/package-smoke
+          tar -C out/package-smoke -xzf "out/dist/$PACKAGE_BASE.tar.gz"
+          extracted="out/package-smoke/BattleSpadesClient.app/Contents/MacOS"
+          test -x "$extracted/BattleSpadesClient"
+          test -x "$extracted/BattleSpadesAssetInstaller"
+          "$extracted/BattleSpadesClient" --headless --ticks 1
+
+      - name: Package (Windows)
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          $dist = New-Item -ItemType Directory -Force out/dist
+          $stage = New-Item -ItemType Directory -Force out/package
+          Copy-Item -Recurse (Join-Path $env:INSTALL_DIR 'bin') (Join-Path $stage $env:PACKAGE_BASE)
+          Push-Location $stage
+          try {
+            & "$env:SystemRoot\System32\tar.exe" -a -c -f "$env:PACKAGE_BASE.zip" $env:PACKAGE_BASE
+            if ($LASTEXITCODE -ne 0) { throw 'zip failed' }
+          } finally { Pop-Location }
+          Move-Item (Join-Path $stage "$env:PACKAGE_BASE.zip") $dist
+
+      - name: Build the Windows installer and update components
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          # No server bundle on a runner: the server is an optional
+          # on-demand component (docs/INSTALLER_AND_UPDATER.md).
+          Invoke-WithNetworkRetry {
+            ./installer/build-installer.ps1 -BuildDir $env:BUILD_DIR -SkipServer -OutputDir out/installer
+          }
+          Copy-Item out/installer/BattleSpades-Setup-*.exe out/dist/
+          Copy-Item out/installer/BattleSpades-client-*-windows-x64.zip out/dist/
+          Copy-Item out/installer/BattleSpades-assets-*.zip out/dist/
+
+      - name: Write checksums
+        run: |
+          cd out/dist
+          echo "$VERSION" > VERSION
+          if command -v sha256sum >/dev/null; then sum=(sha256sum); else sum=(shasum -a 256); fi
+          shopt -s nullglob
+          files=(*.zip *.tar.gz *.exe)
+          ((${#files[@]})) || { echo "::error::No packages in out/dist"; exit 1; }
+          "${sum[@]}" -- "${files[@]}" > "SHA256SUMS-$TARGET"
+          cat "SHA256SUMS-$TARGET"
+          ls -la
+
+      - name: Upload package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: BattleSpadesClient-${{ matrix.target }}
+          path: out/dist/
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    name: Draft release
+    needs: build
+    if: inputs.publish == 'draft-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: BattleSpadesClient-*
+          path: out/artifacts
+
+      - name: Collect files and checksums
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p out/release
+          versions="$(cat out/artifacts/*/VERSION | sort -u)"
+          if [[ "$(wc -l <<<"$versions")" -ne 1 ]]; then
+            echo "::error::Targets built different versions: $versions"; exit 1
+          fi
+          if [[ -n "$REQUESTED_VERSION" && "$REQUESTED_VERSION" != "$versions" ]]; then
+            echo "::error::Requested version $REQUESTED_VERSION but the source builds $versions (CMakeLists.txt AOS_RELEASE_VERSION)."
+            exit 1
+          fi
+          echo "VERSION=$versions" >> "$GITHUB_ENV"
+          find out/artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.exe' \) -exec cp {} out/release/ \;
+          cd out/release
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Draft update manifest (GitHub mirror only)
+        shell: pwsh
+        run: |
+          # Kiril uploads to R2 and regenerates stable.json with both mirrors
+          # (docs/INSTALLER_AND_UPDATER.md); this draft lists only GitHub.
+          $client = Get-ChildItem out/release/BattleSpades-client-*-windows-x64.zip | Select-Object -First 1
+          $assets = Get-ChildItem out/release/BattleSpades-assets-*.zip | Select-Object -First 1
+          New-Item -ItemType Directory -Force out/manifest | Out-Null
+          ./installer/make-update-manifest.ps1 -ClientPackage $client.FullName -AssetsPackage $assets.FullName `
+            -MirrorBaseUrls 'https://github.com/${{ github.repository }}/releases/download/{tag}' `
+            -Protocol 168 -Output out/manifest/stable.json
+          Get-Content out/manifest/stable.json
+
+      - name: Upload draft update manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: update-manifest-draft
+          path: out/manifest/stable.json
+          retention-days: 14
+
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" --json isDraft --jq .isDraft > out/is-draft 2>/dev/null; then
+            if [[ "$(cat out/is-draft)" != "true" ]]; then
+              echo "::error::Release $tag is already published; refusing to modify it."; exit 1
+            fi
+            echo "Updating existing draft $tag"
+            gh release upload "$tag" out/release/* --clobber
+          else
+            gh release create "$tag" out/release/* --draft --target "$GITHUB_SHA" \
+              --title "BattleSpades $VERSION" \
+              --notes "Draft built by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} from ${GITHUB_SHA}. Unsigned builds; verify with SHA256SUMS."
+          fi
+          gh release view "$tag" --json url,isDraft,assets --jq '{url, isDraft, assets: [.assets[].name]}'

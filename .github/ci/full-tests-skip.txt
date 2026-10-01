@@ -1,0 +1,5 @@
+# CTest names excluded from `run_tests: full` (linux-x64) in
+# .github/workflows/build.yml. One test per line, followed by the reason.
+# Only tests that need something a CI runner can never have belong here:
+# the owned retail game files (assets/original, never on a runner) or a GPU.
+# Everything else must pass on CI.
