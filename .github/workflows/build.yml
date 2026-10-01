@@ -118,6 +118,10 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-archives" >> "$GITHUB_ENV"
           echo "VCPKG_BINARY_SOURCES=clear;files,$RUNNER_TEMP/vcpkg-archives,readwrite" >> "$GITHUB_ENV"
           echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "CCACHE_NOHASHDIR=1" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPRESS=1" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/vcpkg-archives" "$RUNNER_TEMP/ccache"
 
       # ---------------------------------------------------------------- tools
@@ -181,6 +185,30 @@ jobs:
           Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
           "COMPILER_ID=MSVC $env:VCToolsVersion ${{ matrix.arch }}" >> $env:GITHUB_ENV
 
+      - name: Install ccache (Windows)
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          # Release builds carry no /Zi debug info, so ccache can cache cl.exe.
+          $version = '4.14.1'
+          $flavor, $sha = if ('${{ matrix.arch }}' -eq 'arm64') {
+            'aarch64', '28121851c8c2c8b76214cfc5e119d769fbc39e93d27862e4e3a556905ebd23b2'
+          } else {
+            'x86_64', '6219f3865ca59aec41ee4b678df171d5d35855ecb2b6dbbbd20690b3a68af7b4'
+          }
+          $zip = Join-Path $env:RUNNER_TEMP 'ccache.zip'
+          Invoke-WithNetworkRetry {
+            Invoke-WebRequest -UseBasicParsing -OutFile $zip `
+              -Uri "https://github.com/ccache/ccache/releases/download/v$version/ccache-$version-windows-$flavor.zip"
+          }
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne $sha) { throw "ccache download SHA-256 mismatch: $actual" }
+          Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP -Force
+          $dir = Join-Path $env:RUNNER_TEMP "ccache-$version-windows-$flavor"
+          & (Join-Path $dir 'ccache.exe') --version | Select-Object -First 1
+          $dir >> $env:GITHUB_PATH
+
       - name: Compute cache keys
         id: keys
         run: |
@@ -205,7 +233,6 @@ jobs:
             ${{ steps.keys.outputs.vcpkg_prefix }}
 
       - name: Restore ccache
-        if: matrix.family != 'windows'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
@@ -296,12 +323,12 @@ jobs:
         id: build-unix
         if: matrix.family != 'windows'
         run: |
-          export CCACHE_BASEDIR="$GITHUB_WORKSPACE" CCACHE_NOHASHDIR=1 CCACHE_MAXSIZE=500M CCACHE_COMPRESS=1
           ccache --zero-stats >/dev/null
           bash .github/ci/retry.sh cmake --fresh --preset "$PRESET" \
             -DVCPKG_TARGET_TRIPLET="$TRIPLET" \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          cmake --build --preset "$PRESET" --parallel
+          # -k 0: report every compile error in one run, not just the first.
+          cmake --build --preset "$PRESET" --parallel -- -k 0
           ccache --show-stats | head -20 || true
 
       - name: Build the x86 Steam bridge
@@ -318,14 +345,17 @@ jobs:
           . .github/ci/ci.ps1
           Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
           Invoke-WithNetworkRetry {
-            cmake --fresh --preset $env:PRESET "-DVCPKG_TARGET_TRIPLET=$env:TRIPLET"
+            cmake --fresh --preset $env:PRESET "-DVCPKG_TARGET_TRIPLET=$env:TRIPLET" `
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
             if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
           }
-          cmake --build --preset $env:PRESET --parallel
+          ccache --zero-stats | Out-Null
+          cmake --build --preset $env:PRESET --parallel -- -k 0
           if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
+          ccache --show-stats
 
       - name: Save ccache
-        if: always() && matrix.family != 'windows' && steps.build-unix.outcome != 'skipped'
+        if: always() && (steps.build-unix.outcome == 'success' || steps.build-unix.outcome == 'failure' || steps.build-windows.outcome == 'success' || steps.build-windows.outcome == 'failure')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
