@@ -45,6 +45,7 @@ EncodedWeaponAction encode_weapon_action(
     case WeaponActionKind::prefab_rotate:
     case WeaponActionKind::color_pick:
     case WeaponActionKind::throwable_primed:
+    case WeaponActionKind::placement_rejected:
         result.local_only = true;
         return result;
 
