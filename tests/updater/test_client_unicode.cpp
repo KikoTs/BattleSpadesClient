@@ -106,7 +106,11 @@ void test_local_server(const fs::path& root) {
 
     // The client finds a server bundle installed below a Cyrillic folder.
     const auto install = root / utf8_path("Игры") / "BattleSpades";
+#if defined(_WIN32)
     write_file(install / "server" / "BattleSpades.exe", "server");
+#else
+    write_file(install / "server" / "BattleSpades", "server");
+#endif
     fs::create_directories(install / "server" / "_internal");
     fs::create_directories(install / "server" / "maps");
     fs::create_directories(install / utf8_path("Папка игрока"));
