@@ -292,8 +292,14 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     find_package(nlohmann_json CONFIG REQUIRED)
     find_package(unofficial-sodium CONFIG REQUIRED)
     # Use the native OpenAL framework on macOS. Other platforms receive
-    # OpenAL Soft from vcpkg, and CMake's module exposes the same target.
-    find_package(OpenAL REQUIRED)
+    # OpenAL Soft from vcpkg; its CMake package (same OpenAL::OpenAL target)
+    # carries the fmt dependency a static Linux build must link, which
+    # CMake's FindOpenAL module does not know about.
+    if(APPLE)
+        find_package(OpenAL REQUIRED)
+    else()
+        find_package(OpenAL CONFIG REQUIRED)
+    endif()
     find_package(Stb REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(unofficial-enet CONFIG REQUIRED)
