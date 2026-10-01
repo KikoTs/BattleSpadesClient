@@ -3,3 +3,29 @@
 # Only tests that need something a CI runner can never have belong here:
 # the owned retail game files (assets/original, never on a runner) or a GPU.
 # Everything else must pass on CI.
+
+# Retail models (assets/original/kv6)
+aos_class_catalog_tests          character body models
+aos_entity_catalog_tests         every entity model must load
+aos_model_quality_tests          soldier body model
+aos_particle_system_tests        grave model fixture
+aos_weapon_models_tests          tool and weapon models
+aos_disguise_models_tests        disguise models
+aos_ads_sight_pin_tests          weapon models (semi.kv6)
+aos_inventory_tests              weapon world fit uses the retail LMG model
+# Retail sounds (assets/original/wav, ogg)
+aos_entity_attachment_tests      sticky and riot-shield cues
+aos_jetpack_audio_tests          jetpack cues
+aos_weapon_audio_map_tests       explosion samples
+aos_server_audio_catalog_tests   the original sound tree
+# Retail maps, textures, fonts and UI images
+aos_map_catalog_tests            shipped map set
+aos_map_atmosphere_tests         shipped skydome set
+aos_skydome_scroll_tests         skydome gradient textures
+aos_texture_quality_tests        particle atlases in each texture root
+aos_weapon_catalog_tests         generated weapon asset paths
+aos_text_tests                   retail Spades and UI fonts
+aos_frontend_tests               main menu images
+aos_quick_play_frontend_tests    Quick Play images
+aos_ugc_editor_menu_tests        UGC editor images
+aos_sdl_window_tests             retail cursor image
