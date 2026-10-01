@@ -329,12 +329,12 @@ DrawList InventoryMenuModel::build() const {
         "COLLECTION", "SUPPLY CRATES", "HISTORY", "SKIN PACKS"};
     for (std::size_t i = 0U; i < sections.size(); ++i) {
         fill(list,
-             {60 + 170.0 * i, 185, 168, 30},
+             {60 + 170.0 * static_cast<double>(i), 185, 168, 30},
              i == static_cast<std::size_t>(section) ? ColorRgba8{162U, 58U, 30U, 255U}
                                                     : ColorRgba8{57U, 53U, 44U, 255U});
         label(list,
               sections[i],
-              {60 + 170.0 * i, 185, 168, 30},
+              {60 + 170.0 * static_cast<double>(i), 185, 168, 30},
               17.0,
               cream,
               true,
@@ -393,7 +393,7 @@ DrawList InventoryMenuModel::build() const {
                                "Creator guide and official pages are available on AoSPlay.",
                                "Pack installation is in design; unreviewed packs are not loaded."};
         for (std::size_t i = 0U; i < lines.size(); ++i)
-            label(list, lines[i], {80, 290 + 31.0 * i, 640, 27}, 13.0);
+            label(list, lines[i], {80, 290 + 31.0 * static_cast<double>(i), 640, 27}, 13.0);
         button(list, {515, 500, 225, 48}, "CREATOR PAGES");
         return list;
     }

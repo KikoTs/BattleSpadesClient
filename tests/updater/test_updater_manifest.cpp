@@ -9,6 +9,8 @@
 #include "battlespades/updater/update_plan.hpp"
 #include "battlespades/updater/updater_config.hpp"
 
+#include <algorithm>
+
 namespace up = battlespades::updater;
 using updater_test::expect;
 using updater_test::replace_all;

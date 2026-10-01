@@ -524,7 +524,7 @@ constexpr std::array<std::pair<float, float>, 10U> elevation_to_v{{
     // one row above -- a twelvefold cliff, and exactly the row an
     // identity test would have accepted as sky.
     std::vector<float> sorted = levels;
-    std::ranges::nth_element(sorted, sorted.begin() + (sorted.size() / 2U));
+    std::ranges::nth_element(sorted, sorted.begin() + static_cast<std::ptrdiff_t>(sorted.size() / 2U));
     const float threshold = sorted[sorted.size() / 2U] * 0.2F;
 
     auto row = last;

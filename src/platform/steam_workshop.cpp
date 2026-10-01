@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -47,6 +49,18 @@ struct SteamWorkshop::Api final {
 namespace {
 
 using Api = SteamWorkshop::Api;
+
+/// Seconds since the Unix epoch of a file time. libc++ has no clock_cast for
+/// file_clock yet, so there it is mapped through both clocks' current time.
+[[nodiscard]] long long file_time_seconds(std::filesystem::file_time_type written) {
+#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907L
+    const auto system = std::chrono::clock_cast<std::chrono::system_clock>(written);
+#else
+    const auto system = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        written - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+#endif
+    return std::chrono::duration_cast<std::chrono::seconds>(system.time_since_epoch()).count();
+}
 
 template <typename Function>
 void bind(const SteamNetworkingRuntime& runtime, Function& target,
@@ -459,9 +473,7 @@ struct WorkshopSyncService::Impl final {
             if (!std::filesystem::is_regular_file(path, code) || code) return false;
             const auto written = std::filesystem::last_write_time(path, code);
             if (code) return false;
-            const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch());
-            if (seconds.count() < static_cast<long long>(time_updated)) return false;
+            if (file_time_seconds(written) < static_cast<long long>(time_updated)) return false;
         }
         return true;
     }

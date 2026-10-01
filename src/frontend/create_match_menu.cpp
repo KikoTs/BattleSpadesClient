@@ -64,7 +64,7 @@ constexpr std::array<std::string_view, 12U> five_to_sixty_by_five{
     "5", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60"};
 constexpr std::array<std::string_view, 11U> ten_to_sixty_by_five{
     "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60"};
-constexpr std::array<std::string_view, 10U> one_to_ten{
+constexpr std::array<std::string_view, 10U> one_to_ten_choices{
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
 constexpr std::array<std::string_view, 6U> ten_to_sixty_by_ten{"10", "20", "30", "40", "50", "60"};
 constexpr std::array<std::string_view, 17U> score_targets{
@@ -72,9 +72,9 @@ constexpr std::array<std::string_view, 17U> score_targets{
     "70", "80", "90", "100", "200"};
 constexpr std::array<std::string_view, 11U> occupation_score_targets{
     "OFF", "3", "6", "9", "15", "30", "45", "60", "75", "90", "150"};
-constexpr std::array<std::string_view, 4U> two_to_five{"2", "3", "4", "5"};
-constexpr std::array<std::string_view, 5U> one_to_five{"1", "2", "3", "4", "5"};
-constexpr std::array<std::string_view, 3U> one_to_three{"1", "2", "3"};
+constexpr std::array<std::string_view, 4U> two_to_five_choices{"2", "3", "4", "5"};
+constexpr std::array<std::string_view, 5U> one_to_five_choices{"1", "2", "3", "4", "5"};
+constexpr std::array<std::string_view, 3U> one_to_three_choices{"1", "2", "3"};
 constexpr std::array<std::string_view, 4U> character_speeds{"50%", "100%", "150%", "200%"};
 constexpr std::array<std::string_view, 3U> percentages{"50%", "100%", "200%"};
 constexpr std::array<std::string_view, 12U> large_intervals{
@@ -82,24 +82,24 @@ constexpr std::array<std::string_view, 12U> large_intervals{
 constexpr std::array<std::string_view, 13U> build_lengths{
     "OFF", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100", "110", "120"};
 constexpr std::array<std::string_view, 4U> bomb_fuses{"5", "10", "15", "20"};
-constexpr std::array<std::string_view, 4U> spawn_protection{"OFF", "1", "2", "3"};
+constexpr std::array<std::string_view, 4U> spawn_protection_choices{"OFF", "1", "2", "3"};
 
-constexpr std::array<std::string_view, 1U> soldier{"RULE_ENABLE_CLASS_COMMANDO"};
-constexpr std::array<std::string_view, 1U> scout{"RULE_ENABLE_CLASS_MARKSMAN"};
-constexpr std::array<std::string_view, 1U> miner{"RULE_ENABLE_CLASS_MINER"};
-constexpr std::array<std::string_view, 1U> rocketeer{"RULE_ENABLE_CLASS_ROCKETEER"};
-constexpr std::array<std::string_view, 1U> engineer{"RULE_ENABLE_CLASS_ENGINEER"};
-constexpr std::array<std::string_view, 1U> specialist{"RULE_ENABLE_CLASS_SPECIALIST"};
-constexpr std::array<std::string_view, 1U> medic{"RULE_ENABLE_CLASS_MEDIC"};
-constexpr std::array<std::string_view, 2U> soldier_rocketeer{
+constexpr std::array<std::string_view, 1U> soldier_rules{"RULE_ENABLE_CLASS_COMMANDO"};
+constexpr std::array<std::string_view, 1U> scout_rules{"RULE_ENABLE_CLASS_MARKSMAN"};
+constexpr std::array<std::string_view, 1U> miner_rules{"RULE_ENABLE_CLASS_MINER"};
+constexpr std::array<std::string_view, 1U> rocketeer_rules{"RULE_ENABLE_CLASS_ROCKETEER"};
+constexpr std::array<std::string_view, 1U> engineer_rules{"RULE_ENABLE_CLASS_ENGINEER"};
+constexpr std::array<std::string_view, 1U> specialist_rules{"RULE_ENABLE_CLASS_SPECIALIST"};
+constexpr std::array<std::string_view, 1U> medic_rules{"RULE_ENABLE_CLASS_MEDIC"};
+constexpr std::array<std::string_view, 2U> soldier_rocketeer_rules{
     "RULE_ENABLE_CLASS_COMMANDO", "RULE_ENABLE_CLASS_ROCKETEER"};
-constexpr std::array<std::string_view, 2U> soldier_scout{
+constexpr std::array<std::string_view, 2U> soldier_scout_rules{
     "RULE_ENABLE_CLASS_COMMANDO", "RULE_ENABLE_CLASS_MARKSMAN"};
-constexpr std::array<std::string_view, 2U> engineer_rocketeer{
+constexpr std::array<std::string_view, 2U> engineer_rocketeer_rules{
     "RULE_ENABLE_CLASS_ENGINEER", "RULE_ENABLE_CLASS_ROCKETEER"};
-constexpr std::array<std::string_view, 3U> engineer_rocketeer_scout{
+constexpr std::array<std::string_view, 3U> engineer_rocketeer_scout_rules{
     "RULE_ENABLE_CLASS_ENGINEER", "RULE_ENABLE_CLASS_ROCKETEER", "RULE_ENABLE_CLASS_MARKSMAN"};
-constexpr std::array<std::string_view, 6U> all_standard_classes{
+constexpr std::array<std::string_view, 6U> all_standard_classes_rules{
     "RULE_ENABLE_CLASS_COMMANDO", "RULE_ENABLE_CLASS_MARKSMAN", "RULE_ENABLE_CLASS_MINER",
     "RULE_ENABLE_CLASS_ENGINEER", "RULE_ENABLE_CLASS_SPECIALIST", "RULE_ENABLE_CLASS_MEDIC"};
 
@@ -163,19 +163,19 @@ struct RuleSeed final {
     case Values::zero_to_sixty: return zero_to_sixty_by_five;
     case Values::five_to_sixty: return five_to_sixty_by_five;
     case Values::ten_to_sixty: return ten_to_sixty_by_five;
-    case Values::one_to_ten: return one_to_ten;
+    case Values::one_to_ten: return one_to_ten_choices;
     case Values::ten_to_sixty_ten: return ten_to_sixty_by_ten;
     case Values::score: return score_targets;
     case Values::occupation_score: return occupation_score_targets;
-    case Values::two_to_five: return two_to_five;
-    case Values::one_to_five: return one_to_five;
-    case Values::one_to_three: return one_to_three;
+    case Values::two_to_five: return two_to_five_choices;
+    case Values::one_to_five: return one_to_five_choices;
+    case Values::one_to_three: return one_to_three_choices;
     case Values::speed: return character_speeds;
     case Values::percentage: return percentages;
     case Values::intervals: return large_intervals;
     case Values::build: return build_lengths;
     case Values::fuse: return bomb_fuses;
-    case Values::spawn_protection: return spawn_protection;
+    case Values::spawn_protection: return spawn_protection_choices;
     }
     return on_off;
 }
@@ -183,18 +183,18 @@ struct RuleSeed final {
 [[nodiscard]] StringList dependency_for(Dependency dependency) noexcept {
     switch (dependency) {
     case Dependency::none: return {};
-    case Dependency::soldier: return soldier;
-    case Dependency::scout: return scout;
-    case Dependency::miner: return miner;
-    case Dependency::rocketeer: return rocketeer;
-    case Dependency::engineer: return engineer;
-    case Dependency::specialist: return specialist;
-    case Dependency::medic: return medic;
-    case Dependency::soldier_rocketeer: return soldier_rocketeer;
-    case Dependency::soldier_scout: return soldier_scout;
-    case Dependency::engineer_rocketeer: return engineer_rocketeer;
-    case Dependency::engineer_rocketeer_scout: return engineer_rocketeer_scout;
-    case Dependency::all_standard_classes: return all_standard_classes;
+    case Dependency::soldier: return soldier_rules;
+    case Dependency::scout: return scout_rules;
+    case Dependency::miner: return miner_rules;
+    case Dependency::rocketeer: return rocketeer_rules;
+    case Dependency::engineer: return engineer_rules;
+    case Dependency::specialist: return specialist_rules;
+    case Dependency::medic: return medic_rules;
+    case Dependency::soldier_rocketeer: return soldier_rocketeer_rules;
+    case Dependency::soldier_scout: return soldier_scout_rules;
+    case Dependency::engineer_rocketeer: return engineer_rocketeer_rules;
+    case Dependency::engineer_rocketeer_scout: return engineer_rocketeer_scout_rules;
+    case Dependency::all_standard_classes: return all_standard_classes_rules;
     }
     return {};
 }

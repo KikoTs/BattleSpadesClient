@@ -802,6 +802,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         frontend/ugc_preview_writer.cpp
         PROPERTIES COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS"
     )
+    # The embedded inventory catalogue is a 1.2 MB constexpr string_view; GCC
+    # stops constant-evaluating its length at 262,144 loop iterations.
+    set_source_files_properties(
+        frontend/inventory_session.cpp
+        PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-fconstexpr-loop-limit=16777216;-fconstexpr-ops-limit=4294967296>"
+    )
     if(AOS_ENABLE_STEAM_NETWORKING)
         target_link_libraries(aos_frontend_native PRIVATE BattleSpades::SteamNet)
         target_compile_definitions(aos_frontend_native PRIVATE AOS_HAS_STEAM_NETWORKING=1)

@@ -1191,7 +1191,7 @@ void test_new_widgets_reach_the_draw_list() {
         find_sprite("png/ui/in_game_menus/big_text_frame.png");
     expect(big_frame != nullptr, "CHAT_BIG renders the retail backing frame");
     expect_near(big_frame->destination.width,
-                40.0 + std::string_view{"Blue took the intel"}.size() * 10.0,
+                40.0 + static_cast<double>(std::string_view{"Blue took the intel"}.size()) * 10.0,
                 "big-text frame follows shaped content width plus forty");
     expect_near(big_frame->destination.height, 58.0 * 0.64,
                 "one big-text line keeps the frame's global_scale load height");

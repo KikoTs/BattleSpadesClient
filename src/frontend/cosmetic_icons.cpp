@@ -45,7 +45,7 @@ struct CosmeticIconCache::Impl {
         while(!stop.stop_requested()){
             Job job;
             {std::unique_lock lock{mutex};changed.wait(lock,[&]{return stop.stop_requested()||!jobs.empty();});
-                if(stop.stop_requested())return;job=std::move(jobs.front());jobs.pop_front();}
+                if(stop.stop_requested()){return;}job=std::move(jobs.front());jobs.pop_front();}
             Result result;result.key=std::move(job.key);
             try{result.pixels=render_cosmetic_icon(job.request,root);}catch(const std::exception&){}
             {std::lock_guard lock{mutex};completed.push_back(std::move(result));}
@@ -81,7 +81,7 @@ void CosmeticIconCache::pump(render::BgfxUiRenderer& renderer){
         for(auto it=p.entries.begin();it!=p.entries.end();++it)
             if(!it->second.pending&&it->second.used+120<p.frame&&(oldest==p.entries.end()||it->second.used<oldest->second.used))oldest=it;
         if(oldest==p.entries.end())break;
-        if(oldest->second.image)static_cast<void>(renderer.release_texture(oldest->second.image->texture));p.entries.erase(oldest);
+        if(oldest->second.image){static_cast<void>(renderer.release_texture(oldest->second.image->texture));}p.entries.erase(oldest);
     }
 }
 std::optional<render::UiTextureInfo> CosmeticIconCache::texture(std::string_view asset)const{

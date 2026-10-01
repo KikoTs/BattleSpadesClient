@@ -290,9 +290,9 @@ bool ScriptedWeapon::update(const SkinInput& requested,std::string& error){
     for(float f:{i.dt,i.aim,i.sprint,i.raise,i.ready,i.reload_progress})p.context->SetArgFloat(a++,f);
     for(bool b:{i.reloading,i.fired,i.reload_started,i.reload_finished,i.muted})p.context->SetArgByte(a++,b?1:0);
     p.context->SetArgDWord(a++,static_cast<asDWORD>(i.ammo));p.context->SetArgDWord(a++,static_cast<asDWORD>(i.clip_size));
-    for(float f:i.swing)p.context->SetArgFloat(a++,f);for(float f:i.team_color)p.context->SetArgFloat(a++,f);
+    for(float f:i.swing){p.context->SetArgFloat(a++,f);}for(float f:i.team_color){p.context->SetArgFloat(a++,f);}
     p.context->SetArgFloat(a++,i.screen_width);p.context->SetArgFloat(a,i.screen_height);
-    if(!p.run(error))return false;p.frame_dt=i.dt;p.arms();
+    if(!p.run(error)){return false;}p.frame_dt=i.dt;p.arms();
     if(p.variant.scope&&!i.reloading)p.frame.scope_opacity=std::clamp((i.aim-.6F)*5.F,0.F,1.F);
     if(p.aim_overlay&&i.aim>.8F&&!i.reloading){
         if(p.manifest.value("hide_aimed_models",false))p.frame.models.clear();
@@ -308,7 +308,7 @@ ChunkMesh ScriptedWeapon::source_mesh(const std::filesystem::path& path,std::opt
     auto model=Kv6Model::load_file(path);return model?source_mesh(std::move(*model),team):ChunkMesh{};
 }
 ChunkMesh ScriptedWeapon::source_mesh(Kv6Model model,std::optional<VxlColor> team){
-    if(team)model.apply_default_color(*team);auto mesh=model.mesh();
+    if(team){model.apply_default_color(*team);}auto mesh=model.mesh();
     constexpr std::array<std::uint8_t,6> faces{0,1,5,4,2,3};
     for(auto& v:mesh.vertices){const float y=v.y;v.y=v.z;v.z=-y;v.face=faces[v.face];}
     // Both the asset rotation and the eye conversion preserve handedness.
@@ -330,7 +330,7 @@ ChunkMesh ScriptedWeapon::model_mesh(std::size_t id,VxlColor team,const ClassMod
         // skin's geometry, fitting its length into that attachment frame.
         const auto& model=found->second;const auto pivot=model.pivot();
         const float scale=12.F/static_cast<float>(model.size_y());
-        const std::array center{(model.size_x()-1)*.5F-pivot[0],(model.size_y()-1)*.5F-pivot[1],(model.size_z()-1)*.5F-pivot[2]};
+        const std::array center{static_cast<float>(model.size_x()-1U)*.5F-pivot[0],static_cast<float>(model.size_y()-1U)*.5F-pivot[1],static_cast<float>(model.size_z()-1U)*.5F-pivot[2]};
         mesh.minimum.fill(std::numeric_limits<float>::max());mesh.maximum.fill(std::numeric_limits<float>::lowest());
         constexpr std::array<std::uint8_t,6> faces{0,1,4,5,3,2};
         for(auto& v:mesh.vertices){

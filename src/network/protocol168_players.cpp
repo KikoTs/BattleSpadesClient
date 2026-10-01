@@ -32,9 +32,9 @@ public:
         using Unsigned = std::make_unsigned_t<Integer>;
         Unsigned value{};
         for (std::size_t index{}; index < sizeof(Integer); ++index) {
-            value |= static_cast<Unsigned>(
-                         std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
-                     << (index * 8U);
+            value = static_cast<Unsigned>(
+                value | (static_cast<Unsigned>(std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
+                         << (index * 8U)));
         }
         offset_ += sizeof(Integer);
         return static_cast<Integer>(value);

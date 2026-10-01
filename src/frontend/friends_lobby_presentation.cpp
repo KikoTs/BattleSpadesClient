@@ -229,7 +229,7 @@ ui::DrawList FriendsLobbyPresentation::build(
     const auto row_height = friends.height / static_cast<double>(FriendsLobbyMenuModel::visible_rows);
     for (std::size_t row{}; row < count; ++row) {
         const auto& value = model.snapshot().friends[visible[first + row]];
-        const DrawRect bounds{friends.x + 2.0, friends.y + row_height * row + 1.0,
+        const DrawRect bounds{friends.x + 2.0, friends.y + row_height * static_cast<double>(row) + 1.0,
                               friends.width - 4.0, row_height - 1.0};
         const bool selected = value.id == model.selected_friend_id();
         selected_row(list, bounds, selected, row);
@@ -280,7 +280,7 @@ ui::DrawList FriendsLobbyPresentation::build(
         FriendsLobbyMenuModel::visible_invitation_rows);
     for (std::size_t row{}; row < count_invites; ++row) {
         const auto& value = model.snapshot().invitations[invitations[first_invite + row]];
-        const DrawRect bounds{lobby.x + 10.0, lobby.y + 53.0 + 38.0 * row,
+        const DrawRect bounds{lobby.x + 10.0, lobby.y + 53.0 + 38.0 * static_cast<double>(row),
                               lobby.width - 20.0, 36.0};
         const bool selected = value.id == model.selected_invitation_id();
         selected_row(list, bounds, selected, row);

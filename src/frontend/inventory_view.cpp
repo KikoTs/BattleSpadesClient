@@ -207,8 +207,8 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
                 }
                 else if(id.starts_with("crate:")) {
                     std::string error;
-                    const auto model=world::Kv6Model::load_file(assets.parent_path()/"client/ui/models"/(id.substr(6)+"-crate.kv6"),&error);
-                    if(model)pixels=world::cosmetic_preview(*model,std::nullopt,false,0.65,1.0);
+                    const auto crate=world::Kv6Model::load_file(assets.parent_path()/"client/ui/models"/(id.substr(6)+"-crate.kv6"),&error);
+                    if(crate)pixels=world::cosmetic_preview(*crate,std::nullopt,false,0.65,1.0);
                 }
                 std::lock_guard lock{queue->mutex};
                 queue->completed.emplace(std::move(id),std::move(pixels));

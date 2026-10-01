@@ -4,6 +4,7 @@
 #include "battlespades/frontend/join_match_presentation.hpp"
 #include "battlespades/frontend/loading_screen.hpp"
 
+#include <algorithm>
 #include <array>
 #include <exception>
 #include <filesystem>
