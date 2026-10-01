@@ -1754,6 +1754,16 @@ struct NativeFrontendModule::Impl final {
     core::DeferredCleanupQueue::Reservation owned_host_cleanup;
     std::string owned_social_lobby_id;
     std::string owned_social_start_id;
+    /**
+     * Secrets generated for the room this client hosts. The admin password
+     * is the room's own (never the bundle default); the creator token is
+     * redeemed once with /claimhost so the creator is admin without typing.
+     */
+    std::string owned_room_admin_password;
+    std::string owned_room_creator_token;
+    bool owned_room_token_spent{};
+    /** client_loop_count at which the next room admin claim goes out. */
+    std::optional<std::int32_t> pending_room_admin_claim_loop;
     std::shared_ptr<std::stop_source> local_host_cancel;
     std::uint64_t next_local_host_generation{1U};
     std::uint64_t active_local_host_generation{};
@@ -4422,6 +4432,10 @@ struct NativeFrontendModule::Impl final {
         social_publish_generation.reset();
         social_pending_owner_connect.reset();
         social_publish_attempts = 0U;
+        owned_room_admin_password.clear();
+        owned_room_creator_token.clear();
+        owned_room_token_spent = false;
+        pending_room_admin_claim_loop.reset();
         LocalHostOutcome retired;
         retired.process = std::move(owned_local_server);
         retired.tunnel = std::move(owned_relay_tunnel);
@@ -9884,6 +9898,15 @@ struct NativeFrontendModule::Impl final {
                 owned_social_start_id = snapshot.lobby->start_id;
             }
         }
+        // Every room gets fresh secrets in its private session config: its own
+        // admin password (shown to the creator on claim, /roompassword) and a
+        // one-time creator token this client redeems after joining.
+        launch.admin_password = platform::generate_local_room_admin_password();
+        launch.creator_token = platform::generate_local_room_creator_token();
+        owned_room_admin_password = launch.admin_password;
+        owned_room_creator_token = launch.creator_token;
+        owned_room_token_spent = false;
+        pending_room_admin_claim_loop.reset();
         match_ui_skin = supported_ui_skin(skin);
         match_loading.begin(launch.map_name, mode_key, classic, match_ui_skin);
         if (screen() != FrontendScreen::game_loading) {
@@ -12861,6 +12884,15 @@ struct NativeFrontendModule::Impl final {
         // Interactive bootstrap has not emitted ClientData yet. Diagnostic
         // auto-join sessions still report their exact next loop here.
         client_loop_count = static_cast<std::int32_t>(bootstrap->next_client_loop_count);
+        // Joining the room this client launched: claim admin once the server
+        // has admitted us to gameplay (first ClientData) and can answer.
+        pending_room_admin_claim_loop.reset();
+        if (owned_local_server != nullptr && owned_local_server->running() &&
+            !owned_room_admin_password.empty() &&
+            active_match_request->host == "127.0.0.1" &&
+            active_match_request->port == owned_local_server->port()) {
+            pending_room_admin_claim_loop = client_loop_count + room_admin_claim_delay_loops;
+        }
         latest_world_loop = 0;
         clock_sync_elapsed = 1.0;
         clock_sync_token = 0;
@@ -15487,12 +15519,39 @@ struct NativeFrontendModule::Impl final {
         death_camera.tick(dt);
     }
 
+    /** Fixed loops (~2 s) between joining an owned room and claiming its admin. */
+    static constexpr std::int32_t room_admin_claim_delay_loops{120};
+
+    /** Send `/claimhost` (first join) or `/admin` (rejoin) to our own room. */
+    void send_pending_room_admin_claim() {
+        if (!pending_room_admin_claim_loop.has_value() ||
+            client_loop_count < *pending_room_admin_claim_loop) {
+            return;
+        }
+        pending_room_admin_claim_loop.reset();
+        auto command = platform::local_room_admin_command(
+            owned_room_creator_token, owned_room_admin_password, owned_room_token_spent);
+        if (command.empty()) return;
+        network::ChatMessagePacket packet;
+        packet.player_id = *local_player_id;
+        packet.chat_type = static_cast<std::uint8_t>(ChatChannel::global);
+        packet.value = std::move(command);
+        const auto encoded = network::encode_packet(packet);
+        if (encoded.empty() || !match_connection->send(encoded)) {
+            settings_warning = "failed to queue the room admin claim";
+            return;
+        }
+        // The server spends the token on first use; later joins use /admin.
+        owned_room_token_spent = true;
+    }
+
     /** Publish one retail ClientData sample for each fixed simulation tick. */
     void send_live_client_data() {
         if (!network_match || match_connection == nullptr || tutorial_session == nullptr ||
             !local_player_id.has_value()) {
             return;
         }
+        send_pending_room_admin_claim();
         const auto* local = tutorial_roster.player(*local_player_id);
         const bool spectator = local != nullptr && local_player_is_spectator(
             local->team, match_initial_info.enable_spectator);

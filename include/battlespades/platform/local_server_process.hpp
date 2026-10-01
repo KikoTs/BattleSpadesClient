@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -68,7 +69,55 @@ struct LocalServerLaunchConfig final {
     std::vector<std::filesystem::path> custom_map_files{};
     /** `[world] maps_path` written into the TOML; start() fills it for custom maps. */
     std::filesystem::path maps_path{};
+    /**
+     * Per-room `[admin] password`. The frontend generates a fresh one for
+     * every room (generate_local_room_admin_password) and shows it to the
+     * creator; it never reuses the server bundle's shared default. Empty
+     * leaves `[admin]` out (login stays disabled).
+     */
+    std::string admin_password{};
+    /**
+     * One-time `[admin] creator_token`. The creator's client redeems it with
+     * `/claimhost <token>` right after joining; the server grants admin once
+     * and refuses any replay.
+     */
+    std::string creator_token{};
 };
+
+/** Minimum length the server accepts for `[admin] password` (server/config.py). */
+inline constexpr std::size_t local_room_admin_password_length{16U};
+/** Length of the room creator token; the server accepts 24..128 characters. */
+inline constexpr std::size_t local_room_creator_token_length{32U};
+
+/**
+ * `length` characters drawn uniformly (rejection sampling) from `alphabet`
+ * with the platform's cryptographic random source. Returns an empty string
+ * when the alphabet is empty or larger than 256 symbols.
+ */
+[[nodiscard]] std::string generate_local_server_secret(std::size_t length,
+                                                       std::string_view alphabet);
+
+/** A fresh room admin password without look-alike characters (0/O, 1/l/I). */
+[[nodiscard]] std::string generate_local_room_admin_password();
+
+/** A fresh `[admin] creator_token` (URL-safe letters and digits). */
+[[nodiscard]] std::string generate_local_room_creator_token();
+
+/** Whether `value` is a password build_local_server_toml() will write. */
+[[nodiscard]] bool valid_local_room_admin_password(std::string_view value) noexcept;
+
+/** Whether `value` is a creator token the server will accept. */
+[[nodiscard]] bool valid_local_room_creator_token(std::string_view value) noexcept;
+
+/**
+ * Chat line the creator's client sends once it is in its own room:
+ * `/claimhost <token>` on the first join, then `/admin <password>` for later
+ * joins (a map change reconnects) because the server spends the token on its
+ * first use. Empty when the secrets are unusable.
+ */
+[[nodiscard]] std::string local_room_admin_command(std::string_view creator_token,
+                                                   std::string_view admin_password,
+                                                   bool token_spent);
 
 /**
  * Validates an authored map's source files: 3-4 distinct regular,

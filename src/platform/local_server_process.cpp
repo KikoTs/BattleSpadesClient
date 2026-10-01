@@ -30,6 +30,7 @@ extern char** environ;
 #include <fstream>
 #include <limits>
 #include <locale>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string_view>
@@ -46,6 +47,21 @@ constexpr auto forced_shutdown_timeout{std::chrono::seconds{2}};
 constexpr std::size_t maximum_rule_count{256U};
 constexpr std::size_t maximum_text_bytes{512U};
 std::atomic<std::uint64_t> session_counter{};
+/** Letters and digits without look-alikes: the creator may read it aloud. */
+constexpr std::string_view room_password_alphabet{
+    "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"};
+constexpr std::string_view creator_token_alphabet{
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"};
+
+[[nodiscard]] bool plain_secret(std::string_view value, std::size_t minimum,
+                                std::size_t maximum) noexcept {
+    return value.size() >= minimum && value.size() <= maximum &&
+           std::ranges::all_of(value, [](unsigned char character) {
+               return (character >= 'a' && character <= 'z') ||
+                      (character >= 'A' && character <= 'Z') ||
+                      (character >= '0' && character <= '9');
+           });
+}
 
 [[nodiscard]] constexpr std::string_view
 server_executable_name(LocalServerProgram program) noexcept {
@@ -189,7 +205,16 @@ server_executable_name(LocalServerProgram program) noexcept {
         const auto sequence = session_counter.fetch_add(1U, std::memory_order_relaxed);
         const auto candidate =
             parent / ("session-" + std::to_string(clock) + "-" + std::to_string(sequence));
-        if (std::filesystem::create_directory(candidate, code)) return candidate;
+        if (std::filesystem::create_directory(candidate, code)) {
+#if !defined(_WIN32)
+            // The session config holds the room's admin password and creator
+            // token; keep it from other local accounts.
+            std::filesystem::permissions(candidate, std::filesystem::perms::owner_all,
+                                         std::filesystem::perm_options::replace, code);
+            code.clear();
+#endif
+            return candidate;
+        }
         if (code && code != std::errc::file_exists) {
             error = "cannot create a private local-server session: " + code.message();
             return {};
@@ -611,6 +636,12 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
     // A partial public identity would make the child advertise a local port,
     // reject AoSPlay tickets, or publish a listing that nobody can reach.
     if (!config.environment_overrides.empty() && !public_match) return {};
+    if ((!config.admin_password.empty() &&
+         !valid_local_room_admin_password(config.admin_password)) ||
+        (!config.creator_token.empty() &&
+         !valid_local_room_creator_token(config.creator_token))) {
+        return {};
+    }
 
     std::ostringstream output;
     output.imbue(std::locale::classic());
@@ -666,6 +697,15 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "file = \"server.log\"\n"
            << "console = false\n"
            << "packet_trace = false\n";
+    if (!config.admin_password.empty() || !config.creator_token.empty()) {
+        // Fresh per-room secrets: never the bundle's shared default. The
+        // creator's client redeems the token once with /claimhost.
+        output << "\n[admin]\n";
+        if (!config.admin_password.empty())
+            output << "password = " << toml_quote(config.admin_password) << '\n';
+        if (!config.creator_token.empty())
+            output << "creator_token = " << toml_quote(config.creator_token) << '\n';
+    }
     if (config.map_creator.has_value()) {
         const auto& editor = *config.map_creator;
         output << "\n[map_creator]\n"
@@ -685,6 +725,58 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
         }
     }
     return output.str();
+}
+
+std::string generate_local_server_secret(std::size_t length, std::string_view alphabet) {
+    if (alphabet.empty() || alphabet.size() > 256U) return {};
+    // MSVC (RtlGenRandom), libc++ (arc4random/getentropy) and libstdc++
+    // (getentropy, /dev/urandom or RDRAND) all back this with the OS CSPRNG.
+    std::random_device source;
+    const auto symbols = static_cast<std::uint32_t>(alphabet.size());
+    // Largest multiple of `symbols` that fits; draws above it are rejected
+    // so every symbol is equally likely.
+    const auto limit = static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1U) /
+        symbols * symbols);
+    std::string output;
+    output.reserve(length);
+    while (output.size() < length) {
+        const auto draw = static_cast<std::uint32_t>(source());
+        if (limit != 0U && draw >= limit) continue;
+        output.push_back(alphabet[draw % symbols]);
+    }
+    return output;
+}
+
+std::string generate_local_room_admin_password() {
+    return generate_local_server_secret(local_room_admin_password_length,
+                                        room_password_alphabet);
+}
+
+std::string generate_local_room_creator_token() {
+    return generate_local_server_secret(local_room_creator_token_length,
+                                        creator_token_alphabet);
+}
+
+bool valid_local_room_admin_password(std::string_view value) noexcept {
+    // server/config.py MIN_ADMIN_PASSWORD_LENGTH is 12.
+    return plain_secret(value, 12U, 64U);
+}
+
+bool valid_local_room_creator_token(std::string_view value) noexcept {
+    // server/config.py MIN/MAX_CREATOR_TOKEN_LENGTH.
+    return plain_secret(value, 24U, 128U);
+}
+
+std::string local_room_admin_command(std::string_view creator_token,
+                                     std::string_view admin_password, bool token_spent) {
+    if (!token_spent && valid_local_room_creator_token(creator_token)) {
+        return "/claimhost " + std::string{creator_token};
+    }
+    if (valid_local_room_admin_password(admin_password)) {
+        return "/admin " + std::string{admin_password};
+    }
+    return {};
 }
 
 LocalServerProcess::LocalServerProcess() : impl_{std::make_unique<Impl>()} {}
