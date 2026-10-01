@@ -158,8 +158,12 @@ and installs into `out/install/<preset>`.
 | Platform | Configure / build / test presets |
 | --- | --- |
 | Windows | `native-dev`, `native-release`, `native-debug` (plus headless `dev`, `release`, `debug`) |
+| Windows on Arm | `native-windows-arm64-dev`, `native-windows-arm64-release` |
 | Linux | `native-linux-dev`, `native-linux-release` |
 | macOS | `native-macos-dev`, `native-macos-release` |
+
+All six platform builds (Windows, Linux and macOS on x64 and arm64) can also
+be made on GitHub Actions; see [docs/BUILDING.md](docs/BUILDING.md).
 
 The [runbook](docs/RUNBOOK.md) covers staging a playable folder, packaging,
 shaders, hosting, smoke tests and diagnostics. The
