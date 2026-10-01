@@ -24,6 +24,10 @@ function(aos_enable_strict_warnings target)
                 -Wconversion
                 -Wsign-conversion
                 -Wshadow
+                # Aggregates are extended with trailing members that positional
+                # initializers deliberately leave value-initialized (e.g.
+                # ServerConnectRequest::password); -Wextra would flag each use.
+                -Wno-missing-field-initializers
         )
 
         if(AOS_WARNINGS_AS_ERRORS)
