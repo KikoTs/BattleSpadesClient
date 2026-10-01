@@ -386,10 +386,17 @@ jobs:
           test -f "$bin/localization/ru.json"
           test -f "$bin/localization/ja.json"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            for f in BattleSpadesLauncher.exe BattleSpadesSetupHelper.exe BattleSpadesSteamBridge32.exe aos.exe; do
-              test -f "$bin/$f"
+            for f in BattleSpadesLauncher.exe BattleSpadesSetupHelper.exe BattleSpadesSteamBridge32.exe aos.exe \
+                     OpenAL32.dll SDL3.dll; do
+              test -f "$bin/$f" || { echo "::error::Missing $f"; exit 1; }
             done
+            # Valve ships steam_api64.dll for x64 only (docs/BUILDING.md).
+            if [[ "$TARGET" == "windows-x64" ]]; then test -f "$bin/steam_api64.dll"; fi
           else
+            case "$RUNNER_OS" in
+              Linux) test -f "$bin/libsteam_api.so" ;;
+              macOS) test -f "$bin/libsteam_api.dylib" ;;
+            esac
             test -x "$bin/BattleSpadesClient"
             test -x "$bin/BattleSpadesAssetInstaller"
             file "$bin/BattleSpadesClient"
