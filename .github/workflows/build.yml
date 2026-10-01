@@ -448,7 +448,7 @@ jobs:
         run: |
           # Tests listed in .github/ci/full-tests-skip.txt need files a runner
           # never has (retail assets, a GPU); the file says why for each.
-          skip="$(grep -Ev '^\s*(#|$)' .github/ci/full-tests-skip.txt | awk '{print $1}' | paste -sd'|' -)"
+          skip="$({ grep -Ev '^\s*(#|$)' .github/ci/full-tests-skip.txt || true; } | awk '{print $1}' | paste -sd'|' -)"
           args=()
           [[ -n "$skip" ]] && args=(-E "^(${skip})$")
           echo "Skipping: ${skip:-nothing}"
