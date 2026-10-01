@@ -121,29 +121,39 @@ jobs:
           mkdir -p "$RUNNER_TEMP/vcpkg-archives" "$RUNNER_TEMP/ccache"
 
       # ---------------------------------------------------------------- tools
+      # The Azure Ubuntu mirror is sometimes very slow (8 minutes for this
+      # list once), so the downloaded .deb files are cached per image.
+      - name: Restore apt package cache
+        id: apt-cache
+        if: matrix.family == 'linux'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-v1-${{ matrix.os }}-${{ hashFiles('.github/ci/linux-packages.txt') }}
+
       - name: Install Linux build dependencies
         if: matrix.family == 'linux'
         run: |
-          # Packages come from the runner image's Ubuntu 24.04 archive. vcpkg
-          # builds the libraries; these are the system headers SDL3 (X11,
-          # Wayland, IBus, EGL), libsystemd/libmount/alsa (autotools, meson,
-          # jinja2) and bgfx need, plus the build tools.
-          bash .github/ci/retry.sh sudo apt-get update -q
-          bash .github/ci/retry.sh sudo apt-get install -y -q --no-install-recommends \
-            build-essential ninja-build cmake pkg-config ccache file git curl zip unzip tar \
-            autoconf autoconf-archive automake libtool autopoint gettext bison flex gperf nasm \
-            python3 python3-venv python3-jinja2 linux-libc-dev \
-            libx11-dev libxft-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev wayland-protocols libdecor-0-dev \
-            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
-            libibus-1.0-dev libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
+          archives="$RUNNER_TEMP/apt-archives"
+          mkdir -p "$archives/partial"
+          apt_opts=(-o "Dir::Cache::Archives=$archives" -o Acquire::Retries=3 -o Acquire::http::Timeout=30)
+          mapfile -t packages < <(grep -Ev '^\s*(#|$)' .github/ci/linux-packages.txt | tr ' ' '\n' | grep -v '^$')
+          bash .github/ci/retry.sh sudo apt-get "${apt_opts[@]}" update -q
+          bash .github/ci/retry.sh sudo apt-get "${apt_opts[@]}" install -y -q --no-install-recommends "${packages[@]}"
+          sudo chown -R "$(id -u):$(id -g)" "$archives"
           if [[ "$(uname -m)" == "aarch64" ]]; then
             # vcpkg publishes no arm64 Linux builds of its helper tools.
             echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
           fi
           cmake --version | head -1; ninja --version; gcc --version | head -1
           echo "COMPILER_ID=$(gcc --version | head -1)" >> "$GITHUB_ENV"
+
+      - name: Save apt package cache
+        if: matrix.family == 'linux' && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-v1-${{ matrix.os }}-${{ hashFiles('.github/ci/linux-packages.txt') }}
 
       - name: Select the C++20-capable Apple toolchain
         if: matrix.family == 'macos'

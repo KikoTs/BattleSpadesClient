@@ -1,0 +1,18 @@
+# Ubuntu 24.04 packages for the Linux jobs of .github/workflows/build.yml,
+# installed from the runner image's own archive (same names on amd64/arm64).
+# vcpkg builds the libraries; these are the build tools and the system
+# headers its ports expect from the OS.
+
+# Build tools
+build-essential ninja-build cmake pkg-config ccache file git curl zip unzip tar
+# Autotools/meson ports (alsa, libsodium, libxcrypt, libmount, libsystemd)
+autoconf autoconf-archive automake libtool libltdl-dev autopoint gettext bison flex gperf nasm
+python3 python3-venv python3-jinja2 linux-libc-dev
+# SDL3 X11 and Wayland video, IBus input, EGL/GL for bgfx
+libx11-dev libxft-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev
+libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev
+libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev wayland-protocols libdecor-0-dev
+libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev
+libibus-1.0-dev libdbus-1-dev libudev-dev
+# Audio headers
+libasound2-dev libpulse-dev
