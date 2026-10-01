@@ -2,19 +2,19 @@
   {
     "id": "pack-169706-files-205934-tommygun-smg",
     "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170209-files-205847-smg",
     "name": "M4A4 | Desert Strike",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170209-files-205847-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170209-files-205847-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170214-files-208187-reflexsight3-pak-unpacked-rifle",
     "name": "Silver Side-Charging M4 (OpenSpades)",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170214-files-208187-reflexsight3-pak-unpacked-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170214-files-208187-reflexsight3-pak-unpacked-rifle\\skin.json",
     "missing": [
       "Models/Weapons/Rifle/Scope1.kv6",
       "Models/Weapons/Rifle/Scope2.kv6",
@@ -25,175 +25,175 @@
   {
     "id": "pack-170214-files-208187-reflexsight3-pak-unpacked-smg",
     "name": "Silver Side-Charging M4 (OpenSpades)",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170214-files-208187-reflexsight3-pak-unpacked-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170214-files-208187-reflexsight3-pak-unpacked-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-40417-files-343-acog-rifle",
     "name": "ACOG with script (OpenSpades)",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-40417-files-343-acog-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-40417-files-343-acog-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-awp_78cfd-rifle",
     "name": "awp_78cfd.rar",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-awp_78cfd-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-awp_78cfd-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-axe_960ef-spade",
     "name": "axe_960ef.zip",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-axe_960ef-spade\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-axe_960ef-spade\\skin.json",
     "missing": []
   },
   {
     "id": "pack-shotgun_a10ea-shotgun-pak-unpacked-shotgun",
     "name": "shotgun_a10ea.zip",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-shotgun_a10ea-shotgun-pak-unpacked-shotgun\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-shotgun_a10ea-shotgun-pak-unpacked-shotgun\\skin.json",
     "missing": []
   },
   {
     "id": "pack-smg-ak47-paratrooper-v100_0a4ef-smg",
     "name": "smg-ak47-paratrooper-v100_0a4ef.zip",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-smg-ak47-paratrooper-v100_0a4ef-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-smg-ak47-paratrooper-v100_0a4ef-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-aeon-awp-rifle",
     "name": "AEON AWP",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-aeon-awp-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-aeon-awp-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-bren-smg",
     "name": "Bren Gun",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-bren-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-bren-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-honey-badger-alternatehoneybadger-smg",
     "name": "Honey Badger",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-honey-badger-alternatehoneybadger-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-honey-badger-alternatehoneybadger-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-honey-badger-smg-smg",
     "name": "Honey Badger",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-honey-badger-smg-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-honey-badger-smg-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-kar98-kar98-pak-unpacked-rifle",
     "name": "Kar98",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-kar98-kar98-pak-unpacked-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-kar98-kar98-pak-unpacked-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-mp5k-smg",
     "name": "MP5K",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-mp5k-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-mp5k-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-legacy-stg44-smg",
     "name": "StG 44",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-legacy-stg44-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-legacy-stg44-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169961-default",
     "name": "MaschinenPistole 40",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169961-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169961-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170614-default",
     "name": "Openspades .950 JDJ",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170614-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170614-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170609-default",
     "name": "Openspades M14 EBR \"Scoped\"",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170609-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170609-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170205-default",
     "name": "AK-74 \"Apocalyptic\"",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170205-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170205-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170191-default",
     "name": "[AoS/OpenSpades/AoS Steam] Heckler & Koch HK416",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170191-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170191-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-170127-default",
     "name": "Openspades G3A3",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-170127-default\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-170127-default\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-nazi-rifle",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-nazi-smg",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-nazi-shotgun",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-shotgun\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-nazi-shotgun\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-soviet-rifle",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-rifle\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-rifle\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-soviet-smg",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-smg\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-smg\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169749-default-soviet-shotgun",
     "name": "OpenSpades: Winter Warfare",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-shotgun\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169749-default-soviet-shotgun\\skin.json",
     "missing": []
   },
   {
     "id": "pack-169706-files-205934-tommygun-smg-black-white",
     "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — Black&White",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-black-white.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-black-white.json",
     "missing": []
   },
   {
     "id": "pack-169706-files-205934-tommygun-smg-gold",
     "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — Gold",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-gold.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-gold.json",
     "missing": []
   },
   {
     "id": "pack-169706-files-205934-tommygun-smg-us-camo",
     "name": "M1928A1 A.K.A. Tommy gun A.K.A. Chicago Typewriter — US Camo",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-us-camo.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-169706-files-205934-tommygun-smg\\skin-us-camo.json",
     "missing": []
   },
   {
     "id": "pack-sep-315714-1",
     "name": "Rifolver",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-315714-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-315714-1\\skin.json",
     "missing": [],
     "source_id": 315714,
     "tools": [
@@ -207,7 +207,7 @@
   {
     "id": "pack-sep-170218-1",
     "name": "Classic pistol — Black",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170218-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170218-1\\skin.json",
     "missing": [],
     "source_id": 170218,
     "tools": [
@@ -219,7 +219,7 @@
   {
     "id": "pack-sep-169760-1",
     "name": "Uzi SMG",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169760-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169760-1\\skin.json",
     "missing": [],
     "source_id": 169760,
     "tools": [
@@ -233,7 +233,7 @@
   {
     "id": "pack-sep-171111-1",
     "name": "Usp — UspNoSuppressor",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-171111-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-171111-1\\skin.json",
     "missing": [],
     "source_id": 171111,
     "tools": [
@@ -245,7 +245,7 @@
   {
     "id": "pack-sep-171111-2",
     "name": "Usp — UspSuppressor",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-171111-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-171111-2\\skin.json",
     "missing": [],
     "source_id": 171111,
     "tools": [
@@ -257,7 +257,7 @@
   {
     "id": "pack-sep-169759-1",
     "name": "Vector",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169759-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169759-1\\skin.json",
     "missing": [],
     "source_id": 169759,
     "tools": [
@@ -271,7 +271,7 @@
   {
     "id": "pack-sep-170222-1",
     "name": "Usp with Skin — UspSilencerSKINXD",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170222-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170222-1\\skin.json",
     "missing": [],
     "source_id": 170222,
     "tools": [
@@ -283,7 +283,7 @@
   {
     "id": "pack-sep-170222-2",
     "name": "Usp with Skin — UspNOSilencerSKINXD",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170222-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170222-2\\skin.json",
     "missing": [],
     "source_id": 170222,
     "tools": [
@@ -295,7 +295,7 @@
   {
     "id": "pack-sep-171110-1",
     "name": "Glock Custom — GlockCustom",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-171110-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-171110-1\\skin.json",
     "missing": [],
     "source_id": 171110,
     "tools": [
@@ -307,7 +307,7 @@
   {
     "id": "pack-sep-171110-2",
     "name": "Glock Custom — GlockCustomDotSight",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-171110-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-171110-2\\skin.json",
     "missing": [],
     "source_id": 171110,
     "tools": [
@@ -319,7 +319,7 @@
   {
     "id": "pack-sep-170227-1",
     "name": "Classic pistol — Silver",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170227-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170227-1\\skin.json",
     "missing": [],
     "source_id": 170227,
     "tools": [
@@ -331,7 +331,7 @@
   {
     "id": "pack-sep-170633-1",
     "name": "PTrooper Remmington 870 MCS (Desert Digital) — PTrooperShotgun",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170633-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170633-1\\skin.json",
     "missing": [],
     "source_id": 170633,
     "tools": [
@@ -346,7 +346,7 @@
   {
     "id": "pack-sep-170633-2",
     "name": "PTrooper Remmington 870 MCS (Desert Digital) — PTrooperShotgunPngSight",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170633-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170633-2\\skin.json",
     "missing": [],
     "source_id": 170633,
     "tools": [
@@ -361,7 +361,7 @@
   {
     "id": "pack-sep-170241-1",
     "name": "SVT 40 WW2 (New) [OS]",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170241-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170241-1\\skin.json",
     "missing": [],
     "source_id": 170241,
     "tools": [
@@ -373,7 +373,7 @@
   {
     "id": "pack-sep-169996-1",
     "name": "M4A1",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169996-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169996-1\\skin.json",
     "missing": [],
     "source_id": 169996,
     "tools": [
@@ -385,7 +385,7 @@
   {
     "id": "pack-sep-170269-1",
     "name": "S&W Model 29 for Rifle",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170269-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170269-1\\skin.json",
     "missing": [],
     "source_id": 170269,
     "tools": [
@@ -397,7 +397,7 @@
   {
     "id": "pack-sep-170403-1",
     "name": "Armalite AR-30A1 Acog",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170403-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170403-1\\skin.json",
     "missing": [],
     "source_id": 170403,
     "tools": [
@@ -410,7 +410,7 @@
   {
     "id": "pack-sep-170563-1",
     "name": "M14 Remastered — 0.1.1c",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170563-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170563-1\\skin.json",
     "missing": [],
     "source_id": 170563,
     "tools": [
@@ -422,7 +422,7 @@
   {
     "id": "pack-sep-170189-1",
     "name": "FN-P90 — P90 Asiimov/xP90Asiimov",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170189-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170189-1\\skin.json",
     "missing": [],
     "source_id": 170189,
     "tools": [
@@ -435,7 +435,7 @@
   {
     "id": "pack-sep-170189-2",
     "name": "FN-P90 — P90 Default/xP90",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170189-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170189-2\\skin.json",
     "missing": [],
     "source_id": 170189,
     "tools": [
@@ -448,7 +448,7 @@
   {
     "id": "pack-sep-170097-1",
     "name": "Lewis Gun WW2",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170097-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170097-1\\skin.json",
     "missing": [],
     "source_id": 170097,
     "tools": [
@@ -460,7 +460,7 @@
   {
     "id": "pack-sep-170512-1",
     "name": "M1 Garand WW2",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170512-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170512-1\\skin.json",
     "missing": [],
     "source_id": 170512,
     "tools": [
@@ -472,7 +472,7 @@
   {
     "id": "pack-sep-170500-1",
     "name": "GEWEHR 43 WW2",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170500-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170500-1\\skin.json",
     "missing": [],
     "source_id": 170500,
     "tools": [
@@ -484,7 +484,7 @@
   {
     "id": "pack-sep-170592-1",
     "name": "CZ 750 S1 M1 Sniper",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170592-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170592-1\\skin.json",
     "missing": [],
     "source_id": 170592,
     "tools": [
@@ -497,7 +497,7 @@
   {
     "id": "pack-sep-170187-1",
     "name": "Mp18 Bf1 --OpenSpades--",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170187-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170187-1\\skin.json",
     "missing": [],
     "source_id": 170187,
     "tools": [
@@ -511,7 +511,7 @@
   {
     "id": "pack-sep-170554-1",
     "name": "M107A1 - Desert Ops",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170554-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170554-1\\skin.json",
     "missing": [],
     "source_id": 170554,
     "tools": [
@@ -524,7 +524,7 @@
   {
     "id": "pack-sep-169726-1",
     "name": "World War 1 Skin Pack — Rifle",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169726-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169726-1\\skin.json",
     "missing": [],
     "source_id": 169726,
     "tools": [
@@ -536,7 +536,7 @@
   {
     "id": "pack-sep-169726-2",
     "name": "World War 1 Skin Pack — SMG",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169726-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169726-2\\skin.json",
     "missing": [],
     "source_id": 169726,
     "tools": [
@@ -550,7 +550,7 @@
   {
     "id": "pack-sep-169726-3",
     "name": "World War 1 Skin Pack — Shotgun",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169726-3\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169726-3\\skin.json",
     "missing": [],
     "source_id": 169726,
     "tools": [
@@ -564,7 +564,7 @@
   {
     "id": "pack-sep-169726-4",
     "name": "World War 1 Skin Pack — Spade",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-169726-4\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-169726-4\\skin.json",
     "missing": [],
     "source_id": 169726,
     "tools": [
@@ -580,7 +580,7 @@
   {
     "id": "pack-sep-170082-1",
     "name": "MaschinenPistole-40",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170082-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170082-1\\skin.json",
     "missing": [],
     "source_id": 170082,
     "tools": [
@@ -594,7 +594,7 @@
   {
     "id": "pack-sep-170208-1",
     "name": "AKU-12",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170208-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170208-1\\skin.json",
     "missing": [],
     "source_id": 170208,
     "tools": [
@@ -606,7 +606,7 @@
   {
     "id": "pack-sep-170204-1",
     "name": "FN-SCAR — Reflex Sight/Black",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-1\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -618,7 +618,7 @@
   {
     "id": "pack-sep-170204-2",
     "name": "FN-SCAR — Reflex Sight/Default",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-2\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-2\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -630,7 +630,7 @@
   {
     "id": "pack-sep-170204-3",
     "name": "FN-SCAR — Sniper/Full Auto (SMG Replacement)/Black",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-3\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-3\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -642,7 +642,7 @@
   {
     "id": "pack-sep-170204-4",
     "name": "FN-SCAR — Sniper/Full Auto (SMG Replacement)/Default",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-4\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-4\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -654,7 +654,7 @@
   {
     "id": "pack-sep-170204-5",
     "name": "FN-SCAR — Sniper/Semi Auto (Rifle Replacement)/Black",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-5\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-5\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -667,7 +667,7 @@
   {
     "id": "pack-sep-170204-6",
     "name": "FN-SCAR — Sniper/Semi Auto (Rifle Replacement)/Default",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170204-6\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170204-6\\skin.json",
     "missing": [],
     "source_id": 170204,
     "tools": [
@@ -680,7 +680,7 @@
   {
     "id": "pack-sep-170458-1",
     "name": "OpenSpades Beretta BM59 Rifle folding buttstock",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170458-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170458-1\\skin.json",
     "missing": [],
     "source_id": 170458,
     "tools": [
@@ -692,7 +692,7 @@
   {
     "id": "pack-sep-170145-1",
     "name": "Dark Desert Camouflage M4",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170145-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170145-1\\skin.json",
     "missing": [],
     "source_id": 170145,
     "tools": [
@@ -704,7 +704,7 @@
   {
     "id": "pack-sep-170779-1",
     "name": "Double Barrels",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170779-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170779-1\\skin.json",
     "missing": [],
     "source_id": 170779,
     "tools": [
@@ -718,7 +718,7 @@
   {
     "id": "pack-sep-170147-1",
     "name": "M60",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170147-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170147-1\\skin.json",
     "missing": [],
     "source_id": 170147,
     "tools": [
@@ -730,7 +730,7 @@
   {
     "id": "pack-sep-170216-1",
     "name": "SIG SG 552 Tactical",
-    "manifest": "G:\\AoSRevival\\BattleSpadesClient\\assets\\client\\cosmetics\\packs\\pack-sep-170216-1\\skin.json",
+    "manifest": "assets\\client\\cosmetics\\packs\\pack-sep-170216-1\\skin.json",
     "missing": [],
     "source_id": 170216,
     "tools": [

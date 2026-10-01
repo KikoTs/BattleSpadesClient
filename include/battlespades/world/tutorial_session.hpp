@@ -813,8 +813,12 @@ private:
     void apply_weapon_recoil(const WeaponAction& action, const WeaponDefinition& weapon) noexcept;
     void fire_pistol();
     void swing_spade();
-    /** `emits_light` registers a flare-block static point light at the voxel. */
-    void place_block(bool emits_light = false);
+    /**
+     * `emits_light` is FlareBlockTool: the cube is BlockToolCommon's hit cube
+     * (the one its ghost shows) and a static point light registers there.
+     * Returns whether a voxel was placed.
+     */
+    bool place_block(bool emits_light = false);
     [[nodiscard]] bool damage_voxel(
         std::uint32_t x, std::uint32_t y, std::uint32_t z, double damage, bool collapse = true);
     void destroy_target(std::size_t index);

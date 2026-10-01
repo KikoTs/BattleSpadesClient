@@ -219,23 +219,6 @@ read_aos_meshes(const std::filesystem::path& path, std::string& error) {
     return result;
 }
 
-[[nodiscard]] std::array<float, 3U> rotate_xyz(std::array<float, 3U> value,
-                                               const std::array<float, 3U>& degrees) noexcept {
-    constexpr float radians_per_degree{0.01745329251994329577F};
-    const auto rotate_x = degrees[0U] * radians_per_degree;
-    const auto rotate_y = degrees[1U] * radians_per_degree;
-    const auto rotate_z = degrees[2U] * radians_per_degree;
-    const auto sx = std::sin(rotate_x);
-    const auto cx = std::cos(rotate_x);
-    const auto sy = std::sin(rotate_y);
-    const auto cy = std::cos(rotate_y);
-    const auto sz = std::sin(rotate_z);
-    const auto cz = std::cos(rotate_z);
-    value = {value[0U], value[1U] * cx - value[2U] * sx, value[1U] * sx + value[2U] * cx};
-    value = {value[0U] * cy + value[2U] * sy, value[1U], -value[0U] * sy + value[2U] * cy};
-    return {value[0U] * cz - value[1U] * sz, value[0U] * sz + value[1U] * cz, value[2U]};
-}
-
 struct Plane final {
     float x{};
     float y{};
@@ -1505,8 +1488,10 @@ bool WorldRenderer::set_skydome(std::string_view definition_name) {
                 // The retail .aos exporter is Y-up. Bake the authored SRT and
                 // convert to our canonical z-down world once at load time;
                 // each frame then needs only a translation to the camera.
+                // Rotation order follows SkyDome.do_mesh_rotation
+                // (gameScene.pyd 0x1010FF40): Rx * Ry * Rz, Z applied first.
                 for (auto& vertex : mesh.vertices) {
-                    auto position = rotate_xyz(
+                    auto position = retail_skydome_rotate(
                         {vertex.x * scale, vertex.y * scale, vertex.z * scale}, rotation);
                     position[0U] += translation[0U];
                     position[1U] += translation[1U];
@@ -1517,7 +1502,10 @@ bool WorldRenderer::set_skydome(std::string_view definition_name) {
                 }
 
                 Impl::SkydomeSlot slot;
-                slot.uv_speed = uv_speed;
+                // Retail flips V at load (mesh.pyd 0x100042F0: v = 1 - v)
+                // and scrolls the flipped coordinate; we keep the raw V, so
+                // the V speed must be negated or the clouds drift backwards.
+                slot.uv_speed = retail_skydome_uv_speed(uv_speed);
                 const auto* vertex_memory = bgfx::copy(
                     mesh.vertices.data(),
                     static_cast<std::uint32_t>(mesh.vertices.size() * sizeof(SkydomeVertex)));

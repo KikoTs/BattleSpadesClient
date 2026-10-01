@@ -33,6 +33,9 @@ constexpr std::array<std::array<ViewModelVector, 2U>, 3U> zombie_prefab_parts{{
     {{{0.65, 0.5, 0.3}, {90.0, 0.0, -90.0}}},
 }};
 
+/** Largest `(timer & 511) - 255` value in Character.update_animation. */
+constexpr double retail_walk_triangle_peak{256.0};
+
 /** Character.draw's `pitch += 50` when can_display_weapon is false. */
 constexpr double hidden_tool_arm_pitch_degrees{50.0};
 
@@ -182,10 +185,25 @@ RetailWalkPose evaluate_retail_walk_pose(std::uint64_t timer_ms,
     const double triangle =
         static_cast<double>(timer_ms & 511U) - 255.0;
     const double scale = (crouching ? 0.016 : 0.028) * 30.0;
-    const double forward =
-        triangle * (forward_x * velocity.x + forward_y * velocity.y) * scale;
-    const double lateral =
-        triangle * (side_x * velocity.x + side_y * velocity.y) * scale;
+    const double forward_speed = forward_x * velocity.x + forward_y * velocity.y;
+    const double lateral_speed = side_x * velocity.x + side_y * velocity.y;
+    // Retail's arc grows linearly with speed and is never limited. Every
+    // shipped human class tops out on the ground at Gangster/VIP sprint
+    // (CLASS_SPRINT_MULTIPLIER 1.5 x InitialInfo speed 1.5 / ground friction
+    // 4 = 0.5625 blocks/tick, a ~121 degree peak). The zombie classes run
+    // well outside that domain: CLASS_ZOMBIE sprint is 1.65 x 1.65 / 4 =
+    // 0.68 (146 degrees, the feet kick over the head) and CLASS_FAST_ZOMBIE
+    // walks at 1.1 x 3.0 / 4 = 0.825 and sprints at 3.0 x 3.0 / 4 = 2.25
+    // (177 to 482 degrees: the legs windmill through full turns). Scale the
+    // whole triangle down to that ceiling instead of flat-topping it, so the
+    // phase and forward/strafe ratio stay retail and every human gait below
+    // the ceiling is bit-identical to Character.update_animation.
+    const double peak =
+        retail_walk_triangle_peak * scale * std::hypot(forward_speed, lateral_speed);
+    const double limit =
+        peak > retail_walk_max_swing_degrees ? retail_walk_max_swing_degrees / peak : 1.0;
+    const double forward = triangle * forward_speed * scale * limit;
+    const double lateral = triangle * lateral_speed * scale * limit;
     // The second 512 ms half negates the fresh ramp, producing the continuous
     // triangle wave seen in retail rather than a speed-dependent sine loop.
     const double side = (timer_ms & 1023U) > 511U ? -1.0 : 1.0;

@@ -167,6 +167,12 @@ void positional_mix_uses_retail_openal_defaults() {
     const auto offset = retail_source_position({10.0F, 20.0F, 30.0F});
     expect(offset.x == 10.5F && offset.y == 20.5F && offset.z == 29.5F,
            "GameSound.set_position: +0.5 x/y and half a block up");
+    // Measured by rendering a 1 kHz tone through retail's own OpenAL Soft
+    // 1.13 DLL (wave backend): a source 11 units away with rolloff 0.15 comes
+    // out at exactly 1/2.5 of the same source at 1 unit.
+    expect(approx(retail_positional_gain(1.0F, 11.0F), 1.0F / 2.5F),
+           "retail OpenAL 1.13 measured 0.4 at 11 blocks");
+    expect(!retail_context_hrtf, "retail's OpenAL Soft 1.13 has no HRTF");
 }
 
 void volumes_and_pitches_match_the_retail_rows() {

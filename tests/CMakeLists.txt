@@ -213,6 +213,11 @@ target_compile_definitions(aos_kv6_normal_tests PRIVATE
 aos_enable_strict_warnings(aos_kv6_normal_tests)
 add_test(NAME aos_kv6_normal_tests COMMAND aos_kv6_normal_tests)
 
+add_executable(aos_cosmetic_file_tests test_cosmetic_files.cpp)
+target_link_libraries(aos_cosmetic_file_tests PRIVATE BattleSpades::World nlohmann_json::nlohmann_json)
+aos_enable_strict_warnings(aos_cosmetic_file_tests)
+add_test(NAME aos_cosmetic_file_tests COMMAND aos_cosmetic_file_tests "${AOS_ASSET_ROOT}")
+
 add_executable(aos_model_quality_tests test_model_quality.cpp)
 target_link_libraries(aos_model_quality_tests PRIVATE BattleSpades::World)
 target_compile_definitions(aos_model_quality_tests PRIVATE
@@ -234,6 +239,11 @@ add_executable(aos_quality_profile_tests test_quality_profile.cpp)
 target_link_libraries(aos_quality_profile_tests PRIVATE BattleSpades::Settings)
 aos_enable_strict_warnings(aos_quality_profile_tests)
 add_test(NAME aos_quality_profile_tests COMMAND aos_quality_profile_tests)
+
+add_executable(aos_graphics_apply_tests test_graphics_apply.cpp)
+target_link_libraries(aos_graphics_apply_tests PRIVATE BattleSpades::Settings)
+aos_enable_strict_warnings(aos_graphics_apply_tests)
+add_test(NAME aos_graphics_apply_tests COMMAND aos_graphics_apply_tests)
 
 add_executable(aos_map_atmosphere_tests test_map_atmosphere.cpp)
 target_link_libraries(aos_map_atmosphere_tests PRIVATE BattleSpades::World)
@@ -294,6 +304,11 @@ add_executable(aos_protocol168_players_tests test_protocol168_players.cpp)
 target_link_libraries(aos_protocol168_players_tests PRIVATE BattleSpades::Protocol)
 aos_enable_strict_warnings(aos_protocol168_players_tests)
 add_test(NAME aos_protocol168_players_tests COMMAND aos_protocol168_players_tests)
+
+add_executable(aos_shooting_contract_tests test_shooting_contract.cpp)
+target_link_libraries(aos_shooting_contract_tests PRIVATE BattleSpades::Protocol)
+aos_enable_strict_warnings(aos_shooting_contract_tests)
+add_test(NAME aos_shooting_contract_tests COMMAND aos_shooting_contract_tests)
 
 add_executable(aos_protocol168_runtime_tests test_protocol168_runtime.cpp)
 target_link_libraries(aos_protocol168_runtime_tests PRIVATE BattleSpades::Protocol)
@@ -553,6 +568,23 @@ if(TARGET BattleSpades::RenderBgfx)
     )
     aos_enable_strict_warnings(aos_texture_quality_tests)
     add_test(NAME aos_texture_quality_tests COMMAND aos_texture_quality_tests)
+
+    # Changing Antialiasing on Direct3D aborted the client: bgfx replaces the
+    # swap chain the Steam overlay holds. Drives the real UI renderer on a
+    # never-shown window with an overlay-like Present hook.
+    add_executable(aos_presentation_reset_tests test_presentation_reset.cpp)
+    target_link_libraries(aos_presentation_reset_tests PRIVATE BattleSpades::RenderBgfx)
+    if(WIN32)
+        target_link_libraries(aos_presentation_reset_tests PRIVATE d3d11 dxgi)
+    endif()
+    target_compile_definitions(
+        aos_presentation_reset_tests
+        PRIVATE
+            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin"
+    )
+    aos_enable_strict_warnings(aos_presentation_reset_tests)
+    add_test(NAME aos_presentation_reset_tests COMMAND aos_presentation_reset_tests)
 endif()
 
 add_executable(
@@ -899,6 +931,14 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_steam_connect_tests PRIVATE BattleSpades::NativeSteam)
     aos_enable_strict_warnings(aos_steam_connect_tests)
     add_test(NAME aos_steam_connect_tests COMMAND aos_steam_connect_tests)
+    add_executable(aos_steam_overlay_tests test_steam_overlay.cpp)
+    target_link_libraries(aos_steam_overlay_tests PRIVATE BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_steam_overlay_tests)
+    add_test(NAME aos_steam_overlay_tests COMMAND aos_steam_overlay_tests)
+    add_executable(aos_workshop_sync_tests test_workshop_sync.cpp)
+    target_link_libraries(aos_workshop_sync_tests PRIVATE BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_workshop_sync_tests)
+    add_test(NAME aos_workshop_sync_tests COMMAND aos_workshop_sync_tests)
     if(WIN32)
         # Speaks the bridge protocol without Steam, so the handshake, noise
         # tolerance, retry and join events are tested on every machine.
@@ -940,6 +980,21 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     aos_enable_strict_warnings(aos_world_vertex_layout_tests)
     add_test(NAME aos_world_vertex_layout_tests COMMAND aos_world_vertex_layout_tests)
+
+    # Pins the skydome scroll direction against retail's V-flipping .aos
+    # loader, using the real bimg decoder and the shipped dome textures.
+    add_executable(aos_skydome_scroll_tests test_skydome_scroll.cpp)
+    target_link_libraries(
+        aos_skydome_scroll_tests
+        PRIVATE
+            BattleSpades::BuildOptions
+            bgfx::bimg_decode
+            bgfx::bimg
+            nlohmann_json::nlohmann_json
+    )
+    target_include_directories(aos_skydome_scroll_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    aos_enable_strict_warnings(aos_skydome_scroll_tests)
+    add_test(NAME aos_skydome_scroll_tests COMMAND aos_skydome_scroll_tests "${AOS_ASSET_ROOT}")
 
     # Renders the aimed viewmodel offscreen and measures where it lands. The
     # recovered draw_sight constants only centre the sight if the KV6 mesher
@@ -1070,6 +1125,14 @@ if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
         AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
         AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
     aos_enable_strict_warnings(aos_retail_scene_capture)
+    # Developer tool (not a test): CPU composite of the tool-switch strip draw
+    # list, before/after the hud.pyd draw_loadout_item_hud parity pass.
+    add_executable(aos_hud_strip_capture "${PROJECT_SOURCE_DIR}/tools/hud_strip_capture.cpp")
+    target_link_libraries(aos_hud_strip_capture PRIVATE
+        BattleSpades::Frontend BattleSpades::Text BattleSpades::World)
+    target_include_directories(aos_hud_strip_capture SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_hud_strip_capture PRIVATE
+        AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}")
     # Developer tool (not a test): headless frame-time, terrain memory and
     # remesh-cost benchmark over a real map, with legacy/tuned A/B captures.
     add_executable(aos_render_benchmark "${PROJECT_SOURCE_DIR}/tools/render_benchmark.cpp")

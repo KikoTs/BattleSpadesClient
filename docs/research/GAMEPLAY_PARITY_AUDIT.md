@@ -8,19 +8,19 @@ oracle named below can answer the question.
 
 ## Evidence used
 
-- Decompiled Python: `G:\AoSRevival\aceofspades_source\aoslib`, especially
+- Decompiled Python: `<retail-source>\aoslib`, especially
   `weapons/tool.py`, `spadeTool.py`, `diggingTool.py`, `blockTool.py`,
   `pistolWeapon.py`, and the animation modules.
-- Native retail binary: `G:\AoSRevival\AceOfSpades_no_steam_new\aoslib\character.pyd`.
+- Native retail binary: `../AceOfSpades_no_steam_new\aoslib\character.pyd`.
   `Character.draw_fps` is the wrapper at `0x10086b40` and implementation at
   `0x1005cb20` in the IDA database used on 2026-07-21.
 - Native gameplay binary:
-  `G:\AoSRevival\AceOfSpades_no_steam_new\aoslib\scenes\main\gameScene.pyd`.
+  `../AceOfSpades_no_steam_new\aoslib\scenes\main\gameScene.pyd`.
   It contains `BlockManager.remove_falling_blocks` and the compiled
   `FallingBlocks` methods.
-- Protocol oracle: `G:\AoSRevival\BattleSpades\shared\packet.pyx` and
-  `G:\AoSRevival\BattleSpades\docs\PROTOCOL.md`.
-- Structural oracle: `G:\AoSRevival\BattleSpades\server\world_manager.py`.
+- Protocol oracle: `../BattleSpades\shared\packet.pyx` and
+  `../BattleSpades\docs\PROTOCOL.md`.
+- Structural oracle: `../BattleSpades\server\world_manager.py`.
 - `aoslib.world.cube_line` was executed from the server's Python 3.12 native
   module to capture positive, negative, diagonal, and tied-axis golden paths.
 - OpenSpades was used only as corroboration for generic voxel behavior. It is
@@ -41,8 +41,9 @@ Recovered native entry points in `gameScene.pyd`:
 
 The recovered input contract is now pinned by `aos_retail_inventory_tests`:
 
-- number keys select their combined HUD slot directly and do not reveal the
-  tool strip;
+- number keys select their combined HUD slot directly and, like the wheel,
+  call `HUD.set_show_tool_loadout(True, 1.0)` (gameScene.pyd on_key_press,
+  hotkey lines 2314-2315), so they reveal the tool strip too;
 - the mouse wheel first allows the equipped character/tool to consume the
   event, then wraps through the combined loadout/prefab/UGC index;
 - wheel traversal skips unavailable entries, but tools in retail's
@@ -50,20 +51,33 @@ The recovered input contract is now pinned by `aos_retail_inventory_tests`:
 - dead/non-swappable states reject both paths;
 - a protocol-visible tool change is immediate, while the Character pullout
   presentation is an independent 0.5-second animation;
-- wheel selection opens `HUD.set_show_tool_loadout(True, 1.0)` only while its
-  scale timer is idle. Further wheel notches change selection without
-  restarting that timer.
+- every wheel notch and number key calls `HUD.set_show_tool_loadout(True,
+  1.0)`, restarting `tools_timer`; `update_tools_hud_timer` (hud.pyd
+  `0x1008c270`) hides the strip once `time - tools_timer > 1.0`. The guard
+  (`hud_tools_scale_timer is None and scale_selected_tool_hud_item`) always
+  holds: only `reset_hud_tools_scale_timer`, reachable solely through the
+  never-called `toggle_weapons_hud`, starts the 1.0 s shrink timer, so the
+  current entry never shrinks while the strip is visible.
 
 The Tutorial's recovered slot order is block (tool 5), spade (tool 2), pistol
 (tool 17). The HUD uses the retail 80-pixel stride and compact
-`png/ui/weapons` portraits. Normal entries use the 195x195 frame at 0.25
-scale and the selected frame asset keeps its authored 0.7 scale (a 136.5px
-draw box, approximately 118 visible pixels). Portraits use the recovered
-0.4/0.9 item scale inside the draw routine's half-scale transform, producing
-effective 0.2/0.45 scales. The separate 1.3/2.0 values position the hotkey
-label and must not be multiplied into the frame or portrait dimensions. The
-selected scale remains for the toolbar lifetime; the earlier 0.18-second
-shrink pulse was an unsupported approximation and was removed. These constants
+`png/ui/weapons` portraits. Each entry is drawn inside translate +
+`glScalef(0.5, 0.5)` with `scale` = `max_scale` (default 0.6) for the
+enlarged selected entry, else 0.25. The green 195x195 `weapon_frame` is
+blitted under EVERY entry, the selected one included, at
+`1.8 * scale / max_scale` (73.125px normal, 175.5px selected), and the
+portrait at `glScalef(scale)` (41.25px / 99px). After popping that matrix the
+selected entry adds the red `weapon_frame_selected` (int(195*0.7) = 136px) at
+scale 1.0. Prefab and UGC entries pass `draw_background=True, max_scale=0.8`:
+instead of the green frame they draw `blueprint_background`
+(`png/ui/in_game_menus/prefab_selection/blueprint.png`, 171x101 at
+global_scale 0.64 = 109x64) at `glScalef(1.1, 0.4)` / `(2.0, 0.9)`, lowered by
+`80*sy/2` retail units, under the 211px prefab image at scale 0.25 / 0.8. The
+digit is `weapon_name_font` (Spades 18) drawn yellow (255,255,0) with
+center=True at `(k*19, -k*19)` under `glScalef(k)`, k = 2.0 current / 1.3
+other, labelled `str(index + 1)`. A loadout with at most one entry shows no
+strip. An earlier port applied 0.25 directly to the frame and 0.4/0.9 to the
+portraits, which made the green underlay smaller than the weapon. These constants
 come from `images.py` and `HUD.draw_loadout_item_hud` (`hud.pyd` core
 `0x100a8030`). The strip is centered at 70 percent of the top-origin window
 height. Compare

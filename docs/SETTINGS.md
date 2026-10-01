@@ -153,7 +153,7 @@ shader, per-vertex VXL baked illumination, the original AO/edge/grain atlas,
 authored KV6 normals and model lighting. It preserves server-supplied fog.
 Enhanced tiers use the measured map atmosphere, face normals and their existing
 shadow/occlusion path. All tiers read the same meshes; changing tier costs no
-re-mesh. See [the graphics audit](GRAPHICS_AUDIT_2026-09-20.md) for evidence and
+re-mesh. See [the graphics audit](archive/GRAPHICS_AUDIT_2026-09-20.md) for evidence and
 remaining parity limits.
 
 `Effect Quality` is a deliberately independent axis, sizing the reusable

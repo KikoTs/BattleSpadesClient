@@ -34,20 +34,62 @@ constexpr double crosshair_size{16.0};
 constexpr double hit_crosshair_time{0.25};
 constexpr ui::ColorRgba8 normal_crosshair_color{255U, 255U, 255U, 255U};
 constexpr ui::ColorRgba8 hit_crosshair_color{230U, 40U, 79U, 255U};
-// Captured retail toolbar at 1920x1080 plus hud.pyd draw_loadout_item_hud:
-// entries are centered 80 px apart; the baseline is 30% of window height
-// from the bottom. Retail draws Tool.image here (the authored 330px weapon
-// portrait), not Tool.icon's unrelated 32px menu glyph. Frame scale is
-// independent of the branch's label scale: the normal frame uses 0.25 and
-// the selected frame keeps its authored 0.7. Weapon portraits are drawn
-// inside the recovered half-scale transform after their 0.4/0.9 item scale.
+// hud.pyd HUD.draw_tool_loadout_hud (0x100a5e20) and draw_loadout_item_hud
+// (0x100a8030, hud.pyx ~1325), decompiled end to end:
+//   x = window.width/2 - total*80/2 + 40 + index*80, y = window.height*0.3
+//   (bottom-origin, i.e. 70% down). glColor4f(1,1,1,1) before every blit, so
+//   the strip has no fade and no bar behind it.
+//   Per entry: push, translate(x, y), glScalef(0.5, 0.5); `scale` is max_scale
+//   for the enlarged current entry (scale_selected_tool_hud_item is True
+//   whenever set_show_tool_loadout(True, 1.0) opened the strip), else 0.25.
+//   max_scale defaults to 0.6 (0x100c9de2); prefab and UGC entries pass
+//   draw_background=True, max_scale=0.8.
+//   - draw_background: translate(0, -80*sy/2), glScalef(sx, sy),
+//     blueprint_background.blit (images.py:433, global_scale 0.64 -> 109x64),
+//     (sx, sy) = (1.1, 0.4) normal / (2.0, 0.9) current.
+//   - otherwise: glScalef(1.8*scale/max_scale), weapon_frame.blit (195px).
+//   - glScalef(scale), item_image.blit: TOOL_IMAGES load at 1.0 (330px),
+//     prefab palette and UGC tool images at 0.64 (211px).
+//   - glScalef(k, k) with k = 2.0 current / 1.3 otherwise,
+//     weapon_name_font (Spades 18, text.py:297).draw(str(index + 1),
+//     k*19, -k*19, (255, 255, 0, 255), center=True).
+//   - pop both, then for the current entry only: push, translate(x, y),
+//     glScalef(1.0), weapon_frame_selected.blit (images.py:432, 0.7 -> 136px).
+// load_texture anchors centred images at width/2 and height/2 with Python 2
+// integer division (image.py:102-104), so odd sizes sit half a texel off.
 constexpr double inventory_slot_stride{80.0};
-constexpr double inventory_frame_normal{195.0 * 0.25};
-constexpr double inventory_frame_selected{195.0 * 0.70};
-constexpr double inventory_icon_normal{330.0 * 0.40 * 0.5};
-constexpr double inventory_icon_selected{330.0 * 0.90 * 0.5};
-constexpr double inventory_label_offset_normal{1.3 * 38.0 * 0.5};
-constexpr double inventory_label_offset_selected{2.0 * 38.0 * 0.5};
+constexpr double inventory_item_transform{0.5};
+constexpr double inventory_normal_scale{0.25};
+constexpr double inventory_tool_max_scale{0.6};
+constexpr double inventory_blueprint_max_scale{0.8};
+constexpr double inventory_frame_texture{195.0};
+constexpr double inventory_frame_scale{1.8};
+constexpr double inventory_selected_frame_texture{136.0};
+constexpr double inventory_blueprint_width{109.0};
+constexpr double inventory_blueprint_height{64.0};
+constexpr double inventory_label_font_pixels{18.0};
+constexpr double inventory_label_glyph_offset{19.0};
+
+struct RetailQuad final {
+    double left{};
+    double top{};
+    double width{};
+    double height{};
+};
+
+/**
+ * A centre-anchored pyglet texture blitted at (cx, cy) under a uniform or
+ * per-axis scale, converted to a top-left window rectangle. cy is top-origin.
+ */
+[[nodiscard]] RetailQuad retail_centred_quad(double cx, double cy, double texture_width,
+                                             double texture_height, double scale_x,
+                                             double scale_y) noexcept {
+    const double anchor_x = std::floor(texture_width / 2.0);
+    const double anchor_y = std::floor(texture_height / 2.0);
+    // Bottom-origin: the image spans [-anchor_y, height - anchor_y].
+    return RetailQuad{cx - anchor_x * scale_x, cy - (texture_height - anchor_y) * scale_y,
+                      texture_width * scale_x, texture_height * scale_y};
+}
 // Retail Palette.draw (hud.pyd 0x10030020): 9px swatches, 11px
 // row/column advance, and an 11px selector surrounding the chosen swatch.
 constexpr double palette_cell_size{9.0};
@@ -395,6 +437,19 @@ double zombie_heartbeat_marker_size(double elapsed_seconds) noexcept {
     return (base_scale + animated_size) * source_pixels;
 }
 
+bool player_marker_pins_to_minimap_edge(
+    const PlayerMarkerEdgePinInputs& inputs) noexcept {
+    if (inputs.high_minimap_visibility || inputs.carries_pickup) {
+        return true;
+    }
+    // :531 compares ids first, so a Zombie's own pin is not forced here.
+    if (!inputs.is_viewer && inputs.viewer_is_zombie) {
+        return true;
+    }
+    return inputs.exposed_teams_always_on_minimap &&
+           inputs.opposite_team_can_see_other;
+}
+
 std::optional<GameHudMinimapEntityStyle>
 minimap_entity_style(std::uint8_t entity_type) noexcept {
     using namespace game_hud_assets;
@@ -678,7 +733,9 @@ void GameHudModel::set_inventory_state(std::vector<GameHudInventorySlot> slots,
     selected_inventory_slot_ = selected.has_value() && *selected < inventory_slots_.size()
                                    ? selected
                                    : std::nullopt;
-    inventory_visible_ = visible && !inventory_slots_.empty();
+    // draw_tool_loadout_hud (0x100a5e20) returns when get_noof_hud_tools() +
+    // len(prefabs) <= 1: a single-entry loadout never shows the strip.
+    inventory_visible_ = visible && inventory_slots_.size() > 1U;
 }
 
 void GameHudModel::set_ammo_state(std::string image_asset, std::int32_t current,
@@ -2610,10 +2667,11 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
         // through hud.add_big_message / add_big_messageBackGround, so they
         // render in the big-text lane above (see set_background_big_message).
 
-        // GameScene.on_mouse_scroll asks HUD.set_show_tool_loadout(True, 1.0)
-        // and shows the selected authored-scale entry. Hotkey selection changes the
-        // tool without opening this strip, which is the important retail
-        // wheel-vs-number distinction.
+        // GameScene.on_mouse_scroll and the number-key branch of
+        // GameScene.on_key_press both call HUD.set_show_tool_loadout(True, 1.0),
+        // which shows this strip for one second with the current entry
+        // enlarged. draw_tool_loadout_hud returns early when the loadout has
+        // at most one entry (see GameHudModel::set_inventory_state).
         if (context.player_widgets_visible && context.character_widgets_visible &&
             model.inventory_visible()) {
             const auto& slots = model.inventory_slots();
@@ -2622,56 +2680,82 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
                                    inventory_slot_stride * 0.5;
             const double center_y = window_height * 0.70;
             for (std::size_t index{}; index < slots.size(); ++index) {
+                const auto& slot = slots[index];
                 const bool selected = model.selected_inventory_slot() == index;
-                const double frame_size =
-                    selected ? inventory_frame_selected : inventory_frame_normal;
-                const double icon_size =
-                    selected ? inventory_icon_selected : inventory_icon_normal;
+                const double max_scale = slot.blueprint_background
+                                             ? inventory_blueprint_max_scale
+                                             : inventory_tool_max_scale;
+                const double scale = selected ? max_scale : inventory_normal_scale;
                 const double center_x = start_x +
                                         static_cast<double>(index) * inventory_slot_stride;
-                const double left = center_x - frame_size * 0.5;
-                const double top = center_y - frame_size * 0.5;
-                list.push(window_sprite(selected ? game_hud_assets::weapon_frame_selected
-                                                 : game_hud_assets::weapon_frame,
-                                        left, top, frame_size, frame_size));
+                if (slot.blueprint_background) {
+                    // The schematic plate sits under prefab and UGC entries,
+                    // lowered by 80*sy/2 retail units inside the half scale.
+                    const double sx = selected ? 2.0 : 1.1;
+                    const double sy = selected ? 0.9 : 0.4;
+                    const auto plate = retail_centred_quad(
+                        center_x, center_y + 40.0 * sy * inventory_item_transform,
+                        inventory_blueprint_width, inventory_blueprint_height,
+                        sx * inventory_item_transform, sy * inventory_item_transform);
+                    list.push(window_sprite(game_hud_assets::prefab_blueprint, plate.left,
+                                            plate.top, plate.width, plate.height));
+                } else {
+                    // The green frame is drawn under every tool entry, the
+                    // current one included.
+                    const double frame_scale =
+                        inventory_item_transform * inventory_frame_scale * scale / max_scale;
+                    const auto frame = retail_centred_quad(
+                        center_x, center_y, inventory_frame_texture, inventory_frame_texture,
+                        frame_scale, frame_scale);
+                    list.push(window_sprite(game_hud_assets::weapon_frame, frame.left,
+                                            frame.top, frame.width, frame.height));
+                }
                 // Some selectable retail tools intentionally have no HUD
                 // image. Class loadouts normally hide that fact, but the F4
                 // all-tools sandbox can expose them. An empty sprite asset is
-                // invalid renderer input, so keep the selection frame and
-                // omit only the absent icon.
-                if (!slots[index].icon_asset.empty()) {
-                    list.push(window_sprite(slots[index].icon_asset,
-                                            center_x - icon_size * 0.5,
-                                            center_y - icon_size * 0.5,
-                                            icon_size, icon_size,
-                                            {}, ui::TextureFilter::nearest));
+                // invalid renderer input, so keep the frame and omit only the
+                // absent icon.
+                if (!slot.icon_asset.empty()) {
+                    const double icon_scale = inventory_item_transform * scale;
+                    const auto icon = retail_centred_quad(
+                        center_x, center_y, slot.icon_texture_pixels,
+                        slot.icon_texture_pixels, icon_scale, icon_scale);
+                    list.push(window_sprite(slot.icon_asset, icon.left, icon.top, icon.width,
+                                            icon.height));
                 }
-                if (!slots[index].hotkey_label.empty()) {
-                    // Retail does not keep the digit at one shared inset:
-                    // the selected 0.7-scale bracket pushes it to the far
-                    // lower-right, while normal entries keep it tight to the
-                    // 1.3x icon. These offsets reproduce the captured pixel
-                    // centers at both 800x600 and 1920x1080.
-                    const double label_offset = selected
-                                                    ? inventory_label_offset_selected
-                                                    : inventory_label_offset_normal;
-                    const double label_x = center_x + label_offset;
-                    const double label_y = center_y + label_offset;
+                if (!slot.hotkey_label.empty()) {
+                    // Font.draw(center=True) centres horizontally on the
+                    // baseline point; both point and glyphs carry k * 0.5.
+                    const double k = selected ? 2.0 : 1.3;
+                    const double label_scale = inventory_item_transform * k;
+                    const double offset = label_scale * k * inventory_label_glyph_offset;
+                    constexpr double label_box{80.0};
                     list.push(ui::TextDrawCommand{
-                        slots[index].hotkey_label,
+                        slot.hotkey_label,
                         std::string{game_hud_assets::help_font},
-                        ui::DrawRect{label_x, label_y, 18.0, 18.0},
+                        ui::DrawRect{center_x + offset - label_box * 0.5, center_y + offset,
+                                     label_box, 0.0},
                         ui::DrawSpace::window_pixels,
-                        selected ? 20.0 : 11.0,
+                        inventory_label_font_pixels * label_scale,
                         0.0,
                         1U,
-                        ui::HorizontalTextAlignment::left,
-                        ui::VerticalTextAlignment::top,
+                        ui::HorizontalTextAlignment::center,
+                        ui::VerticalTextAlignment::baseline,
                         ui::TextTransform::preserve,
                         ui::TextFit::none,
-                        ui::ColorModulation{ui::ColorRgba8{255U, 239U, 0U, 255U},
+                        ui::ColorModulation{ui::ColorRgba8{255U, 255U, 0U, 255U},
                                             1'000U, 1'000U},
                     });
+                }
+                if (selected) {
+                    // Drawn after popping the half-scale matrix, over the
+                    // portrait, at glScalef(1.0) while the entry is enlarged.
+                    const auto bracket = retail_centred_quad(
+                        center_x, center_y, inventory_selected_frame_texture,
+                        inventory_selected_frame_texture, 1.0, 1.0);
+                    list.push(window_sprite(game_hud_assets::weapon_frame_selected,
+                                            bracket.left, bracket.top, bracket.width,
+                                            bracket.height));
                 }
             }
         }

@@ -129,7 +129,7 @@ To regenerate the English key inventory from the recovered retail source:
 
 ```powershell
 py -3.12 tools\generate-localization-catalog.py `
-  --source G:\AoSRevival\aos-nonsteam\src\aoslib\strings `
+  --source ../aos-nonsteam\src\aoslib\strings `
   --output-dir config\localization
 ```
 

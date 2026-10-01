@@ -147,11 +147,23 @@ retail_third_person_muzzle_attachment(std::uint8_t tool_id) noexcept;
     ViewModelVector orientation) noexcept;
 
 /**
+ * Largest leg swing, in degrees, evaluate_retail_walk_pose will produce.
+ *
+ * It is retail's own peak (256 x 0.028 x 30 x speed) at the fastest shipped
+ * human ground gait, Gangster/VIP sprint: CLASS_SPRINT_MULTIPLIER 1.5 times
+ * the InitialInfo speed 1.5, over ground friction 4 = 0.5625 blocks/tick.
+ * Only faster characters (the zombie classes, jetpack/UGC flight) are scaled.
+ */
+inline constexpr double retail_walk_max_swing_degrees{256.0 * 0.028 * 30.0 * (1.5 * 1.5 / 4.0)};
+
+/**
  * Evaluate Character.update_animation's shared 1.024-second triangle gait.
  *
  * `timer_ms` is the scene timer used by every character. Velocity and
  * orientation are decoded protocol vectors; invalid/idle input fails closed
  * to planted legs. Crouching keeps the same phase with retail's smaller arc.
+ * Speeds whose retail arc would pass retail_walk_max_swing_degrees have the
+ * whole triangle scaled down to it (same phase, same forward/strafe ratio).
  */
 [[nodiscard]] RetailWalkPose evaluate_retail_walk_pose(
     std::uint64_t timer_ms, ViewModelVector velocity,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogId": "ace-of-spades-retail-frontend",
-  "sourceRoot": "G:\\AoSRevival\\aceofspades_decompiled",
+  "sourceRoot": "<retail-decompiled>",
   "referenceCanvas": {
     "width": 800,
     "height": 600,

@@ -6,7 +6,7 @@ Status: **RECOVERED**. This closes `docs/WEAPON_SECONDARY_RECOVERY.md` UNRECOVER
 item 11 in full.
 
 Everything below was decompiled this pass from the retail binaries under
-`G:/AoSRevival/aceofspades_source/`. Addresses are image-base relative
+`<retail-source>/`. Addresses are image-base relative
 (character.pyd / draw.pyd base `0x10000000`, gameScene.pyd base `0x10000000`).
 Every Python attribute and module-global name was resolved through the Cython
 string table (20-byte `__Pyx_StringTabEntry {PyObject** p; const char* s;
@@ -518,7 +518,7 @@ caveat on this.
 ## 4. SIGHT ASSETS
 
 All 31 files below are present under
-`G:/AoSRevival/BattleSpadesClient/assets/original/kv6/` — **every one ships.**
+`assets/original/kv6/` — **every one ships.**
 Dimensions are `x × y × z` in voxels as stored in the `Kvxl` header; colours are
 read back as RGB (KV6 stores BGRA). Intended draw scale is the hard-coded `0.05`
 for every `sight` model and `pin_scale` (0.02) for every `pin` model — retail

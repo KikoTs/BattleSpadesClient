@@ -126,11 +126,15 @@ void RetailInventory::commit(std::size_t index, InventorySelectionOrigin origin)
     if (changed || origin == InventorySelectionOrigin::loadout_sync) {
         pullout_remaining_ = pullout_seconds;
     }
-    const bool wheel = origin == InventorySelectionOrigin::mouse_wheel;
-    const bool start_toolbar_animation = wheel && toolbar_remaining_ <= 0.0;
-    // Retail GameScene only calls HUD.set_show_tool_loadout while the HUD's
-    // scale timer is idle. Further wheel notches still change the tool, but
-    // do not restart the one-second reveal or selected-item pulse.
+    // GameScene.on_mouse_scroll and the number-key branch of on_key_press
+    // (gameScene.pyd, hotkey lines 2314-2315) call
+    // HUD.set_show_tool_loadout(True, 1.0) on every selection: it restarts
+    // tools_timer, and update_tools_hud_timer (hud.pyd 0x1008c270) hides the
+    // strip once time - tools_timer > 1.0. Their guard (hud_tools_scale_timer
+    // is None and scale_selected_tool_hud_item) always holds, because only
+    // the uncalled toggle_weapons_hud path ever starts that scale timer.
+    const bool start_toolbar_animation = origin == InventorySelectionOrigin::mouse_wheel ||
+                                         origin == InventorySelectionOrigin::direct_slot;
     if (start_toolbar_animation) {
         toolbar_remaining_ = toolbar_seconds;
     }

@@ -2,7 +2,7 @@
 
 This document merges five read-only audits of the BattleSpades native client (network, audio, HUD, gameplay, render) into one ranked list. Nothing was built or run for it.
 
-The IDA MCP server was down during the audits, so any item marked **VERIFY** needs a headless-IDA check of the stock `.pyd` files before it is implemented.
+The IDA tooling was unavailable during the audits, so any item marked **VERIFY** needs a headless-IDA check of the stock `.pyd` files before it is implemented.
 
 ## Abbreviations
 
@@ -19,7 +19,7 @@ The IDA MCP server was down during the audits, so any item marked **VERIFY** nee
 | pe / te | `src/world/particle_effects.cpp` / `src/world/terrain_effects.cpp` |
 | wr | `src/world/weapon_runtime.cpp` |
 | ecat / wcat | `src/world/entity_catalog.generated.cpp` / `src/world/weapon_catalog.generated.cpp` |
-| BS/ | `G:\AoSRevival\BattleSpades\` (server repo) |
+| BS/ | `../BattleSpades\` (server repo) |
 | BDM | `BS/server/block_damage_model.py` |
 | Audit tags | **N** network, **A** audio, **H** HUD, **G** gameplay, **R** render. For example "N P0-2" is item P0-2 of the network audit, and "G C6" is row C6 of the gameplay audit. |
 
@@ -193,7 +193,7 @@ On the client:
 
 These are covered by **P1-05**, **P1-06** and **P1-07**.
 
-**d) Items marked VERIFY need IDA.** The IDA MCP server was down for all five audits. Before implementation, confirm each VERIFY item with the headless-IDA recipe (the server repo's `scratchpad/crates_ida/` scripts and the Cython recipe in the retail-announcements notes). The main ones are:
+**d) Items marked VERIFY need IDA.** IDA was unavailable for all five audits. Before implementation, confirm each VERIFY item with the headless-IDA recipe (the server repo's `crates_ida` scripts (local evidence, not committed) and the Cython recipe in the retail-announcements notes). The main ones are:
 - burn and sudden-death overlay art;
 - spawn-protection flash period;
 - `heal_hp_added`;
@@ -225,11 +225,11 @@ These are covered by **P1-05**, **P1-06** and **P1-07**.
 
 ## 5. Recommended fix waves
 
-The waves are grouped by code area so that parallel agents do not edit the same files. Waves 1 and 2 are sequential inside themselves. Waves 3-7 can run in parallel with each other once wave 1 has merged, because P1-04 and P1-06 touch the terrain replica.
+The waves are grouped by code area so that parallel work streams do not edit the same files. Waves 1 and 2 are sequential inside themselves. Waves 3-7 can run in parallel with each other once wave 1 has merged, because P1-04 and P1-06 touch the terrain replica.
 
 | Wave | Area and main files | Items | Notes |
 |---|---|---|---|
-| 1 | **Terrain, damage model, health, packet 38 and prefab 30**: `protocol168_terrain.*`, `vxl_map.*`, `chunk_mesher.cpp`, `prefab_placement.cpp`, the prefab section of nfm (11620-11780), and the wallet (nfm:9441) | P0-01 → P0-02 → P0-04 → P1-04 → P0-03 → P0-12; then P1-18, P3-12, P3-14 | One agent. Gate with `block_damage_footprints_live.json` and a packet-38 round-trip vector. |
+| 1 | **Terrain, damage model, health, packet 38 and prefab 30**: `protocol168_terrain.*`, `vxl_map.*`, `chunk_mesher.cpp`, `prefab_placement.cpp`, the prefab section of nfm (11620-11780), and the wallet (nfm:9441) | P0-01 → P0-02 → P0-04 → P1-04 → P0-03 → P0-12; then P1-18, P3-12, P3-14 | One work stream. Gate with `block_damage_footprints_live.json` and a packet-38 round-trip vector. |
 | 2 | **Weapons catalog, reload and melee RMB**: `weapon_catalog.generated.cpp`, `weapon_runtime.cpp`, `weapon_state.cpp`, `replicated_shot.cpp`, `entity_catalog.generated.cpp` (radar and dynamite values) | P0-05 (after the server commit), P0-10, P0-11, P2-17, P2-19, P3-21 | Blocked on note 3b for P0-05 only. |
 | 3 | **Kill stingers, banners and announcer**: the KillAction branch of nfm (10868-10955), `game_hud` big messages, team-select entry | P1-01, P1-02 | Small; quick visible win. |
 | 4 | **Audio linking**: nfm audio hooks (4373-4499, 5600-5715, 10106), `openal_frontend_audio.cpp`, `weapon_catalog` sound slots | P1-15, P1-16, P2-09, P2-20, P3-08, P3-09 | Coordinate with wave 7 for fire and goo cues (P1-05 and P1-06 own those sounds). |
@@ -276,7 +276,7 @@ Not observed: kill banners or stingers for the local player, bot prefabs on scre
 
 ### Live test (2026-09-27, full pass)
 
-Rig: the parity-integration build against isolated servers on UDP 27090/27100 (TDM ArcticBase first, then every `configs/official-*.toml` plus Arena), 6 bots. The server script adds a localhost eval console, so kills, teleports, prefabs, blasts and crate drops were driven server-side while the client was watched. Evidence came from window captures (burst captures for motion), the client `[nav]`/`[ui]` log, the server log, and a WASAPI loopback recording of the client's audio. Each recording was matched against the shipped Oggs by normalised cross-correlation; 0.9 and above counts as a certain match. The screenshots, audio reports and per-mode notes are in the session scratchpad (`ui_modes/`, `lt/e1..e3`).
+Rig: the parity-integration build against isolated servers on UDP 27090/27100 (TDM ArcticBase first, then every `configs/official-*.toml` plus Arena), 6 bots. The server script adds a localhost eval console, so kills, teleports, prefabs, blasts and crate drops were driven server-side while the client was watched. Evidence came from window captures (burst captures for motion), the client `[nav]`/`[ui]` log, the server log, and a WASAPI loopback recording of the client's audio. Each recording was matched against the shipped Oggs by normalised cross-correlation; 0.9 and above counts as a certain match. The screenshots, audio reports and per-mode notes are in local evidence (`ui_modes/`, `lt/e1..e3`).
 
 | # | Item | Result | Evidence |
 |---|---|---|---|
@@ -296,7 +296,7 @@ Bugs found and fixed (client, rebuilt `--parallel 4`):
 
 Tests after the fixes: ctest 130/131. The one failure is `aos_weapon_catalog_contract_check` ("weapon catalog is stale"). It is caused by a concurrent, uncommitted BS edit at 05:59: `shared/constants.py` STOCK RESTORE sets `DYNAMITE_STOCK`/`DYNAMITE_RESTOCK_AMOUNT` 3 → 1. The client catalog has not been regenerated for it. That is left to whoever owns the change: run `tools/generate_weapon_catalog.py`. BS was not touched in this pass, so the server suite was not rerun.
 
-UI-only findings were recorded for the follow-up fix pass, not fixed here (scratchpad `ui_modes/observations.md`):
+UI-only findings were recorded for the follow-up fix pass, not fixed here (local evidence `ui_modes/observations.md`):
 - The forced scoreboard covers the map-vote panel.
 - The results winner is taken from team scores rather than the server's winner. This only shows on an admin force-end.
 - Modern CTF and Diamond Mine have no carried-objective HUD icon.
@@ -354,7 +354,7 @@ Checked and already at parity (no change): `view_model_size` and third-person `m
 
 ## UI pass: in-game HUD and overlays (2026-09-27)
 
-Checked against the stock `hud.pyd`, `gameScene.pyd` and `character.pyd`, decoded headless in IDA (evidence and scripts in the session scratchpad `ui_modes/uia`). Code: `src/frontend/game_hud.cpp`, `match_overlays.cpp`, `change_team_menu.cpp` (the result headline only) and surgical edits in `native_frontend_module.cpp`.
+Checked against the stock `hud.pyd`, `gameScene.pyd` and `character.pyd`, decoded headless in IDA (evidence and scripts in the local evidence folder `ui_modes/uia`). Code: `src/frontend/game_hud.cpp`, `match_overlays.cpp`, `change_team_menu.cpp` (the result headline only) and surgical edits in `native_frontend_module.cpp`.
 
 ### Changed to match retail
 
@@ -383,7 +383,7 @@ Checked against the stock `hud.pyd`, `gameScene.pyd` and `character.pyd`, decode
 - The ballot CLOSED result duration stays at 6 s. Retail may use packet-supplied seconds (not decoded).
 - Other text-3D users are not drawn natively: rocket-turret ammo, radar-station lifetime, the attached sticky charge.
 - The retail title `mode_text` is drawn without `.upper()`. Native still uppercases it. This is invisible with Spades (a caps-only Latin face), but it can differ for Cyrillic packs.
-- No live capture was taken in this pass, because another agent's client window was open. The changes are covered by `aos_match_overlays_tests` (lanes, titles, headlines, ballot), `aos_hud_layout_tests` (big-text dwell and pop order), `aos_retail_hud_rules_tests` (background big text, death hint) and `aos_game_hud_tests` (spectator HeadCount, score label).
+- No live capture was taken in this pass, because another client window was open. The changes are covered by `aos_match_overlays_tests` (lanes, titles, headlines, ballot), `aos_hud_layout_tests` (big-text dwell and pop order), `aos_retail_hud_rules_tests` (background big text, death hint) and `aos_game_hud_tests` (spectator HeadCount, score label).
 
 ## UI pass: input, key names, help text, F-keys and music (UI-C, 2026-09-27)
 
@@ -461,7 +461,7 @@ Evidence: retail `aoslib/scenes/ingame_menus/{selectClass,selectTeam,changeTeam}
 
 ## Final integration 2026-09-27
 
-One pass after every 2026-09-27 client wave (waves 1-7, integration, live-test fixes, riot shield, view models, graphics, UI-A/B/C) landed in the main checkout. Nothing was committed. Evidence (screenshots, client logs, loopback recordings) is in the session scratchpad `final/ev/<session>/`.
+One pass after every 2026-09-27 client wave (waves 1-7, integration, live-test fixes, riot shield, view models, graphics, UI-A/B/C) landed in the main checkout. Nothing was committed. Evidence (screenshots, client logs, loopback recordings) is in local evidence `final/ev/<session>/`.
 
 ### Audit of claimed changes
 
@@ -476,7 +476,7 @@ UI-B's two whole-file rewrites (`native_frontend_module.cpp`, `settings_menu.cpp
 
 `,` / `.` and UI-B's same-key close work together. In the world, `,` opens SelectClass and `.` opens ChangeTeam, and the same key closes them to the world. The close path ignores key repeats and the initial-join menus (`in_game_selection_menu`). Checked live on TDM: `[nav]` class_selection, then game_hud, then change_team, then game_hud, with ClientInMenu going 1 and back to 0.
 
-The live-test "localhost eval console" exists only in the scratchpad (`lt/srv.py`). Nothing like it is in either repo (`eval(compile` / `exec(compile` have no hits in BS).
+The live-test "localhost eval console" exists only in local test tooling (`lt/srv.py`). Nothing like it is in either repo (`eval(compile` / `exec(compile` have no hits in BS).
 
 ### Catalogs
 
@@ -532,7 +532,7 @@ The live-test "localhost eval console" exists only in the scratchpad (`lt/srv.py
 - **P3-13 flare light in the Retail tier** (above): recover `vxl.pyd add_static_light` / `update_static_light_colour` (headless IDA), then bake the light into the retail vertex colour and w.
 - A server quirk: some remote WorldUpdate rows carry tool 0xFF (bots around death, spawn and infection). The client now ignores them as retail does; the server source was not chased.
 - The in-game ChangeTeam/SelectTeam "JOIN {team}" label is still the English "JOIN " prefix, not `JOIN_TEAM` from the pack.
-- Stray untracked files from earlier agents were left alone: `BattleSpadesClient/x.png` (a sky capture) and `BattleSpades/p.out` (a cProfile dump).
+- Stray untracked files were left alone: `BattleSpadesClient/x.png` (a sky capture, since deleted) and `BattleSpades/p.out` (a cProfile dump).
 
 ## First-person muzzle flash (2026-09-27)
 
@@ -582,7 +582,7 @@ After the fix, every hip flash lands right of and below the crosshair at the bar
 
 ## Round 2: frontend (2026-09-27)
 
-Source: the round-2 out-of-match frontend audit (26 ranked items). Built in `out/build/fix-frontend`; the full ctest there passes except `aos_class_catalog_tests`, which fails on another agent's in-progress hip-seam work and touches no frontend code.
+Source: the round-2 out-of-match frontend audit (26 ranked items). Built in `out/build/fix-frontend`; the full ctest there passes except `aos_class_catalog_tests`, which fails on a parallel pass's in-progress hip-seam work and touches no frontend code.
 
 | # | Item | Status | Where |
 |---|---|---|---|
@@ -640,7 +640,7 @@ Tests: `aos_jetpack_death_tests` (half colour, flash colour, blink timer acceler
 
 ## Round 2 integration (2026-09-27)
 
-The five round-2 agents (muzzle flash, camera/feel/building, players & entities, frontend, server rules) built in separate directories while editing shared files, mostly `native_frontend_module.cpp`. This pass audited the merged tree, rebuilt from scratch and ran every suite. The camera/feel/building agent left no section in this doc, so its changes are summarised below from the code and `tests/test_retail_feel.cpp`.
+The five round-2 work streams (muzzle flash, camera/feel/building, players & entities, frontend, server rules) built in separate directories while editing shared files, mostly `native_frontend_module.cpp`. This pass audited the merged tree, rebuilt from scratch and ran every suite. The camera/feel/building pass left no section in this doc, so its changes are summarised below from the code and `tests/test_retail_feel.cpp`.
 
 ### Audit of claimed changes
 
@@ -715,7 +715,7 @@ User report (Normal graphics): (1) indoors under a light source the hands and pl
 ### 1. Map light on models (enhanced tiers)
 
 - **Cause.** Terrain receives placed flare/fire light from the mesher's per-vertex bake (`a_color2`, `StaticLightField`) and emissive spill from the 3D volume probe (`EmissiveVolume`). KV6 models have neither: their vertices carry no bake. The first-person view model is also drawn in view space, so `world_renderer.cpp` switches its volume probe off (the probe would read an unrelated cell). Under a lamp the room lit up while the hands and players only got ambient × the 0.45 interior skylight, which is dark.
-- **Retail check.** Retail `model_frag` lights KV6s from `gl_LightSource[0..1]` (the packet-45 directional lights) and the ambient only. `character.pyd` asks `light_manager.get_free_dynamic_light` only in `Grenade.initialize` (headless IDA token dump, `scratchpad/mz3/chlight.txt`). Retail never samples map light for models, so the Retail tier is unchanged.
+- **Retail check.** Retail `model_frag` lights KV6s from `gl_LightSource[0..1]` (the packet-45 directional lights) and the ambient only. `character.pyd` asks `light_manager.get_free_dynamic_light` only in `Grenade.initialize` (headless IDA token dump, `evidence/mz3/chlight.txt`). Retail never samples map light for models, so the Retail tier is unchanged.
 - **Fix.** `world::sample_model_light` / `model_light_rgb` (`emissive_volume.hpp`) sample the placed-light field and a new trilinear `EmissiveVolume::sample_filtered` (matching the GPU's GL_LINEAR fetch) at a world position. `WorldRenderer::set_model_light_sources` takes non-owning pointers, which nfm sets every frame and clears around session teardown. `submit()` adds the result through a new `u_modelLight` uniform, using terrain's own gains: 1.6 × placed and `emissive_cast_gain` × spill.
   - World models (players, entities) sample at their part origin, placed light only; they already probe the volume in-shader.
   - The view model samples at the eye, placed plus spill.
@@ -873,7 +873,7 @@ Sources: the round-3 audit notes `network.md` (H1-L10), `world.md` (W1, W7, W8) 
 
 ## Round 4 integration (2026-09-28)
 
-Four round-4 agents worked in the same tree at the same time: audio (`r4-audio`), network/world/gameplay (`r4-net`), social (`social`) and Steam (`steam`). All of them made surgical edits to `native_frontend_module.cpp`. This pass audited the merged tree, rebuilt it from scratch in `out/build/round4`, and ran every suite. Nothing was committed or deployed.
+Four round-4 work streams worked in the same tree at the same time: audio (`r4-audio`), network/world/gameplay (`r4-net`), social (`social`) and Steam (`steam`). All of them made surgical edits to `native_frontend_module.cpp`. This pass audited the merged tree, rebuilt it from scratch in `out/build/round4`, and ran every suite. Nothing was committed or deployed.
 
 ### Audit of claimed changes
 
@@ -945,7 +945,7 @@ There were no access violations and no reruns.
   - falling chunks and shotgun tracer fans;
   - a Steam `+connect` / friends join between two machines;
   - a two-identity AoSPlay invite against production after the backend is deployed.
-- The backend social fix (`src/lib/social/service.ts`) is **not deployed**. Production is a Vercel project linked in `aos_revival/.vercel`. Earlier releases were deployed with `vercel deploy --prod`, sometimes from an isolated `.transactions/<name>` copy (`tmp/*-deploy.log`), and aliased to www.aosplay.net. No git-push CI deploys the web app; the only workflow is `relay-release.yml`, which runs on tags. The patch is the scratchpad `social/service_fix.patch`.
+- The backend social fix (`src/lib/social/service.ts`) is **not deployed**. Production is a Vercel project linked in `aos_revival/.vercel`. Earlier releases were deployed with `vercel deploy --prod`, sometimes from an isolated `.transactions/<name>` copy (`tmp/*-deploy.log`), and aliased to www.aosplay.net. No git-push CI deploys the web app; the only workflow is `relay-release.yml`, which runs on tags. The patch is the local evidence file `social/service_fix.patch`.
 - The two PostgreSQL-only lifecycle tests (concurrent joins, lock inversion) have not been run against a real PostgreSQL.
 
 ## Round 5: platform/audio/caches (2026-09-29)
@@ -1009,8 +1009,8 @@ Sources: audit4 `robustness_perf.md` (items 1, 2, 3, 5, 9, 12, 13, 15), `open_it
   - `aos_retail_character_pose_tests`: the ZombiePrefab special branch, the minigun pivot roll and the remote spin model.
   - `aos_protocol168_players_tests`: the `present_players` view.
   - New `aos_audio_cache_tests`: runs against a real OpenAL device and skips without one. It covers cold named one-shots, missing assets, and all 21 beds under the budget.
-- **Full `ctest`** in `out/build/r5-platform`: 153/154 passed. The one failure is `aos_hud_layout_tests` ("status tool uses truncated global image scale"), which belongs to the parallel R5-HUD scale work and not to this round. Earlier runs also showed transient reds from the other in-flight round-5 agents: particles, debug lab, shadow stability, chat wrap and `aos_ugc_round5_tests` not compiling. All of these were green in the final run. The catalogue contract check went red because of the server snub change; the catalogue was regenerated as described in the Server section.
-- **Map-loader fuzz** (audit4 `fuzz_map.cpp`, rebuilt with ASan and libFuzzer against the fixed `vxl_map.cpp` and the r5-platform `aos_world.lib`; scratchpad `r5p/fuzz`):
+- **Full `ctest`** in `out/build/r5-platform`: 153/154 passed. The one failure is `aos_hud_layout_tests` ("status tool uses truncated global image scale"), which belongs to the parallel R5-HUD scale work and not to this round. Earlier runs also showed transient reds from the other in-flight round-5 work streams: particles, debug lab, shadow stability, chat wrap and `aos_ugc_round5_tests` not compiling. All of these were green in the final run. The catalogue contract check went red because of the server snub change; the catalogue was regenerated as described in the Server section.
+- **Map-loader fuzz** (audit4 `fuzz_map.cpp`, rebuilt with ASan and libFuzzer against the fixed `vxl_map.cpp` and the r5-platform `aos_world.lib`; local evidence `r5p/fuzz`):
   - The audit crash input `7e 01 f9 03 00 0a 00` now runs cleanly.
   - A fresh 901 s campaign ran 41,842 executions, reached 2,813 coverage features (the audit's patched-copy run reached 2,444) and grew the corpus to 226 entries. It found no crash, no ASan report and no timeout; peak RSS was 633 MB.
 
@@ -1084,7 +1084,7 @@ Code: `tutorial_lessons.{hpp,cpp}` (`on_tower_top`, `loadout(stage)`, named gate
 ### Build, tests and live check
 
 - Build: `out/build/r5-ugc` (native-dev preset, VS 18 / MSVC 14.51, Ninja Multi-Config, RelWithDebInfo, warnings as errors, `--parallel 3`). It builds clean.
-- `ctest -C RelWithDebInfo`: 153/154 passed. The one failure is `aos_hud_layout_tests` ("status tool uses truncated global image scale"). That is the parallel R5-HUD pass's work in progress and has nothing to do with this round. An earlier run also showed reds in `match_overlays`, `particle_system`, `gameplay_debug_lab`, `weapon_catalog_contract_check` and `shadow_stability`, all in other agents' areas; they were green on this run.
+- `ctest -C RelWithDebInfo`: 153/154 passed. The one failure is `aos_hud_layout_tests` ("status tool uses truncated global image scale"). That is the parallel R5-HUD pass's work in progress and has nothing to do with this round. An earlier run also showed reds in `match_overlays`, `particle_system`, `gameplay_debug_lab`, `weapon_catalog_contract_check` and `shadow_stability`, all in other work streams' areas; they were green on this run.
 - Live check against an isolated `run_map_creator.py` on UDP 27150 (Desert, CTF), with offline identity `ABTester`:
   - the loader, Construct Library and editor join all work;
   - the HUD "Incomplete Objectives" panel draws the seven CTF rows;
@@ -1095,7 +1095,7 @@ Code: `tutorial_lessons.{hpp,cpp}` (`on_tower_top`, `loadout(stage)`, named gate
 
 ## Round 5: rendering (2026-09-29)
 
-Source evidence: the live A/B of 2026-09-29 (`scratchpad/audit4/ab_live.md`, `vr/shots/`), the recovered vxl.pyd kernels (`audit4/ida_vxl.md`) and fresh IDA reads of `vxl.pyd` (0x10030B60 mesher normal codes), `kv6.pyd` (sub_1000DC40 / sub_1000E120), `draw.pyd` (sub_10001730 quad corners) and `gameScene.pyd` (Grenade.update, GameScene.update spot shadows). Build `out/build/r5-render`. Before/after evidence: `scratchpad/vr/shots_before_r5/` (round-4 native vs retail) and `scratchpad/r5evidence/` (offline `aos_retail_scene_capture` renders of the r5 build at the A/B poses, next to the retail frames).
+Source evidence: the live A/B of 2026-09-29 (`evidence/audit4/ab_live.md`, `vr/shots/`), the recovered vxl.pyd kernels (`audit4/ida_vxl.md`) and fresh IDA reads of `vxl.pyd` (0x10030B60 mesher normal codes), `kv6.pyd` (sub_1000DC40 / sub_1000E120), `draw.pyd` (sub_10001730 quad corners) and `gameScene.pyd` (Grenade.update, GameScene.update spot shadows). Build `out/build/r5-render`. Before/after evidence: `evidence/vr/shots_before_r5/` (round-4 native vs retail) and `evidence/r5evidence/` (offline `aos_retail_scene_capture` renders of the r5 build at the A/B poses, next to the retail frames).
 
 | Item | Status |
 |------|--------|
@@ -1113,11 +1113,11 @@ Source evidence: the live A/B of 2026-09-29 (`scratchpad/audit4/ab_live.md`, `vr
 | Particle draw list (perf) | **Fixed.** `build_draw_list` buckets the pool once instead of 54 full 4096-slot scans; batch and painter order are unchanged. |
 | Compact terrain vertex / 16-bit indices | **Not done.** Needs a layout + shader migration across all three vertex producers; left for a dedicated pass. |
 
-Tests: full ctest on `out/build/r5-render` (see the report for the final count; other rounds' in-progress tests may fail independently). Live A/B re-run: **blocked this round** - another agent was running the same visual harness (shared retail client, `vr/state.json` and UDP 27140) at the same time, so the retail player never spawned. Re-run `vr/r5_run.py` (TDM world scenes + CTF/VIP night maps) once the harness is free; `vr/shots_before_r5/` holds the round-4 baseline. Steam's registration is overwritten whenever the retail client runs.
+Tests: full ctest on `out/build/r5-render` (see the report for the final count; other rounds' in-progress tests may fail independently). Live A/B re-run: **blocked this round** - another session was running the same visual harness (shared retail client, `vr/state.json` and UDP 27140) at the same time, so the retail player never spawned. Re-run `vr/r5_run.py` (TDM world scenes + CTF/VIP night maps) once the harness is free; `vr/shots_before_r5/` holds the round-4 baseline. Steam's registration is overwritten whenever the retail client runs.
 
 ## Round 5: HUD & menus (2026-09-29)
 
-Evidence: the live retail-vs-native A/B (`scratchpad/audit4/ab_live.md`, `vr/shots/`), the retail spec (`ui_modes/retail_ui_spec.md`), headless idalib on private copies of `hud.pyd` / `gameScene.pyd`, and the retail tracer console. Verified afterwards with native-only captures against an isolated server (`scratchpad/vr_r5/n_check.py`: focused input + PrintWindow, no retail client needed) plus a partial A/B re-run (clicks were unreliable while other agents shared the harness).
+Evidence: the live retail-vs-native A/B (`evidence/audit4/ab_live.md`, `vr/shots/`), the retail spec (`ui_modes/retail_ui_spec.md`), headless idalib on private copies of `hud.pyd` / `gameScene.pyd`, and the retail tracer console. Verified afterwards with native-only captures against an isolated server (`evidence/vr_r5/n_check.py`: focused input + PrintWindow, no retail client needed) plus a partial A/B re-run (clicks were unreliable while other sessions shared the harness).
 
 | # | Item | Result |
 |---|---|---|
@@ -1148,7 +1148,7 @@ Still open / VERIFY:
 - Billboard pixel size is calibrated from the capture (~40 px glyph at 800x600), not from the recovered `0.02 * scale` world transform; the pointer is drawn centred on the icon.
 - End screen title: observed on TDM only; applied to every mode because `per_game_initilize` is mode-independent.
 - Palette selector blink colours (two module tuples in `Palette.draw`) are not resolved.
-- One native end-of-match run stalled for about 25 s (PrintWindow blocked; the server logged input starvation). It did not reproduce with `BATTLESPADES_FRAME_TRACE=1` or in the round-4 A/B, and it coincided with another agent killing harness processes on the shared port. Watch for it.
+- One native end-of-match run stalled for about 25 s (PrintWindow blocked; the server logged input starvation). It did not reproduce with `BATTLESPADES_FRAME_TRACE=1` or in the round-4 A/B, and it coincided with another session killing harness processes on the shared port. Watch for it.
 
 ## Round 5: hotkeys & gadgets (2026-09-29)
 
@@ -1160,7 +1160,7 @@ Retail binds: W/S/A/D, V sneak, LCtrl crouch, LShift sprint, SPACE jump, LMB fir
 
 ### Live check of every in-match key and gadget
 
-The desktop foreground was held all session by a Windows Firewall prompt raised by another agent's ctest (`aos_local_server_process_tests.exe`), so SendInput could not reach the client. Input was driven instead through a new developer hook, `BATTLESPADES_INPUT_SCRIPT=<file>` (`parse_input_script`, `sdl_window_module.hpp`): scripted key/mouse/window events are appended after the SDL queue each tick, so they take the same frontend path as real input. Results (server packet trace + client captures):
+The desktop foreground was held all session by a Windows Firewall prompt raised by a parallel ctest run (`aos_local_server_process_tests.exe`), so SendInput could not reach the client. Input was driven instead through a new developer hook, `BATTLESPADES_INPUT_SCRIPT=<file>` (`parse_input_script`, `sdl_window_module.hpp`): scripted key/mouse/window events are appended after the SDL queue each tick, so they take the same frontend path as real input. Results (server packet trace + client captures):
 
 | Area | Result |
 |---|---|
@@ -1193,7 +1193,7 @@ Still open / VERIFY:
 
 ## Round 5 integration (2026-09-29)
 
-Five round-5 agents worked in the same tree at the same time: rendering, HUD & menus, Map Creator & tutorial, platform/audio/caches (with the server pellet spread), and hotkeys & gadgets. This pass audited the merged tree, rebuilt it from scratch in `out/build/round5`, ran every suite and tried to re-run the visual A/B. Nothing was committed or deployed.
+Five round-5 work streams worked in the same tree at the same time: rendering, HUD & menus, Map Creator & tutorial, platform/audio/caches (with the server pellet spread), and hotkeys & gadgets. This pass audited the merged tree, rebuilt it from scratch in `out/build/round5`, ran every suite and tried to re-run the visual A/B. Nothing was committed or deployed.
 
 ### Audit of claimed changes
 
@@ -1260,24 +1260,24 @@ The full suite ran in three parts (`py -3.12 -m pytest -q -p no:cacheprovider`):
   - Neither `SetForegroundWindow` nor a title-bar click could move the foreground.
   - Neither client reacted to `PostMessage` clicks: not the native (SDL) window, and not the retail window.
   - Without input the harness cannot join, pose or open menus, so the full `run_all.py` was not run.
-- **Harness changes** (`scratchpad/vr/vrlib.py`):
+- **Harness changes** (`evidence/vr/vrlib.py`):
   - An input guard: synthetic key and click input is sent only while a game window is in the foreground, so keys can never land on a firewall prompt.
   - A PrintWindow capture mode (`VR_PRINTWINDOW=1`).
 - **Re-captured scene:** only `menu_main` needs no input. It was re-captured with the round-5 exe through PrintWindow: **2.71% -> 1.09%**. What remains are the known native additions: the FRIENDS icon, LOGOUT and the welcome name.
-- **Discarded captures:** the HUD agent's mid-round captures of the loader, team and class scenes were corrupted by another harness window overlapping the capture (they read 48-58%). They were moved to `vr/shots_r5hud_partial_corrupt/`, and those scenes were restored to their round-4 frames.
+- **Discarded captures:** the HUD pass's mid-round captures of the loader, team and class scenes were corrupted by another harness window overlapping the capture (they read 48-58%). They were moved to `vr/shots_r5hud_partial_corrupt/`, and those scenes were restored to their round-4 frames.
 - **Reports:**
   - The round-4 report is kept as `vr/report_round4.html`, with its results in `vr/results_round4.json`.
   - The new `vr/report.html` carries a banner about the block and a round 4 -> round 5 table that lists only re-captured scenes.
 - **To finish:** dismiss the two firewall prompts (or let the user choose), then:
-  1. Run `py -3.12 scratchpad\vr\run_all.py --exe out\build\round5\src\RelWithDebInfo\BattleSpadesClient.exe`.
+  1. Run `py -3.12 evidence\vr\run_all.py --exe out\build\round5\src\RelWithDebInfo\BattleSpadesClient.exe`.
   2. Run `findings.py`, then `report.py`. The per-scene round-4 comparison is built in.
 
   Running the retail client overwrites Steam's registration.
 
 ### Still open
 
-- **Full visual A/B on the round-5 exe** (see above). Until it runs, the round-5 visual fixes rest only on offline evidence and each agent's own partial checks:
-  - face shading, static light, ground colours, explosions, KV6 normals and spot shadows: `scratchpad/r5evidence/`;
+- **Full visual A/B on the round-5 exe** (see above). Until it runs, the round-5 visual fixes rest only on offline evidence and each pass's own partial checks:
+  - face shading, static light, ground colours, explosions, KV6 normals and spot shadows: `evidence/r5evidence/`;
   - HUD items: the `vr_r5/n_check.py` native-only captures.
 - **Live checks** owed by every round-5 section above still apply. Among them:
   - the MayanJungle temple static light;
@@ -1286,11 +1286,11 @@ The full suite ran in three parts (`py -3.12 -m pytest -q -p no:cacheprovider`):
   - physical keyboard input;
   - Map Creator host save and preview;
   - the minigun pivot.
-- **Stale pytest:** a run started at 04:16 by an earlier agent (PID 87640/101668, about 880 MB) is still running and looks hung. It was not started by this pass and was left alone.
+- **Stale pytest:** a run started at 04:16 by an earlier session (PID 87640/101668, about 880 MB) is still running and looks hung. It was not started by this pass and was left alone.
 
 ## Round 6: render (2026-09-29)
 
-Source evidence: the round-5 A/B (`scratchpad/audit5/vr_round5.md`, `vr/shots/`, `nd_retail_grid.png` / `nd_native_grid.png`) and fresh headless-IDA reads of `vxl.pyd` (sub_10030B60, sub_10022360, sub_1000C5F0), `draw.pyd`, `gameScene.pyd`, `character.pyd`, `kv6.pyd` and `common.pyd`. Build `out/build/r6-render` (native-dev, VS 18, warnings as errors).
+Source evidence: the round-5 A/B (`evidence/audit5/vr_round5.md`, `vr/shots/`, `nd_retail_grid.png` / `nd_native_grid.png`) and fresh headless-IDA reads of `vxl.pyd` (sub_10030B60, sub_10022360, sub_1000C5F0), `draw.pyd`, `gameScene.pyd`, `character.pyd`, `kv6.pyd` and `common.pyd`. Build `out/build/r6-render` (native-dev, VS 18, warnings as errors).
 
 | Item | Status |
 |------|--------|
@@ -1318,7 +1318,7 @@ Live A/B: **blocked.** A Windows Security (firewall) prompt (PickerHost PID 4640
 
 ## Round 6: HUD & input (2026-09-29)
 
-Evidence: round-5 A/B frames (`scratchpad/vr/shots/`), retail bytecode (`pyz/aoslib.text`, `aoslib.gui`, `aoslib.images`, `aoslib.scenes.frontend.serverMenu`, `aoslib.scenes.ingame_menus.loadingMenu`), and headless idalib on private copies of `aoslib.font.pyd`, `aoslib.draw.pyd` and `hud.pyd`.
+Evidence: round-5 A/B frames (`evidence/vr/shots/`), retail bytecode (`pyz/aoslib.text`, `aoslib.gui`, `aoslib.images`, `aoslib.scenes.frontend.serverMenu`, `aoslib.scenes.ingame_menus.loadingMenu`), and headless idalib on private copies of `aoslib.font.pyd`, `aoslib.draw.pyd` and `hud.pyd`.
 
 The full VR harness could not be re-run. A foreground-locked "Windows Security" dialog (PickerHost, open since 13:37) blocked every SendInput step, and it was not ours to dismiss. Verification used two native-only rigs that need no foreground:
 
@@ -1441,13 +1441,13 @@ Every round-6 item is present in the merged tree and wired to a live call site:
 - **Grenade debris:** native pieces are larger and more numerous near the burst, and more of them are black and white. Retail shows a few small dark chips and bright glow cubes. The other round-6 render leftovers also still apply: debris colour sampled from the block below, and particle gravity.
 - **Fire scenes (`tdm_fire_key3/4`) unverified.** A scripted `button left down` in the match fired no shot on either exe: ammo was unchanged and there was no RPG back-blast. The fire frames need the real harness, or an input-script fix for in-game primary buttons.
 - **`tdm2_chute` 80 ms SendInput tap, CTF billboards and the other modes' scenes** (VIP/TC/zombie, loaders, end-game) still need the full `run_all.py`.
-  - To run it: close the two Windows Security prompts, then run `py -3.12 scratchpad\vr\run_all.py --exe out\build\round6\src\RelWithDebInfo\BattleSpadesClient.exe`, then `findings.py` and `report.py`.
+  - To run it: close the two Windows Security prompts, then run `py -3.12 evidence\vr\run_all.py --exe out\build\round6\src\RelWithDebInfo\BattleSpadesClient.exe`, then `findings.py` and `report.py`.
   - Running the retail client overwrites Steam's registration.
 - **Settings title:** in-game settings has no dark title plate behind SETTINGS, which retail draws.
 
 ## Round 7 (2026-09-29)
 
-Evidence: the round-6 A/B (`scratchpad/audit6/vr_round6.md`, `vr/shots/`), headless idalib on private copies of the stock `hud.pyd`, `aoslib.draw.pyd`, `gameScene.pyd` and `world.pyd` (scripts in `scratchpad/r7/`), and a retail runtime probe through the tracer console (`vr/r7_bbprobe.py`). Build `out/build/round7` (native-dev, VS 18, warnings as errors).
+Evidence: the round-6 A/B (`evidence/audit6/vr_round6.md`, `vr/shots/`), headless idalib on private copies of the stock `hud.pyd`, `aoslib.draw.pyd`, `gameScene.pyd` and `world.pyd` (scripts in `evidence/r7/`), and a retail runtime probe through the tracer console (`vr/r7_bbprobe.py`). Build `out/build/round7` (native-dev, VS 18, warnings as errors).
 
 | # | Item | Result |
 |---|---|---|

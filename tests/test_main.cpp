@@ -199,6 +199,14 @@ void command_line_parses_live_connect_shortcut() {
     const std::vector<std::string_view> bad_lobby{"+connect_lobby", "abc"};
     expect(!static_cast<bool>(battlespades::core::parse_command_line(bad_lobby)),
            "+connect_lobby with a malformed id must fail closed");
+    // Launch options `"<client>" %command%` pass the retail executable first.
+    const std::vector<std::string_view> steam_command{
+        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\aceofspades\\aos.exe", "+connect_lobby",
+        "109775241021923456"};
+    const auto via_command = battlespades::core::parse_command_line(steam_command);
+    expect(static_cast<bool>(via_command) &&
+               via_command.options->startup_steam_lobby == 109775241021923456ULL,
+           "Steam's %command% retail executable must be ignored, not close the game");
     const std::vector<std::string_view> bad_bare{"steam:notanid"};
     expect(!static_cast<bool>(battlespades::core::parse_command_line(bad_bare)),
            "a malformed steam token is still an unknown option");

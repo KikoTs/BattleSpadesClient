@@ -369,7 +369,7 @@ void the_brightest_maps_stay_inside_the_tonemap() {
 /** An authored sun direction must arrive normalised and above the horizon. */
 void authored_sun_directions_are_normalised() {
     // Invasion is the only dome authoring one today: every warm layer in its sky
-    // sits near azimuth 172 at low elevation, while the sunless fallback lights
+    // sits near azimuth 352 at low elevation, while the sunless fallback lights
     // from ~64 degrees, so the world was lit from a direction its sky denies.
     const auto invasion = resolve_map_atmosphere(asset_root(), "Invasion.txt");
     const auto& direction = invasion.sun_direction;

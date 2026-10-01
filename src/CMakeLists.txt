@@ -22,6 +22,7 @@ add_library(
     aos_settings
     STATIC
         settings/client_settings.cpp
+        settings/graphics_apply.cpp
         settings/retail_key_names.cpp
         settings/settings_session.cpp
         settings/settings_store.cpp
@@ -67,6 +68,7 @@ add_library(
         world/gameplay_debug_lab.cpp
         world/kv6_model.cpp
         world/cosmetic_preview.cpp
+        world/cosmetic_files.cpp
         world/prefab_placement.cpp
         world/ugc_prefab_control.cpp
         world/player_inventory.cpp
@@ -397,6 +399,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     add_library(
         aos_local_host
         STATIC
+            platform/hosting_gate.cpp
             platform/local_server_process.cpp
             platform/relay_host_tunnel.cpp
     )
@@ -426,11 +429,13 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             aos_steam_net
             STATIC
                 platform/steam_networking.cpp
+                platform/steam_workshop.cpp
         )
         add_library(BattleSpades::SteamNet ALIAS aos_steam_net)
         target_include_directories(aos_steam_net PUBLIC "${PROJECT_SOURCE_DIR}/include")
         target_include_directories(aos_steam_net SYSTEM PRIVATE "${steamworks_SOURCE_DIR}/public")
-        target_link_libraries(aos_steam_net PUBLIC BattleSpades::BuildOptions PRIVATE BattleSpades::Core)
+        target_link_libraries(aos_steam_net PUBLIC BattleSpades::BuildOptions BattleSpades::NativeSteam
+            PRIVATE BattleSpades::Core)
         if(WIN32)
             target_link_libraries(aos_steam_net PRIVATE ws2_32)
         endif()
@@ -450,6 +455,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         add_executable(aos_steam_p2p_smoke "${PROJECT_SOURCE_DIR}/tools/steam_p2p_smoke.cpp")
         target_link_libraries(aos_steam_p2p_smoke PRIVATE BattleSpades::SteamNet)
         aos_enable_strict_warnings(aos_steam_p2p_smoke)
+
+        # Lists this account's Workshop subscriptions (and, with --download,
+        # fetches them into a scratch directory) without the game.
+        add_executable(aos_workshop_sync_probe "${PROJECT_SOURCE_DIR}/tools/workshop_sync_probe.cpp")
+        target_link_libraries(aos_workshop_sync_probe PRIVATE BattleSpades::SteamNet)
+        aos_enable_strict_warnings(aos_workshop_sync_probe)
     endif()
 
     add_library(
@@ -457,6 +468,8 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         STATIC
             platform/native_steam_client.cpp
             platform/steam_connect.cpp
+            platform/steam_overlay.cpp
+            platform/workshop_sync.cpp
     )
     add_library(BattleSpades::NativeSteam ALIAS aos_native_steam)
     target_include_directories(aos_native_steam PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -530,6 +543,17 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::NetworkEnet
     )
     aos_enable_strict_warnings(aos_protocol168_password_live_smoke)
+
+    add_executable(
+        aos_protocol168_shoot_live_smoke
+        "${PROJECT_SOURCE_DIR}/tools/protocol168_shoot_live_smoke.cpp"
+    )
+    target_link_libraries(
+        aos_protocol168_shoot_live_smoke
+        PRIVATE
+            BattleSpades::NetworkEnet
+    )
+    aos_enable_strict_warnings(aos_protocol168_shoot_live_smoke)
 
     add_executable(
         aos_protocol168_deployable_live_smoke

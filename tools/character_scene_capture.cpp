@@ -25,6 +25,7 @@
 #include "battlespades/world/retail_character_pose.hpp"
 #include "battlespades/world/skylight_map.hpp"
 #include "battlespades/world/vxl_map.hpp"
+#include "battlespades/world/weapon_models.hpp"
 
 #include <SDL3/SDL.h>
 #include <bgfx/bgfx.h>
@@ -85,6 +86,15 @@ Mat4 rotate_x(float degrees) {
     r[5U] = std::cos(a);
     r[6U] = std::sin(a);
     r[9U] = -std::sin(a);
+    r[10U] = std::cos(a);
+    return r;
+}
+Mat4 rotate_y(float degrees) {
+    const auto a = static_cast<float>(degrees * std::numbers::pi / 180.0);
+    auto r = identity();
+    r[0U] = std::cos(a);
+    r[2U] = -std::sin(a);
+    r[8U] = std::sin(a);
     r[10U] = std::cos(a);
     return r;
 }
@@ -249,7 +259,10 @@ int main(int argc, char** argv) {
         const float first_x = 262.0F - spacing * static_cast<float>(lineup.size() - 1U) * 0.5F;
         // Yaw 0 faces +y; every character faces -y, towards the front camera.
         constexpr float yaw{180.0F};
-        for (std::size_t index{}; index < lineup.size(); ++index) {
+        // scene=run: one class/tool at eight Character.update_animation
+        // phases, composed exactly like remote_character_draws().
+        const bool run_scene = get("scene", "") == "run";
+        for (std::size_t index{}; !run_scene && index < lineup.size(); ++index) {
             const auto& character = lineup[index];
             const auto full = team_color(character.team);
             const auto half = world::retail_character_color(full);
@@ -310,6 +323,111 @@ int main(int argc, char** argv) {
                 for (std::size_t draw = first_draw; draw < draws.size(); ++draw) {
                     draws[draw].albedo_gain = character.spawn_flash ? 1.85F : 0.90F;
                     draws[draw].albedo_contrast = character.spawn_flash ? 0.85F : 1.08F;
+                }
+            }
+        }
+        if (run_scene) {
+            // Usage: scene=run [class=4] [tool=24] [speed=0.3] [pitch=0]
+            //        [display=1] [crouch=0] [serial=0] [since=1e9]
+            const auto class_id = static_cast<std::uint8_t>(std::stoi(get("class", "4")));
+            const auto tool_id = static_cast<std::uint8_t>(std::stoi(get("tool", "24")));
+            const double speed = std::stod(get("speed", "0.3"));
+            const double aim_pitch = std::stod(get("pitch", "0"));
+            const bool display = get("display", "1") != "0";
+            const bool crouching = get("crouch", "0") != "0";
+            const auto serial = static_cast<std::uint64_t>(std::stoull(get("serial", "0")));
+            const double since = std::stod(get("since", "1e9"));
+            const auto half = world::retail_character_color(team_color(2U));
+            auto models = world::load_class_models(asset_root, class_id, half);
+            expect(static_cast<bool>(models), models.error);
+            const auto& set = *models.models;
+            auto weapon = world::load_weapon_models(asset_root, tool_id, {1.0F, 1.0F, 1.0F}, half);
+            expect(static_cast<bool>(weapon.models), weapon.error);
+            const auto torso_slot =
+                upload(crouching ? set.crouching_torso_preview : set.standing_torso_preview);
+            const auto head_slot = upload(set.head_preview);
+            const auto left_slot =
+                upload(crouching ? set.crouching_left_leg_preview : set.left_leg_preview);
+            const auto right_slot =
+                upload(crouching ? set.crouching_right_leg_preview : set.right_leg_preview);
+            std::vector<std::uint32_t> tool_slots;
+            for (const auto& part : weapon.models->third_person_parts)
+                tool_slots.push_back(upload(part));
+            std::vector<std::uint32_t> arm_slots;
+            for (const auto& arm : set.first_person_arms) arm_slots.push_back(upload(arm));
+            // Everyone faces and runs towards -x, so the front camera sees profiles.
+            const world::ViewModelVector orientation{-1.0, 0.0, 0.0};
+            const world::ViewModelVector velocity{-speed, 0.0, 0.0};
+            const auto run_yaw =
+                static_cast<float>(world::retail_character_root_yaw_degrees(orientation));
+            constexpr std::size_t phases{8U};
+            const float run_spacing = std::stof(get("spacing", "1.5"));
+            const float run_first_x =
+                262.0F - run_spacing * static_cast<float>(phases - 1U) * 0.5F;
+            for (std::size_t index{}; index < phases; ++index) {
+                const float x = run_first_x + run_spacing * static_cast<float>(index);
+                const float z = static_cast<float>(ground_z) - (crouching ? 1.35F : 2.25F);
+                const auto root = mul(rotate_z(run_yaw), translate(x, 256.0F, z));
+                draws.push_back({torso_slot, root});
+                auto head = translate(0.0F, 0.0F, -0.3F);
+                head = mul(head, rotate_x(static_cast<float>(aim_pitch)));
+                head = mul(head, translate(0.0F, 0.0F, 0.3F));
+                draws.push_back({head_slot, mul(head, root)});
+                const auto walk = world::evaluate_retail_walk_pose(
+                    static_cast<std::uint64_t>(index * 1024U / phases), velocity, orientation,
+                    crouching);
+                const float leg_y = crouching ? -0.3F : 0.0F;
+                const float leg_z = crouching ? 0.7F : 1.1F;
+                const auto leg = [&](float pivot_x, const world::RetailLegPose& pose) {
+                    auto m = translate(-pivot_x, -leg_y, -leg_z);
+                    m = mul(m, rotate_x(static_cast<float>(pose.rotation_x_degrees)));
+                    m = mul(m, rotate_y(static_cast<float>(pose.rotation_y_degrees)));
+                    m = mul(m, translate(pivot_x, leg_y, leg_z));
+                    return mul(m, root);
+                };
+                draws.push_back({left_slot, leg(0.25F, walk.left)});
+                draws.push_back({right_slot, leg(-0.25F, walk.right)});
+                const auto pose = world::evaluate_retail_third_person_pose(
+                    tool_id, tool_slots.size(), since, serial, aim_pitch, display, 0.0);
+                for (std::size_t part{}; part < pose.tool_part_count; ++part) {
+                    const auto& p = pose.tool_parts[part];
+                    auto held = scale(static_cast<float>(pose.tool_model_scale));
+                    held = mul(held, rotate_z(static_cast<float>(p.orientation_degrees.z)));
+                    held = mul(held, rotate_y(static_cast<float>(p.orientation_degrees.y)));
+                    held = mul(held, rotate_x(static_cast<float>(p.orientation_degrees.x)));
+                    held = mul(held, translate(static_cast<float>(p.position.x),
+                                               static_cast<float>(p.position.y),
+                                               static_cast<float>(p.position.z)));
+                    held = mul(held, rotate_x(static_cast<float>(pose.weapon_pitch_degrees)));
+                    const auto anchor = world::retail_display_vector(pose.tool_anchor);
+                    held = mul(held, translate(static_cast<float>(anchor.x),
+                                               static_cast<float>(anchor.y),
+                                               static_cast<float>(anchor.z)));
+                    held = mul(held, rotate_x(-90.0F));
+                    draws.push_back({tool_slots[part], mul(held, root)});
+                }
+                if (pose.draws_player_arms && arm_slots.size() >= 2U) {
+                    const auto arm_draw = [&](std::uint32_t slot,
+                                              const world::RetailThirdPersonArmPose& part) {
+                        const auto offset = world::retail_display_vector(part.model_offset);
+                        const auto position = world::retail_display_vector(part.position);
+                        auto arm = rotate_z(static_cast<float>(part.extra_roll_degrees));
+                        arm = mul(arm, rotate_y(static_cast<float>(part.extra_yaw_degrees)));
+                        arm = mul(arm, translate(static_cast<float>(offset.x),
+                                                 static_cast<float>(offset.y),
+                                                 static_cast<float>(offset.z)));
+                        arm = mul(arm, rotate_y(static_cast<float>(part.yaw_degrees)));
+                        arm = mul(arm, rotate_x(static_cast<float>(part.pitch_degrees)));
+                        arm = mul(arm, rotate_z(static_cast<float>(part.roll_degrees)));
+                        arm = mul(arm, scale(static_cast<float>(pose.arm_model_scale)));
+                        arm = mul(arm, translate(static_cast<float>(position.x),
+                                                 static_cast<float>(position.y),
+                                                 static_cast<float>(position.z)));
+                        arm = mul(arm, rotate_x(-90.0F));
+                        draws.push_back({slot, mul(arm, root)});
+                    };
+                    for (std::size_t part{}; part < pose.arms.size(); ++part)
+                        arm_draw(arm_slots[part % 2U], pose.arms[part]);
                 }
             }
         }

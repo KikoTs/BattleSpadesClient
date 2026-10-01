@@ -1,0 +1,1399 @@
+[
+ {
+  "topic": "In-game HUD art assets: exhaustive inventory of png/ui, retail loaders, dimensions, consumers, missing/dead assets, and quality variants",
+  "findings": [
+   {
+    "claim": "The retail HUD texture root is png/ui: run.py sets `pyglet.resource.path = ['png/ui']` before reindexing, so every images.py/image.load name list is resolved relative to png/ui.",
+    "citation": "<retail-source>/aoslib/run.py:151-154",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "low/med/high are NOT HUD variants. TEXTURE_QUALITY_PATHS = {0:'png/low', 1:'png/med', 2:'png/high'} and that directory is only prefixed when add_path=True; every HUD/UI load in images.py passes add_path=False (default), so all HUD art comes from png/ui at one authored size.",
+    "citation": "<retail-source>/aoslib/image.py:12-14 and get_image_path at aoslib/image.py:37-49",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The only textures that use the low/med/high tiers are the 31 world/particle/skybox images (block128, tumbling_cube_lut, Tumbling_Glowcube_anim_8x8, Tumbling_cube_anim, SmokeTrail_anim_8x8, particle_lut, PickUp_Twinkle_anim_4x4, SnowkeTrail_anim_8x8 plus skybox/laser/smoke/tile/white/alpha_block), loaded with add_path=True.",
+    "citation": "<retail-source>/aoslib/images.py:905-921 (load_particle_textures) and aoslib/weapons/laserAttachment.py:83-84",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The three quality dirs are pure mip ladders: e.g. block128.png is 32x32 (low) / 64x64 (med) / 128x128 (high); white.png is 1x1 / 2x2 / 4x4; skybox_bw.png is 512x256 / 1024x512 / 2048x1024. laser_spot.png and laser_sight_beam_small.png are the only two identical across all three tiers.",
+    "citation": "PNG IHDR of assets/original/png/{low,med,high}/*.png",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The client picks the tier from config 'texture_quality', default 1 (= png/med); the value is clamped to 0..2 and appended to pyglet.resource.path by set_texture_quality.",
+    "citation": "<retail-source>/aoslib/config.py:18, config.txt:3, aoslib/image.py:168-173, aoslib/scenes/frontend/graphicsTab.py:79-80",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Our BattleSpadesClient asset tree is a strict superset of the retail png tree: all 842 retail png files are present byte-for-byte-path-identical; the only extras are ui/achievements/*.jpg (77), ui/achievements/notes.txt, ui/background.png and ui/background.ppm. Zero retail HUD assets are missing.",
+    "citation": "diff of assets/original/png (923 files) vs <retail-source>/png (842 files)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Crosshair: five 16x16 images png/ui/target_centre.png, target_top_left.png, target_top_right.png, target_bottom_left.png, target_bottom_right.png, loaded by gameScene.pyd (not images.py).",
+    "citation": "string-table hits in <retail-source>/aoslib/scenes/main/gameScene.pyd; consumed on our side at include/battlespades/frontend/game_hud.hpp:18-22 and src/frontend/game_hud.cpp:258-273",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "png/ui/target.png (16x16) exists but has no distinguishable loader anywhere in the retail tree; it is a legacy single-image crosshair superseded by the five-piece target_* set. Substring xref is unreliable for this basename ('target' appears as an identifier in ~90 files), so this is a best-effort call, not a proof.",
+    "citation": "assets/original/png/ui/target.png; no image.load('target') call found in any .py or .pyd",
+    "confidence": "inferred",
+    "kind": "asset"
+   },
+   {
+    "claim": "Health bar: png/ui/health_bar/health_bar.png and health_bar_frame.png, both 239x34, loaded scale=1.0 center=True. The fill image gets anchor_x=35 immediately after load, which is the horizontal scale pivot for the hp/100 glScalef fill - not a nine-slice.",
+    "citation": "<retail-source>/aoslib/images.py:439-441",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Ammo panel: png/ui/ammo/ammo_frame.png is 115x40, loaded with center=False (top-left anchored) at scale 1.0 as global_images.ammo_frame, consumed by HUD.draw_ammo_hud in hud.pyd.",
+    "citation": "<retail-source>/aoslib/images.py:453; 'HUD.draw_ammo_hud' at hud.pyd 0x10111ce4 and 'ammo_frame' at 0x10111460",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The ammo panel's weapon portrait is Tool.ammo_image, which defaults to Tool.image (the 330x330 png/ui/weapons/<name>.png) but is overridden to the block portrait TOOL_IMAGES[BLOCK_TOOL] by the digging, flare-block, prefab and UGC-prefab tools.",
+    "citation": "<retail-source>/aoslib/weapons/tool.py:64; diggingTool.py:27; flareBlockTool.py:25; prefabTool.py:50; ugcPrefabTool.py:63",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Personal score widget: png/ui/score/score_frame.png is 200x40 and is the one HUD frame loaded with center=False, scale=1.0 (top-left anchor). Consumed by HUD.draw_player_score.",
+    "citation": "<retail-source>/aoslib/images.py:447; 'HUD.draw_player_score' at hud.pyd 0x101117e0",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Round timer: png/ui/timer/timer_frame.png is 115x40 (loaded center=False, same authored plate as ammo_frame) and png/ui/timer/timer.png is a 32x32 clock icon loaded center=True. Consumed by HUD.draw_timer.",
+    "citation": "<retail-source>/aoslib/images.py:445-446; 'HUD.draw_timer' at hud.pyd 0x10112a14",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Head-count widget (zombie/VIP survivor counter): png/ui/head_count/hc_frame.png 126x40 and hc_frame_long.png 320x40, both loaded scale=1.0 center=False. Consumed by HeadCount.draw in the embedded aoslib/hud/headCount.py module inside hud.pyd; layout constants HC_FRAME_WIDTH / HC_TEXT_WIDTH{,_SMALL,_MEDIUM,_BIG} / HC_TIMER_WIDTH live in the same module.",
+    "citation": "<retail-source>/aoslib/images.py:478-479; hud.pyd strings 'HeadCount.draw' 0x10110934, source path '...client/aoslib/hud/headCount.py' 0x10112bac",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Jetpack fuel gauge: png/ui/jetpack_fuel/jetpack_fuel_bar.png and jetpack_fuel_frame.png, both 33x130, loaded scale=1.0 center=True; the bar gets anchor_y=0 so the fuel fill scales vertically about its bottom edge (vertical analogue of health_bar's anchor_x=35). png/ui/jetpack_fuel/jetpack_icon.png (256x256) is loaded directly by hud.pyd, not by images.py.",
+    "citation": "<retail-source>/aoslib/images.py:442-444; 'jetpack_icon' at hud.pyd 0x10112798 with no corresponding load in images.py",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Tool-strip (mouse-wheel weapon select): png/ui/weapon_select/weapon_frame.png and weapon_frame_selected.png are both authored 195x195. Retail loads the normal frame at scale=1.0 and the selected frame at scale=0.7, both center=True.",
+    "citation": "<retail-source>/aoslib/images.py:437-438; our port at src/frontend/game_hud.cpp:19-23",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Weapon portraits drawn in the tool strip and ammo panel are png/ui/weapons/<TOOL_FILE_NAMES[id]>.png, all 330x330 (65 files), loaded via load_weapon_image -> image.load_texture(['weapons', name], center=True). Membership is gated by TOOL_HAS_IMAGE; MG_TOOL, SHRAPNEL_TOOL, NULL_TOOL, FAKE_PISTOL_TOOL and UGC_PREFAB_TOOL are False and get no portrait.",
+    "citation": "<retail-source>/aoslib/weapons/__init__.py:11-22; shared/constants.py:1691-1762 (TOOL_FILE_NAMES), shared/constants.py:1904-1975 (TOOL_HAS_IMAGE)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "SNIPER_TOOL is the only tool with TOOL_HAS_IMAGE == 2, which makes the loader build a three-way team tuple from name+'_blue' / '_green' / '_neutral' - i.e. png/ui/weapons/sniper_blue.png, sniper_green.png, sniper_neutral.png (330x330 each). There is no plain png/ui/weapons/sniper.png.",
+    "citation": "<retail-source>/aoslib/weapons/__init__.py:16-20; shared/constants.py TOOL_HAS_IMAGE SNIPER_TOOL: 2",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The block icon used by the HUD is png/ui/weapons/block.png (330x330), bound as BlockTool.image and as module-level BLOCK_ICON; it is also blitted directly by the class-selection screen.",
+    "citation": "<retail-source>/aoslib/weapons/blockTool.py:12 and :22; aoslib/scenes/ingame_menus/selectClass.py:561",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The entire png/ui/icons/weapons/ folder (28 files, all 32x32, including its own block.png which is a DIFFERENT image from weapons/block.png) is dead art: its only loader, load_weapon_icon, is defined in aoslib/weapons/__init__.py:25-26 and has zero callers anywhere in the retail tree (full byte-scan of every .py/.pyc/.pyd/.exe/.dll found the symbol only in that file and its .pyc).",
+    "citation": "<retail-source>/aoslib/weapons/__init__.py:25-26; full-tree byte scan for b'load_weapon_icon'",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Kill-feed icons: png/ui/kill_types/{headshot,corpse,grave,shrapnel,fall,change_team,change_class,sudden_death}.png. The first seven are 330x330; sudden_death.png alone is 256x256. All eight name-pairs ['kill_types', <name>] are built in inithud.",
+    "citation": "hud.pyd inithud, list literals at 0x100c61f1, 0x100c641f, 0x100c6660, 0x100c689e, 0x100c6acc, 0x100c6d0d, 0x100c6f4b, 0x100c7175 pairing global 0x10112554 ('kill_types') with 0x10111248 headshot, 0x1011183c corpse, 0x101128c8 grave, 0x101115d4 shrapnel, 0x10111c28 fall, 0x10112318 change_team, 0x10112754 change_class, 0x1011053c sudden_death",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Minimap frame: png/ui/mini_map/minimap_frame.png, 142x142, loaded center=False scale=1.0 into global_images.map_frame and consumed by the Minimap class inside hud.pyd (embedded aoslib/hud/minimap.py).",
+    "citation": "<retail-source>/aoslib/images.py:435; hud.pyd 'Minimap.draw' 0x10111a0c, 'map_frame' 0x1011211c, source path '...client/aoslib/hud/minimap.py' 0x10112910",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "png/ui/mini_map/map_frame.png (142x142) is a byte-identical duplicate of mini_map/minimap_frame.png (both sha256 prefix 57df6dac6a276ebe) and is never loaded - images.py only ever asks for ['mini_map','minimap_frame'] and ['map','map_frame'].",
+    "citation": "sha256 of assets/original/png/ui/mini_map/{map_frame,minimap_frame}.png; aoslib/images.py:435-436",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Full-screen map overlay frame: png/ui/map/map_frame.png, 552x552, loaded center=True scale=1.0 as global_images.big_map_frame; hud.pyd references it as 'big_map_frame'.",
+    "citation": "<retail-source>/aoslib/images.py:436; hud.pyd 'big_map_frame' 0x10112300",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Loading-screen minimap plate is a separate asset: png/ui/game_loading/minimap_bg.png, 408x408, loaded center=False at global_scale 0.64 as global_images.loading_map_frame. It is not the in-game minimap frame.",
+    "citation": "<retail-source>/aoslib/images.py:310",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Live minimap markers loaded by gameScene.pyd: png/ui/map_base_16.png, map_grave_16.png, map_pickup_16.png, marker_dynamite_16.png, marker_land_mine_16.png, marker_medpack_16.png, marker_radar_station_16.png, marker_c4_16.png, marker_turret_16.png, minimap_bomb.png, minimap_diamond.png, minimap_intel.png - every one 16x16.",
+    "citation": "string-table hits in <retail-source>/aoslib/scenes/main/gameScene.pyd (also mirrored in gameScene.pyd.strtab.json)",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Player markers are loaded by player.pyd: png/ui/map_player_16.png (16x16), map_vip_player_16.png (16x16), map_grave_16.png (16x16), the view-cone png/ui/map_view_cone.png (256x256), and png/ui/heart_icon_256x256.png (256x256).",
+    "citation": "byte-scan of <retail-source>/aoslib/scenes/main/player.pyd for each name",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Three markers are loaded from shipped .py entity/tool classes rather than a .pyd: marker_turret_16 (rocketTurret.py:16), minimap_bomb (bombTool.py:14), minimap_diamond (diamondTool.py:13), minimap_intel (intelTool.py:13) - all image.load(name, center=True), all 16x16.",
+    "citation": "<retail-source>/aoslib/scenes/main/rocketTurret.py:16; aoslib/weapons/bombTool.py:14; aoslib/weapons/diamondTool.py:13; aoslib/weapons/intelTool.py:13",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "png/ui/minimap_height_indicator.png is 8x8 and is a class attribute on the base Entity, drawn above/below any entity whose height differs from the viewer by MINIMAP_HEIGHT_ICON_THRESHOLD = 4, and only for CAPTURE_POINT_ENTITY and INTEL_PICKUP.",
+    "citation": "<retail-source>/aoslib/scenes/main/entity.py:27; shared/constants.py:5235-5236",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Game-mode zone icons come in minimap/billboard pairs from MODE_ZONE_ICONS: demolition & CTF -> [minimap_base(16x16), base_icon(256x256)]; multihill -> [minimap_multihill(128x128), MultiHill(256x256)]; occupation -> [minimap_occupation_target(128x128), OccupationTarget(256x256)]; diamond mine -> [minimap_diamond_dropoff(128x128), diamond_dropoff]; VIP -> [vip_icon_256x256, vip_icon_256x256] (256x256); spawn -> [minimap_spawn(16x16), spawn_icon(256x256)]; territories A..G -> [tc_minimap_<a-g>(64x64), tc_billboard_<a-g>(256x256)] with H, I and J all aliased to the G pair.",
+    "citation": "<retail-source>/shared/constants_gamemode.py:139-157",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "'diamond_dropoff' is referenced as the diamond-mine billboard name in MODE_ZONE_ICONS but there is no png/ui/diamond_dropoff.png anywhere in the retail tree or ours - a genuinely dangling reference in shipped retail data.",
+    "citation": "<retail-source>/shared/constants_gamemode.py:143; no matching file under png/ui",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "UGC objective minimap icons come from UGC_MINIMAP_ICON_NAMES: minimap_healthcrate, minimap_ammocrate, minimap_blockcrate, minimap_bomb - all 16x16.",
+    "citation": "<retail-source>/shared/constants.py:4380-4385",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Territory-control HUD strip: png/ui/modes/tc_backplate.png and tc_frame.png (both 128x32) plus the letter plates tc_text_a..tc_text_g (65x79 each). The tc_letters array has 10 slots but slots 7, 8 and 9 all reload tc_text_g, so territories H/I/J reuse the G glyph. Layout constants TC_HUD_BASE_SIZE / TC_HUD_BASE_X_INTERVAL / TC_HUD_LETTER_XOFF / TC_HUD_PLATE_XOFF etc. live in hud.pyd.",
+    "citation": "<retail-source>/aoslib/images.py:454-465; hud.pyd strings TC_HUD_* at 0x10110314, 0x10111438, 0x10110264, 0x10111a94",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Mode progress bar: png/ui/modes/progress_bar.png, 98x20, loaded center=False scale=1.0 as global_images.mode_bar, with png/ui/minimap_base.png and png/ui/minimap_diamond.png (16x16 each) as the two bar end icons (PROGRESSBAR_ICON_BASE / PROGRESSBAR_ICON_DIAMOND). Drawn by ProgressBar.draw / TeamProgressBar.draw inside hud.pyd.",
+    "citation": "<retail-source>/aoslib/images.py:450-452; shared/constants_gamemode.py PROGRESSBAR_ICON_BASE/DIAMOND; hud.pyd 'ProgressBar.draw' 0x10112b98, 'TeamProgressBar.draw' 0x10110d20, PROGRESS_BAR_WIDTH 0x10110958",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Team/intel HUD icons: png/ui/icons/intel_blue_90.png and intel_green_90.png, both 90x90, loaded scale=1.0 center=True as team1_intel_icon / team2_intel_icon.",
+    "citation": "<retail-source>/aoslib/images.py:466-467",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Team head icons (scoreboard/head-count portraits): png/ui/icons/deuce_head_1.png, deuce_head_2.png, deuce_head_colour_1.png, deuce_head_colour_2.png, all 72x69, loaded at global_scale 0.64 center=True. head_images maps TEAM1 -> (head_2, head_colour_2) and TEAM2 -> (head_1, head_colour_1) - note the deliberate 1/2 swap.",
+    "citation": "<retail-source>/aoslib/images.py:474-477 and :482-485",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Per-class score-feed icons: png/ui/score_icon_commando.png, score_icon_death.png, score_icon_engineer.png, score_icon_medic.png, score_icon_miner.png, score_icon_rocketeer.png (32x32 each), score_icon_sniper.png and score_icon_specialist.png (29x29), score_icon_crown.png (28x24). All four gangster classes map to score_icon_commando and both VIP classes to score_icon_crown.",
+    "citation": "<retail-source>/aoslib/images.py:408-419, :428, and the score_icons dict at :490-506",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "There is NO nine-slice anywhere in the retail HUD. Every HUD image is blitted whole with a uniform scale factor from load_ui; the only region-like behaviour is the two fill-bar scale pivots (health_bar.anchor_x = 35, jetpack_fuel_bar.anchor_y = 0).",
+    "citation": "<retail-source>/aoslib/images.py:35-50 (load_ui) and :440, :443",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Slicing exists only in menu chrome, and it is 3-slice, not 9-slice: button_large_left/mid/right are blitted with explicit width/height where the end caps keep aspect (element_width = left.width/left.height * height) and the mid is stretched; the scrollbar does the same vertically with scroll_bar_top/mid/bottom.",
+    "citation": "<retail-source>/aoslib/gui.py:714-731 and :1312-1316, :1570-1589",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "png/ui/common_elements/frames/border_kit/ (01_top-left .. 09_bottom-right plus boarder_kit_example.png) is a nine-slice art KIT that is never loaded by any retail code - it is authoring source shipped by accident, not a live nine-slice.",
+    "citation": "full-tree byte scan: none of the nine border_kit basenames appears in any .py/.pyd/.exe/.dll",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Minimap/marker art present but NEVER referenced by any retail code: png/ui/marker_attack_16.png, marker_bg_16.png (20x20 - the odd one out), marker_build_16.png, marker_defend_16.png, marker_machinegun_16.png, marker_rally_point_16.png, marker_satchel_charge_16.png, marker_tunnel_entrance_16.png, map_bomb_16.png, map_diamond_16.png, map_intel_16.png (all 16x16 except marker_bg_16).",
+    "citation": "full-tree byte scan of every .py/.pyc/.pyd/.exe/.dll in <retail-source> for each basename: zero hits",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Further unreferenced HUD-adjacent art: png/ui/minimap_ctf_capture_point.png (128x128), minimap_ctf_secure_base.png (16x16), ctf_capture_point.png (256x256), ctf_secure_base.png (256x256), tc_base_icon.png (256x256), tc_minimap_base.png (16x16, byte-identical to minimap_base.png), Minimap_Zombie.png (13x14), indicator.png (658x952), grenade_icon.png (32x32), health_icon.png (32x32), tracer_icon.png (15x15), bomb_icon_256x256.png, intel_icon_256x256.png, diamond_icon_256x256.png (256x256 each), icons/base_90.png, base_colour_90.png, intel_90.png, intel_colour90.png (90x90 each), icons/deuce_head_blue.png and deuce_head_green.png (75x75), icons/weapons/sachel_charge.png (32x32).",
+    "citation": "full-tree byte scan for each basename against every .py/.pyc/.pyd/.exe/.dll under <retail-source>",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The mode zone icons for CTF resolve to minimap_base/base_icon, which is why the four *ctf_capture_point* / *ctf_secure_base* images are orphaned: CTF was retargeted onto the demolition base art and the dedicated CTF art was left behind.",
+    "citation": "<retail-source>/shared/constants_gamemode.py:145 (ZONE_ICON_CTF -> ['minimap_base','base_icon'], identical to ZONE_ICON_DEMOLITION at :140)",
+    "confidence": "inferred",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Zero assets are referenced-but-missing on our side: all 235 distinct png/ui paths written as string literals in BattleSpadesClient src/ and include/ resolve to an existing file under assets/original/. No C++ code composes HUD texture paths at runtime.",
+    "citation": "scan of src and include for the regex png/ui/...\\.png, checked against assets/original/",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Our client currently consumes only 9 of the retail HUD assets: the five target_* crosshair pieces, health_bar + health_bar_frame, weapon_frame + weapon_frame_selected, ammo_frame and score_frame. The minimap, big map, timer, head-count, jetpack gauge, TC strip, mode progress bar, kill-feed and every marker/zone icon are unimplemented.",
+    "citation": "include/battlespades/frontend/game_hud.hpp:17-32 (the complete game_hud_assets namespace) and src/frontend/native_frontend_module.cpp:4555-4558",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The 'mafia' UI skin overlay (retail pyglet.resource.path insert of skins/<skin>/png/ui) contains only 9 files, all menu frames - choose_team, ui_frame_large, change_team, pause_menu, view_scores and the four settings frames. It does not override any in-game HUD texture, so HUD art needs no per-skin variant handling.",
+    "citation": "<retail-source>/aoslib/image.py:30-34 and :182-185; file listing of assets/original/skins/mafia/png/ui",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Loading-bar bullets are a separate 4-file family loaded by absolute path outside the pyglet resource system: png/ui/progress_bullet_large.png and progress_bullet_dark_large.png (18x64) via pyglet.image.load('./png/ui/...'), while png/ui/progress_bullet.png and progress_bullet_dark.png (11x39) are the in-menu size; images.py additionally asks for game_loading/loading_bar_bullet at scale 0.7 and then overrides anchor_y to height/2.",
+    "citation": "<retail-source>/aoslib/loadingscreen.py:28-31 and aoslib/images.py:311-312",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "png/ui/main_menu/loading/loading_bar_frame.png (749x177) is present but unreferenced - the live loading bar uses game_loading/game_loading_bar_bg and game_loading_tab_bg instead.",
+    "citation": "full-tree byte scan for 'loading_bar_frame' (zero hits); aoslib/images.py:313-314",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "HUD geometry is authored against a 800x600 design canvas constant pair (UI_SCREEN_WIDTH/HEIGHT) in shared/hud_constants.py, but the recovered draw calls in hud.pyd are window-relative; the 800x600 canvas governs the 2D menus, and the equipped-tool tip is the one HUD element with explicit constants there (140x30 at vertical position 120, right margin 10, line spacing 3, centre aligned).",
+    "citation": "<retail-source>/shared/hud_constants.py:5-11 and :19-20",
+    "confidence": "decompiled",
+    "kind": "layout"
+   }
+  ],
+  "unrecoverable": [
+   "Exact on-screen placement (x/y anchor, screen-edge insets) of the minimap frame, timer plate, head-count plate, jetpack gauge and TC strip. These live inside the Cython-compiled hud.pyd methods (Minimap.draw 0x10111a0c, HUD.draw_timer 0x10112a14, HeadCount.draw 0x10110934, HUD.draw_jetpack_hud 0x10111b1c). I identified the functions but did not decompile their arithmetic; the numbers should be recovered from those functions or from retail screenshot parity, not guessed.",
+   "The numeric values of the TC_HUD_* and HC_* layout constants (TC_HUD_BASE_SIZE, TC_HUD_BASE_X_INTERVAL, TC_HUD_LETTER_SCALE, TC_HUD_LETTER_XOFF/YOFF, TC_HUD_PLATE_XOFF/YOFF, TC_HUD_ICON_SCALE, TC_HUD_X_FROM_SCREEN_LEFT, TC_HUD_Y_FROM_SCREEN_TOP, TC_PULSE_TIME, HC_FRAME_WIDTH, HC_TEXT_WIDTH*, HC_TIMER_WIDTH). Only the identifier strings survive in hud.pyd's string table; the float/int values sit in the module-init constant blobs and were not resolved.",
+   "Which minimap marker maps to which entity type for the gameScene.pyd-loaded set (map_base_16, map_pickup_16, marker_medpack_16, marker_radar_station_16, marker_c4_16, marker_dynamite_16, marker_land_mine_16). The filenames make the pairing obvious but the actual entity-class -> icon binding is inside gameScene.pyd and was not decompiled; only rocketTurret/bomb/diamond/intel are proven from shipped .py.",
+   "Whether png/ui/target.png (16x16) is truly dead. Its basename collides with the identifier 'target' in ~90 unrelated files, so substring cross-referencing cannot settle it; a proper xref on the image.load call sites in gameScene.pyd would be needed.",
+   "The billboard image name 'diamond_dropoff' referenced by MODE_ZONE_ICONS has no matching file in either tree. I could not determine whether the file was cut, renamed, or shipped inside aos.pkg."
+  ]
+ },
+ {
+  "topic": "Retail Ace of Spades in-game HUD: exact layout, anchors, fonts, colours and z-order for the SCORE box, top-centre team-score/timer bar, health bar, ammo and block readouts, and the bottom-right vertical gradient bar (recovered from aoslib/hud/hud.pyd)",
+  "findings": [
+   {
+    "claim": "The whole in-game HUD is authored in raw window pixels, not on the 800x600 design canvas the frontend menus use: every widget position in HUD.draw is computed from live `window.width` / `window.height` plus fixed pixel offsets, and all HUD frames are loaded with `scale=1.0` while menu art uses `global_scale = 0.64`.",
+    "citation": "<retail-source>/aoslib/images.py:434-452 (scale=1.0 loads) vs images.py:60 (self.global_scale = 0.64)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "pyglet's origin is bottom-left, so every y below is measured up from the bottom of the window; `window.height - N` means N pixels down from the top edge.",
+    "citation": "<retail-source>/aoslib/scenes/ingame_menus/screenshotHud.py:73-79 (padding measured as y = padding from bottom)",
+    "confidence": "inferred",
+    "kind": "layout"
+   },
+   {
+    "claim": "Draw order (back to front) inside HUD.draw is: healthbar, equipped-tool tip, jetpack/disguise/parachute/weapon-deployment huds, intel hud, team progress bar, territory bases, tools hud (ammo + blocks), entity icons, centred player name, hit indicator, burn + sudden-death overlays, particle manager, respawn text, chat, objectives panel, UGC help panel, SCORE box, kill feed, score-reason feed, HeadCount bar, minimap, colour palette, big text, progress bar, tool loadout strip, and finally the timer.",
+    "citation": "hud.pyd HUD.draw @0x1009EE80: 0x1009f3bd draw_healthbar, 0x1009f5f5 draw_jetpack_hud, 0x1009fadb draw_tools_hud, 0x100a35e2 draw_player_score, 0x100a4891 head_count.draw, 0x100a4960 minimap.draw, 0x100a52cd draw_tool_loadout_hud, 0x100a56d6/0x100a58dd draw_timer",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Blue team is TEAM1 = RGB (44, 117, 179) and green team is TEAM2 = RGB (137, 179, 44); TEAM_COLOURS and UI_TEAM_COLOURS hold identical values, plus TEAM_SPECTATOR (255,255,255) and TEAM_NEUTRAL (128,128,128).",
+    "citation": "<retail-source>/shared/constants.py:229-242, confirmed against the raw decompiler output A58/A59 at shared/backup/constants-copy.py:97-108",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "TEAM1 is the blue team and TEAM2 the green team, confirmed independently by the intel icon asset names bound to each team id.",
+    "citation": "<retail-source>/aoslib/images.py:465-466 (team1_intel_icon='intel_blue_90', team2_intel_icon='intel_green_90')",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "ALIAS TRAP: the human-annotated shared/constants.py mis-assigns A47-A52. The raw decompiler output gives A47=(255,228,0,255) ENOUGH_AMMO_COLOR, A48=(204,28,24,255) NOT_ENOUGH_AMMO_COLOR, A49=A50=(255,0,0,255), A51=(255,194,81,255), A52=(194,194,194,255). The alias block wins, so any HUD code reading A47/A48 is reading the ammo colours, not the player-name colours.",
+    "citation": "<retail-source>/shared/backup/constants-copy.py:81-91 vs the incorrect shared/constants.py:205-210",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "SCORE box: HUD.draw calls self.draw_player_score(MSG_LEFT_MARGIN, window.height - 48), i.e. anchored to the TOP-LEFT corner at x=12, y=window.height-48.",
+    "citation": "hud.pyd HUD.draw @0x100a35e2-0x100a366c (MSG_LEFT_MARGIN load then window.height PyNumber_Subtract int:48)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "MSG_LEFT_MARGIN = 12, MSG_TOP_MARGIN = 12, MSG_BOTTOM_MARGIN = 60, MSG_PAD = 5, MAX_CHAT_ENTRIES = 5 (module-level constants assigned in inithud).",
+    "citation": "hud.pyd inithud @0x100c5920 (12), 0x100c595a (12), 0x100c598c (60), 0x100c59be (5), 0x100c59f0 (5)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "draw_player_score(self, x, y) blits global_images.score_frame at exactly (x, y) with no scaling; the frame is the only HUD frame loaded with center=False so it is bottom-left anchored, giving a 200x40 box occupying x=12..212 and y=(H-48)..(H-8) \u2014 an 8 px gap from the top edge.",
+    "citation": "hud.pyd draw_player_score @0x10092FE0, blit call @0x100931d6-0x10093217 with the two function args as the only tuple members; signature array at hud.pyd:0x10110064 ['self','x','y']; images.py:446 loads score_frame with center=False, scale=1.0; png/ui/score/score_frame.png is 200x40",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "SCORE text is strings.SCORE + ': ' + str(int(self.player_score)) drawn by draw_text_with_alignment_and_size_validation at (x+10, y) into a box of score_frame.width x score_frame.height, colour (255,255,255,255), font score_hud_font, alignment_x='left', alignment_y='center'.",
+    "citation": "hud.pyd draw_player_score @0x100932a1 (strings), 0x100932cb (SCORE), 0x10093303 (': '), 0x1009348f (int:10), 0x100934be (width), 0x100934e7 (height), 0x10093512 (score_hud_font), 0x100935be-0x100935f6 (alignment_x='left', alignment_y='center'); colour tuple built as PyTuple_Pack(4,255,255,255,255) at 0x100039d2-0x100039e2",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "score_hud_font is Spades (ALDO_FONT) at 26 px, unfiltered.",
+    "citation": "<retail-source>/aoslib/text.py:315 (score_hud_font = load_font(ALDO_FONT, 26, False)); text.py:11 ALDO_FONT='Spades'",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The SCORE box only draws when scene.manager.enable_player_score is true and the local player's class id is not CLASS_UGCBUILDER (A87).",
+    "citation": "hud.pyd HUD.draw @0x100a340b (id) / 0x100a3436 (A87) RichCompare, 0x100a3563 (enable_player_score); shared/constants.py:282 A87 = CLASS_UGCBUILDER",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The top-centre bar is the HeadCount widget. HeadCount.draw computes y = window.height - 48 (same top inset as the SCORE box) and draws global_images.hc_frame_long resized to (bg_width + width_offset) wide by hc_frame_long.height tall, at x = start_x - width_offset*0.5.",
+    "citation": "hud.pyd HeadCount.draw @0x100328E0, hud.pyx lines 79-81: window.height PyNumber_Subtract int:48, then draw_image_resized with hc_frame_long / width_offset*0.5 / bg_width",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "HeadCount.calculate_startx returns start_x = window.width / 2 - bg_width * 0.5, where bg_width accumulates one HC_TEXT_WIDTH_SMALL/MEDIUM/BIG per team (chosen by whether the team shows max_score and how wide the score is) plus HC_TIMER_WIDTH \u2014 so the bar is horizontally centred and its width grows with the score digits.",
+    "citation": "hud.pyd HeadCount.calculate_startx @0x10031F70, hud.pyx lines 59-60",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "HC_TEXT_WIDTH_SMALL = 80, HC_TEXT_WIDTH_MEDIUM = 90, HC_TEXT_WIDTH_BIG = 110, HC_TIMER_WIDTH = 120, HC_TEXT_WIDTH defaults to HC_TEXT_WIDTH_SMALL (80), and HC_FRAME_WIDTH is set to global_images.hc_frame.width (126 px from the shipped PNG).",
+    "citation": "hud.pyd inithud @0x100b34d2-0x100b34e6 (80), 0x100b3508 (90), 0x100b3540 (110), 0x100b35d3 (120), 0x100b356c-0x100b35a4 (HC_TEXT_WIDTH = HC_TEXT_WIDTH_SMALL), 0x100b344e-0x100b34a3 (HC_FRAME_WIDTH = <image>.width); png/ui/head_count/hc_frame.png is 126x40, hc_frame_long.png is 320x40",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Each team's readout text is built as '%i' % team.score, and when team.show_max_score is set it appends '/%s' % team.max_score \u2014 this is the literal source of the 'N/200' string. If value_type == A61 (TEAM_PLAYERS_COUNT_VALUE) it instead formats team.count.",
+    "citation": "hud.pyd HeadCount.draw @0x100328E0 hud.pyx line 85: name '%i' at 0x10111d30, name '/%s' at 0x10110184, A61 at 0x1011020c, count/score/show_max_score/max_score attribute loads; shared/constants.py:247-252 (TEAM_PLAYERS_COUNT_VALUE, TEAM_SCORE_VALUE ... = xrange(4))",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The left team's number is drawn right-aligned in an HC_TEXT_WIDTH-wide, 30 px-tall box at x = window.width*0.5 - HC_TEXT_WIDTH - HC_TIMER_WIDTH*0.5; the right team's number is drawn left-aligned at x = window.width*0.5 + HC_TIMER_WIDTH*0.5 - 4. Both use hc_font and a colour of team.color + (255,).",
+    "citation": "hud.pyd HeadCount.draw hud.pyx line 85: alignment_x='right' branch (name 'right' at 0x101115d8) and alignment_x='left' branch (name 'left' at 0x10112920), int:30 row height at 0x10110b34, int:4 at 0x101101e4, hc_font at 0x10110fac",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "hc_font is Spades (ALDO) at 26 px.",
+    "citation": "<retail-source>/aoslib/text.py:320 (hc_font = load_font(ALDO_FONT, 26))",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The team icon beside each score is a two-pass deuce head: the white base image is blitted under glColor4f, then the colour-mask image is blitted under glColor4ub(*(team.color + (255,))). Both are drawn inside glPushMatrix / glScalef(0.5, 0.5, ...) / glPopMatrix, i.e. at half the authored size.",
+    "citation": "hud.pyd HeadCount.draw hud.pyx line 85: glPushMatrix 0x1011254c, glColor4f 0x101103b8, glTranslatef 0x10112390, glScalef 0x10111890 with DBL 0.5 twice, blit 0x10110bb8, glColor4ub 0x10110c84, second blit, glPopMatrix 0x101118fc",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The head images are keyed by team: head_images = {TEAM1: (deuce_head_2, deuce_head_colour_2), TEAM2: (deuce_head_1, deuce_head_colour_1)}.",
+    "citation": "<retail-source>/aoslib/images.py:473-484",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The clock sitting between the two team scores is HUD.draw_timer(window.width * 0.5 + 2, window.height - 48) \u2014 the same y as the HeadCount bar, so it renders inside hc_frame_long. draw_bg is not passed, so no separate timer_frame is drawn in this mode.",
+    "citation": "hud.pyd HUD.draw @0x100a58dd-0x100a5a32 (width*0.5, PyNumber_Add int:2, height PyNumber_Subtract int:48); signature array hud.pyd:0x10110050 ['self','x','y','draw_bg']",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "There is a second timer call site used when the minimap is enabled and the mode is not A2445: draw_timer(window.width - 78, window.height - <runtime value>, True), which passes draw_bg=True so the 115x40 timer_frame is blitted as its own top-right panel.",
+    "citation": "hud.pyd HUD.draw @0x100a56d6-0x100a57bf (width PyNumber_Subtract int:78, height PyNumber_Subtract PyInt_FromLong(<runtime>)), True at 0x100a580b; png/ui/timer/timer_frame.png is 115x40",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "draw_timer subtracts global_images.timer_frame.width / 2 from the supplied x, so the caller's x is the centre of the timer, then optionally blits timer_frame at (x, y).",
+    "citation": "hud.pyd draw_timer @0x10091B60, hud.pyx lines 772-774 (timer_frame.width, int:2, PyNumber_Divide, PyNumber_InPlaceSubtract, then timer_frame.blit)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The clock string is '%02d:%02d' built from gmtime() of (self.countdown - (time - self.countdown_start)), i.e. MM:SS, and is drawn twice with ammo_font_hud (Spades 26) \u2014 one offset shadow pass and one main pass using offsets 40, 2, 10, 2.",
+    "citation": "hud.pyd draw_timer hud.pyx lines 777-786: gmtime at 0x10112b4c, DBL 60.0, format '%02d:%02d' at 0x101105b8, ammo_font_hud at 0x10110858, int:40 / int:2 / int:10 constants",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The clock icon (timer.png, 32x32) is drawn by draw_image_scaled(global_images.timer_icon, x + 24, ..., 0.8, 0.8) after glColor4ub.",
+    "citation": "hud.pyd draw_timer hud.pyx line 789: draw_image_scaled at 0x10111d20, timer_icon at 0x101107e8, int:24 at 0x10110770, DBL 0.8 twice",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "draw_healthbar has signature (self, window, player); the widget is centred horizontally at x = window.width * 0.5 and the frame is blitted at exactly (window.width*0.5, 30) \u2014 i.e. anchored to the BOTTOM-CENTRE, 30 px up from the bottom edge.",
+    "citation": "hud.pyd draw_healthbar @0x1009B910, hud.pyx line 1022 @0x1009bba8-0x1009bc0b (window.width * 0.5) and line 1024 @0x1009bcfa (push 0x1e = 30) then health_bar_frame.blit; signature array hud.pyd:0x10110074 ['self','window','player']",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "health_bar.png and health_bar_frame.png are both 239x34 and are loaded center=True at scale 1.0, so the frame occupies x = W/2-119.5 .. W/2+119.5 and y = 13..47 from the bottom.",
+    "citation": "<retail-source>/aoslib/images.py:438-440; png/ui/health_bar/health_bar.png and health_bar_frame.png measured 239x34",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "images.py overrides the health-bar fill's horizontal anchor to 35 px (self.health_bar.anchor_x = 35), and draw_healthbar reproduces that offset: glTranslatef(x - global_images.health_bar.width*0.5 + global_images.health_bar.anchor_x, 30, 0.0).",
+    "citation": "<retail-source>/aoslib/images.py:439; hud.pyd draw_healthbar hud.pyx line 1057 @0x1009d4cc-0x1009d752 (width * DBL 0.5, PyNumber_Subtract, anchor_x, PyNumber_Add, PyInt_FromLong(0x1e)=30)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The health fill is scaled, not clipped: glScalef(clamp(self.hp_display / 100.0, ...), 1.0, 1.0) is applied before health_bar.blit, so the bar shrinks horizontally about the 35 px anchor.",
+    "citation": "hud.pyd draw_healthbar hud.pyx line 1059 @0x1009d7b8-0x1009d9e4 (glScalef, clamp, hp_display, DBL 100.0, PyNumber_Divide, PyTuple_New(3)) and line 1061 health_bar.blit @0x1009db00",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The health-bar fill is tinted with the player's team colour: colour = player.team.color + (255,) and glColor4ub(*colour) is called immediately before the fill blit. The trailing (255,) is a cached one-element tuple built as PyTuple_Pack(1, 255).",
+    "citation": "hud.pyd draw_healthbar hud.pyx lines 1027-1028 @0x1009bdba (team) / 0x1009bde7 (color) / 0x1009be23-0x1009be33 (PyNumber_Add of const 0x101117f4), line 1060 glColor4ub @0x1009da46-0x1009daa0 via PySequence_Tuple; const initialiser @0x10003bc1-0x10003bcf builds (255,)",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "The number shown on the health bar is drawn only when scene.manager.enable_numeric_hp is set; the value is '%d' % ceil(hp), where hp is hp_display divided by the class damage_multiplier when that multiplier is non-zero, and further multiplied by vip_health_multiplier in VIP mode.",
+    "citation": "hud.pyd draw_healthbar hud.pyx lines 1065-1085: enable_numeric_hp @0x10110638, damage_multiplier @0x101108ec, vip_health_multiplier @0x10111be0, ceil @0x10111b54, '%d' @0x10112bc8 with PyNumber_Remainder",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The HP number's colour is blend_color_rgba(LOW_HEALTH_TEXT_COLOR, HIGH_HEALTH_TEXT_COLOR, hp/LOW_HEALTH_TEXT_THRESHOLD) below the threshold and HIGH_HEALTH_TEXT_COLOR above it. LOW_HEALTH_TEXT_COLOR = (255,0,0,255), HIGH_HEALTH_TEXT_COLOR = (255,255,255,255), LOW_HEALTH_TEXT_THRESHOLD = 20.0.",
+    "citation": "hud.pyd draw_healthbar hud.pyx lines 1075-1083 (blend_color_rgba @0x101129cc); inithud @0x100c5e25 / 0x100c5e65 / 0x100c5ec0 with DBL 20.0 at 0x100c5e92; tuple initialisers @0x1000ceb8-0x1000cec8 (255,255,255,255) and @0x1000cef7-0x1000cf0d (255,0,0,255)",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "The HP number is positioned by glTranslatef(<bar x> + global_images.health_bar.width*0.23 + global_images.health_bar.anchor_x, 35.0, ...) and drawn with health_text.draw plus a shadow pass at offsets (0.2, -0.2).",
+    "citation": "hud.pyd draw_healthbar hud.pyx lines 1086-1090 @0x1009e70b onward (DBL 0.23, anchor_x, DBL 35.0; draw_shadowed with DBL 0.2 / DBL -0.2)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The character portrait next to the health bar is the class icon, drawn inside glScalef(0.4,0.4,0.4) at icon_x = (x - global_images.health_bar_frame.width*0.5)/0.4 + 16 and icon_y = (30 + 0.1*health_bar_frame.height)/0.4 + 8, selected from global_images.class_icons[player.get_class().id][player.team.id].",
+    "citation": "hud.pyd draw_healthbar hud.pyx lines 1034-1038 @0x1009c1xx: glScalef DBL 0.4 x3, class_icons @0x10111a4c, get_class/id/team/id GetItem chain, health_bar_frame.width*0.5 with PyNumber_Divide by 0.4 then int:16, and DBL 0.1 * health_bar_frame.height / 0.4 then int:8",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The class icon block is gated on scene.manager.enable_player_score, and a separate VIP path at lines 1042-1054 re-draws at glScalef(0.546,...) with the VIP_YOU_ARE_VIP big-text label.",
+    "citation": "hud.pyd draw_healthbar hud.pyx line 1031 (enable_player_score @0x10110f18) and lines 1042-1054 (DBL 0.546 at 0x100f9f00, VIP_YOU_ARE_VIP @0x10112c7c)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The bottom-right readouts are all produced by one method, draw_ammo_hud(self, image, color, x, y, text, reserve, ammo_x, image_scale, image_colour), called repeatedly from draw_tools_hud.",
+    "citation": "hud.pyd keyword-name array @0x10110024 ['self','image','color','x','y','text','reserve','ammo_x','image_scale','image_colour']; draw_ammo_hud body @0x10090340; call sites in draw_tools_hud @0x10095143, 0x10095b49, 0x10095f19, 0x10096483, 0x10096a7d",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "draw_tools_hud computes ammo_x = window.width - 80 and x = ammo_x - global_images.ammo_frame.width*0.5 - 19 (= window.width - 156.5 with the 115 px frame). Both readouts are therefore anchored to the BOTTOM-RIGHT corner.",
+    "citation": "hud.pyd draw_tools_hud @0x100936E0, hud.pyx line 809 @0x1009393e-0x10093973 (window.width, int:80, PyNumber_Subtract) and line 810 @0x100939cc-0x10093af1 (ammo_frame.width * DBL 0.5, PyNumber_Subtract, int:19, PyNumber_Subtract)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The weapon ammo panel is drawn at y = 60 and the blocks panel at y = 12, both bottom-origin, so the block counter sits directly below the ammo counter at the same x.",
+    "citation": "hud.pyd draw_tools_hud: blocks call @0x100951a7 (push 0xc = 12 -> PyInt_FromLong, tuple slot 3 = the 'y' parameter); weapon/prefab/ammo calls @0x10095bc7, 0x10095fb4, 0x100964ac, 0x10096ac5 all push 0x3c = 60",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "draw_ammo_hud draws the 115x40 ammo_frame under glPushMatrix / glTranslatef(x, y, 0.0) / glScalef(1.3, 1.3, ...), so the frame renders at 149.5x52 px on screen.",
+    "citation": "hud.pyd draw_ammo_hud hud.pyx lines 747-751 @0x100905d3 (glPushMatrix), 0x10090654 (glTranslatef), 0x1009076e (DBL 1.3 into glScalef), 0x100908a3 (ammo_frame) 0x100908e0 (blit), 0x10090967 (glPopMatrix); png/ui/ammo/ammo_frame.png is 115x40",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The '25 / 74' style readout is two separate text draws: the current-ammo number with ammo_font_hud and the reserve rendered from the literal format string '/ %s' with reserve_font. Their combined advance width is measured, halved and offset by 17 in x and 11 in y to centre the pair in the frame.",
+    "citation": "hud.pyd draw_ammo_hud hud.pyx lines 752-761: ammo_font_hud.get_advance_width @0x100909e1/0x10090a07, int:2 divide @0x10090ac6, '/ %s' name @0x10111da4 (0x10090b30), reserve_font.get_advance_width @0x10090b5a, DBL 0.5 @0x10090c9b, int:17 @0x10090d46, int:11 @0x10090d84, ammo_font_hud.draw @0x10090de6, reserve_font.draw @0x10090f4d",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "ammo_font_hud is Spades 26 px unfiltered and reserve_font is Spades 18 px unfiltered, which is why the reserve number renders visibly smaller than the loaded-ammo number.",
+    "citation": "<retail-source>/aoslib/text.py:299-301 (ammo_font_hud = load_font(ALDO_FONT, 26, False); reserve_font = load_font(ALDO_FONT, 18, False))",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The weapon/block icon inside each ammo panel is blitted after glTranslatef(x - 50, y + global_images.ammo_frame.height*0.5, ...) and glScalef(image_scale, ...), tinted by glColor4f(colour[0]/255, colour[1]/255, colour[2]/255, 1.0) from the image_colour keyword.",
+    "citation": "hud.pyd draw_ammo_hud hud.pyx lines 763-768 @0x100911e0 (glPushMatrix), 0x10091279 (int:50) 0x100912fc (ammo_frame.height) DBL 0.5 @0x1009132e, glScalef @0x100914ad, glColor4f @0x10091590 with three GetItem + divide, blit @0x1009187d",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The BLOCKS counter is the block-tool instance of the same ammo panel: text = str(self.block_count) (or an infinite marker when player.team.infinite_blocks), reserve = CLASS_BLOCKS[current_class.id] * scene.manager.block_wallet_multiplier, and the icon is the block tool's Tool.image \u2014 which is why it reads '1500 / 1500' with a block icon.",
+    "citation": "hud.pyd draw_tools_hud @0x10094c52-0x1009508a: infinite_blocks @0x10110818, block_count @0x101109dc via PyString_Type, A2399 (CLASS_BLOCKS) @0x101112a8 indexed by current_class.id, block_wallet_multiplier @0x10111fac PyNumber_Multiply; shared/constants.py:5330 A2399 = CLASS_BLOCKS",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The block counter's colour is set at hud.pyx line 829 to A48 = NOT_ENOUGH_AMMO_COLOR (204,28,24,255) and overwritten at line 831 with A47 = ENOUGH_AMMO_COLOR (255,228,0,255) when self.block_count > 0 (RichCompare op 4 = Py_GT). Red when out of blocks, yellow otherwise.",
+    "citation": "hud.pyd draw_tools_hud @0x10094b3c (A48 load, py-line 0x33d=829), 0x10094b6a-0x10094ba2 (block_count vs int:0, RichCompare op 4), 0x10094c12 (A47 load); values from shared/backup/constants-copy.py:81-84",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "draw_tools_hud also precomputes a normalised team tint: TEAM_COLOURS[player.team.id] with each of the three channels divided by 255.0, used for the block-tool preview colour.",
+    "citation": "hud.pyd draw_tools_hud @0x10093e60 (A58 = TEAM_COLOURS), 0x10093f13 (team.id), three GetItem + DBL 255.0 + PyNumber_Divide at 0x10094059, 0x1009417c, 0x1009429a",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "The bottom-right vertical yellow-to-red gradient bar is the JETPACK FUEL gauge, not health and not heat. HUD.draw_jetpack_hud returns immediately if player.jetpack == A363 (NO_JETPACK), and the bar it draws is global_images.jetpack_fuel_bar.",
+    "citation": "hud.pyd draw_jetpack_hud @0x10096C10: jetpack attr @0x10096df5, A363 @0x1011101c RichCompare @0x10096e4a with early return; jetpack_fuel_frame @0x101110d4, jetpack_fuel_bar @0x10110404; shared/constants.py:934 A363 = NO_JETPACK",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "png/ui/jetpack_fuel/jetpack_fuel_bar.png is a 33x130 vertical gradient that runs from pale yellow at the top to saturated red at the bottom, and jetpack_fuel_frame.png is the matching 33x130 surround.",
+    "citation": "<retail-source>/png/ui/jetpack_fuel/jetpack_fuel_bar.png and jetpack_fuel_frame.png (both 33x130, gradient verified by direct inspection)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Jetpack gauge geometry: x = window.width - 50 and y = global_images.jetpack_fuel_frame.height*0.5 + 135 (= 200 with the 130 px art). The frame is blitted at (x, y - 4); the fill is drawn under glTranslatef(x + 1, y - jetpack_fuel_bar.height*0.5, 0.0) then glScalef(1.0, clamp(self.jetpack_fuel_display / JETPACK_PROPERTIES[player.jetpack][JETPACK_MAX_FUEL], 0.0, 1.0), 1.0) and blit(0.0, 0.0). Bottom-right anchored.",
+    "citation": "hud.pyd draw_jetpack_hud hud.pyx lines 906-913: 0x100971b2 (int:50), 0x10097221/0x1009725d (jetpack_fuel_frame.height) DBL 0.5 @0x1009729a, 0x1009731a (int:135), blit with int:4 @0x10097400, glTranslatef @0x10097549 with int:1 @0x10097571, jetpack_fuel_bar.height*0.5 @0x100975c7-0x10097675, glScalef @0x100977df, clamp @0x10097835, jetpack_fuel_display @0x1011223c, A2128 @0x101107f4, A2120 @0x10110e58; shared/constants.py:4603/4658 A2120=JETPACK_MAX_FUEL, A2128=JETPACK_PROPERTIES",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "images.py explicitly pins jetpack_fuel_bar.anchor_y = 0, which is what makes the fill grow upward from its base when glScalef stretches it.",
+    "citation": "<retail-source>/aoslib/images.py:441-443",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The small weapon icon directly BELOW the gradient bar is the jetpack tool's own TOOL_IMAGES entry, drawn at glTranslatef(x, y - 70, 0.0) with glScalef(0.15, 0.15, 1.0) \u2014 i.e. 70 px under the gauge origin at 15% scale.",
+    "citation": "hud.pyd draw_jetpack_hud hud.pyx lines 901 and 916-918: TOOL_IMAGES @0x10110f50 indexed by player.jetpack @0x10096f0b, glTranslatef @0x10097e56 with int:70 @0x10097e80, glScalef @0x10097f85 with DBL 0.15 @0x10097faf and 0x10097fe1, blit @0x100980ec",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Anchor summary: SCORE box -> top-left (12, H-48); HeadCount bar + centre clock -> top-centre (W/2 centred, y = H-48); health bar + class icon -> bottom-centre (W/2, y = 30); ammo panel -> bottom-right (x = W-156.5, y = 60); blocks panel -> bottom-right (x = W-156.5, y = 12); jetpack fuel gauge -> bottom-right (x = W-50, y = 200).",
+    "citation": "hud.pyd HUD.draw @0x100a35e2, HeadCount.draw @0x100328E0 / calculate_startx @0x10031F70, HUD.draw @0x100a58dd, draw_healthbar @0x1009bcfa, draw_tools_hud @0x1009393e-0x10093af1 with y constants 0x3c/0xc, draw_jetpack_hud @0x100971b2/0x1009731a",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "No HUD widget is resolution-scaled: the only multipliers applied are fixed authored constants (1.3 for the ammo frame, 0.4 for the class icon, 0.5 for the head icons, 0.546 for the VIP variant, 0.15 for the jetpack tool icon, 0.8 for the clock icon). Widgets keep their pixel size and simply move with the window edges.",
+    "citation": "hud.pyd: DBL 1.3 @0x1009076e, DBL 0.4 @draw_healthbar line 1034, DBL 0.5 @HeadCount.draw line 85, DBL 0.546 @0x100f9f00, DBL 0.15 @0x10097faf, DBL 0.8 @draw_timer line 789",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Cython integer constants in hud.pyd resolve through the PyInt_FromLong initialiser at sub_100AB170, and every PyObject* name global resolves through the 20-byte __Pyx_StringTabEntry table whose n field is strlen+1; both tables were fully extracted, which is what makes the numbers above literal rather than guessed.",
+    "citation": "hud.pyd sub_100AB170 @0x100AB170 (89 integer constants, e.g. 0x10111760=50, 0x10110d08=70, 0x1011232c=135, 0x101109c8=48, 0x10111d98=80); string tab entries verified at 0x1010a39c ('block_count') and 0x10105e00",
+    "confidence": "decompiled",
+    "kind": "format"
+   }
+  ],
+  "unrecoverable": [
+   "The exact y of the alternate top-right timer: HUD.draw computes window.height - PyInt_FromLong(<runtime C value>) at hud.pyd:0x1009579b. The value is produced by earlier C-level arithmetic (most likely minimap-derived), and I did not trace it to a literal. Only the centre-clock y (window.height - 48) is a hard constant.",
+   "The clamp() bounds in draw_healthbar hud.pyx line 1059 and draw_jetpack_hud line 912 are loaded with bare fldz/fld1 forms whose operands I did not decode; 0.0 and 1.0 are the overwhelmingly likely pair given the ratio semantics, but I am not citing them as decompiled.",
+   "The default value of draw_timer's draw_bg parameter. HUD.draw's centre-clock call omits it, so the timer_frame is not drawn there, but I did not read the __defaults__ tuple to confirm the default is False.",
+   "Which of the two draw_tools_hud locals at hud.pyx lines 809/810 is bound to the 'x' parameter and which to 'ammo_x'. The stack slots shift between the assignment and the call. I assigned ammo_x = window.width-80 and x = window.width-156.5 because that makes the scaled 115x1.3 frame's centre land on width-81.75 (within 2 px of ammo_x) and its right edge 7 px from the window edge; the reverse assignment would place the panel off-screen. This is an inference, not a decompile.",
+   "The precise per-team head-icon translate offsets inside HeadCount.draw. I recovered the operand chain (HC_TEXT_WIDTH + window.width*0.5 + 10 for the left team, +10 for the right) but not the full expression grouping, so I have not stated exact icon pixel positions.",
+   "The base x term of the HP-number glTranslatef at draw_healthbar hud.pyx line 1086 \u2014 I read the '+ health_bar.width*0.23 + health_bar.anchor_x' tail and the literal 35.0, but did not confirm whether the base is the raw centre x or the already-offset bar origin.",
+   "'team.color' on the Team object (used for the health bar tint and the HeadCount text/icon tint) lives outside hud.pyd, in the game/world module. I have shown it is used verbatim as an RGB triple with 255 appended, and TEAM_COLOURS gives (44,117,179)/(137,179,44), but I did not decompile the assignment that populates Team.color to prove it is literally TEAM_COLOURS[team.id]."
+  ]
+ },
+ {
+  "topic": "Retail Ace of Spades kill feed and transient HUD messages (layout, lifetime, fade, fonts, team colours, kill-type icon set, enum ordinals, and adjacent transient HUD: score feed, chat, big centre text, damage indicator)",
+  "findings": [
+   {
+    "claim": "The kill feed, chat feed and score feed all live in aoslib/hud/hud.pyd, a Cython merged module. Its __pyx_f source-file table shows the code is split across hud.pyx (off_100FC054 -> \"hud.pyx\") and chatLine.py (off_100FC074 -> \"chatLine.py\"); ChatLine/ScoreLine/KillLine are all in the chatLine.py section, HUD.* methods in hud.pyx.",
+    "citation": "<retail-source>/aoslib/hud/hud.pyd:0x100fc054 and 0x100fc074 (strings at 0x100f7198 \"hud.pyx\", 0x100f7104 \"chatLine.py\")",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "MAX_FEED_ENTRIES = 5. Module-level assignment in inithud: PyDict_SetItem(moddict, __pyx_n_s_MAX_FEED_ENTRIES, __pyx_int_5) where __pyx_int_5 = dword_10111678 = PyInt_FromLong(5).",
+    "citation": "aoslib/hud/hud.pyd:0x100c5a2e (name slot 0x10110830); value proven at 0x100ab29e in sub_100AB170 (__Pyx_InitGlobals)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "MAX_CHAT_ENTRIES = 5 and MAX_SCORE_FEED_ENTRIES = 5 (all three feed caps share the same cached int object __pyx_int_5).",
+    "citation": "aoslib/hud/hud.pyd:0x100c59fc and 0x100c5a60 (hud.pyx lines 55 and 57)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "MSG_LEFT_MARGIN = 12, MSG_TOP_MARGIN = 12, MSG_BOTTOM_MARGIN = 60, MSG_PAD = 5. These are hud.pyx module constants at source lines 51..54.",
+    "citation": "aoslib/hud/hud.pyd:0x100c592c, 0x100c5966, 0x100c5998, 0x100c59ca (inithud)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "MESSAGE_TTL = 5 (seconds) and SCORE_MESSAGE_TTL = 1.5 (float, loaded via fld qword [0x100f7c20] = 1.5). They are chatLine.py lines 4 and 5.",
+    "citation": "aoslib/hud/hud.pyd:0x100bbe21 (MESSAGE_TTL=int 5) and 0x100bbe50/0x100bbe8a (SCORE_MESSAGE_TTL=1.5)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The kill feed is anchored at the LEFT of the screen, near the top: HUD.draw does glPushMatrix(); glTranslatef(MSG_LEFT_MARGIN, self.height - 75, 0.0) before iterating the feed. So x = 12, y = screen_height - 75, in the 800x600 UI space.",
+    "citation": "aoslib/hud/hud.pyd:0x100a37f2..0x100a38fc inside sub_1009EE80 (hud.pyx:1192-1193)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Row advance between kill-feed entries is glTranslatef(0, -(line.content_height) - MSG_PAD*2, 0), i.e. content_height + 10 px downward per row.",
+    "citation": "aoslib/hud/hud.pyd:0x100a3baa (content_height), 0x100a3bc5 (PyNumber_Negative), 0x100a3bed (MSG_PAD), 0x100a3c06 (int 2), 0x100a3c34 (Subtract) \u2014 hud.pyx:1194",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The feed loop is `for line in reversed(self.kill_feed): line.draw(); glTranslatef(...)`. dword_10112158 is the cached builtin `reversed` (assigned in __Pyx_InitCachedBuiltins from name 'reversed').",
+    "citation": "aoslib/hud/hud.pyd:0x100a39b8 (call target dword_10112158); builtin resolved at 0x100ab128 in sub_100AAE30",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "New entries are inserted at index 0: HUD.add_kill_feed does `self.kill_feed.insert(0, self.create_kill_line(...))`, then `if len(self.kill_feed) > MAX_FEED_ENTRIES: self.kill_feed.pop()`. Combined with reversed() at draw time this means the OLDEST surviving entry is drawn at the top anchor and the NEWEST is drawn lowest.",
+    "citation": "aoslib/hud/hud.pyd:sub_10088570 at 0x10088570 (hud.pyx:418-421); insert at 0x10111474 name slot, MAX_FEED_ENTRIES read at 0x10088907",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "HUD.add_kill_feed signature is add_kill_feed(self, killer_name, killer_color, killer_language, image, victim_name, victim_color, victim_language) \u2014 8 positional args, resolved from the keyword-dict lookup name slots 0x1011236c/0x101102e0/0x10111504/0x101107dc/0x10112b24/0x10112948/0x1011289c/0x10110c2c.",
+    "citation": "aoslib/hud/hud.pyd:sub_100ECB90 at 0x100ecb90 (hud.pyx:418)",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "HUD.create_kill_line builds `lines = []; if killer_name is not None: lines.append((killer_name, killer_color, killer_language)); if victim_name is not None: lines.append((victim_name, victim_color, victim_language)); return KillLine(lines, image)`.",
+    "citation": "aoslib/hud/hud.pyd:sub_10088A50 at 0x10088a50 (hud.pyx:423-431)",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "KillLine derives from ChatLine (`class KillLine(ChatLine)`), as does ScoreLine. The class-creation site pushes the cached ChatLine class object as the single base.",
+    "citation": "aoslib/hud/hud.pyd:0x100bc917 (KillLine bases) and 0x100bc62f (ScoreLine bases)",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "KillLine.__init__(self, lines, image) (chatLine.py:82-92): super(KillLine, self).__init__(lines); self.killer = None; self.victim = None; if len(lines) > 1: self.killer = lines[0]; self.victim = lines[1]; elif len(lines) > 0: self.victim = lines[0]; self.image = image; if self.image: self.content_height = max(self.image.height * 0.5 * 0.1, self.content_height).",
+    "citation": "aoslib/hud/hud.pyd:sub_1005B640 at 0x1005b640; float constants 0x100f7c28=0.5 and 0x100f8488=0.1",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "For a suicide / world kill only ONE entry exists in the line, and it is assigned to self.victim (the len(lines)==1 branch stores lines[0] into 'victim', not 'killer'), so the icon is drawn to the LEFT of the lone name with no killer name.",
+    "citation": "aoslib/hud/hud.pyd:0x1005baee (mov eax, __pyx_n_s_victim in the len<=1 branch of sub_1005B640)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "ChatLine.__init__(self, texts) (chatLine.py:11-16) sets self.texts = texts; self.content_height = chat_font.get_line_height(); self.ttl = self.start_ttl; self.font = chat_font; self.tuffy_font = chat_font_tuffy. KillLine therefore inherits a base row height of the CHAT font's line height (A750-Sans-Medium 12), not the kill-feed font's.",
+    "citation": "aoslib/hud/hud.pyd:sub_10058FA0 at 0x10058fa0 (chat_font at 0x10059005, get_line_height at 0x1005904b, start_ttl at 0x1005911b)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "ChatLine class attributes are start_ttl = MESSAGE_TTL (5) and extra_alpha = 0.0 (chatLine.py:8-9).",
+    "citation": "aoslib/hud/hud.pyd:0x100bbee8/0x100bbf10 (start_ttl = MESSAGE_TTL) and 0x100bbf51/0x100bbf7f (extra_alpha = 0.0)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Kill-feed fade: KillLine.draw computes alpha = self.ttl / MESSAGE_TTL * 2 + self.extra_alpha, then alpha = alpha if alpha < 1.0 else 1.0. With MESSAGE_TTL=5 and extra_alpha=0.0 this means fully opaque for ttl in [2.5, 5.0] and a linear fade to zero over the final 2.5 s.",
+    "citation": "aoslib/hud/hud.pyd:sub_1005BE90 at 0x1005be90; MESSAGE_TTL global read at 0x1005c028, *2 at 0x1005c0c2, extra_alpha at 0x1005c105, clamp RichCompare(Py_LT,1.0) at 0x1005c1b3 (chatLine.py:95)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "KillLine.draw returns 0 immediately (draws nothing) when alpha <= 0, and otherwise converts to a byte alpha with alpha = int(255 * alpha).",
+    "citation": "aoslib/hud/hud.pyd:0x1005c29e (RichCompare vs int 0, Py_LE) and 0x1005c339 (PyNumber_Multiply by int 255) \u2014 chatLine.py:96-98",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "extra_alpha is only ever written for the chat `self.messages` lines in HUD.update; the kill-feed and score-feed lines keep the class default 0.0. So the kill-feed fade is purely ttl driven.",
+    "citation": "aoslib/hud/hud.pyd:sub_100EDD30 at 0x100ee46c (extra_alpha store, inside the 'messages' loop that begins at 0x100ee02f) vs the kill_feed loop starting at 0x100ee4e1",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Kill-feed entries are aged and removed in HUD.update: `for line in self.kill_feed[:]: line.ttl -= dt; if line.ttl <= 0: self.kill_feed.remove(line)` at hud.pyx:502-505. (Chat `messages` lines are NOT removed on expiry, only faded.)",
+    "citation": "aoslib/hud/hud.pyd:0x100ee4e1..0x100ee759 (InPlaceSubtract at 0x100ee672, RichCompare vs int 0 at 0x100ee6e9, 'remove' at 0x100ee759)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Kill-feed font is KILL_FEED_FONT = 'A750-Sans-Medium' at KILL_FEED_FONT_SIZE = 14, loaded with enable_resize=False; the CJK fallback is KILL_FEED_FONT_TUFFY = 'Tuffy_Bold' at the same size 14.",
+    "citation": "<retail-source>/aoslib/text.py:268-270 and 324-325",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "KillLine.draw_text(self, text, x, y, alpha, alpha_float) (chatLine.py:126-133) builds texts = [(text[0], text[1] + (alpha,))], language = text[2], shadow = (0, 0, 0, int(alpha_float ** 2 * 255)), then calls kill_feed_font_tuffy.draw_multi_stroke(texts, shadow, x, y) if strings.language_requires_tuffy(language) else kill_feed_font.draw_multi_stroke(texts, shadow, x, y).",
+    "citation": "aoslib/hud/hud.pyd:sub_1005D470 at 0x1005d470 (PyNumber_Power by int 2 at 0x1005d793, *255 at 0x1005d7c5, language_requires_tuffy at 0x1005d8e7, draw_multi_stroke at 0x1005da0f and 0x1005db16)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Names are drawn with a black outline/stroke whose alpha is the SQUARE of the normalised alpha times 255, so the outline fades faster than the glyph fill.",
+    "citation": "aoslib/hud/hud.pyd:0x1005d783-0x1005d7c5 (pow(alpha_float,2) then *255) \u2014 chatLine.py:129",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Name colour comes from player.team.color (an RGB 3-tuple) with the feed alpha appended to form RGBA. HUD.add_kill reads killer.team.color and victim.team.color.",
+    "citation": "aoslib/hud/hud.pyd:sub_1008CD70, 'team' at 0x1008cf6d / 'color' at 0x1008cf9c (killer, hud.pyx:631) and 'team' at 0x1008d24d / 'color' at 0x1008d27e (victim, hud.pyx:643); alpha appended at 0x1005d61e",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "The LOCAL player's own name is drawn white, not team-coloured: if killer.scene.player == killer then killer_color = (255,255,255); the same override applies to the victim. The constant is a cached 3-tuple PyTuple_Pack(255,255,255).",
+    "citation": "aoslib/hud/hud.pyd:0x1008d0a7 (RichCompare Py_EQ), 0x1008d11b (loads dword_10112AAC); tuple built at 0x10003716-0x10003725 from __pyx_int_255 x3",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "HUD.add_kill(self, victim, killer, kill_type) is the entry point (hud.pyx:624). It only fills in the killer half when `killer and killer != victim`; on a suicide the killer_name stays None so create_kill_line emits a single-entry line.",
+    "citation": "aoslib/hud/hud.pyd:sub_1008CD70 at 0x1008cd70; guard at 0x1008cef9 (PyObject_IsTrue on killer) and 0x1008cf1c (cmp killer, victim; setne) \u2014 hud.pyx:629",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "KILL_IMAGES is a dict of 9 textures built at hud.pyx:75-83: 'airstrike' = image.load_texture(['weapons','air_struke'], center=True); 'headshot', 'corpse', 'grave', 'shrapnel', 'fall', 'change_team', 'change_class', 'sudden_death' = image.load_texture(['kill_types', <same name>], center=True).",
+    "citation": "aoslib/hud/hud.pyd:0x100c5f01..0x100c7319 in inithud (dict created at 0x100c5f01, stored to KILL_IMAGES at 0x100c7314)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The kill_types icon PNGs on disk are 330x330 px (except sudden_death.png at 256x256) and grave.png is byte-identical to corpse.png (md5 edde017df84a852ea4df4a330a7a0365 for both). weapons/air_struke.png is also 330x330.",
+    "citation": "<retail-source>/png/ui/kill_types/*.png and png/ui/weapons/air_struke.png",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The weapon/cause icon is drawn between the two names at 10% scale: glPushMatrix(); glTranslatef(x + self.image.width*0.5*0.1, 6.0, 0.0); glScalef(0.1, 0.1, 0.1); glColor4f(1.0, 1.0, 1.0, alpha_float); self.image.blit(); glPopMatrix(). So a 330px source icon renders at 33x33 in the 800x600 UI space, lifted 6 px above the text baseline.",
+    "citation": "aoslib/hud/hud.pyd:sub_1005BE90, lines chatLine.py:110-117 \u2014 imports at 0x1005c839-0x1005c897, translate at 0x1005cacd/0x1005cb4d/0x1005cc07 (0.5, 0.1, 6.0), scale at 0x1005cd28-0x1005cd59 (0.1 x3), colour at 0x1005ce16-0x1005ce74 (1.0 x3 + alpha), blit at 0x1005cf64",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "Horizontal advance inside one kill line: after drawing the killer name x += kill_feed_font.get_advance_width(self.killer[0]); x += 5; then after the icon x += self.image.width * 0.1; x += 5; then the victim name is drawn. Both 5s are PyInt_FromLong(5) literals, not MSG_PAD.",
+    "citation": "aoslib/hud/hud.pyd:0x1005c538 (kill_feed_font), 0x1005c55f (get_advance_width), 0x1005c6fd/0x1005c773 (InPlaceAdd), 0x1005d0ac (width*0.1), 0x1005d136 (InPlaceAdd) \u2014 chatLine.py:106-107, 118-119",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The kill-type enum is `WEAPON_KILL, HEADSHOT_KILL, MELEE_KILL, GRENADE_KILL, ROCKET_KILL, ROCKET2_KILL, DRILL_KILL, FALL_KILL, FORCED_TEAM_CHANGE_KILL, TEAM_CHANGE_KILL, CLASS_CHANGE_KILL, ENTITY_KILL, CORPSE_KILL, GRAVE_KILL, LANDMINE_KILL, DYNAMITE_KILL, AIRSTRIKE_KILL, BOMB_KILL, ROCKET_TURRET_KILL, SHRAPNEL_KILL, HEALTHCRATE_HP, SNOWBALL_KILL, CLASSIC_GRENADE_KILL, ANTIPERSONNEL_GRENADE_KILL, MOLOTOV_KILL, BLOCKFIRE_KILL, VIP_MODE_KILL, UGC_ROCKET2_KILL, UGC_DRILL_KILL, UGC_SNOWBALL_KILL, SOME_KILL, CHEMICALBOMB_KILL, GRENADE_LAUNCHER_KILL, RADAR_STATION_KILL, STICKY_GRENADE_KILL, MINE_KILL, C4_KILL = xrange(37)`. These are ORDINALS 0..36, not quantities.",
+    "citation": "<retail-source>/shared/constants.py:1146",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "The A-alias block maps A421..A457 onto that enum in order, so A(421+n) == ordinal n: A421=WEAPON_KILL(0), A422=HEADSHOT_KILL(1), A423=MELEE_KILL(2), A424=GRENADE_KILL(3), A425=ROCKET_KILL(4), A426=ROCKET2_KILL(5), A427=DRILL_KILL(6), A428=FALL_KILL(7), A429=FORCED_TEAM_CHANGE_KILL(8), A430=TEAM_CHANGE_KILL(9), A431=CLASS_CHANGE_KILL(10), A432=ENTITY_KILL(11), A433=CORPSE_KILL(12), A434=GRAVE_KILL(13), A435=LANDMINE_KILL(14), A436=DYNAMITE_KILL(15), A437=AIRSTRIKE_KILL(16), A438=BOMB_KILL(17), A439=ROCKET_TURRET_KILL(18), A440=SHRAPNEL_KILL(19), A442=SNOWBALL_KILL(21), A443=CLASSIC_GRENADE_KILL(22), A444=ANTIPERSONNEL_GRENADE_KILL(23), A445=MOLOTOV_KILL(24), A446=BLOCKFIRE_KILL(25), A447=VIP_MODE_KILL(26), A452=CHEMICALBOMB_KILL(31), A453=GRENADE_LAUNCHER_KILL(32), A454=RADAR_STATION_KILL(33), A455=STICKY_GRENADE_KILL(34), A456=MINE_KILL(35), A457=C4_KILL(36).",
+    "citation": "<retail-source>/shared/constants.py:1148-1184",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "HUD.add_kill's icon selection chain (hud.pyx:652-721), in the exact order the binary tests it: WEAPON_KILL or MELEE_KILL -> killer.character.get_weapon(...).get_tool(tool_id).image (prints 'no image for no weapon found kill' if absent); GRENADE_KILL -> GrenadeTool.image; CLASSIC_GRENADE_KILL -> ClassicGrenadeTool.image; ANTIPERSONNEL_GRENADE_KILL -> AntipersonnelGrenadeTool.image; ROCKET_KILL -> RocketTurretWeapon.image if ROCKET_TURRET_TOOL (A312) is in killer.get_class().loadout else RPGWeapon.image; ROCKET2_KILL -> RPG2Weapon.image; DRILL_KILL -> DrillgunWeapon.image.",
+    "citation": "aoslib/hud/hud.pyd:sub_1008CD70 \u2014 A421 at 0x1008d451, A423 at 0x1008d510, weapon lookup 0x1008d607-0x1008d7db, 'no image for no weapon found kill' at 0x1008d80a, A424 at 0x1008d8c3, A443 at 0x1008d9b6, A444 at 0x1008daa3, A425 at 0x1008db90, A312 at 0x1008dd2a (PySequence_Contains at 0x1008dd52), A426 at 0x1008de78, A427 at 0x1008df65",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Continuation of the icon chain: HEADSHOT_KILL -> KILL_IMAGES['headshot']; ENTITY_KILL -> prints 'no image for entity kill' (no icon); CORPSE_KILL -> KILL_IMAGES['corpse']; GRAVE_KILL -> KILL_IMAGES['grave']; ROCKET_TURRET_KILL -> RocketTurretWeapon.image; LANDMINE_KILL -> LandmineWeapon.image; DYNAMITE_KILL -> DynamiteWeapon.image; AIRSTRIKE_KILL -> KILL_IMAGES['airstrike']; BOMB_KILL -> BombTool.image; SHRAPNEL_KILL -> KILL_IMAGES['shrapnel']; FALL_KILL -> KILL_IMAGES['fall'].",
+    "citation": "aoslib/hud/hud.pyd:A422@0x1008e069, A432@0x1008e15f (msg at 0x1008e1ff), A433@0x1008e2b9, A434@0x1008e3df, A439@0x1008e4ff, A435@0x1008e5ff, A436@0x1008e6ec, A437@0x1008e7d9, A438@0x1008e8cb, A440@0x1008e9b8, A428@0x1008eaaa",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Tail of the icon chain: (TEAM_CHANGE_KILL or FORCED_TEAM_CHANGE_KILL) -> KILL_IMAGES['change_team']; CLASS_CHANGE_KILL -> KILL_IMAGES['change_class']; SNOWBALL_KILL -> SnowBlowerWeapon.image; (MOLOTOV_KILL or BLOCKFIRE_KILL) -> MolotovWeapon.image; VIP_MODE_KILL -> KILL_IMAGES['sudden_death']; GRENADE_LAUNCHER_KILL -> GrenadeLauncherWeapon.image; RADAR_STATION_KILL -> RadarStationWeapon.image; STICKY_GRENADE_KILL -> StickyGrenadeWeapon.image; C4_KILL -> C4Weapon.image; MINE_KILL -> MineLauncherWeapon.image; CHEMICALBOMB_KILL -> ChemicalBombWeapon.image.",
+    "citation": "aoslib/hud/hud.pyd:A430@0x1008eb9c + A429@0x1008ec38 -> 'change_team'@0x1008ecfc; A431@0x1008ed2c -> 'change_class'@0x1008edf6; A442@0x1008ee57 -> SnowBlowerWeapon@0x1008eef7; A445@0x1008ef79 + A446@0x1008f019 -> MolotovWeapon@0x1008f0b7; A447@0x1008f10c -> 'sudden_death'@0x1008f1d0; A453@0x1008f204; A454@0x1008f2f1; A455@0x1008f3de; A457@0x1008f4cb; A456@0x1008f5b8; A452@0x1008f6a5",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "There is no dedicated 'teamkill' kill type or teamkill styling in the kill feed. A friendly-fire kill goes down the ordinary WEAPON_KILL/HEADSHOT_KILL path and both names simply render in the same team colour.",
+    "citation": "aoslib/hud/hud.pyd:sub_1008CD70 \u2014 the full elif chain 0x1008d451..0x1008f6a5 contains no team comparison; shared/constants.py:1146 has no TEAMKILL member",
+    "confidence": "inferred",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The retail kill feed has NO text template. The localisation entries KILLED_MESSAGE = u'{0} killed {1} ({2})', KILLED_BY_MESSAGE, SUICIDE_MESSAGE = u'{0} committed suicide by {1}', FELL_TOO_FAR = u'{0} fell too far', CHANGED_TEAM, SWITCHED_CLASS exist in every aoslib/strings/*.py but are referenced by no shipped module \u2014 a byte scan of every .pyd/.exe/.dll/.pyc under the retail tree finds those identifiers only inside aoslib/strings/*.pyc themselves. The feed row is literally [killer name][icon][victim name].",
+    "citation": "<retail-source>/aoslib/strings/english.py:73-78; exhaustive binary scan over <retail-source> (only strings/*.pyc match)",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Headshots do not add a text tag; they are expressed purely as the headshot icon (KILL_IMAGES['headshot'] = png/ui/kill_types/headshot.png). Likewise 'grave' (kill-from-the-grave) and 'corpse' are icon-only.",
+    "citation": "aoslib/hud/hud.pyd:0x1008e105/0x1008e12f (KILL_IMAGES['headshot']); png/ui/kill_types/headshot.png",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "gameScene calls self.hud.add_kill(victim, killer, kill_type) unconditionally from its kill-action packet handler, so the feed shows every kill in the match, not just ones involving the local player.",
+    "citation": "<retail-source>/aoslib/scenes/main/gameScene.pyd:0x10195231 in sub_10194940 (source line 0xe62 = 3682)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The score feed ('+N Reason') is a separate list `score_reason_feed` of ScoreLine, drawn centre-right of the screen: glPushMatrix(); glTranslatef(self.width * 0.5 + 30, self.height * 0.5 - 20, 0); then per line glTranslatef(0, -content_height - MSG_PAD*2, 0); glPopMatrix().",
+    "citation": "aoslib/hud/hud.pyd:sub_1009EE80 at 0x100a3e0d-0x100a44ee (0.5 at 0x100a3ec1/0x100a3fa3, +30 at 0x100a3f36, -20 at 0x100a401c, MSG_PAD*2 at 0x100a4330) \u2014 hud.pyx:1198-1201",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "ScoreLine class attributes: start_ttl = SCORE_MESSAGE_TTL (1.5), alive_before_show = 0.25, fade_off = 0.2, full_alpha = 127.",
+    "citation": "aoslib/hud/hud.pyd:0x100bc1c3 (start_ttl), 0x100bc235/0x100bc270 (alive_before_show, fld [0x100f7ac8]=0.25), 0x100bc2b0/0x100bc2e5 (fade_off, fld [0x100f84d8]=0.2), 0x100bc325/0x100bc32a (full_alpha = int 127)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "HUD.add_score_reason(self, reason_code, amount) (hud.pyx:454) coalesces with the head of the feed when possible, formats the amount with a leading '+', looks the label up via strings.get_by_id(SCORE_REASON_CODES[reason_code]) (A851 = SCORE_REASON_CODES) and colours it with self.scene.player.team.color.",
+    "citation": "aoslib/hud/hud.pyd:sub_100ED7F0 (wrapper) and sub_10089530; '+' literal at 0x10089ab2, A851 at 0x10089d9d, get_by_id at 0x10089d61, team.color at 0x10089ee6/0x10089f1e; shared/constants.py:2573",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Score-feed fonts are score_feed_title_font = Spades ('Aldo') 20 and score_feed_item_font = Spades 16.",
+    "citation": "<retail-source>/aoslib/text.py:320-321 (ALDO_FONT = 'Spades' at text.py:11)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Big centre-screen announcements go through HUD.add_big_message(self, message, duration=..., override_previous_message=...) at hud.pyx:389, which first runs translate_controls_in_message(message, self.scene), then queues into bigMsgList_text / bigMsgList_time.",
+    "citation": "aoslib/hud/hud.pyd:sub_100F4D10 (wrapper, kwarg slots 'message'/0x10112220, 'duration'/0x10112b58, 'override_previous_message'/0x10111a68) and sub_100EC260 at 0x100ec278/0x100ec47c/0x100ec4eb",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Big-text presentation constants: BIG_TEXT_TIME = 4.0, BIG_TEXT_MIN_DURATION = 1.5, BIG_TEXT_TIME_1FRAME = 0.0; BIG_TEXT_FONT = 'Edo' at BIG_TEXT_FONT_SIZE = 30, BIG_TEXT_COLOR = (231, 74, 25, 255).",
+    "citation": "<retail-source>/shared/hud_constants.py:7-9 and <retail-source>/aoslib/text.py:247-249",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Kill-streak and domination announcements are big centre messages emitted from the same gameScene kill handler: strings.KILL2 'Double Kill', KILL3 'Triple Kill', KILL4 '4 x Multi Kill', KILL5 '5 x Multi Kill', KILLM '{0} x Multi Kill', YOU_GOT_REVENGE 'You got revenge on {0}', YOU_ARE_DOMINATING 'You are dominating {0}'.",
+    "citation": "gameScene.pyd:add_big_message calls at 0x1019561a (YOU_GOT_REVENGE@0x1019567c), 0x101959ea (YOU_ARE_DOMINATING@0x10195a50), 0x10195df5 (KILL2), 0x10195ff3 (KILL3), 0x101961f1 (KILL4), 0x101963ef (KILL5), 0x101965ed (KILLM); strings at aoslib/strings/english.py:613-617, 954-956",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Chat/console lines use HUD.add_message(self, message, color, sender=None) at hud.pyx:362, which inserts at index 0 into self.messages and trims to CHAT_BUFFER_SIZE (A1025 = 50); CHAT_SHOWN_LINES (A1024) = 10.",
+    "citation": "aoslib/hud/hud.pyd:sub_100EB900 (wrapper) and sub_10087520 (insert at 0x100876b7, A1025 at 0x1008782b); shared/constants.py:2996-2999",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Chat font is CHAT_FONT = 'A750-Sans-Medium' at CHAT_FONT_SIZE = 12 with CHAT_FONT_TUFFY = 'Tuffy_Bold' 12 \u2014 i.e. two points smaller than the kill feed.",
+    "citation": "<retail-source>/aoslib/text.py:254-256, 322-323",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "There is no hit marker (crosshair hit confirm) in the retail client. hud.pyd's whole string table contains no 'marker'/'hitmark'/'crosshair' identifier; there is no hit-marker PNG anywhere under png/; gameScene has a `you_hit` flag and a `played_hit_sound` flag, i.e. the hit confirm is audio-only.",
+    "citation": "aoslib/hud/hud.pyd string table (1998 entries, extracted from the __Pyx_StringTabEntry run at file offset 0x1041f0) \u2014 no such names; gameScene.pyd strtab entries 'you_hit'@0x1028cd2c and 'played_hit_sound'@0x1028cb10; asset scan of <retail-source>/png",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "What exists instead is a directional damage indicator: hud.pyx:1146-1152 sets indicator.scale = 0.5, indicator.opacity = (self.hit_time - self.scene.time) / HIT_INDICATOR_TIME * 255, indicator.rotation = self.hit_direction, then indicator.draw(...) centred on width/2. HIT_INDICATOR_TIME (A1028) = 1.2 s and the art is png/ui/indicator.png.",
+    "citation": "aoslib/hud/hud.pyd:sub_1009EE80 at 0x100a109f-0x100a15eb (0.5 at 0x100a11c7, A1028 at 0x100a1356, *255 at 0x100a13cd, rotation at 0x100a14d9); shared/constants.py:3007-3008",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "There is no transient 'pickup' text notification. The only pickup-related HUD element is HUD.draw_intel_hud, which blits a persistent team1_intel_icon / team2_intel_icon while player.pickup_id == INTEL_PICKUP (A915).",
+    "citation": "aoslib/hud/hud.pyd:sub_1009AC20 \u2014 pickup_id at 0x1009af42, A915 at 0x1009af6d, team1_intel_icon at 0x1009b59c, team2_intel_icon at 0x1009b771; shared/constants.py:2819",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Objective taken/returned/captured events surface as big centre messages (add_big_message) using format strings such as CTF_FLAG_RETURNED = u'{0} returned the {1} intel!', BASE_CAPTURED = u'{0} has captured the central base!', TC_CAPTURED_CAPTURINGTEAM = u'Territory {0} controlled! {1} of {2} left!' \u2014 they never enter the kill feed.",
+    "citation": "<retail-source>/aoslib/strings/english.py:138, 400, 517-520; kill feed is fed only by HUD.add_kill (hud.pyd sub_1008CD70)",
+    "confidence": "inferred",
+    "kind": "format"
+   },
+   {
+    "claim": "The UI coordinate space these pixel numbers live in is 800x600 (UI_SCREEN_WIDTH/UI_SCREEN_HEIGHT), so MSG_LEFT_MARGIN=12 and the -75 vertical offset should be interpreted against a 600-tall virtual screen.",
+    "citation": "<retail-source>/shared/hud_constants.py:15-16",
+    "confidence": "inferred",
+    "kind": "layout"
+   },
+   {
+    "claim": "Method-wrapper -> implementation map for the kill feed, for anyone re-checking: HUD.add_kill 0x100F1AF0 -> 0x1008CD70; HUD.add_kill_feed 0x100ECB90 -> 0x10088570; HUD.create_kill_line 0x100ECF70 -> 0x10088A50; KillLine.__init__ 0x100E2550 -> 0x1005B640; KillLine.draw -> 0x1005BE90; KillLine.draw_text 0x100E2750 -> 0x1005D470; HUD.draw (kill-feed section) 0x1009EE80; HUD.update 0x100EDD30; HUD.draw_chat 0x100F2A50.",
+    "citation": "aoslib/hud/hud.pyd PyMethodDef table at 0x10104e50 and the qualified-name strings at 0x100f8e94/0x100f8eb8/0x100f8ed8/0x100f9af8/0x100f9b1c/0x100f9d0c",
+    "confidence": "decompiled",
+    "kind": "format"
+   }
+  ],
+  "unrecoverable": [
+   "Exact chatLine.py / hud.pyx source line boundaries for a few statements: the Cython error-line register is written inside the error branch that physically follows the operation, so my line attributions can be off by one line in either direction. The line numbers I quote (e.g. hud.pyx:1192-1194 for the kill-feed draw block, chatLine.py:95-98 for the alpha maths, chatLine.py:104-122 for the draw body) are correct to within one line but I did not prove each boundary individually.",
+   "Why KillLine.__init__ scales the icon height by 0.5 * 0.1 (= 0.05) rather than the full 0.1 used at draw time. Both float loads (0x100f7c28 = 0.5 and 0x100f8488 = 0.1) are confirmed and both Hex-Rays and raw disassembly agree, but the resulting content_height is only HALF the on-screen icon height. I could not determine whether this is deliberate (baseline-relative half-height) or a retail bug; I have not invented a rationalisation.",
+   "The exact draw-time behaviour of ScoreLine (ScoreLine.update / can_draw / set_ttl / draw at chatLine.py) beyond its four class constants \u2014 I read the class dictionary and add_score_reason but did not decompile ScoreLine.draw, so I cannot state the score feed's fade curve or the alive_before_show/fade_off/full_alpha semantics precisely.",
+   "The exact chat extra_alpha ramp formula in HUD.update (hud.pyx:496-501). I confirmed it is driven by has_input and a 3.0-second constant at 0x100fa040 and that it only applies to self.messages, but I did not reconstruct the full expression.",
+   "The full body of HUD.draw_chat (hud.pyx:1237-1255) \u2014 I identified it and confirmed it uses MSG_LEFT_MARGIN / MSG_BOTTOM_MARGIN / MSG_PAD*2 and MSG_PAD*3, but did not resolve every global to give exact chat anchor coordinates.",
+   "Whether add_big_message's `duration` and `override_previous_message` defaults are BIG_TEXT_TIME (4.0) and False. The wrapper reads them from the function object's default tuple (*(int**)(a1+56)) rather than from a literal, so the values are not visible in the wrapper; I did not chase the defaults tuple construction in inithud."
+  ]
+ },
+ {
+  "topic": "Retail Ace of Spades minimap: frame art, screen rect, world sampling, orientation, view cone, player/entity/objective markers, visibility rules, and the full-screen map overlay",
+  "findings": [
+   {
+    "claim": "The whole minimap lives in a Cython module compiled from `client/aoslib/hud/minimap.py`, linked into `aoslib/hud/hud.pyd`. It defines exactly three classes: `Minimap`, `MinimapZone`, `MinimapBillboard`, plus module helpers. Methods recovered: Minimap.__init__/update/draw/create_zone/add_zone/remove_zone/add_billboard/remove_billboard/update_billboard_position/get_minimap_billboards_by_id/render_billboards/render_zone_bounds/initialise_map_sprite/post_level_clearup/get_focus_player/check_player_inside_zone_and_tint_screen.",
+    "citation": "hud.pyd string table, path literal at file offset with `...\\\\client\\\\aoslib\\\\hud\\\\minimap.py`; __Pyx_AddTraceback call sites 0x1001A23B\u20130x1002F803 and 0x100CD2C5\u20130x100D1FCF",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "Source line numbers are recoverable: every Cython error path pushes (funcname, c_line, py_line, filename) into the traceback helper at hud.pyd:0x10012C90. `Minimap.draw` spans minimap.py lines 597\u2013878; `Minimap.__init__` 437\u2013448; `Minimap.update` 481\u2013484; `Minimap.initialise_map_sprite` 586\u2013594.",
+    "citation": "hud.pyd:0x100D1FCF (draw), 0x10027915 (__init__), 0x100D0150 (update), 0x1002E900 (initialise_map_sprite)",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The minimap image is a live crop of a single full-map texture: `Minimap.initialise_map_sprite` reads `self.scene.map.minimap_texture`, sets `texture.anchor_x = 0` and `texture.anchor_y = 0`, then `self.sprite = pyglet.sprite.Sprite(texture)`. If `minimap_texture` is None it prints 'Minimap - minimap_texture is none.' and does nothing.",
+    "citation": "hud.pyd:0x1002E580\u20130x1002E8C2 (minimap.py:586\u2013594); error string slot 0x1011278C",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Per frame the crop centre is the focus player's world (x, y) clamped to [64, 448]: minimap.py:653 casts to int, 654 clamps x, 655 clamps y (PyInt_FromLong(64) and PyInt_FromLong(448) with PyObject_RichCompare on both sides).",
+    "citation": "hud.pyd:0x100D4695 (push 0x1C0 = 448), 0x100D4630-0x100D46A5, line markers 0x28F/0x28E",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The sampled window is exactly 128x128 texels of a 512x512 map texture, one texel per world block: `region = <map image>.get_region(cx-64, 512-cy-64, 128, 128)`. Cached ints used are 64 (0x101106E4), 128 (0x10112C8C), 512 (0x10111E64).",
+    "citation": "hud.pyd:0x100D489D, 0x100D48DB, 0x100D4908, 0x100D4934, 0x100D49E7 get_region, tuple filled at 0x100D4A42-0x100D4A55 (minimap.py:657\u2013662)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The map texture row axis is flipped relative to world Y \u2014 the crop's texture Y is `512 - y - 64`, and every marker's screen Y is computed as `512 - y`. So world +Y maps to texture -V.",
+    "citation": "hud.pyd:0x100D4901/0x100D4934 (crop), 0x100D830B\u20130x100D8312 (player markers), 0x100D5C.. (entity markers)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The minimap is FIXED north-up. No glRotatef/glLoadMatrix is applied around the map blit; only the per-marker sprites get a `_rotation`. The map image itself is blitted axis-aligned.",
+    "citation": "hud.pyd:0x100D2632 glPushMatrix \u2026 0x100D9730 glPopMatrix \u2014 no rotate call anywhere in the range; `_rotation` written only at 0x100D7128 (entities) and 0x100D9257 (players)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Minimap screen rect is the TOP-RIGHT corner with a 15 px margin: `mx = window.width - 128 - 15` (line 664), `my = window.height - 128 - 15` (line 665). pyglet's origin is bottom-left, so (mx,my) is the lower-left of the 128x128 map, putting the box at x\u2208[W-143, W-15], y\u2208[H-143, H-15].",
+    "citation": "hud.pyd:0x100D4AD6\u20130x100D4B45 (width-128 then -15), 0x100D4BCF\u20130x100D4C0D (height-128 then -15)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "The frame art is blitted 7 px down-left of the map: `global_images.map_frame.blit(mx - 7, my - 7)` (line 668), then `region.blit(mx, my, 0)` (line 669). The cached int 7 is at 0x10112B50.",
+    "citation": "hud.pyd:0x100D4CB6 map_frame, 0x100D4D2E/0x100D4D65 (subtract 7), 0x100D4D91 blit(2 args), 0x100D4E60 blit(3 args)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "`global_images.map_frame` is `png/ui/mini_map/minimap_frame.png`, loaded with center=False, scale=1.0. It is 142x142 px \u2014 exactly 128 + 7 border on each side, matching the -7 blit offset.",
+    "citation": "aoslib/images.py:434; png/ui/mini_map/minimap_frame.png header 142x142",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "A second, unused-looking copy of the frame ships as png/ui/mini_map/map_frame.png (also 142x142); the loader path `['mini_map','minimap_frame']` selects minimap_frame.png, so map_frame.png in that folder is not the one bound to `global_images.map_frame`.",
+    "citation": "aoslib/images.py:434; directory listing of png/ui/mini_map/",
+    "confidence": "inferred",
+    "kind": "asset"
+   },
+   {
+    "claim": "A full-screen map overlay exists and is bound to a held key. minimap.py:623\u2013624 evaluates `config.keyboard['show_map']` against the key state and requires `not self.parent.has_input` (chat/console not focused).",
+    "citation": "hud.pyd:0x100D2753 'config', 0x100D2785 'keyboard', 0x100D27B7 'show_map', 0x100D27E4 PyObject_GetItem, 0x100D2869 'parent', 0x100D2899 'has_input' (minimap.py:623\u2013624)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The show_map key default is M. It is user-rebindable and appears in the controls menu as strings.VIEW_MAP bound to id 'show_map'.",
+    "citation": "aoslib/config.py:42 `'show_map': (key.M)`; aoslib/scenes/frontend/controlsTab.py:45",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The big map is drawn at 1:1, 512x512, centred on the screen: line 627 computes `window.width/2 - 256`, line 628 `window.height/2 - 256` (cached int 2 = 0x10111008, 256 = 0x101128D0), then line 629 glColor4f(1,1,1,1), line 630 `global_images.big_map_frame.blit(width/2, height/2)`, line 631 `draw_offset(self.sprite.draw, x0, y0)`.",
+    "citation": "hud.pyd:0x100D2970-0x100D2A97 (627\u2013628), 0x100D2AD7 glColor4f, 0x100D2C8A big_map_frame, 0x100D2E7C draw_offset + 0x100D2ED6 sprite.draw (minimap.py:627\u2013631)",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "`global_images.big_map_frame` is png/ui/map/map_frame.png, loaded center=True, scale=1.0. It is 552x552 px \u2014 512 + 20 px border on each side \u2014 and is blitted at the window centre, so the 512x512 map sits exactly inside it.",
+    "citation": "aoslib/images.py:435; png/ui/map/map_frame.png header 552x552",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "On the big map, after the map sprite, the code sets glColor4f(1,1,1,0.5) (line 634) and draws GL_QUADS (line 635) \u2014 two loops each emitting four glVertex2f calls whose coordinates are built with +512 offsets (lines 641 and 646). This is a translucent overlay pass drawn on top of the big map only, not on the small minimap.",
+    "citation": "hud.pyd:0x100D3068 (double 0.5), 0x100D3147 glBegin, 0x100D3171 GL_QUADS, glVertex2f at 0x100D335C/3408/3514/3631 and 0x100D38B3/3971/3A81/3BB1, glEnd 0x100D3CC2",
+    "confidence": "decompiled",
+    "kind": "layout"
+   },
+   {
+    "claim": "`draw_offset` used by the minimap is `aoslib.draw.draw_offset(callable, x, y)` \u2014 it offsets and invokes a drawable's draw method; the same helper is used elsewhere in shipped Python.",
+    "citation": "aoslib/text.py:607-608 `from aoslib.draw import draw_offset; draw_offset(label.draw_shadowed, x, y)`; aoslib/scenes/frontend/menuScene.py:8,148",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The local-player view wedge is a separate sprite `map_view_cone`, loaded as a Player class attribute `player_cone_view_icon = image.load('map_view_cone', center=True)`. The asset is png/ui/map_view_cone.png at 256x256 px.",
+    "citation": "player.pyd module init 0x100171AF-0x10017109 (image.load \u2192 player_cone_view_icon), string constant 'map_view_cone' at 0x100013E6; png/ui/map_view_cone.png header 256x256",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "The wedge is drawn ONLY for the focus player and only while alive: `Player.get_cone_view_icon(self, focus_player)` returns None if `self.character is not None and self.character.dead`, and returns `self.player_cone_view_icon` only when `focus_player == self`; otherwise None.",
+    "citation": "player.pyd:0x10012E20-0x100130A6 (player.pyx:470\u2013473); name slots 0x10025AC0='character', 0x10025970='dead', 0x100256A0='player_cone_view_icon'",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The wedge is tinted with the player's team colour (`cone_icon.color = player.team.color`) and drawn immediately via `draw_offset(cone_icon.draw, x, y)` \u2014 it is NOT batched with the player markers.",
+    "citation": "hud.pyd:0x100D8690 'team', 0x100D86AC 'color' (get), 0x100D86D7 'color' (SetAttr on the cone), 0x100D8704 draw_offset, 0x100D8781 tuple of 3 args, 0x100D87B4 PyObject_Call",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "Both the wedge and the rotatable player icon use rotation = `player.yaw - 180` degrees (PyInt_FromLong(180) then PyNumber_Subtract, assigned to `rotation`).",
+    "citation": "hud.pyd:0x100D8482 'yaw' \u2192 0x100D84A1 imm 180 \u2192 0x100D84A9 Subtract \u2192 0x100D84F0 'rotation' (icon), and 0x100D861C/0x100D863B/0x100D8643/0x100D866B (cone)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "There is no cone half-angle constant in the code \u2014 the wedge's opening angle is baked into the 256x256 map_view_cone.png artwork; only rotation, colour and position are set at runtime.",
+    "citation": "hud.pyd:0x100D8508-0x100D87B4 \u2014 the only writes are `color` and the draw position/rotation; no angle attribute exists in the minimap.py string table",
+    "confidence": "inferred",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Player markers come from `Player.get_map_icon(other)` and are batched: each result becomes a `pyglet.sprite.Sprite(icon, batch=self.batch_player)` appended to `self.player_sprites`, with `_scale`, `_rotation`, `_x`, `_y`, `_update_position()`, `_set_color()` poked directly, then `self.batch_player.draw()`.",
+    "citation": "hud.pyd:0x100D8E1D 'player_sprites', 0x100D8EC0 'Sprite', 0x100D8F96 'batch_player', 0x100D9150-0x100D94FB (_scale/_rotation/_x/_y/_update_position/_set_color), 0x100D962E 'draw' (minimap.py:875)",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "The default teammate/self marker is `player_icon = image.load('map_player_16', center=True)` \u2014 png/ui/map_player_16.png, 16x16 px \u2014 tinted with `self.team.color`.",
+    "citation": "player.pyd:0x1001406B 'player_icon' at player.pyx:506, 0x100140A1 'team' / 0x100140C8 'color' at :507; module init image.load at 0x10016CE1-0x10016E14; png/ui/map_player_16.png header 16x16",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "A player flagged `high_minimap_visibility` (the VIP / exposed-carrier flag, set by the SET_HIGH_MINIMAP_VISIBILITY entity field) uses `player_high_visibility_icon = image.load('map_vip_player_16', center=True)` \u2014 png/ui/map_vip_player_16.png, 16x16 px \u2014 and this branch is taken before any team-visibility test.",
+    "citation": "player.pyd:0x100132B9 'high_minimap_visibility' (player.pyx:480) \u2192 0x10013327 'player_high_visibility_icon' (:481) \u2192 0x10013367 'team'/'color' (:482); shared/constants.py:2880,2889 SET_HIGH_MINIMAP_VISIBILITY / A979",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "A dead player yields no player marker at all: `get_map_icon` returns early when `self.character is None or self.character.dead` (player.pyx:478\u2013479). The grave is instead drawn through the entity path with `map_grave_16`.",
+    "citation": "player.pyd:0x1001317D-0x1001323F (player.pyx:478); gameScene.pyd string 'map_grave_16' at 0x1001472F immediately preceding the `...\\\\aoslib\\\\scenes\\\\main\\\\grave.py` filename literal",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "A player carrying an objective gets a carrier-specific colour branch keyed on tool id: player.pyx:509 tests `A322` (= DIAMOND_TOOL) and :511 tests `A326` (= INTEL_TOOL), each recolouring from `self.team.color` / the other team.",
+    "citation": "player.pyd:0x1001413A 'A322' (:509), 0x10014265 'A326' (:511), 0x100142FB 'team'/0x10014316 'other'/0x10014344 'color' (:512); shared/constants.py:889 A322 = DIAMOND_TOOL, :893 A326 = INTEL_TOOL",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "There is a pulsing 'heartbeat' marker: when `self.heart_icon_size > 0.0` (player.pyx:501) the icon becomes `self.heart_icon` at `scale = self.heart_icon_scale + self.heart_icon_size` (:502\u2013503), with the size driven by heart_icon_size_min/max, heart_icon_on_time/off_time and heartbeat_timer. The asset name literal is 'heart_icon_256x256'.",
+    "citation": "player.pyd:0x10013DB1-0x10013F5B (player.pyx:501\u2013503); string 'heart_icon_256x256' at 0x1000145E; timer fields at 0x10011C8C-0x100120DB",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "The focus player's own marker colour is brightened: if `player == self.get_focus_player()` each of r,g,b is multiplied by 1.5 and clamped to 255 (three identical fld 1.5 / PyNumber_Multiply / compare-with-255 sequences).",
+    "citation": "hud.pyd:0x100D883C get_focus_player, 0x100D8890 RichCompare, 0x100D892F/0x100D8AB7/0x100D8C48 fld qword 1.5, 0x100D898B/0x100D8B15/0x100D8CA6 PyInt_FromLong(255)",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "Enemy visibility is decided inside `Player.get_map_icon`: after the pickup/high-visibility branches it tests team identity and `self.team.can_see_other_team(...)` and returns None (no marker) when that fails \u2014 player.pyx:485\u2013489.",
+    "citation": "player.pyd:0x1001341D 'pickup_id' (:485), 0x10013464/0x10013485/0x100134E3 'team' (:486\u2013487), 0x10013510 'can_see_other_team' (:487), early return at :489",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "There is a server-side rule that makes exposed teams permanently visible: `EXPOSED_TEAMS_NOT_ALWAYS_ON_MINIMAP / EXPOSED_TEAMS_ALWAYS_ON_MINIMAP` (ordinals 0/1) is read by the client as `self.scene.manager.exposed_teams_always_on_minimap` inside `display_map_icon_out_of_bounds` (player.pyx:532).",
+    "citation": "shared/constants.py:5222-5224; player.pyd:0x100157DC 'exposed_teams_always_on_minimap' (player.pyx:532); gamemanager.pyd exposes the same attribute name",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Radar stations widen visibility: `RadarStationEntity.can_detect_player(player)` is called per player during Minimap.draw, ORed with zone membership, before `get_map_icon`. The radar entity is type_id 36 (retail `UNKNOWN_ENTITY7` / `A935`).",
+    "citation": "hud.pyd:0x100D7D21 'can_detect_player' (inside the players loop starting minimap.py:805); gameScene.pyd:0x100EF784 traceback for RadarStationEntity.can_detect_player at radarStation.py:92; shared/constants.py:2801 enum, :2839 A935 = UNKNOWN_ENTITY7",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "An intel carrier is exposed on the minimap for a fixed time: `INTEL_MINIMAP_EXPOSURE_TIME = 30` (alias A2101). The constant does not appear in any client .pyd, so the exposure timer is enforced server-side and reaches the client as the high_minimap_visibility flag.",
+    "citation": "shared/constants.py:4555, alias :4557; absent from every aoslib .pyd string scan",
+    "confidence": "inferred",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Off-screen markers are pinned to the edge rather than culled, but only for privileged players: minimap.py:858 calls `player.display_map_icon_out_of_bounds(self.get_focus_player())` and, when true, applies `clamp(pos.x, cx-64, cx+64)` and `clamp(pos.y, cy-64, cy+64)`.",
+    "citation": "hud.pyd:0x100D8019 display_map_icon_out_of_bounds, 0x100D8111/0x100D81DD 'clamp' calls with the crop bounds computed at 0x100D4969/0x100D49AA (minimap.py:660\u2013661)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "`Player.display_map_icon_out_of_bounds` returns true for: high_minimap_visibility (player.pyx:529), a pickup carrier (:530), yourself or a zombie-class player (:531, `A78` = CLASS_ZOMBIE), or when exposed_teams_always_on_minimap is on and the teams can see each other (:532\u2013535); otherwise false (:537).",
+    "citation": "player.pyd:0x100153FF (:529), 0x10015523 (:530), 0x10015572-0x100156BA (:531, A78), 0x100157DC (:532), 0x1001599A can_see_other_team (:535); shared/constants.py:273 A78 = CLASS_ZOMBIE",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "`Player.orient_map_icon(other)` decides whether the marker rotates with yaw; it returns false for pickup carriers (player.pyx:543), for yourself / zombie-class players (:544, A78 = CLASS_ZOMBIE) and for dead characters (:545).",
+    "citation": "player.pyd:0x10015A93 (:543), 0x10015B0A-0x10015E81 (:544, two A78 tests), 0x10015F40-0x10015FB4 (:545)",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Entity markers are drawn from `self.scene.entities.values()` in a loop (minimap.py:691 onward, body attributed to line 766). Each entity supplies `icon` and `icon_scale`; the code calls `entity.draw_on_minimap(player)` and skips the entity when it returns false, and additionally skips entities of type A935 (radar station, 36) belonging to another team.",
+    "citation": "hud.pyd:0x100D546B 'entities', 0x100D54B2 'values', 0x100D562B 'type_id' vs 0x100D5641 'A935', 0x100D57D1 'draw_on_minimap', 0x100D587C 'icon', 0x100D58C6 'icon_scale'",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Entity markers are batched into `self.entity_sprites` on `self.batch_entity` and tinted with `to_ubyte_color(entity.color)` plus `entity.opacity`; entities also honour `draw_on_minimap_when_out_of_range` to decide whether to clamp to the window edge.",
+    "citation": "hud.pyd:0x100D5AED 'draw_on_minimap_when_out_of_range', 0x100D5B2E/0x100D5BF6 'clamp', 0x100D5EF7 'to_ubyte_color', 0x100D5FC4 'opacity', 0x100D5FDC 'entity_sprites', 0x100D6185 'batch_entity'; aoslib/common.py:198-200 to_ubyte_color",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Entity minimap icons resolved from the gameScene constant table, each string sitting immediately before its defining source filename: CapturePoint \u2192 'map_base_16', Grave \u2192 'map_grave_16', Pickup \u2192 'map_pickup_16', Bomb \u2192 'minimap_bomb', Diamond \u2192 'minimap_diamond', Intel \u2192 'minimap_intel'.",
+    "citation": "gameScene.pyd constant table: 0x10012429 'map_base_16' + capturePoint.py, 0x1001472F 'map_grave_16' + grave.py, 0x10014C03 'map_pickup_16' + pickup.py, 0x10014F75 'minimap_bomb' + bomb.py, 0x10015616 'minimap_diamond' + diamond.py, 0x10015A66 'minimap_intel' + intel.py",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "All six entity minimap icons are 16x16 px: map_base_16, map_grave_16, map_pickup_16, map_bomb_16, map_diamond_16, map_intel_16 and minimap_bomb / minimap_diamond / minimap_intel all measure 16x16.",
+    "citation": "png/ui/*.png IHDR headers (map_base_16, map_bomb_16, map_diamond_16, map_grave_16, map_intel_16, map_pickup_16, minimap_bomb, minimap_diamond, minimap_intel = 16x16)",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Bomb entity icon_scale is exactly 1.0 (fld1 \u2192 PyFloat_FromDouble \u2192 class-dict store), confirming icon_scale is a per-entity float multiplier applied to `sprite._scale`.",
+    "citation": "gameScene.pyd:0x101D3814 fld1 / 0x101D3810 PyFloat_FromDouble / 0x101D383E PyObject_SetItem into the bomb.py class dict; consumer at hud.pyd:0x100D58C6 'icon_scale' \u2192 0x100D635B '_scale'",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "There is a height indicator: if the entity defines `height_icon` and `self.scene.manager.enable_minimap_height_icons` is on, the vertical delta between the entity and the focus player's `character.world_object.position.z` is compared against `A2371` and, if exceeded, a second sprite is added with `_rotation` flipped by 180 to point up or down.",
+    "citation": "hud.pyd:0x100D67AE 'height_icon', 0x100D6849 'enable_minimap_height_icons', 0x100D6988 'z', 0x100D69EB 'position', 0x100D6B6A 'A2371', 0x100D6DB4 second Sprite(height_icon), 0x100D7128 '_rotation'",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "The height-indicator threshold is 4 blocks and it is only ever authored for two entity types: `MINIMAP_HEIGHT_ICON_THRESHOLD = 4` and `MINIMAP_HEIGHT_ICON_ENTITIES = [CAPTURE_POINT_ENTITY, INTEL_PICKUP]`. The art is png/ui/minimap_height_indicator.png at 8x8 px, loaded on the base Entity class.",
+    "citation": "shared/constants.py:5235-5238 (A2371/A2372); aoslib/scenes/main/entity.py:27 `height_icon = image.load('minimap_height_indicator', center=True)`; png/ui/minimap_height_indicator.png header 8x8",
+    "confidence": "decompiled",
+    "kind": "marker"
+   },
+   {
+    "claim": "Objective markers are `MinimapZone` objects, not entities. A zone stores obfuscated bounds `A2018..A2023` = x1, x2, y1, y2, z1, z2 (fetched as attributes of self), a `visible_team`, an RGB triple `r/g/b`, a `solid` flag, an `icon`, a `phase` and a linked 3D `billboard`.",
+    "citation": "hud.pyd:0x1001E406-0x1001E654 (MinimapZone.__init__ attribute writes), attribute reads at 0x100229EB (A2018) / 0x10022A12 (A2019) / 0x10022ACD (A2020) / 0x10022AFC (A2021) via __Pyx_PyObject_GetAttrStr at 0x10001000",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "The zone icon is chosen from `A2490` = `MODE_ZONE_ICONS`, indexed by a zone-icon id from the server, with element [0] = the 2D minimap icon and element [1] = the 3D world billboard texture: `image.load(MODE_ZONE_ICONS[id][0], center=True)` then `image.load(MODE_ZONE_ICONS[id][1], center=True).get_texture()`.",
+    "citation": "hud.pyd:0x1001E6FB / 0x1001EEC3 'A2490' + PyObject_GetItem, index ints from PyInt_FromSsize_t(0) at 0x1001E853 and (1) at 0x1001EF71, image.load at 0x1001EA4E/0x1001F002, get_texture at 0x1001F166; shared/constants_gamemode.py:139-157 MODE_ZONE_ICONS, alias :190 A2490",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Complete MODE_ZONE_ICONS marker table (minimap icon / world billboard, keyed by ZONE_ICON_* ordinal 0\u201317): NONE=[] (no marker); DEMOLITION='minimap_base'/'base_icon'; MULTIHILL='minimap_multihill'/'MultiHill'; OCCUPATION='minimap_occupation_target'/'OccupationTarget'; DIAMONDMINE='minimap_diamond_dropoff'/'diamond_dropoff'; VIP='vip_icon_256x256'/'vip_icon_256x256'; CTF='minimap_base'/'base_icon'; TERRITORY_A..G='tc_minimap_a'..'tc_minimap_g'/'tc_billboard_a'..'tc_billboard_g'; TERRITORY_H, I and J all reuse 'tc_minimap_g'/'tc_billboard_g'; SPAWN='minimap_spawn'/'spawn_icon'.",
+    "citation": "shared/constants_gamemode.py:139-157 (table), :118 ZONE_ICON_* xrange(18) enum, :159-176 A2472\u2013A2489 aliases",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Zone icon asset sizes: minimap_base 16x16, minimap_spawn 16x16, tc_minimap_a..g 64x64, minimap_multihill 128x128, minimap_occupation_target 128x128, minimap_diamond_dropoff 128x128. The VIP zone is the only one with no dedicated minimap art \u2014 it uses the 256x256 vip_icon_256x256.png for both the minimap mark and the world billboard.",
+    "citation": "png/ui IHDR headers; shared/constants_gamemode.py:144 `ZONE_ICON_VIP: [\"vip_icon_256x256\", \"vip_icon_256x256\"]`",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "Zone icons are recoloured to the zone's server-sent colour: `self.icon.scale = <arg>` then `self.icon.color = (int(r*255), int(g*255), int(b*255))`.",
+    "citation": "hud.pyd:0x1001EBEF 'icon' / 0x1001EC1E 'scale', then three \u00d7255 + PyInt_Type conversions at 0x1001EC54/0x1001ECF9/0x1001ED94, stored via 0x1001EE5D 'icon' / 0x1001EE80 'color' (MinimapZone.change_details)",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "Zone markers pulse. `MinimapZone.update` advances `self.phase = (phase + dt*6.0) % (pi*2.0)`, and `MinimapZone.draw` derives two alphas: `sin(phase)*0.4 + 0.6` for the icon and `sin(phase - 1.5)*0.4 + 0.6` for the zone outline, with an extra \u00d70.5 applied to one of them.",
+    "citation": "hud.pyd:0x1001FB33 (6.0), 0x1001FC97 (2.0)\u00b7pi, 0x1001FD1E PyNumber_Remainder; draw at 0x100223E2 sin/0x100224AB 0.4/0x1002252D 0.6/0x100225A9 0.5 and 0x10022624 sin/0x10022675 1.5/0x10022779 0.4/0x10022801 0.6",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "A zone's minimap mark is placed at the zone's XY centre: `cx = (x1 + x2)/2`, `cy = (y1 + y2)/2`, both clamped to the visible window, then screen Y = 512 - cy; the icon's opacity is `int(alpha * 255)` and it is drawn with `draw_offset(self.icon.draw, sx, sy)`.",
+    "citation": "hud.pyd:0x100229EB-0x10022B29 (centres), 0x10022BB4/0x10022C79 clamp, 0x10022D3B 512-subtract, 0x10022DEE \u00d7255 \u2192 0x10022EB8 'opacity', 0x10022F07 draw_offset (MinimapZone.draw)",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "After the icon, MinimapZone.draw emits a second glColor4f (the phase-shifted alpha) and a GL_QUADS pass built from the clamped x1/x2/y1/y2 bounds \u2014 the translucent zone rectangle drawn on the map beneath the icon.",
+    "citation": "hud.pyd:0x1002333B glColor4f + r/g/b, 0x1002348A glBegin, 0x100234B4 GL_QUADS, bounds re-read at 0x1002356E/0x1002370A/0x100238A3/0x10023A79 with 512-subtracts",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "A zone is hidden unless its entity is visible and the viewer is allowed to see it: `MinimapZone.draw` early-outs on `self.entity_ref.visible`, then compares `self.visible_team` against TEAM_NEUTRAL, the focus player's `team.id`, and `A53` (= TEAM_SPECTATOR).",
+    "citation": "hud.pyd:0x10022169 'entity_ref', 0x10022196 'visible', 0x10022212 'visible_team', 0x1002223B 'TEAM_NEUTRAL', 0x100222ED 'A53'; shared/constants.py:214 A53 = TEAM_SPECTATOR",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "Standing inside a zone tints the whole screen: `Minimap.check_player_inside_zone_and_tint_screen` walks self.zones, calls `zone.player_is_in_zone(world_object)`, and if the zone is visible and its r/g/b are not all 1.0 it enables GL_TEXTURE_2D, binds `inside_zone_texture.id` and calls `draw_fsquad_tex(r*255, g*255, b*255, A2286)`.",
+    "citation": "hud.pyd:0x10027E7B-0x1002826D, 0x1002880B glEnable, 0x1002893E 'inside_zone_texture', 0x10028A3B 'draw_fsquad_tex', 0x10028B96 'A2286'",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "The in-zone screen tint alpha is 150: `A2286 = BASE_ZONE_TINT_ALPHA = 150`.",
+    "citation": "shared/constants.py:5051 BASE_ZONE_TINT_ALPHA = 150, alias :5056 A2286",
+    "confidence": "decompiled",
+    "kind": "colour"
+   },
+   {
+    "claim": "Zones and billboards arrive over the network as four dedicated packets handled by GameScene: MinimapZone \u2192 `self.hud.minimap` create/add zone with fields (x1, y1, z1, x2, y2, z2), `unlock_team_in_zone` and an RGB colour normalised by /255.0; MinimapZoneClear \u2192 `remove_zone`; MinimapBillboard \u2192 `hud.minimap.add_billboard(entity_id, x, y, z, icon_name, tracking, \u2026)` (9 args); MinimapBillboardClear \u2192 `remove_billboard(entity_id)`.",
+    "citation": "gameScene.pyd:0x101A55E0 / 0x101A582D / 0x101A61DD / 0x101A643B tracebacks; field reads at 0x101A58C4-0x101A59AD (A2018/A2020/A2022/A2019/A2021/A2023), 0x101A5AB0 'unlock_team_in_zone', 0x101A5D9B-0x101A5F08 (colour /255.0), 0x101A5F94 'add_billboard' with 0x101A5FC5-0x101A605B field names",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "`MinimapZone.__init__` creates a companion `MinimapBillboard` at the zone's 3D centre ((x1+x2)/2, (y1+y2)/2, (z1+z2)/2) with keyword `scale=2.5`, then calls `billboard.change_details(...)` with 7 arguments. Billboards are drawn by `Minimap.render_billboards` iterating `self.billboards` and calling `billboard.render(...)` with 7 args \u2014 this is the in-world marker, separate from the minimap image.",
+    "citation": "hud.pyd:0x1001F202-0x1001F4A1 (centres), 0x1001F6BD 'MinimapBillboard' with 8 positional + kwargs dict, 0x1001F777 double 2.5 keyed 'scale', 0x1001F89B 'change_details'; 0x1002DCFE 'billboards' / 0x1002DE25 'render' (Minimap.render_billboards)",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "`Minimap.render_zone_bounds` draws 3D zone cubes only for the focus player's team, testing A53 (TEAM_SPECTATOR) and `player.team` before calling `zone.draw_zone_cube(...)` per zone.",
+    "citation": "hud.pyd:0x1002E133 'A53', 0x1002E19D 'get_focus_player', 0x1002E251 'team', 0x1002E290 'zones', 0x1002E3B4 'draw_zone_cube'",
+    "confidence": "decompiled",
+    "kind": "gamemode"
+   },
+   {
+    "claim": "The entire minimap can be switched off by the server/match rules: minimap.py:616 gates everything after the focus-player lookup on `self.scene.manager.enable_minimap`, and the matchmaking rule is `RULE_ENABLE_MINI_MAP` with default 'ON'.",
+    "citation": "hud.pyd:0x100D25CB 'manager' / 0x100D25F6 'enable_minimap' (minimap.py:616); shared/constants_matchmaking.py:26 and :404",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "`Minimap.get_focus_player` returns `self.scene.player` normally, but when the active camera controller is `A987` (= CHASE_CAMERA) it returns `controller.chase_player` \u2014 so in spectator/killcam the minimap re-centres on the spectated player and the view wedge follows them.",
+    "citation": "hud.pyd:0x1002F410-0x1002F791 (scene.player, camera_manager.get_active_controller, A987, chase_player); shared/constants.py:2896 A987 = CHASE_CAMERA",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "`Minimap.__init__` (minimap.py:437\u2013448) sets exactly: self.parent = parent; self.scene = parent.scene; self.sprite = None; self.zones = []; self.billboards = []; self.batch_player / batch_tracer / batch_entity = pyglet.graphics.Batch(); self.player_sprites / tracer_sprites / entity_sprites = []. There is a third, tracer batch that Minimap.draw never touches.",
+    "citation": "hud.pyd:0x100277A8-0x10027DD8; the `batch_tracer` / `tracer_sprites` names never appear in the 0x100D1D10-0x100D9800 draw range",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "`Minimap.update` (minimap.py:481\u2013484) is trivial: it calls `zone.update(dt)` for every zone, then filters `self.billboards` down to those whose `state != VANISHED` via a slice assignment.",
+    "citation": "hud.pyd:0x100CF9F0-0x100D0151; name slots 0x10110E70='zones', 0x101118B4='update', 0x10110A84='state', 0x10111D04='VANISHED'",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "Zone spawn animation states are named APPEARING and FULLSIZE, with `spawn_time` advanced by `dt * 2.0` and `spawn_scale` driving both the icon and the billboard scale, clamped at 1.0.",
+    "citation": "hud.pyd:0x1001E2C1 'APPEARING', 0x1001FDD2 'FULLSIZE', 0x100200B9 double 2.0, 0x1001FE69 'spawn_time', 0x1001FE9F 1.0, 0x1001FECB 'spawn_scale', 0x1001FFBA billboard 'scale'",
+    "confidence": "decompiled",
+    "kind": "behaviour"
+   },
+   {
+    "claim": "UGC drop points get their own minimap icons via `UGC_MINIMAP_ICON_NAMES` / A2034: HEALTH_DROP_POINT \u2192 'minimap_healthcrate', AMMO_DROP_POINT \u2192 'minimap_ammocrate', BLOCK_DROP_POINT \u2192 'minimap_blockcrate', OCC_BOMB_POINT \u2192 'minimap_bomb'. All four assets exist at 16x16.",
+    "citation": "shared/constants.py:4380-4386; png/ui/minimap_healthcrate.png, minimap_ammocrate.png, minimap_blockcrate.png, minimap_bomb.png IHDR 16x16",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "`global_images.mode_bar_base` ('minimap_base') and `mode_bar_diamond` ('minimap_diamond') are NOT minimap markers \u2014 they are icons for the HUD mode progress bar, matching PROGRESSBAR_ICON_BASE / PROGRESSBAR_ICON_DIAMOND. Do not wire them into the minimap.",
+    "citation": "aoslib/images.py:450-451 alongside :449 `mode_bar = load_ui(mode_path + ['progress_bar'])`; shared/constants_gamemode.py:181 PROGRESSBAR_ICON_BASE, PROGRESSBAR_ICON_DIAMOND = xrange(2)",
+    "confidence": "inferred",
+    "kind": "asset"
+   },
+   {
+    "claim": "Four shipped minimap assets are orphans \u2014 no shipped .py and no .pyd references them: png/ui/minimap_ctf_capture_point.png (128x128), png/ui/minimap_ctf_secure_base.png (16x16), png/ui/Minimap_Zombie.png (13x14), png/ui/tc_minimap_base.png (16x16). CTF reuses 'minimap_base' via MODE_ZONE_ICONS instead.",
+    "citation": "grep for each basename across *.py and *.pyd in <retail-source> returns no hits; shared/constants_gamemode.py:145 ZONE_ICON_CTF uses \"minimap_base\"",
+    "confidence": "decompiled",
+    "kind": "asset"
+   },
+   {
+    "claim": "`map.minimap_texture` doubles as the UGC overhead map-preview image, which is how the shipped screenshot HUD obtains a top-down picture of the level \u2014 confirming it is a rendered overhead colour image of the world, not a heightfield.",
+    "citation": "aoslib/scenes/ingame_menus/screenshotHud.py:146-148 `if scene.map_temp_preview_overhead: map_preview_image = scene.map.minimap_texture`",
+    "confidence": "decompiled",
+    "kind": "format"
+   },
+   {
+    "claim": "The map texture must be 512x512 with one texel per world block: the crop centre is clamped to [64,448] (= [128/2, 512-128/2]) and the texture row is addressed as 512-y, both of which only close if the texture is exactly the 512x512 world footprint at 1:1.",
+    "citation": "hud.pyd:0x100D4695 (448), 0x100D492C (64), 0x100D4901 (512), 0x100D4A4E/0x100D4A55 (128,128)",
+    "confidence": "inferred",
+    "kind": "format"
+   },
+   {
+    "claim": "Texture detail is a user setting: `map_texture_quality` is a GameManager attribute in gamemanager.pyd, and vxl.pyd carries a matching `texture_quality` symbol alongside its `minimap_texture` creation path.",
+    "citation": "gamemanager.pyd string 'map_texture_quality'; vxl.pyd strings 'texture_quality', 'minimap_texture', 'VXL - minimap_texture object creation failed.'",
+    "confidence": "decompiled",
+    "kind": "format"
+   }
+  ],
+  "unrecoverable": [
+   "The exact generation of `map.minimap_texture` inside aoslib/vxl.pyd \u2014 which world column / topmost-block rule produces each texel, what GL internal format is used, and how `texture_quality` scales it. My Cython string-table extractor produced only 1 valid entry for vxl.pyd (its Cython version uses a different __Pyx_StringTabEntry layout), so I could not resolve the globals in that code path. The 512x512 / 1-texel-per-block conclusion is inferred from the consumer side, not read out of vxl.pyd.",
+   "The comparison direction inside `RadarStationEntity.can_detect_player` (radarStation.py:92). The window I disassembled (gameScene.pyd:0x100EF5D0-0x100EF790) reads `self.team.id` and `player.team.id` and has a `return False` path, but contains no PyObject_RichCompare, so I cannot state whether it returns true for enemies, for allies, or applies a radius test. Do not assume.",
+   "`MinimapBillboard.render` / `change_details` / `set_tracking` internals \u2014 the 3D in-world objective billboard (size, facing, distance fade, VANISHED transition). I located the functions (hud.pyd:0x1001B040 render, 0x1001AF38 change_details, 0x1001B020 set_tracking) but did not decompile them.",
+   "The iterable and exact vertex expressions of the two GL_QUADS loops on the full-screen map (minimap.py:636-646, hud.pyd:0x100D31C1-0x100D3CC2). I confirmed two loops of four glVertex2f each, built with +512 offsets and one PyInt_FromLong literal, but did not resolve what is being iterated, so I cannot say whether it shades zones, team territory, or out-of-bounds area.",
+   "The numeric value of `MinimapZone.icon.scale` and the zone's `solid` flag semantics \u2014 both come in as arguments of `MinimapZone.change_details` from the MinimapZone packet, so they are server data, not client constants.",
+   "The exact expression that produces `window` at minimap.py:620 (whether it is `self.window`, `self.parent.window`, or a module global) and how the held-key test at :624 is spelled \u2014 I saw one PyObject_GetItem on `config.keyboard['show_map']` but did not confirm the second lookup into the key-state handler, so 'hold M' versus 'toggle M' is an inference from the single-GetItem pattern.",
+   "Icon scale values for entities other than the bomb (1.0). `icon_scale` is a per-class float stored in each entity's class dict during gameScene module init; I only decoded the bomb.py one (gameScene.pyd:0x101D3814 fld1). The RocketTurret value was already recovered by prior work in docs/ENTITY_CONSTANTS.md:400."
+  ]
+ }
+]

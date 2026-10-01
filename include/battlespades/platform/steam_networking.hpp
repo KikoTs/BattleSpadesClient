@@ -139,6 +139,15 @@ public:
     /** True when Steam's in-game overlay is running in this process. */
     [[nodiscard]] bool overlay_enabled() const;
     /**
+     * True while Steam's overlay is open over the game (GameOverlayActivated_t).
+     *
+     * The game must not hold the mouse or read gameplay input meanwhile; see
+     * SteamOverlayInputGate, which pairs this with overlay_activations().
+     */
+    [[nodiscard]] bool overlay_active() const noexcept;
+    /** Overlay activations reported since start(); it only grows. */
+    [[nodiscard]] std::uint64_t overlay_activations() const noexcept;
+    /**
      * Open Steam's invite dialog for the current match.
      *
      * Uses the connect-string invite when this Steam client supports it, the
@@ -213,6 +222,13 @@ public:
      */
     [[nodiscard]] bool wait_for_relays(std::chrono::seconds timeout);
     [[nodiscard]] std::string last_error() const;
+    /**
+     * An export of the loaded Steamworks library (for example
+     * "SteamAPI_SteamUGC_v021"), so a feature can keep its flat-API calls in
+     * its own file; see steam_workshop.cpp. Null before start() or when the
+     * library lacks it.
+     */
+    [[nodiscard]] void* steamworks_symbol(const char* name) const noexcept;
 
     struct Impl;
     [[nodiscard]] Impl* impl() const noexcept { return impl_.get(); }

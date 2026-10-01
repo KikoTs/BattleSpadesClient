@@ -88,6 +88,11 @@ using audio::sound_group_stems;
 #define AL_DIRECT_CHANNELS_SOFT 0x1033
 #endif
 
+/** ALC_SOFT_HRTF context attribute (alext.h). */
+#ifndef ALC_HRTF_SOFT
+#define ALC_HRTF_SOFT 0x1992
+#endif
+
 /** AL_REVERB_DECAY_TIME's legal range (efx.h). */
 constexpr float minimum_reverb_decay{0.1F};
 constexpr float maximum_reverb_decay{20.0F};
@@ -334,6 +339,8 @@ struct OpenAlFrontendAudio::Impl final {
         SpatialSoundProfile profile{SpatialSoundProfile::ordinary};
         float pitch{1.0F};
         bool reverb_send{true};
+        /** Character.play_vo owner (0 = none); see Voice::speaker. */
+        std::uint16_t speaker{};
         std::chrono::steady_clock::time_point deadline{};
     };
     /** A first-use one-shot later than this is dropped rather than played late. */
@@ -374,6 +381,13 @@ struct OpenAlFrontendAudio::Impl final {
          * mid-word the moment a gun fires.
          */
         bool protected_voice{};
+        /**
+         * Character.play_vo (character.pyd 0x10024030): each character owns
+         * ONE voice line. A new line that actually starts closes the
+         * previous one (stop_current_vo), so a character's jump, land,
+         * fall-hurt, spawn and death lines never stack. 0 = not a VO line.
+         */
+        std::uint16_t speaker{};
     };
 
     /**
@@ -650,7 +664,8 @@ struct OpenAlFrontendAudio::Impl final {
                  shot.attenuation,
                  shot.profile,
                  shot.pitch,
-                 shot.reverb_send);
+                 shot.reverb_send,
+                 shot.speaker);
             return true;
         }
         if (!request.pending) {
@@ -785,7 +800,8 @@ struct OpenAlFrontendAudio::Impl final {
                          request.attenuation,
                          request.profile,
                          request.pitch,
-                         request.reverb_send);
+                         request.reverb_send,
+                         request.speaker);
                 }
             }
             for (auto& slot : loop_slots) {
@@ -1390,6 +1406,7 @@ struct OpenAlFrontendAudio::Impl final {
                 alSourcei(voice.source, AL_BUFFER, 0);
                 voice.active = false;
                 voice.protected_voice = false;
+                voice.speaker = 0U;
             }
         }
     }
@@ -1429,7 +1446,8 @@ struct OpenAlFrontendAudio::Impl final {
               float attenuation = retail_default_attenuation,
               SpatialSoundProfile profile = SpatialSoundProfile::ordinary,
               float pitch = 1.0F,
-              bool reverb_send = true) {
+              bool reverb_send = true,
+              std::uint16_t speaker = 0U) {
         static_cast<void>(profile);
         if (context == nullptr || !on_owner_thread()) {
             last_error = context == nullptr ? "OpenAL frontend audio is not started"
@@ -1492,6 +1510,19 @@ struct OpenAlFrontendAudio::Impl final {
         ++next_sequence;
         voice->sequence = next_sequence;
         voice->active = true;
+        voice->speaker = speaker;
+        if (speaker != 0U) {
+            // stop_current_vo runs only after the new line started.
+            for (Voice& other : voices) {
+                if (&other != voice && other.active && other.speaker == speaker) {
+                    alSourceStop(other.source);
+                    alSourcei(other.source, AL_BUFFER, 0);
+                    other.active = false;
+                    other.protected_voice = false;
+                    other.speaker = 0U;
+                }
+            }
+        }
     }
 
     OpenAlFrontendAudioConfig config;
@@ -1727,7 +1758,16 @@ bool OpenAlFrontendAudio::start() {
             const std::string resolved = label != nullptr ? label : candidate;
             if (std::ranges::find(attempted, resolved) == attempted.end()) {
                 attempted.push_back(resolved);
-                impl_->context = alcCreateContext(impl_->device, nullptr);
+                // Retail shipped OpenAL Soft 1.13 ("1.1 ALSOFT 1.13" in its
+                // OpenAL32.dll), which predates HRTF. Modern OpenAL Soft
+                // turns HRTF on by itself for headphone outputs, which
+                // re-colours and re-levels every cue; request it off.
+                const std::array<ALCint, 3U> context_attributes{
+                    ALC_HRTF_SOFT, retail_context_hrtf ? ALC_TRUE : ALC_FALSE, 0};
+                const bool hrtf_extension =
+                    alcIsExtensionPresent(impl_->device, "ALC_SOFT_HRTF") != ALC_FALSE;
+                impl_->context = alcCreateContext(
+                    impl_->device, hrtf_extension ? context_attributes.data() : nullptr);
             }
             if (impl_->context != nullptr) {
                 impl_->playback_device_name = resolved;
@@ -2592,6 +2632,28 @@ bool OpenAlFrontendAudio::play_named_one_shot(std::string_view stem,
     shot.attenuation = attenuation;
     shot.pitch = pitch;
     shot.reverb_send = reverb_send;
+    return impl_->play_named_or_defer("sounds", stem, std::move(shot));
+}
+
+bool OpenAlFrontendAudio::play_named_voice_line(std::uint16_t speaker,
+                                                std::string_view stem,
+                                                SoundPosition position,
+                                                float gain,
+                                                bool head_relative) {
+    if (impl_->context == nullptr || !impl_->on_owner_thread() || stem.empty()) {
+        return false;
+    }
+    if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
+        // Character.play_sound returned None: the current line keeps playing.
+        return true;
+    }
+    Impl::PendingOneShot shot;
+    shot.position = head_relative ? SoundPosition{} : position;
+    shot.gain = gain;
+    shot.relative = head_relative;
+    shot.protect = true;
+    shot.attenuation = retail_default_attenuation;
+    shot.speaker = speaker;
     return impl_->play_named_or_defer("sounds", stem, std::move(shot));
 }
 

@@ -8,12 +8,12 @@ correction from the verifier has been applied. This file supersedes the entity t
 
 ## Source priority
 
-1. `G:/AoSRevival/aceofspades_source/shared/constants.py` — retail constants. Has a **named**
+1. `<retail-source>/shared/constants.py` — retail constants. Has a **named**
    block and an **A-alias** block. The A-alias block is what the shipped modules bind; where
    the two disagree the alias wins.
-2. `G:/AoSRevival/aceofspades_source/aoslib/weapons/*.py`, `aoslib/scenes/main/*.py` — bindings.
-3. `G:/AoSRevival/aceofspades_source/aoslib/models.py` — model bindings, KV6 load offsets.
-4. `G:/AoSRevival/BattleSpades/**` — our server. **Not retail.** Anything found only here is
+2. `<retail-source>/aoslib/weapons/*.py`, `aoslib/scenes/main/*.py` — bindings.
+3. `<retail-source>/aoslib/models.py` — model bindings, KV6 load offsets.
+4. `../BattleSpades/**` — our server. **Not retail.** Anything found only here is
    provenance `battlespades`.
 
 ## Provenance values
@@ -23,7 +23,7 @@ correction from the verifier has been applied. This file supersedes the entity t
 | `retail_alias` | read from the A-number block (`A1632 = 8`) |
 | `retail_named` | read from the named block (`DYNAMITE_EXPLOSION_RADIUS = 5`) |
 | `retail_literal` | hardcoded in a retail `.py` behaviour file or decoded from a retail `.pyd` class body |
-| `battlespades` | only exists in `G:/AoSRevival/BattleSpades` — an invention |
+| `battlespades` | only exists in `../BattleSpades` — an invention |
 | `absent` | not recoverable from any source; value is `null` |
 
 ## Reading the tables
@@ -1497,7 +1497,7 @@ damage 75.0. `TURRET`: death blast radius **3.0** while rocket blast radius is i
 # DOES NOT SHIP
 
 Every asset referenced by a recovered binding was checked against
-`G:/AoSRevival/aceofspades_source/`.
+`<retail-source>/`.
 
 ## Referenced assets that are missing on disk
 

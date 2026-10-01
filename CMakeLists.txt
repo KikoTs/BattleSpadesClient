@@ -229,6 +229,11 @@ if(AOS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Auto-updating launcher and installer Steam helper (docs/INSTALLER_AND_UPDATER.md).
+if(AOS_ENABLE_NATIVE_BACKENDS)
+    add_subdirectory(src/updater)
+endif()
+
 find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_custom_target(

@@ -1,0 +1,3 @@
+// Same icon as the client so Steam and the Start menu show the game icon.
+1 ICON "../../platform/windows/game.ico"
+1 24 "launcher.manifest"

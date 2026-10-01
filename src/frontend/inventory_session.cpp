@@ -1,6 +1,7 @@
 #include "battlespades/frontend/inventory_session.hpp"
 #include "battlespades/network/cosmetic_slots.hpp"
 #include "battlespades/world/scripted_weapon.hpp"
+#include "battlespades/world/cosmetic_files.hpp"
 #include "battlespades/world/class_models.hpp"
 #include "battlespades/world/entity_catalog.hpp"
 #include "battlespades/world/cosmetic_preview.hpp"
@@ -136,7 +137,8 @@ std::shared_ptr<const world::Kv6Model> verified_asset(const std::filesystem::pat
     static std::map<std::filesystem::path, CachedModel> cache;
     static std::uint64_t clock{};
     std::error_code error;
-    const auto absolute = std::filesystem::absolute(path, error).lexically_normal();
+    const auto absolute =
+        std::filesystem::absolute(world::resolve_cosmetic_file(path), error).lexically_normal();
     if (error) return {};
     const auto size = std::filesystem::file_size(absolute, error);
     if (error || size > 2U * 1024U * 1024U) return {};
@@ -523,7 +525,7 @@ std::vector<std::uint8_t> build_inventory_preview(const InventoryCosmetic& item,
     if (found == trusted.end() || found->kind == "profile_badge")
         return {};
     const auto path = found->asset.starts_with("client/cosmetics/")
-        ? root.parent_path()/found->asset : root/found->asset;
+        ? world::resolve_cosmetic_file(root.parent_path()/found->asset) : root/found->asset;
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
     if (error || size > 2U * 1024U * 1024U)

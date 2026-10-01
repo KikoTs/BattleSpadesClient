@@ -8,6 +8,7 @@
 
 namespace battlespades::world {
 class VxlMap;
+struct LocalEntity;
 }
 
 namespace battlespades::frontend {
@@ -80,6 +81,20 @@ enum class FlyCameraKey : std::uint8_t { forward, backward, left, right, jump, c
                                            double yaw_degrees, double pitch_degrees) noexcept;
 
 /**
+ * Where the death camera aims at the local player's grave (entity type 11):
+ * the centre of the tombstone as the renderer draws it.
+ *
+ * GraveEntity draws its model at (x-0.5, y-0.5, z-0.5) of its movement object
+ * (entity_presentation_position), with offset_pivots(0, 0, 11) moving the
+ * centred 16x4x22 grave.kv6 pivot to the base, and the terrain contact rule
+ * standing that base on the support surface. Half of the 22-voxel height
+ * (the recovered pivot offset, 11 voxels at model size 0.1) lies above it.
+ * Feeding the raw packet position instead aimed the camera at the stone's
+ * corner, below and beside it.
+ */
+[[nodiscard]] world::Vec3 grave_camera_focus(const world::LocalEntity& grave) noexcept;
+
+/**
  * Retail-compatible death/spectator camera.
  *
  * Recovered from gameScene.pyd DeathController (activate 0x1003e250, update
@@ -105,6 +120,13 @@ enum class FlyCameraKey : std::uint8_t { forward, backward, left, right, jump, c
  */
 class DeathCameraController final {
 public:
+    /**
+     * The scene camera's r_y/r_x at the moment of death. Retail has one
+     * Camera: GameScene.mouse_move feeds the first-person look into
+     * Camera.add_mouse_motion, so the death controllers start from exactly
+     * where the player was looking (and the killer view turns from there).
+     */
+    void set_view_angles(double yaw_degrees, double pitch_degrees) noexcept;
     void begin_death(world::Vec3 death_eye, std::optional<DeathKillerInfo> killer,
                      bool deathcam_enabled,
                      bool never_respawn = false) noexcept;
@@ -118,7 +140,10 @@ public:
                          std::optional<DeathCameraTarget> target) noexcept;
     void end_life() noexcept;
 
-    /** Bind or update the server-created grave belonging to the local player. */
+    /**
+     * Bind or update the server-created grave belonging to the local player.
+     * `focus` is grave_camera_focus(entity): the drawn tombstone's centre.
+     */
     void bind_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
     void update_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
 
@@ -166,6 +191,8 @@ private:
     bool killer_present_{};
     world::Vec3 working_position_{};
     world::Vec3 killer_eye_{};
+    /** DeathController.update's validate_position orbit, not the zoom path. */
+    bool killer_eye_orbits_body_{true};
     world::Vec3 target_position_{};
     bool zoom_possible_{};
     double target_yaw_{};
@@ -173,7 +200,8 @@ private:
     double elapsed_{};
     bool chase_available_{};
     // Camera r_x/r_y start at zero: native yaw = 90 - r_y, pitch = -r_x.
-    // These angles belong to the scene camera and survive respawn.
+    // These angles belong to the scene camera; set_view_angles hands over the
+    // first-person look each time the local player dies.
     double yaw_{90.0};
     double pitch_{};
     double mouse_movement_{};

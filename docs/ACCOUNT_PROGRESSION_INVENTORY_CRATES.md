@@ -2,8 +2,8 @@
 
 Status: initial implementation tested locally; broader contract and rollout gates remain
 Contract version: `progression-v1`  
-Document copies: `G:/AoSRevival/BattleSpadesClient/docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
-and `G:/AoSRevival/aos_revival/docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
+Document copies: `docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
+and `../aos_revival/docs/ACCOUNT_PROGRESSION_INVENTORY_CRATES.md`
 
 This document is the shared contract between the native BattleSpades client and
 the AoSPlay backend. The two copies must remain byte-for-byte identical while

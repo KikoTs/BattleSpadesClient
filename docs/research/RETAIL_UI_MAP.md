@@ -16,10 +16,10 @@ the bundle.
 
 | Evidence kind | Path |
 | --- | --- |
-| Active boot and patched frontend | `G:\AoSRevival\aos-nonsteam\src\aoslib\run.py`, `...\scenes\frontend\menuScene.py`, `...\selectMenu.py` |
-| Original bytecode in active bundle | `G:\AoSRevival\aos-nonsteam\src\aoslib\gui.pyc`, `...\scenes\__init__.pyc`, `...\frontend\panelBase.pyc`, `...\tabBase.pyc`, `...\listPanelBase.pyc` |
-| Line-addressable retail decompile | `G:\AoSRevival\aceofspades_decompiled\aoslib\gui.py`, `...\scenes\__init__.py`, `...\frontend\panelBase.py`, `...\tabBase.py`, `...\listPanelBase.py` |
-| Imported immutable assets | `G:\AoSRevival\BattleSpadesClient\assets\original` |
+| Active boot and patched frontend | `../aos-nonsteam\src\aoslib\run.py`, `...\scenes\frontend\menuScene.py`, `...\selectMenu.py` |
+| Original bytecode in active bundle | `../aos-nonsteam\src\aoslib\gui.pyc`, `...\scenes\__init__.pyc`, `...\frontend\panelBase.pyc`, `...\tabBase.pyc`, `...\listPanelBase.pyc` |
+| Line-addressable retail decompile | `<retail-decompiled>\aoslib\gui.py`, `...\scenes\__init__.py`, `...\frontend\panelBase.py`, `...\tabBase.py`, `...\listPanelBase.py` |
+| Imported immutable assets | `assets\original` |
 
 The active `selectMenu.py` is not pristine retail code. In particular, the
 tutorial action and service-availability handling have revival patches. The
@@ -47,15 +47,15 @@ flowchart TD
 
 - `BootClass` creates `GameManager`, preloads favourites, and schedules
   `main()` at the next clock turn
-  (`G:\AoSRevival\aos-nonsteam\src\aoslib\run.py:408-440`).
+  (`../aos-nonsteam\src\aoslib\run.py:408-440`).
 - With no usable `+connect_lobby` or `+connect`, boot chooses the frontend
   shell with `manager.set_scene(MenuScene)`
-  (`G:\AoSRevival\aos-nonsteam\src\aoslib\run.py:358-405`).
+  (`../aos-nonsteam\src\aoslib\run.py:358-405`).
 - The shell's `on_start()` defaults its child to `SelectMenu`
-  (`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\menuScene.py:42-48`).
+  (`../aos-nonsteam\src\aoslib\scenes\frontend\menuScene.py:42-48`).
 - `SelectMenu.on_start()` enables the appropriate actions and starts
   `music/mainmenu.ogg` if it is not already playing
-  (`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:115-118`).
+  (`../aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:115-118`).
 
 ### The two `MenuScene` classes
 
@@ -63,12 +63,12 @@ The Python names conceal two different responsibilities:
 
 1. `aoslib.scenes.MenuScene` is a leaf-screen marker. It derives from
    `ElementScene` and only establishes `control = True`
-   (`G:\AoSRevival\aceofspades_decompiled\aoslib\scenes\__init__.py:65-154`).
+   (`<retail-decompiled>\aoslib\scenes\__init__.py:65-154`).
    `SelectMenu`, panels, and tabs derive from this type.
 2. `aoslib.scenes.frontend.menuScene.MenuScene` is the outer shell/router. It
    owns the background, active/previous child screen, transition, coordinate
    transform, and scene/game blending
-   (`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\menuScene.py:16-40`).
+   (`../aos-nonsteam\src\aoslib\scenes\frontend\menuScene.py:16-40`).
 
 The native client should call these `FrontendShell` and `UiScreen`; reproducing
 the duplicate name would create needless ambiguity.
@@ -103,9 +103,9 @@ window-width left; `back=True` reverses those sides (`menuScene.py:134-145`).
 
 - Widget geometry is authored on an 800 by 600, bottom-left-origin canvas;
   the constants are explicit in
-  `G:\AoSRevival\aceofspades_decompiled\shared\hud_constants.py:18-19`.
+  `<retail-decompiled>\shared\hud_constants.py:18-19`.
 - The full-screen background uses an aspect-preserving cover calculation
-  (`G:\AoSRevival\aceofspades_decompiled\aoslib\__init__.py:8-37`).
+  (`<retail-decompiled>\aoslib\__init__.py:8-37`).
 - Child UI uses `manager.get_aspect(800, 600)`, then translation and a uniform
   scale. The inverse mouse transform subtracts the canvas offset and divides
   by that ratio (`menuScene.py:131-168`).
@@ -118,7 +118,7 @@ window-width left; `back=True` reverses those sides (`menuScene.py:134-145`).
 ### Native `get_aspect` confirmation
 
 The compiled implementation was checked headlessly in
-`G:\AoSRevival\aos-nonsteam\src\aoslib\gamemanager.pyd` (SHA-256
+`../aos-nonsteam\src\aoslib\gamemanager.pyd` (SHA-256
 `a56d0b2ab313a550e4a7430365f8265d073748d71a4e8b47b8828a6903d4654c`).
 The Python wrapper is at `0x1002D330` and the implementation at `0x10011F20`.
 The latter was annotated in the companion IDA database as
@@ -144,9 +144,9 @@ evidence rather than an inferred widescreen policy.
 
 Main-menu constants are 262 by 58 text buttons, 30 nominal font size, 37
 bottom margin, 5 inter-button spacing, and 16 group spacing
-(`G:\AoSRevival\aceofspades_decompiled\shared\hud_constants.py:38-43`).
+(`<retail-decompiled>\shared\hud_constants.py:38-43`).
 `SelectMenu.initialize()` constructs its controls at
-`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:22-112`.
+`../aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:22-112`.
 
 All coordinates below are in the 800 by 600 design canvas. A `TextButton`'s
 `y` is its top edge; its hit rectangle extends downward by `height`.
@@ -177,9 +177,9 @@ The outgoing actions and their confirmation/buy cues are defined at
 ### Current revival delta
 
 - Retail `tutorial_pressed()` routed to `JoiningGameMenu` with tutorial server
-  mode (`G:\AoSRevival\aceofspades_decompiled\aoslib\scenes\frontend\selectMenu.py:229-231`).
+  mode (`<retail-decompiled>\aoslib\scenes\frontend\selectMenu.py:229-231`).
 - The active revival client starts an isolated local BattleSpades tutorial host
-  instead (`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:221-227`).
+  instead (`../aos-nonsteam\src\aoslib\scenes\frontend\selectMenu.py:221-227`).
 - The active availability logic at `selectMenu.py:120-161` is also patched.
 
 The native screen should emit typed actions such as `StartTutorial`,
@@ -189,7 +189,7 @@ networking or process management into widgets.
 
 `MainTab` is not the main menu. It is the first tab of the settings screen,
 containing volume, fullscreen, invert-mouse, and favourite-server rows
-(`G:\AoSRevival\aos-nonsteam\src\aoslib\scenes\frontend\mainTab.py:21-55`).
+(`../aos-nonsteam\src\aoslib\scenes\frontend\mainTab.py:21-55`).
 
 ## Widget and input model
 
@@ -212,17 +212,17 @@ ControlBase
 
 `ControlBase` supplies enabled/visible flags and no-op event methods;
 `HandlerBase` stores callbacks and invokes them in insertion order
-(`G:\AoSRevival\aceofspades_decompiled\aoslib\gui.py:30-82`). `ElementScene`
+(`<retail-decompiled>\aoslib\gui.py:30-82`). `ElementScene`
 forwards mouse, keyboard, text, and scroll events to every element when the
 scene is enabled; there is no capture or event-consumed return value
-(`G:\AoSRevival\aceofspades_decompiled\aoslib\scenes\__init__.py:65-131`).
+(`<retail-decompiled>\aoslib\scenes\__init__.py:65-131`).
 
 ### Exact pointer behavior
 
 - `TextButton` hit bounds are `[x, x + width]` and
   `[y - height, y]`. Motion/drag updates hover. Press sets `pressed` whenever
   enabled and visible; release recomputes hover and fires only when still
-  pressed and inside (`G:\AoSRevival\aceofspades_decompiled\aoslib\gui.py:615-639`).
+  pressed and inside (`<retail-decompiled>\aoslib\gui.py:615-639`).
 - `SquareButton` uses center/size bounds and the same release-inside rule
   (`gui.py:147-171`).
 - Neither button class filters the mouse button or requires hover at press at
@@ -252,7 +252,7 @@ callbacks, not the widgets.
 ## Assets, text, and localization
 
 `pyglet.resource.path` is rooted at `png/ui`, and importing `aoslib.images`
-loads the global UI set (`G:\AoSRevival\aos-nonsteam\src\aoslib\run.py:169-172`,
+loads the global UI set (`../aos-nonsteam\src\aoslib\run.py:169-172`,
 `338`; `...\aoslib\images.py:913-927`). Main-menu mappings are explicit at
 `images.py:147-181`, `239-243`, and `428-431`.
 
@@ -275,7 +275,7 @@ The following required files were verified in the new asset tree:
 The localization loader selects `+language` or the platform language, supports
 11 language IDs, imports that language module into the string namespace, and
 falls back to English when import fails
-(`G:\AoSRevival\aos-nonsteam\src\aoslib\strings\__init__.py:3-55`). Missing
+(`../aos-nonsteam\src\aoslib\strings\__init__.py:3-55`). Missing
 string-ID lookup returns either a diagnostic or the ID itself
 (`strings\__init__.py:61-68`). Russian and Polish select Spades/Tuffy, Turkish
 selects Edo/Tuffy, and Japanese selects the retail Gen Shin/Noto JP fonts before font objects are
@@ -283,7 +283,7 @@ built (`strings\__init__.py:36-48`).
 
 For this screen, default body text is A750 Sans, buttons use Spades, welcome
 text is 16 px, navigation text is 24 px, and the large button fitting font
-starts at 36 px (`G:\AoSRevival\aos-nonsteam\src\aoslib\text.py:250-291`,
+starts at 36 px (`../aos-nonsteam\src\aoslib\text.py:250-291`,
 `332-336`). `TextButton.set_text()` word-wraps into its padded bounds and
 decrements the font size until all lines fit (`gui.py:537-579`;
 `text.py:395-421`). That fitting behavior is required for translated labels;

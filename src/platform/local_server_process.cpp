@@ -99,8 +99,16 @@ server_executable_name(LocalServerProgram program) noexcept {
     return std::ranges::find(modes, value) != modes.end();
 }
 
+/// UTF-8 with forward slashes. path::string() and generic_string() convert
+/// through the ANSI code page and throw for e.g. a Cyrillic user name.
+[[nodiscard]] std::string utf8_text(const std::filesystem::path& value) {
+    const auto encoded = value.generic_u8string();
+    return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+}
+
 [[nodiscard]] bool safe_path(const std::filesystem::path& value) noexcept {
-    const auto text = value.generic_string();
+    const auto encoded = value.generic_u8string();
+    const std::string_view text{reinterpret_cast<const char*>(encoded.data()), encoded.size()};
     return !value.empty() && text.size() <= 4'096U && text.find('\0') == std::string::npos;
 }
 
@@ -431,7 +439,7 @@ LocalServerState read_local_server_status(const std::filesystem::path& directory
         std::string bytes(static_cast<std::size_t>(size), '\0');
         if (!input.read(bytes.data(), static_cast<std::streamsize>(size))) return LocalServerState::unavailable;
         const auto data = nlohmann::json::parse(bytes);
-        if (data.at("schema_version") != 1 || data.at("session") != directory.filename().string() ||
+        if (data.at("schema_version") != 1 || data.at("session") != utf8_text(directory.filename()) ||
             data.at("port") != port || data.at("mode").get<std::string>() != mode) return LocalServerState::unavailable;
         const auto state = data.at("state").get<std::string>();
         if (state == "starting") return LocalServerState::starting;
@@ -475,7 +483,7 @@ find_local_server_bundle(const std::filesystem::path& root) {
     const auto options = std::filesystem::directory_options::skip_permission_denied;
     for (const auto& release : std::filesystem::directory_iterator(root, options, error)) {
         if (error) break;
-        const auto name = release.path().filename().string();
+        const auto name = utf8_text(release.path().filename());
         if (!release.is_directory(error) ||
             (!name.starts_with("release-dist") && !name.starts_with("local-release"))) {
             error.clear();
@@ -504,18 +512,18 @@ std::string validate_custom_map_files(std::string_view map_name,
         std::error_code error;
         if (!safe_path(file) || std::filesystem::is_symlink(file, error) || error ||
             !std::filesystem::is_regular_file(file, error) || error) {
-            return "custom map file is missing or not a regular file: " + file.string();
+            return "custom map file is missing or not a regular file: " + utf8_text(file);
         }
-        if (file.stem().string() != map_name) {
+        if (utf8_text(file.stem()) != map_name) {
             return "custom map file does not belong to " + std::string{map_name};
         }
-        auto extension = file.extension().string();
+        auto extension = utf8_text(file.extension());
         std::ranges::transform(extension, extension.begin(), [](unsigned char character) {
             return static_cast<char>(std::tolower(character));
         });
         if (extension != ".vxl" && extension != ".txt" && extension != ".ugc" &&
             extension != ".png") {
-            return "unexpected custom map file type: " + file.filename().string();
+            return "unexpected custom map file type: " + utf8_text(file.filename());
         }
         if (!extensions.insert(extension).second) {
             return "duplicate custom map file type: " + extension;
@@ -625,7 +633,7 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
         // server/config.py reads [world].maps_path; the session copy holds the
         // authored .vxl/.txt/.ugc triplet named by default_map.
         output << "[world]\n"
-               << "maps_path = " << toml_quote(config.maps_path.generic_string()) << "\n\n";
+               << "maps_path = " << toml_quote(utf8_text(config.maps_path)) << "\n\n";
     }
     output << "[lobby]\n"
            << "map_rotation = [" << toml_quote(config.map_name) << "]\n"
@@ -662,12 +670,12 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
         const auto& editor = *config.map_creator;
         output << "\n[map_creator]\n"
                << "project = " << toml_quote(editor.project) << '\n'
-               << "publish_root = " << toml_quote(editor.publish_root.generic_string()) << '\n'
+               << "publish_root = " << toml_quote(utf8_text(editor.publish_root)) << '\n'
                << "terrain = " << toml_quote(editor.terrain) << '\n'
                << "target_mode = " << toml_quote(editor.target_mode) << '\n'
                << "title = " << toml_quote(editor.title) << '\n'
                << "author = " << toml_quote(editor.author) << '\n'
-               << "retail_root = " << toml_quote(editor.retail_root.generic_string()) << '\n';
+               << "retail_root = " << toml_quote(utf8_text(editor.retail_root)) << '\n';
         if (editor.prefab_set) output << "prefab_set = " << static_cast<unsigned>(*editor.prefab_set) << '\n';
     }
     if (!config.rule_overrides.empty()) {
@@ -787,7 +795,7 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
     auto child_overrides = config.environment_overrides;
     const auto status_path_utf8 = (directory / "host-status.json").u8string();
     child_overrides["AOS_NATIVE_HOST_STATUS"] = std::string{status_path_utf8.begin(), status_path_utf8.end()};
-    child_overrides["AOS_NATIVE_HOST_SESSION"] = directory.filename().string();
+    child_overrides["AOS_NATIVE_HOST_SESSION"] = utf8_text(directory.filename());
 #if defined(_WIN32)
     SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
     HANDLE stdin_read{};

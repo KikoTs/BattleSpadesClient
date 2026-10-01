@@ -1,4 +1,5 @@
 #include "battlespades/world/map_atmosphere.hpp"
+#include "battlespades/render/skydome_animation.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -421,22 +422,13 @@ template <typename Value>
     return found == entries.end() ? fallback : found->second;
 }
 
-/** The renderer's exact authored-transform bake, so directions agree with what is drawn. */
+/**
+ * The renderer's exact authored-transform bake, so directions agree with what
+ * is drawn: retail SkyDome.do_mesh_rotation order (gameScene.pyd 0x1010FF40).
+ */
 [[nodiscard]] std::array<float, 3U> rotate_xyz(std::array<float, 3U> value,
                                                const std::array<float, 3U>& degrees) noexcept {
-    constexpr float radians_per_degree{0.01745329251994329577F};
-    const auto rx = degrees[0U] * radians_per_degree;
-    const auto ry = degrees[1U] * radians_per_degree;
-    const auto rz = degrees[2U] * radians_per_degree;
-    const auto sx = std::sin(rx);
-    const auto cx = std::cos(rx);
-    const auto sy = std::sin(ry);
-    const auto cy = std::cos(ry);
-    const auto sz = std::sin(rz);
-    const auto cz = std::cos(rz);
-    value = {value[0U], value[1U] * cx - value[2U] * sx, value[1U] * sx + value[2U] * cx};
-    value = {value[0U] * cy + value[2U] * sy, value[1U], -value[0U] * sy + value[2U] * cy};
-    return {value[0U] * cz - value[1U] * sz, value[0U] * sz + value[1U] * cz, value[2U]};
+    return battlespades::render::retail_skydome_rotate(value, degrees);
 }
 
 /**
@@ -967,10 +959,12 @@ authored_atmosphere_override(std::string_view definition_name) noexcept {
         .fog_density = 1.3F,
         .ambient_intensity = 0.62F,
         // Every warm layer in this dome clusters within four degrees of azimuth
-        // 172 at 10-34 degrees elevation, while the sunless fallback lights from
+        // 352 at 10-34 degrees elevation, while the sunless fallback lights from
         // ~64 degrees at azimuth 54 -- the world was lit from a direction its own
-        // painted sky contradicts.
-        .sun_direction = std::array<float, 3U>{0.129F, 0.918F, -0.375F},
+        // painted sky contradicts. (First measured as azimuth 172 when the dome
+        // was baked X-rotation-first; retail's Rx*Ry*Rz order turns this
+        // (180, 90, 0) dome, and so the volcano cluster, exactly 180 degrees.)
+        .sun_direction = std::array<float, 3U>{-0.129F, -0.918F, -0.375F},
         .source = "Invasion"};
 
     // -- Storm and jungle -----------------------------------------------------

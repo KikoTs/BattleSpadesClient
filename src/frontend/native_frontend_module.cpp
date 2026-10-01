@@ -4,6 +4,7 @@
 #include "battlespades/core/diagnostics.hpp"
 #if defined(AOS_HAS_STEAM_NETWORKING)
 #include "battlespades/platform/steam_networking.hpp"
+#include "battlespades/platform/steam_workshop.hpp"
 #endif
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/explosion_sound.hpp"
@@ -93,11 +94,13 @@
 #include "battlespades/network/protocol168_weapons.hpp"
 #include "battlespades/network/revival_identity.hpp"
 #include "battlespades/network/server_discovery.hpp"
+#include "battlespades/platform/hosting_gate.hpp"
 #include "battlespades/platform/local_server_process.hpp"
 #include "battlespades/frontend/ugc_status_presentation.hpp"
 #include "battlespades/platform/relay_host_tunnel.hpp"
 #include "battlespades/platform/native_steam_client.hpp"
 #include "battlespades/platform/steam_connect.hpp"
+#include "battlespades/platform/steam_overlay.hpp"
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
@@ -2714,7 +2717,13 @@ struct NativeFrontendModule::Impl final {
     platform::SteamP2PHost steam_host;
     platform::SteamP2PClient steam_client;
     bool steam_runtime_attempted{};
+    /** Installs Workshop subscriptions as ugc/maps/Subscribed_<id>.*; after steam_runtime. */
+    std::unique_ptr<platform::WorkshopSyncService> workshop_sync;
+    std::uint64_t workshop_sync_generation{};
+    std::chrono::steady_clock::time_point workshop_sync_requested_at{};
 #endif
+    /** Suspends mouse capture and gameplay input while Steam's overlay is open. */
+    platform::SteamOverlayInputGate steam_overlay_gate;
     std::uint64_t steam_host_id{};
     /** AoSPlay server id the joined Steam host asks a ticket for; empty when none. */
     std::string steam_join_server_id;
@@ -2957,6 +2966,10 @@ struct NativeFrontendModule::Impl final {
         }
         // Same reason: the lobby resolver also calls into steam_runtime.
         if (steam_lobby_resolve_worker.valid()) steam_lobby_resolve_worker.wait();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        // And the Workshop sync's worker thread.
+        workshop_sync.reset();
+#endif
     }
 
     [[nodiscard]] std::string localized_text(std::string_view key) const {
@@ -4261,6 +4274,63 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
+     * Hand the pointer to Steam's overlay while it is open.
+     *
+     * update_mouse_capture() releases relative mode (and shows the cursor)
+     * while the gate is suspended and re-captures after the resume; this only
+     * drops what the game already believed held, as focus loss does, so a key
+     * pressed on the way into the overlay cannot keep the player running.
+     */
+    void apply_steam_overlay(platform::SteamOverlayInputAction action) {
+        using platform::SteamOverlayInputAction;
+        if (action != SteamOverlayInputAction::suspend &&
+            action != SteamOverlayInputAction::flush) {
+            return;
+        }
+        cancel_pointer_capture();
+        if (tutorial_session != nullptr) tutorial_session->clear_input();
+        ugc_prefab_control.clear_inputs();
+    }
+
+    /**
+     * Ask the Workshop sync for a pass (Create Match opening). Never blocks;
+     * a pass already running or one asked for seconds ago is enough.
+     */
+    void request_workshop_sync() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (workshop_sync == nullptr) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (workshop_sync_requested_at != std::chrono::steady_clock::time_point{} &&
+            now - workshop_sync_requested_at < std::chrono::seconds{15}) {
+            return;
+        }
+        workshop_sync_requested_at = now;
+        workshop_sync->request_sync();
+#endif
+    }
+
+#if defined(AOS_HAS_STEAM_NETWORKING)
+    /**
+     * Start the Workshop sync once Steam is attached, and refresh an open
+     * Create Match map list whenever it installs or removes a map.
+     */
+    void pump_workshop_sync() {
+        if (workshop_sync == nullptr) {
+            workshop_sync = std::make_unique<platform::WorkshopSyncService>(
+                steam_runtime, config.asset_root / "ugc" / "maps");
+            request_workshop_sync();
+            return;
+        }
+        const auto status = workshop_sync->status();
+        if (status.generation == workshop_sync_generation) return;
+        workshop_sync_generation = status.generation;
+        if (is_create_match_screen(screen())) {
+            create_match_menu.set_custom_maps(scan_create_match_custom_maps());
+        }
+    }
+#endif
+
+    /**
      * Every frame: the retail bridge's handshake and events, the in-process
      * runtime's join requests, lobby invites, and the queued join itself.
      *
@@ -4284,6 +4354,10 @@ struct NativeFrontendModule::Impl final {
         }
         sync_identity_steam_button();
 #if defined(AOS_HAS_STEAM_NETWORKING)
+        apply_steam_overlay(steam_runtime.ready()
+                                ? steam_overlay_gate.observe(steam_runtime.overlay_active(),
+                                                             steam_runtime.overlay_activations())
+                                : steam_overlay_gate.reset());
         const auto now = std::chrono::steady_clock::now();
         if (!steam_runtime.ready()) {
             // Steam started after the game: attach when it appears, so
@@ -4306,6 +4380,7 @@ struct NativeFrontendModule::Impl final {
                                      "Steam Join Game");
                 }
             }
+            pump_workshop_sync();
         }
         using namespace std::chrono_literals;
         if (steam_lobby_resolve_worker.valid() &&
@@ -6613,7 +6688,8 @@ struct NativeFrontendModule::Impl final {
                                  position,
                                  voice_selection,
                                  spawn->force,
-                                 true);
+                                 true,
+                                 local_voice_speaker);
         }
 
         // The idle vocalisation. Only the zombie classes carry one, so for
@@ -6633,7 +6709,16 @@ struct NativeFrontendModule::Impl final {
      * Several classes are deliberately mute in some slots, and the zombies have
      * no speech at all beyond a death cry and the idle groan, so "nothing
      * played" is very often the correct outcome here.
+     *
+     * `speaker` identifies the retail Character that owns the line: each one
+     * keeps a single current_vo, so its lines replace rather than stack.
      */
+    static constexpr std::uint16_t local_voice_speaker{0x1000U};
+    [[nodiscard]] static constexpr std::uint16_t
+    remote_voice_speaker(std::uint8_t player_id) noexcept {
+        return static_cast<std::uint16_t>(player_id + 1U);
+    }
+
     void play_class_voice_for(std::uint8_t class_id,
                               world::ClassVoice voice,
                               audio::SoundPosition position,
@@ -6641,7 +6726,8 @@ struct NativeFrontendModule::Impl final {
                                          static_cast<std::size_t>(world::ClassVoice::count)>&
                                   selection,
                               bool force,
-                              bool head_relative) {
+                              bool head_relative,
+                              std::uint16_t speaker) {
         if (audio == nullptr) {
             return;
         }
@@ -6654,15 +6740,10 @@ struct NativeFrontendModule::Impl final {
         const auto stem = world::choose_voice_line(
             set->bank(voice), force ? 0U : voice_rng(), voice_rng(), state);
         if (!stem.empty()) {
-            // play_vo -> Character.play_sound at volume 1.0 (IN_WORLD).
-            static_cast<void>(
-                audio->play_named_one_shot(stem,
-                                           position,
-                                           audio::retail_character_sound_volume,
-                                           head_relative,
-                                           0.0F,
-                                           0.15F,
-                                           true));
+            // play_vo -> Character.play_sound at volume 1.0 (IN_WORLD); the
+            // speaker's previous line is closed once this one starts.
+            static_cast<void>(audio->play_named_voice_line(
+                speaker, stem, position, audio::retail_character_sound_volume, head_relative));
         }
     }
 
@@ -6675,7 +6756,8 @@ struct NativeFrontendModule::Impl final {
                              position,
                              voice_selection,
                              false,
-                             true);
+                             true,
+                             local_voice_speaker);
     }
 
     /**
@@ -6997,7 +7079,8 @@ struct NativeFrontendModule::Impl final {
                                          position,
                                          jetpack_state.voices,
                                          false,
-                                         false);
+                                         false,
+                                         remote_voice_speaker(player.player_id));
                 }
                 if (cues.land) {
                     play_movement_sound_for(player.class_id,
@@ -7881,7 +7964,8 @@ struct NativeFrontendModule::Impl final {
                                      position,
                                      character_audio.voices,
                                      event.force_voice,
-                                     false);
+                                     false,
+                                     remote_voice_speaker(player_id));
             }
         }
     }
@@ -8507,6 +8591,8 @@ struct NativeFrontendModule::Impl final {
             }
         }
         environment.multisampling_supported = true;
+        environment.multisampling_live =
+            render::multisample_change_is_live(renderer.active_backend());
         environment.glsl_shader_quality_supported = true;
         environment.graphics_apis.clear();
         for (const auto backend : render::supported_graphics_backends()) {
@@ -8792,15 +8878,18 @@ struct NativeFrontendModule::Impl final {
             }
             confirmed_settings = candidate;
             resolution_rollback.reset();
-            if (resolution_restart_required) {
-                settings_warning = "Restart required for graphics quality changes to take effect.";
-            }
+            const bool restart_notice = resolution_restart_required;
             resolution_restart_required = false;
             if (settings_opened_from_gameplay) {
                 static_cast<void>(navigation.pop_instant());
                 close_settings();
             } else {
                 return_to_select();
+            }
+            // After navigation, so a match shows it on the HUD rather than in
+            // a settings warning nobody will see.
+            if (restart_notice) {
+                show_restart_notice();
             }
             if (audio_started) {
                 audio->play_menu_confirm();
@@ -8899,7 +8988,9 @@ struct NativeFrontendModule::Impl final {
                                 suppress_next_settings_close = true;
                                 return;
                             }
-                            resolution_restart_required = payload.restart_required;
+                            resolution_restart_required =
+                                payload.restart_required ||
+                                multisample_deferred_by(*resolution_rollback, payload.settings);
                             resolution_confirmation.restart();
                             static_cast<void>(
                                 navigation.push(FrontendScreen::resolution_confirmation));
@@ -8921,7 +9012,8 @@ struct NativeFrontendModule::Impl final {
                             }
                             confirmed_settings = payload.settings;
                             close_settings(done_to_game);
-                            if (payload.restart_required) {
+                            if (payload.restart_required ||
+                                multisample_deferred_by(restored, payload.settings)) {
                                 show_restart_notice();
                             }
                         }
@@ -9038,6 +9130,18 @@ struct NativeFrontendModule::Impl final {
     }
 
     /** settingsMenu: CHANGE_MSAA_SETTINGS as big text for five seconds. */
+    /**
+     * Done changed Antialiasing and the running swap chain kept its startup
+     * sample count (Direct3D; see render::multisample_change_is_live). Applying
+     * it live there recreated the swap chain under the Steam overlay and bgfx
+     * aborted the process with "Failed to create swap chain."
+     */
+    [[nodiscard]] bool multisample_deferred_by(const settings::ClientSettings& before,
+                                               const settings::ClientSettings& after) const {
+        return before.graphics.antialiasing != after.graphics.antialiasing &&
+               renderer.multisample_restart_pending();
+    }
+
     void show_restart_notice() {
         const auto notice = localized_text("CHANGE_MSAA_SETTINGS");
         if (screen() == FrontendScreen::tutorial_world) {
@@ -9972,10 +10076,11 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         const auto bundle = resolve_local_server_bundle();
-        if (!bundle.has_value()) {
-            settings_warning =
-                "The complete BattleSpades server bundle is missing. Put it in server/ "
-                "beside BattleSpadesClient.exe.";
+        // Hosting needs a present, compatible server. When it is missing or
+        // too old the launcher downloads it (never blocks playing).
+        if (const auto gate = platform::check_hosting_gate(config.executable_directory, bundle.has_value());
+            !gate.ready) {
+            settings_warning = gate.message;
             return;
         }
         const auto modes = retail_create_match_modes();
@@ -10538,10 +10643,11 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         const auto bundle = resolve_local_server_bundle();
-        if (!bundle.has_value()) {
-            settings_warning =
-                "The complete BattleSpades server bundle is missing. Put it in server/ "
-                "beside BattleSpadesClient.exe.";
+        // Hosting needs a present, compatible server. When it is missing or
+        // too old the launcher downloads it (never blocks playing).
+        if (const auto gate = platform::check_hosting_gate(config.executable_directory, bundle.has_value());
+            !gate.ready) {
+            settings_warning = gate.message;
             return;
         }
 
@@ -13511,14 +13617,6 @@ struct NativeFrontendModule::Impl final {
                                                  std::chrono::microseconds{1'000}};
                     return network::decode_create_player(packet);
                 }();
-                std::optional<std::uint8_t> previous_class;
-                if (created) {
-                    if (const auto* previous =
-                            tutorial_roster.player(created.packet->player_id);
-                        previous != nullptr) {
-                        previous_class = previous->class_id;
-                    }
-                }
                 {
                     const PerformanceScope stage{"create_player_audio",
                                                  std::chrono::microseconds{1'000}};
@@ -13549,15 +13647,11 @@ struct NativeFrontendModule::Impl final {
                                                  std::chrono::microseconds{1'000}};
                     return tutorial_roster.apply(packet, &error);
                 }();
-                if (roster_applied && created &&
-                    zombie_conversion_audio.observe_conversion(
-                        previous_class, created.packet->class_id,
-                        ZombieConversionAudioGate::clock::now()) &&
-                    audio_started && audio != nullptr &&
-                    !audio->play_named_one_shot(
-                        "zombie_become", {}, 1.0F, true)) {
-                    settings_warning = std::string{audio->last_error()};
-                }
+                // No zombie_become here. Retail's client never plays SOUND_MAP
+                // 28 on its own (no *_SOUND_ID is referenced by any client
+                // module); the server sends it once per outbreak. Inferring it
+                // from every human->Zombie CreatePlayer replayed a 3.25 s
+                // full-scale stereo sting on each ordinary Zombie kill.
                 if (roster_applied && created) {
                     if (const auto* player = tutorial_roster.player(created.packet->player_id);
                         player != nullptr) {
@@ -14266,7 +14360,7 @@ struct NativeFrontendModule::Impl final {
                             "CreateEntity rejected invalid type, face, or entity budget";
                     } else if (entity.type == 11U && local_player_id == entity.owner &&
                                death_camera.active()) {
-                        death_camera.bind_grave(entity.id, entity.position);
+                        death_camera.bind_grave(entity.id, grave_camera_focus(entity));
                     } else if (entity.type == 13U && local_player_id == entity.owner) {
                         // flareBlockTool.py:47: block_count -= FLAREBLOCK_COST,
                         // paid here for the one flare this client asked for
@@ -15250,6 +15344,8 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         death_camera.set_terrain(&tutorial_session->map());
+        // One retail Camera: the death controllers inherit the look angles.
+        death_camera.set_view_angles(tutorial_session->yaw(), tutorial_session->pitch());
         death_camera.begin_death(corpse->position,
                                  death_killer_info(pending.killer_id, pending.kill_type),
                                  !network_match || match_initial_info.enable_deathcam,
@@ -15326,6 +15422,8 @@ struct NativeFrontendModule::Impl final {
             }
         }
         death_camera.set_terrain(&tutorial_session->map());
+        // One retail Camera: the death controllers inherit the look angles.
+        death_camera.set_view_angles(tutorial_session->yaw(), tutorial_session->pitch());
         death_camera.begin_death(player.position,
                                  death_killer_info(killer_id, kill_type),
                                  !network_match || match_initial_info.enable_deathcam,
@@ -15362,9 +15460,9 @@ struct NativeFrontendModule::Impl final {
             for (const auto& entity : tutorial_session->entities()) {
                 if (entity.type == 11U && entity.owner == *local_player_id && entity.alive) {
                     if (!death_camera.grave_entity_id().has_value()) {
-                        death_camera.bind_grave(entity.id, entity.position);
+                        death_camera.bind_grave(entity.id, grave_camera_focus(entity));
                     } else {
-                        death_camera.update_grave(entity.id, entity.position);
+                        death_camera.update_grave(entity.id, grave_camera_focus(entity));
                     }
                     break;
                 }
@@ -19151,6 +19249,7 @@ struct NativeFrontendModule::Impl final {
         // never performs synchronous PNG work during combat.
         for (const auto asset : {game_hud_assets::weapon_frame,
                                  game_hud_assets::weapon_frame_selected,
+                                 game_hud_assets::prefab_blueprint,
                                  game_hud_assets::ammo_frame,
                                  game_hud_assets::score_frame,
                                  game_hud_assets::damage_indicator,
@@ -19160,6 +19259,7 @@ struct NativeFrontendModule::Impl final {
                                  game_hud_assets::minimap_player,
                                  game_hud_assets::minimap_view_cone,
                                  game_hud_assets::minimap_vip_player,
+                                 game_hud_assets::minimap_zombie_heart,
                                  game_hud_assets::minimap_base,
                                  game_hud_assets::minimap_grave,
                                  game_hud_assets::minimap_turret,
@@ -20685,16 +20785,21 @@ struct NativeFrontendModule::Impl final {
             // State bit 0x08 is set_touching_goo, not wade; wade follows the
             // water plane like the remote collision bodies (origin z > 237).
             session_config.initial_wade = replica->position.z > 237.0;
-            if (pending_class_selection.has_value()) {
-                session_config.initial_class_id = pending_class_selection->class_id;
-                session_config.initial_loadout = pending_class_selection->loadout;
-                session_config.initial_prefabs = pending_class_selection->prefabs;
-                session_config.initial_ugc_tools = pending_class_selection->ugc_tools;
-            } else {
-                session_config.initial_class_id = replica->class_id;
-                session_config.initial_loadout = replica->loadout;
-                session_config.initial_prefabs = replica->prefabs;
-                session_config.initial_ugc_tools = replica->ugc_tools;
+            // The local CreatePlayer (checked above) carries the loadout the
+            // server committed; the request we sent is only a fallback. Using
+            // the request first handed a Zombie-mode infected player the
+            // Flare Block from automatic_class_selection: the zombie class
+            // has no FPS arms, and the server refused every tool-22 byte and
+            // PlaceFlareBlock ("no hands, cannot place").
+            {
+                const auto spawn = world::live_spawn_selection(
+                    world::ClassSelection{replica->class_id, replica->loadout,
+                                          replica->prefabs, replica->ugc_tools},
+                    pending_class_selection.has_value() ? &*pending_class_selection : nullptr);
+                session_config.initial_class_id = spawn.class_id;
+                session_config.initial_loadout = spawn.loadout;
+                session_config.initial_prefabs = spawn.prefabs;
+                session_config.initial_ugc_tools = spawn.ugc_tools;
             }
             if (const auto* class_definition =
                     world::find_class_definition(session_config.initial_class_id);
@@ -21329,7 +21434,11 @@ struct NativeFrontendModule::Impl final {
             settings_warning = "screenshot failed: " + error;
             return;
         }
-        std::fprintf(stderr, "Taking screenshot: %s\n", path.string().c_str());
+        // u8string: string() throws when the install path is outside the ANSI
+        // code page (e.g. C:\Игры\BattleSpades\AoS_Screenshots).
+        const auto screenshot_utf8 = path.u8string();
+        std::fprintf(stderr, "Taking screenshot: %s\n",
+                     std::string{reinterpret_cast<const char*>(screenshot_utf8.data()), screenshot_utf8.size()}.c_str());
     }
 
     /** HelpPanel.set_text(..., override=True): tool tips wait for H. */
@@ -23154,18 +23263,6 @@ struct NativeFrontendModule::Impl final {
                     !player.high_minimap_visibility && local_is_zombie &&
                     player.team != local_team && !is_zombie_class(player.class_id) &&
                     heartbeat_size > 0.0;
-                state.markers.push_back(GameHudMinimapMarker{
-                    std::string{player.high_minimap_visibility
-                                    ? game_hud_assets::minimap_vip_player
-                                : survivor_heart
-                                    ? game_hud_assets::minimap_zombie_heart
-                                    : game_hud_assets::minimap_player},
-                    player.position.x,
-                    player.position.y,
-                    survivor_heart ? heartbeat_size : 16.0,
-                    survivor_heart ? 0.0 : map_rotation,
-                    ui::ColorRgba8{color.red, color.green, color.blue, color.alpha},
-                    player.high_minimap_visibility});
                 // get_map_icon returns immediately for a high-visibility
                 // player before consulting the carried tool. Do not layer a
                 // second bomb/diamond/intel icon on that VIP/spotted marker.
@@ -23177,6 +23274,35 @@ struct NativeFrontendModule::Impl final {
                                              : player.pickup_id == 16U || player.tool_id == 30U
                                                  ? game_hud_assets::minimap_intel
                                                  : std::string_view{};
+                // Player.display_map_icon_out_of_bounds: a Zombie viewer keeps
+                // every visible survivor pinned to the minimap edge, so a
+                // survivor beyond the 128 px window is not simply culled.
+                const std::uint8_t opposite_team =
+                    player.team == 2U ? 3U : player.team == 3U ? 2U : 0U;
+                const bool opposite_team_sees_other =
+                    (opposite_team == 2U && match_state_info.team1_can_see_team2) ||
+                    (opposite_team == 3U && match_state_info.team2_can_see_team1) ||
+                    (opposite_team != 0U && server_team_map_visibility[opposite_team]);
+                const bool pin_to_edge = player_marker_pins_to_minimap_edge(
+                    PlayerMarkerEdgePinInputs{
+                        player.high_minimap_visibility,
+                        !objective_asset.empty(),
+                        false,
+                        local_is_zombie,
+                        match_initial_info.exposed_teams_always_on_minimap,
+                        opposite_team_sees_other});
+                state.markers.push_back(GameHudMinimapMarker{
+                    std::string{player.high_minimap_visibility
+                                    ? game_hud_assets::minimap_vip_player
+                                : survivor_heart
+                                    ? game_hud_assets::minimap_zombie_heart
+                                    : game_hud_assets::minimap_player},
+                    player.position.x,
+                    player.position.y,
+                    survivor_heart ? heartbeat_size : 16.0,
+                    survivor_heart ? 0.0 : map_rotation,
+                    ui::ColorRgba8{color.red, color.green, color.blue, color.alpha},
+                    pin_to_edge});
                 if (!objective_asset.empty()) {
                     state.markers.push_back(GameHudMinimapMarker{
                         std::string{objective_asset},
@@ -25534,13 +25660,16 @@ struct NativeFrontendModule::Impl final {
                     icon = std::string{world::ugc_tool_icon_asset(
                         static_cast<std::uint8_t>(slot.variant_id))};
                 }
+                const bool palette_icon = !icon.empty();
                 if (icon.empty() && definition != nullptr) {
                     icon = cosmetic_weapon_icon(slot.tool_id,definition->toolbar_icon_asset,local_player_team_index()==0U);
                 }
                 hud_slots.push_back({std::move(icon),
                                      index < 9U    ? std::to_string(index + 1U)
                                      : index == 9U ? "0"
-                                                   : std::string{}});
+                                                   : std::string{},
+                                     slot.kind != world::InventorySlotKind::loadout,
+                                     palette_icon ? 211.0 : 330.0});
             }
             game_hud.set_inventory_state(std::move(hud_slots),
                                          selected_global >= first && selected_global < last
@@ -25610,11 +25739,17 @@ struct NativeFrontendModule::Impl final {
                     icon = std::string{world::ugc_tool_icon_asset(
                         static_cast<std::uint8_t>(slot.variant_id))};
                 }
+                // Prefab palette and UGC tool images load at global_scale
+                // 0.64 (330 -> 211 px); TOOL_IMAGES load at 1.0.
+                const bool palette_icon = !icon.empty();
                 if (icon.empty() && definition != nullptr) {
                     icon = cosmetic_weapon_icon(slot.tool_id,definition->toolbar_icon_asset,local_player_team_index()==0U);
                 }
-                hud_slots.push_back(
-                    GameHudInventorySlot{icon, index == 9U ? "0" : std::to_string(index + 1U)});
+                // draw_loadout_item_hud labels every entry str(item_index + 1).
+                hud_slots.push_back(GameHudInventorySlot{
+                    icon, std::to_string(index + 1U),
+                    slot.kind != world::InventorySlotKind::loadout,
+                    palette_icon ? 211.0 : 330.0});
             }
             game_hud.set_inventory_state(
                 std::move(hud_slots), inventory.selected_index(), inventory.toolbar_visible());
@@ -25827,8 +25962,8 @@ struct NativeFrontendModule::Impl final {
     void update_mouse_capture() {
         const bool want_capture =
             tutorial_session != nullptr && screen() == FrontendScreen::tutorial_world &&
-            window_focused && !window_suspended && !game_chat.active() &&
-            !ugc_ingame_settings.visible() && !match_results.visible() &&
+            window_focused && !window_suspended && !steam_overlay_gate.suspended() &&
+            !game_chat.active() && !ugc_ingame_settings.visible() && !match_results.visible() &&
             !kick_vote_select.visible();
         if (want_capture == mouse_captured) {
             return;
@@ -27497,6 +27632,8 @@ struct NativeFrontendModule::Impl final {
             create_match_menu.set_match_join_available(false);
             // mapsPanel.populate (non-UGC): SAVED_MAPS and SUBSCRIBED_MAPS.
             create_match_menu.set_custom_maps(scan_create_match_custom_maps());
+            // New subscriptions land in the list as they finish downloading.
+            request_workshop_sync();
             create_match_menu.set_players(
                 {CreateMatchPlayer{0U, config.player_name, "TEAM_NEUTRAL", true, true, false}});
             reset_create_match_page_transition();
@@ -27622,6 +27759,15 @@ bool NativeFrontendModule::start() {
             impl_->last_error = "SDL did not provide a renderer-ready native window";
             return false;
         }
+
+        // Attach to Steam before bgfx creates the Direct3D device. Launched
+        // outside Steam, SteamAPI_Init is what loads GameOverlayRenderer64.dll,
+        // and the overlay can only hook a swap chain created after it loaded;
+        // attaching after renderer start (as before 2026-09-30) left Shift+Tab
+        // dead in every run Steam did not launch. This is also the single
+        // launch attempt for identity and the debug-ui paths below; a failure
+        // is retried every 30 s by pump_steam_integration().
+        impl_->attach_steam_for_presence();
 
         // Retail run.py installs this exact authored cursor and hotspot. SDL
         // owns it at the window boundary so pointer motion never waits for a
@@ -27972,10 +28118,9 @@ bool NativeFrontendModule::start() {
                     *impl_->config.debug_ui == "scoreboard");
             }
         } else {
-            // Steam must be attached first: the identity decision asks it who
-            // this player is, and a first run with Steam authorized should not
-            // stop at a form it can already fill in.
-            impl_->attach_steam_for_presence();
+            // Steam was attached before the renderer started (see above): the
+            // identity decision asks it who this player is, and a first run
+            // with Steam authorized should not stop at a form it can fill in.
             impl_->begin_identity_bootstrap();
         }
         impl_->reset_create_match_page_transition();
@@ -27996,10 +28141,6 @@ bool NativeFrontendModule::start() {
         impl_->window_suspended = false;
         impl_->suppress_next_settings_close = false;
         impl_->last_error.clear();
-        // Harmless when the identity path above already attached: the runtime
-        // starts once and reports itself ready thereafter. This covers the
-        // debug-ui launches, which skip identity entirely.
-        impl_->attach_steam_for_presence();
         if (impl_->config.startup_steam_lobby.has_value()) {
             // "+connect_lobby <id>": a lobby invite accepted while the game
             // was closed. Its connect value is read once Steam is attached.
@@ -28340,6 +28481,19 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->pointer_move(mapped_point(pointer.x, pointer.y));
     };
     for (const auto& event : impl_->window.events()) {
+        if (impl_->steam_overlay_gate.suspended() &&
+            (event.type == platform::WindowEventType::key_pressed ||
+             event.type == platform::WindowEventType::key_released ||
+             event.type == platform::WindowEventType::text_input ||
+             event.type == platform::WindowEventType::mouse_moved ||
+             event.type == platform::WindowEventType::mouse_button_pressed ||
+             event.type == platform::WindowEventType::mouse_button_released ||
+             event.type == platform::WindowEventType::mouse_wheel)) {
+            // Steam's overlay owns keyboard and mouse while it is open; the
+            // overlay usually swallows them, but raw input can still reach
+            // SDL, and chat typed to a friend must not reach the game.
+            continue;
+        }
         const auto route_before_event = impl_->screen();
         const auto create_page_before_event = impl_->create_match_page_shell.active();
         if (event.type == platform::WindowEventType::key_pressed &&

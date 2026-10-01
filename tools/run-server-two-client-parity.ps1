@@ -10,14 +10,14 @@ spawned process is owned and stopped by this script.
 #>
 [CmdletBinding()]
 param(
-    [string] $ServerRoot = 'G:\AoSRevival\BattleSpades',
-    [string] $BuildRoot = 'G:\AoSRevival\BattleSpadesClient\out\build\native-dev',
+    [string] $ServerRoot = (Join-Path $PSScriptRoot '..\..\BattleSpades'),
+    [string] $BuildRoot = (Join-Path $PSScriptRoot '..\out\build\native-dev'),
     [string] $ServerExecutable = '',
     [string[]] $ClientArguments = @(),
     [int] $Port = 32775,
     [ValidateRange(8, 60)][int] $Seconds = 12,
     [ValidateRange(0, 10)][int] $SecondClientDelaySeconds = 5,
-    [string] $EvidenceDirectory = 'G:\AoSRevival\BattleSpadesClient\out\evidence\two-client-parity'
+    [string] $EvidenceDirectory = (Join-Path $PSScriptRoot '..\out\evidence\two-client-parity')
 )
 
 Set-StrictMode -Version Latest

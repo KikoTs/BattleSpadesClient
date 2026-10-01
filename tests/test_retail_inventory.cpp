@@ -38,9 +38,13 @@ int main() {
         expect(inventory.select_slot(2U, InventorySelectionOrigin::direct_slot),
                "a number key must address its slot directly");
         auto event = inventory.take_selection_event();
-        expect(event.has_value() && event->changed && !event->animate_toolbar,
-               "number selection must switch immediately without wheel HUD animation");
-        expect(!inventory.toolbar_visible(), "number selection must not open the toolbar");
+        // GameScene.on_key_press (number keys) calls
+        // HUD.set_show_tool_loadout(True, 1.0), exactly like the wheel.
+        expect(event.has_value() && event->changed && event->animate_toolbar,
+               "number selection must switch immediately and open the tool strip");
+        expect(inventory.toolbar_visible() &&
+                   std::fabs(inventory.toolbar_remaining() - 1.0) < 1e-9,
+               "number selection must show the strip for one second");
         expect(std::fabs(inventory.pullout_remaining() - 0.5) < 1e-9,
                "a changed tool must start Character's 0.5 second pullout");
 
@@ -53,25 +57,25 @@ int main() {
                "wheel selection must open the retail toolbar");
 
         inventory.tick(0.1);
-        const auto running_toolbar = inventory.toolbar_remaining();
         expect(inventory.cycle(1) && inventory.selected_tool_id() == 5U,
                "wheel selection must skip disabled entries and wrap");
         event = inventory.take_selection_event();
-        expect(std::fabs(inventory.toolbar_remaining() - running_toolbar) < 1e-9,
-               "wheel input must not restart a running retail HUD scale timer");
-        expect(event.has_value() && !event->animate_toolbar,
-               "a running retail scale timer must suppress another animation request");
+        expect(std::fabs(inventory.toolbar_remaining() - 1.0) < 1e-9,
+               "every wheel notch must restart the one-second tools_timer");
+        expect(event.has_value() && event->animate_toolbar,
+               "every wheel notch must re-request set_show_tool_loadout(True, 1.0)");
         expect(inventory.cycle(-1) && inventory.selected_tool_id() == 23U,
                "wheel-up must traverse in the reverse direction");
         expect(!inventory.select_slot(4U, InventorySelectionOrigin::direct_slot),
                "disabled number slots must be rejected");
         expect(!inventory.cycle(1, false), "a non-swappable weapon must consume no wheel step");
 
-        inventory.tick(0.1);
+        inventory.tick(0.9);
         expect(inventory.toolbar_visible(),
-               "the selected authored scale must remain visible until toolbar timeout");
-        inventory.tick(0.81);
-        expect(!inventory.toolbar_visible(), "the wheel toolbar must close after one second");
+               "the enlarged strip must remain visible until its one-second timeout");
+        inventory.tick(0.11);
+        expect(!inventory.toolbar_visible(),
+               "the strip must close one second after the last selection");
 
         RetailInventory ammunition;
         ammunition.set_slots({InventorySlot{17U}, InventorySlot{2U}}, 0U);

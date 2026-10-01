@@ -259,6 +259,18 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
             options.startup_steam_lobby = *lobby;
             continue;
         }
+        // Steam launch options `"<exe>" %command%` expand %command% to the
+        // retail executable ("...\aceofspades\aos.exe"), so a client pointed
+        // at directly from Steam receives it as a bare argument. It carries
+        // no meaning here; Steam's own switches after it still parse.
+        // (BattleSpadesLauncher strips it too; see docs/INSTALLER_AND_UPDATER.md.)
+        if (argument.size() > 4U && argument.front() != '-' && argument.front() != '+') {
+            std::string extension{argument.substr(argument.size() - 4U)};
+            for (auto& character : extension) {
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            }
+            if (extension == ".exe") continue;
+        }
         // Steam appends a friend's rich presence "connect" value verbatim to
         // the command line. Builds before 2026-09-28 published a bare
         // "steam:<id>" there, so a Join on such a friend arrives as a lone

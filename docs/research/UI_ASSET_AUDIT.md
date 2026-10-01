@@ -5,7 +5,7 @@
 This audit identifies the assets and recovered behavior needed for the first
 native `SelectMenu` render. It covers the immutable asset mirror in
 `assets/original` and the canonical recovered client in
-`G:\AoSRevival\aos-nonsteam\src`.
+`../aos-nonsteam\src`.
 
 ## Evidence and confidence
 

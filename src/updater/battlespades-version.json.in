@@ -1,0 +1,9 @@
+{
+  "product": "BattleSpadesClient",
+  "version": "@AOS_RELEASE_VERSION@",
+  "protocol": @AOS_NETWORK_PROTOCOL@,
+  "components": {
+    "client": "@AOS_RELEASE_VERSION@",
+    "assets": "@AOS_ASSETS_VERSION@"
+  }
+}

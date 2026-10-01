@@ -763,6 +763,8 @@ struct BgfxUiRenderer::Impl final {
     UiTextureInfo preview_texture{}, preview_white{};
     std::thread::id owner_thread{};
     std::string error{};
+    /** Last sample count asked for; config holds the one actually in force. */
+    std::uint8_t requested_multisample{};
     bool initialized{false};
     bool frame_open{false};
     std::size_t dropped_draws{};
@@ -842,6 +844,7 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
 
     impl_->initialized = true;
     impl_->config = config;
+    impl_->requested_multisample = config.multisample_samples;
     impl_->drawable = config.drawable_extent;
     impl_->design = config.design_extent;
     impl_->asset_root = asset_root;
@@ -978,18 +981,34 @@ bool BgfxUiRenderer::set_presentation_options(bool vertical_sync,
         return impl_->fail("bgfx UI presentation options cannot change during an open frame");
     }
 
+    // A sample-count change on Direct3D replaces the swap chain, which is
+    // fatal while the Steam overlay holds the old one; keep the startup count
+    // there and let the caller report the change as pending a restart.
+    impl_->requested_multisample = multisample_samples;
+    const auto applied_samples = multisample_change_is_live(active_backend())
+                                     ? multisample_samples
+                                     : impl_->config.multisample_samples;
     if (impl_->config.vertical_sync == vertical_sync &&
-        impl_->config.multisample_samples == multisample_samples) {
+        impl_->config.multisample_samples == applied_samples) {
+        impl_->error.clear();
         return true;
     }
 
     impl_->config.vertical_sync = vertical_sync;
-    impl_->config.multisample_samples = multisample_samples;
+    impl_->config.multisample_samples = applied_samples;
     if (impl_->drawable.is_valid()) {
         bgfx::reset(impl_->drawable.width, impl_->drawable.height, reset_flags(impl_->config));
     }
     impl_->error.clear();
     return true;
+}
+
+bool BgfxUiRenderer::multisample_restart_pending() const noexcept {
+    return impl_->initialized && impl_->requested_multisample != impl_->config.multisample_samples;
+}
+
+std::uint8_t BgfxUiRenderer::active_multisample_samples() const noexcept {
+    return impl_->initialized ? impl_->config.multisample_samples : std::uint8_t{};
 }
 
 std::optional<UiTextureInfo> BgfxUiRenderer::load_texture(const std::filesystem::path& asset_path,

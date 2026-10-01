@@ -12,13 +12,15 @@ namespace battlespades::frontend {
 }
 
 /**
- * Deduplicates retail's global Zombie-conversion sting.
+ * Gate for retail's global Zombie outbreak sting (SOUND_MAP 28,
+ * `zombie_become`).
  *
- * Some compatible servers send PlaySound(28), while others expose only the
- * authoritative human-to-Zombie CreatePlayer transition. The client accepts
- * both representations, groups simultaneous Patient Zero conversions, and
- * emits exactly one global cue. Initial Zombie roster creation and ordinary
- * Zombie respawns are deliberately silent.
+ * Only the server's PlaySound(28) plays it. The retail client never plays a
+ * `*_SOUND_ID` cue on its own, and the retail server sends this one once per
+ * outbreak, not per infection (BattleSpades docs/SOUNDS_RETAIL.md, "Zombie
+ * outbreak ... once per outbreak"). A human-to-Zombie CreatePlayer -- which
+ * is what every ordinary Zombie kill produces -- is therefore silent.
+ * Duplicate packets within 300 ms still collapse to one cue.
  */
 class ZombieConversionAudioGate final {
 public:
@@ -26,14 +28,11 @@ public:
     using time_point = clock::time_point;
     static constexpr auto duplicate_window = std::chrono::milliseconds{300};
 
-    [[nodiscard]] bool observe_conversion(
-        std::optional<std::uint8_t> previous_class,
-        std::uint8_t new_class, time_point now) noexcept {
-        if (!previous_class.has_value() || is_zombie_class(*previous_class) ||
-            !is_zombie_class(new_class)) {
-            return false;
-        }
-        return accept(now);
+    /** A CreatePlayer class change never plays the sting in retail. */
+    [[nodiscard]] static constexpr bool
+    plays_on_conversion(std::optional<std::uint8_t> /*previous_class*/,
+                        std::uint8_t /*new_class*/) noexcept {
+        return false;
     }
 
     [[nodiscard]] bool observe_explicit(time_point now) noexcept {

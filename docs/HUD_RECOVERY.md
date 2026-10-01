@@ -546,10 +546,10 @@ minimap and gamemode topics are not. Read §0 before trusting anything here.
 
 Raw data, checked in so it survives:
 
-* `docs/recovery/hud_findings_raw.json` — 224 findings across four topics, each
+* `docs/archive/recovery/hud_findings_raw.json` — 224 findings across four topics, each
   with `claim`, `citation`, and `confidence` (`decompiled` vs `inferred`), plus
   a per-topic `unrecoverable` list.
-* `docs/recovery/hud_verification_verdicts.json` — the adversarial verdicts.
+* `docs/archive/recovery/hud_verification_verdicts.json` — the adversarial verdicts.
 
 ## Current implementation update (2026-07-29)
 
@@ -591,7 +591,7 @@ strict decode/presentation tests:
 * kill feed, top-screen `CHAT_BIG`, respawn overlay and damage-direction
   indicator.
 
-The original `G:/AoSRevival/BattleSpades` server is a read-only compatibility
+The original `../BattleSpades` server is a read-only compatibility
 target. All packet adaptation is client-side.
 
 The full-map GL overlay quads are now recovered and implemented. They were not
@@ -775,7 +775,7 @@ Notes that cost time to establish:
 `base_index`, `action`, `controlled_by`, `attacked_by`, then signed
 fixed-point `capture_amount` at scale 64. The decoder rejects actions above 7,
 team IDs above 3, truncated fixed values, and trailing bytes. The original
-`G:/AoSRevival/BattleSpades` implementation was used only as read-only wire
+`../BattleSpades` implementation was used only as read-only wire
 evidence; the adapter and all retained state live in this client.
 
 The recovered action state machine is:

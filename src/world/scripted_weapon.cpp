@@ -1,4 +1,5 @@
 #include "battlespades/world/scripted_weapon.hpp"
+#include "battlespades/world/cosmetic_files.hpp"
 #include "battlespades/world/kv6_model.hpp"
 #include <angelscript.h>
 #include <scriptarray.h>
@@ -28,7 +29,8 @@ std::filesystem::path contained(const std::filesystem::path& root,const std::str
     const auto resolved=std::filesystem::weakly_canonical(root/p);
     const auto relative=resolved.lexically_relative(std::filesystem::weakly_canonical(root));
     if(relative.empty()||*relative.begin()=="..")throw std::runtime_error("Skin resource escapes pack");
-    return resolved;
+    // Retail-identical pack files resolve to the player's imported copy.
+    return resolve_cosmetic_file(resolved);
 }
 }
 void ScriptedWeaponMotion::apply(SkinInput& input, bool enabled) {

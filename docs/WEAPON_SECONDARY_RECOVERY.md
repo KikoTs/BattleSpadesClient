@@ -3,12 +3,12 @@
 > **Recovery/specification reference.** Preserve the measured retail behavior and its evidence. Implementation updates, old build paths, test counts and session constraints below describe their original investigation; they are not current release or deployment status. Use the [maintained documentation index](README.md) for present operating instructions and recheck historical findings against current source.
 
 Authoritative per-tool specification for right-mouse behaviour and aim-down-sights,
-recovered from the retail decompile (`G:/AoSRevival/aceofspades_source`) and from
+recovered from the retail decompile (`<retail-source>`) and from
 `character.pyd` / `gameScene.pyd` via IDA. Every claim below carries a `file:line`
 or a binary address. Anything that could not be recovered is in
 [UNRECOVERABLE](#5-unrecoverable) — do not invent it.
 
-Scope note: `G:/AoSRevival/BattleSpades` (our Python 3 server) is **not** retail and
+Scope note: `../BattleSpades` (our Python 3 server) is **not** retail and
 is never cited as authority here.
 
 ---
@@ -423,7 +423,7 @@ procedural HUD vignette is ruled out too. The `laser_sight_beam_*.png` /
 not to any scope.
 
 All paths below are relative to
-`G:/AoSRevival/BattleSpadesClient/assets/original/`, with exact on-disk casing.
+`assets/original/`, with exact on-disk casing.
 
 ### Sight models consumed by an ADS weapon (all SHIP)
 

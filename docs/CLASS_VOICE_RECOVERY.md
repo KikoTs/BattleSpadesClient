@@ -56,7 +56,7 @@ Retail's whole vocal system is **one table with 16 slots per class**, of which *
 
 ## A. THE VO TABLE
 
-Source of truth: `G:/AoSRevival/aceofspades_source/shared/constants.py:5610-5935` (`CLASS_SOUNDS`, closing at `:5935` with `A2412 = CLASS_SOUNDS` at `:5936`). Vendored identically on the server at `G:/AoSRevival/BattleSpades/shared/constants.py:6231`.
+Source of truth: `<retail-source>/shared/constants.py:5610-5935` (`CLASS_SOUNDS`, closing at `:5935` with `A2412 = CLASS_SOUNDS` at `:5936`). Vendored identically on the server at `../BattleSpades/shared/constants.py:6231`.
 
 The recovery counted **51 unique specs and 374 distinct `.ogg` files** and checked the then-existing source/staged asset roots. That historical result does not verify a current install; regenerate and verify staged assets before release. There is no equivalent of the weapon table's one known hole (`snowcan_reload`, `tests/test_weapon_audio_map.cpp:39`).
 
@@ -192,7 +192,7 @@ The generator already imports the retail tables from the server tree (`load_cons
 - Handle both row shapes: the six `*_VO` slots plus `DEATH_SOUND` are 3-element lists or the bare string `""`; `PERIODIC_SOUND` is a 3-tuple `(spec, min, max)` whose `spec` is itself either a list or `""`.
 - Emit rows at the existing emit site (`:118-127`), one extra `{...}` per class.
 - Fold the voice rows into `digest_rows` (`:89-99`) so `class_catalog_contract_sha256()` (`class_catalog.hpp:85`, emitted at `:171`) changes whenever the table changes.
-- Regenerate with `--server-root G:/AoSRevival/BattleSpades`. **Never hand-edit `src/world/class_catalog.generated.cpp`** — banner at `:70` and the `--check` mode at `:181-186` exist to enforce that.
+- Regenerate with `--server-root ../BattleSpades`. **Never hand-edit `src/world/class_catalog.generated.cpp`** — banner at `:70` and the `--check` mode at `:181-186` exist to enforce that.
 
 ### 3. Backend binding — `src/audio/openal_frontend_audio.cpp`
 

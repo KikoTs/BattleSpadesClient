@@ -6,6 +6,7 @@
 #include "battlespades/world/weapon_zoom.hpp"
 #include "battlespades/world/retail_recoil.hpp"
 #include "battlespades/world/retail_blast.hpp"
+#include "battlespades/world/retail_random.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1149,7 +1150,13 @@ void TutorialWorldSession::process_weapon_action(const WeaponAction& action) {
     // 22 placed nothing at all. It is an ordinary destructible voxel that also
     // registers a static point light, exactly as retail's FlareBlockEntity did.
     if (action.kind == WeaponActionKind::flare_place) {
-        place_block(true);
+        if (!place_block(true)) {
+            // flareBlockTool.py use_primary: a refused cube plays
+            // BUILD_ERROR_SOUND (presentation only; nothing is placed).
+            weapon_actions_.push_back(WeaponAction{WeaponActionKind::placement_rejected,
+                                                   action.tool_id, 0U, 1U, false, 0.0, false,
+                                                   0.0});
+        }
         return;
     }
     if (action.kind != WeaponActionKind::hitscan && action.kind != WeaponActionKind::melee &&
@@ -2216,8 +2223,9 @@ void TutorialWorldSession::apply_melee_terrain(const WeaponAction& action,
                                                const VoxelCell& center,
                                                const TerrainImpactEvent& impact) {
     std::vector<VoxelCell> cells;
+    std::vector<double> cell_damage;
     double damage = weapon.block_damage;
-    const auto add = [&](int dx, int dy, int dz) {
+    const auto add = [&](int dx, int dy, int dz, std::optional<double> amount = std::nullopt) {
         const auto x = static_cast<std::int64_t>(center.x) + dx;
         const auto y = static_cast<std::int64_t>(center.y) + dy;
         const auto z = static_cast<std::int64_t>(center.z) + dz;
@@ -2226,6 +2234,7 @@ void TutorialWorldSession::apply_melee_terrain(const WeaponAction& action,
             cells.push_back({static_cast<std::uint32_t>(x),
                              static_cast<std::uint32_t>(y),
                              static_cast<std::uint32_t>(z)});
+            cell_damage.push_back(amount.value_or(-1.0));
         }
     };
 
@@ -2233,14 +2242,27 @@ void TutorialWorldSession::apply_melee_terrain(const WeaponAction& action,
                       (action.tool_id == 45U && action.secondary);
     const bool column = action.tool_id == 2U || action.tool_id == 4U;
     if (cube) {
+        // Retail BlockManager.handle_damage cube types (BS
+        // server/block_damage_model.py FOOTPRINTS, fitted live; applied the
+        // same way by server/combat_runtime.py _apply_native_dig): each cell
+        // of the centred 3x3x3 takes ceil4(amount + E * random()) and breaks
+        // only when its accumulated damage reaches its health (map 5, built
+        // 9). E = 5 Super Spade (SUPERSPADE_DAMAGE 3), 8 Zombie hands
+        // (ZOMBIE_DAMAGE 17), 0 UGC Super Spade RMB (type 31). The amount is
+        // the stock DiggingTool block_damage (BS server/dig_profiles.py:
+        // Zombie hands 2, Super Spade 7.5) or
+        // UGC_SUPERSPADE_SECONDARY_DAMAGE_AMOUNT 7.5 (combat_runtime.py
+        // _spade_profile_for_packet). Zombie hands therefore crack a map
+        // voxel with 2..10 per swing and never erase the whole cube at once.
+        const double amount = action.tool_id == 45U ? 7.5 : weapon.block_damage;
+        const double extra = action.tool_id == 24U ? 8.0 : action.tool_id == 3U ? 5.0 : 0.0;
+        // Python 2 random.Random(Damage.seed): one draw per footprint cell in
+        // x-major order, solid or not (block_damage_model.footprint).
+        RetailRandom random{action.seed};
         for (int dx = -1; dx <= 1; ++dx)
             for (int dy = -1; dy <= 1; ++dy)
                 for (int dz = -1; dz <= 1; ++dz)
-                    add(dx, dy, dz);
-        // Retail BlockManager removes the complete SuperSpade/ZombieHands
-        // action footprint atomically; per-cell damage constants are combat
-        // balance values, not a request to leave 27 ghost/cracked cells.
-        damage = default_block_health;
+                    add(dx, dy, dz, std::ceil((amount + extra * random.random()) * 4.0) / 4.0);
     } else if (column) {
         add(0, 0, -1);
         add(0, 0, 0);
@@ -2256,10 +2278,12 @@ void TutorialWorldSession::apply_melee_terrain(const WeaponAction& action,
 
     bool center_destroyed{};
     std::vector<VoxelCell> destroyed_cells;
-    for (const auto& cell : cells) {
+    for (std::size_t index{}; index < cells.size(); ++index) {
+        const auto& cell = cells[index];
         if (!map_->solid(cell.x, cell.y, cell.z))
             continue;
-        const bool destroyed = damage_voxel(cell.x, cell.y, cell.z, damage, false);
+        const double applied = cell_damage[index] >= 0.0 ? cell_damage[index] : damage;
+        const bool destroyed = damage_voxel(cell.x, cell.y, cell.z, applied, false);
         if (destroyed)
             destroyed_cells.push_back(cell);
         if (cell.x == center.x && cell.y == center.y && cell.z == center.z) {
@@ -2361,32 +2385,67 @@ void TutorialWorldSession::swing_spade() {
     }
 }
 
-void TutorialWorldSession::place_block(bool emits_light) {
+bool TutorialWorldSession::place_block(bool emits_light) {
     // BlockTool costs one block, FlareBlockTool FLAREBLOCK_COST (10); both
     // refuse when the wallet cannot pay (get_has_enough_ammo).
     const int cost = emits_light ? retail_flare_block_cost : 1;
     const int wallet = debug_full_loadout_ ? static_cast<int>(sandbox_inventory_.blocks())
                                            : blocks_remaining_;
     if (!infinite_blocks_ && wallet < cost) {
-        return;
+        return false;
     }
-    const auto hit =
-        raycast_voxels(*map_, player_.position, player_.orientation, melee_world_range);
-    if (!hit.has_value()) {
-        return;
+    std::int64_t place_x{};
+    std::int64_t place_y{};
+    std::int64_t place_z{};
+    if (emits_light) {
+        // flareBlockTool.py use_primary places at BlockToolCommon's hit_cube
+        // -- the cube its ghost draws, found out to MAX_BLOCK_DISTANCE with
+        // the bridge fallback -- and only while `valid_placement and
+        // hit_cube and get_has_enough_ammo()`. The four-block melee ray used
+        // before refused every cube past arm's length while the ghost said
+        // it was placeable, so the click did nothing.
+        auto orientation = player_.orientation;
+        const double length = std::sqrt(orientation.x * orientation.x +
+                                        orientation.y * orientation.y +
+                                        orientation.z * orientation.z);
+        if (length > 1.0e-9) {
+            orientation = {orientation.x / length, orientation.y / length,
+                           orientation.z / length};
+        }
+        const auto body = player_.position;
+        const BlockOccupiedPredicate occupied = [body](const BlockTargetCell& cell) {
+            return block_cell_overlaps_body(cell, body);
+        };
+        const auto target = resolve_block_target(*map_, player_.position, orientation,
+                                                 retail_max_block_distance, occupied);
+        const auto ghost =
+            evaluate_flare_block_ghost(*map_, target, wallet, infinite_blocks_, true, occupied);
+        if (!target.cell.has_value() ||
+            !flare_block_placement_allowed(ghost, wallet, infinite_blocks_)) {
+            return false;
+        }
+        place_x = (*target.cell)[0U];
+        place_y = (*target.cell)[1U];
+        place_z = (*target.cell)[2U];
+    } else {
+        const auto hit =
+            raycast_voxels(*map_, player_.position, player_.orientation, melee_world_range);
+        if (!hit.has_value()) {
+            return false;
+        }
+        place_x = static_cast<std::int64_t>(hit->x) + hit->nx;
+        place_y = static_cast<std::int64_t>(hit->y) + hit->ny;
+        place_z = static_cast<std::int64_t>(hit->z) + hit->nz;
     }
-    const std::int64_t place_x = static_cast<std::int64_t>(hit->x) + hit->nx;
-    const std::int64_t place_y = static_cast<std::int64_t>(hit->y) + hit->ny;
-    const std::int64_t place_z = static_cast<std::int64_t>(hit->z) + hit->nz;
     if (place_x < 0 || place_x >= VxlMap::width || place_y < 0 || place_y >= VxlMap::depth ||
         place_z < 0 || place_z >= VxlMap::height) {
-        return;
+        return false;
     }
     const auto x = static_cast<std::uint32_t>(place_x);
     const auto y = static_cast<std::uint32_t>(place_y);
     const auto z = static_cast<std::uint32_t>(place_z);
     if (map_->solid(x, y, z)) {
-        return;
+        return false;
     }
     // Reject cells overlapping the player: half extent 0.45 around the eye
     // column, from just above the head to the contact feet.
@@ -2404,10 +2463,10 @@ void TutorialWorldSession::place_block(bool emits_light) {
     const bool overlaps_z =
         static_cast<double>(z)<body_bottom&& static_cast<double>(z) + 1.0> body_top;
     if (overlaps_x && overlaps_y && overlaps_z) {
-        return;
+        return false;
     }
     if (!map_->set_voxel(x, y, z, block_color_)) {
-        return;
+        return false;
     }
     tool_cooldown_ = tool_definition(retail_block_tool_id).fire_interval;
     since_primary_ = 0.0;
@@ -2449,6 +2508,7 @@ void TutorialWorldSession::place_block(bool emits_light) {
             }
         }
     }
+    return true;
 }
 
 bool TutorialWorldSession::damage_voxel(

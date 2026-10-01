@@ -76,7 +76,13 @@ credit files at the time of writing:
 - a few items carry custom author terms (for example "distribution needs my
   permission and credit", or "use anything, give credit");
 - one item (`community-sep-170563-1`) states it is part of OpenSpades under
-  **GPL-3.0-or-later**; and
+  **GPL-3.0-or-later**;
+- the AngelScript presentation scripts inside the packs (`Runtime/*.as`,
+  `Scripts/**/*.as`; about 250 files headed "Copyright (c) 2013 yvt" or
+  "OpenSpades Developers") are OpenSpades scripts under **GPL-3.0-or-later**,
+  as their headers state. They are interpreted data shipped with the packs,
+  not compiled into the client; GPL-3.0 and AGPL-3.0 explicitly allow this
+  combination (section 13 of each); and
 - 31 items record "No licence supplied; original archive retained".
 
 Audit of 29 September 2026 (catalogue `collection-v5`, 159 shipped items from
@@ -92,6 +98,10 @@ Audit of 29 September 2026 (catalogue `collection-v5`, 159 shipped items from
 
 Authors are credited by name, source and licence in the credit files above and
 on <https://www.aosplay.net/credits>.
+
+Files in community packs that were byte-identical to original game content
+have been removed; [`retail-substitutes.json`](assets/client/cosmetics/retail-substitutes.json)
+resolves each of them to the player's own imported copy at run time.
 
 Importing a pack does not grant permission to redistribute it. Remove any item
 whose author has not permitted redistribution before shipping it; see

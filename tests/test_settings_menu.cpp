@@ -344,7 +344,9 @@ void scrollbar_arrows_track_and_thumb_drive_the_model() {
            "the rendered up arrow must retreat one logical row");
 }
 
-void in_game_graphics_are_disabled_without_disabling_other_tabs() {
+void in_game_graphics_apply_live() {
+    // Native: retail locked this tab in a match. Every row now applies live
+    // or is marked RESTART_REQUIRED (settings/graphics_apply.hpp).
     SettingsSession session;
     auto environment = full_environment();
     environment.context = SettingsMenuContext::in_game;
@@ -352,17 +354,57 @@ void in_game_graphics_are_disabled_without_disabling_other_tabs() {
     menu.set_active_tab(SettingsTab::graphics);
     const auto view = menu.presentation();
 
-    expect(view.in_game && view.tooltip_key == "SETTINGS_GRAPHICS_DISABLED_MESSAGE",
-           "in-game graphics tab must expose its recovered warning");
-    expect(std::all_of(
-               view.rows.begin(), view.rows.end(), [](const auto& item) { return !item.enabled; }),
-           "every in-game graphics row must be disabled");
-    expect(!view.buttons[0].enabled, "Defaults must be disabled with in-game graphics");
+    expect(view.in_game && view.tooltip_key == "SETTINGS_MESSAGE",
+           "in-game graphics must no longer claim to be unchangeable");
+    expect(row(view, SettingsRowId::resolution).enabled &&
+               row(view, SettingsRowId::vsync).enabled &&
+               row(view, SettingsRowId::antialiasing).enabled &&
+               row(view, SettingsRowId::draw_distance).enabled,
+           "in-game graphics rows must be editable");
+    expect(view.buttons[0].enabled, "Defaults must be available with in-game graphics");
     expect(view.buttons[1].bounds == Rect{160, 480, 232, 41} &&
                view.buttons[2].bounds == Rect{403, 480, 232, 41},
            "in-game footer must use its compact retail geometry");
-    expect(!menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::resolution)),
-           "accessibility focus must reject disabled graphics rows");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::resolution)),
+           "accessibility focus must reach in-game graphics rows");
+}
+
+void direct3d_antialiasing_reads_restart_required() {
+    SettingsSession session;
+    auto environment = full_environment();
+    environment.multisampling_live = false;
+    SettingsMenuModel menu{session, environment};
+    menu.set_active_tab(SettingsTab::graphics);
+    expect(row(menu.presentation(), SettingsRowId::antialiasing).description == "RESTART_REQUIRED",
+           "Antialiasing must say it applies after a restart where it cannot apply live");
+
+    SettingsSession live_session;
+    SettingsMenuModel live{live_session, full_environment()};
+    live.set_active_tab(SettingsTab::graphics);
+    expect(row(live.presentation(), SettingsRowId::antialiasing).description.empty(),
+           "a backend that resets MSAA in place needs no restart label");
+
+    // Done must not claim a restart for a change that applies live; the
+    // frontend adds a deferred MSAA notice from the renderer itself.
+    auto draft = session.draft();
+    draft.graphics.antialiasing = battlespades::settings::Antialiasing::samples_4;
+    draft.graphics.vsync = !draft.graphics.vsync;
+    session.set_graphics(draft.graphics);
+    static_cast<void>(menu.take_effects());
+    menu.activate_done();
+    const auto effects = menu.take_effects();
+    const auto* commit = find_effect<SettingsCommitCommand>(effects);
+    expect(commit != nullptr && commit->changed && !commit->restart_required,
+           "MSAA/VSync commit must not flag a startup-resource restart");
+
+    draft = session.draft();
+    draft.graphics.texture_quality = battlespades::settings::QualityLevel::low;
+    session.set_graphics(draft.graphics);
+    menu.activate_done();
+    const auto texture_effects = menu.take_effects();
+    const auto* texture_commit = find_effect<SettingsCommitCommand>(texture_effects);
+    expect(texture_commit != nullptr && texture_commit->restart_required,
+           "texture quality still requires a restart");
 }
 
 void controls_inventory_collapse_and_scroll_preserve_order() {
@@ -830,8 +872,9 @@ int main() {
          resolution_dropdown_opens_scrolls_selects_and_closes_outside},
         {"scrollbar_arrows_track_and_thumb_drive_the_model",
          scrollbar_arrows_track_and_thumb_drive_the_model},
-        {"in_game_graphics_are_disabled_without_disabling_other_tabs",
-         in_game_graphics_are_disabled_without_disabling_other_tabs},
+        {"in_game_graphics_apply_live", in_game_graphics_apply_live},
+        {"direct3d_antialiasing_reads_restart_required",
+         direct3d_antialiasing_reads_restart_required},
         {"controls_inventory_collapse_and_scroll_preserve_order",
          controls_inventory_collapse_and_scroll_preserve_order},
         {"semantic_navigation_adjusts_values_and_reveals_focus",

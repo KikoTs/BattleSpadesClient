@@ -56,8 +56,12 @@ const std::array optional_language_fonts{
     },
 };
 
+/// UTF-8 for messages and comparisons. path::string() converts through the
+/// ANSI code page and throws for names outside it (e.g. a Cyrillic Steam
+/// library under a Western code page), which aborted source discovery.
 [[nodiscard]] std::string path_text(const std::filesystem::path& path) {
-    return path.string();
+    const auto encoded = path.u8string();
+    return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
 }
 
 [[nodiscard]] std::string lowercase_ascii(std::string value) {
@@ -70,14 +74,16 @@ const std::array optional_language_fonts{
 [[nodiscard]] std::optional<std::filesystem::path>
 environment_path(const char* name) {
 #if defined(_WIN32)
-    char* value{};
+    // Wide API: the ANSI copy cannot hold characters outside the code page.
+    const std::wstring wide_name(name, name + std::strlen(name));
+    wchar_t* value{};
     std::size_t size{};
-    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr ||
-        *value == '\0') {
+    if (_wdupenv_s(&value, &size, wide_name.c_str()) != 0 || value == nullptr ||
+        *value == L'\0') {
         std::free(value);
         return std::nullopt;
     }
-    std::filesystem::path result{value};
+    std::filesystem::path result{std::wstring{value}};
     std::free(value);
     return result;
 #else
@@ -99,7 +105,7 @@ void append_standard_layouts(std::vector<std::filesystem::path>& candidates,
 [[nodiscard]] bool contains_legacy_macos_bundle(
     const std::filesystem::path& path) {
     return std::ranges::any_of(path, [](const std::filesystem::path& component) {
-        return lowercase_ascii(component.extension().string()) == ".app";
+        return lowercase_ascii(path_text(component.extension())) == ".app";
     });
 }
 
@@ -156,8 +162,13 @@ void append_steam_layouts(std::vector<std::filesystem::path>& candidates,
     for (; root_iterator != root.end() && candidate_iterator != candidate.end();
          ++root_iterator, ++candidate_iterator) {
 #if defined(_WIN32)
-        if (lowercase_ascii(root_iterator->string()) !=
-            lowercase_ascii(candidate_iterator->string())) {
+        // Wide, case-insensitive ordinal comparison (NTFS semantics).
+        // component.string() went through the ANSI code page and threw for
+        // e.g. a Cyrillic Steam library, failing every asset check.
+        const auto& left = root_iterator->native();
+        const auto& right = candidate_iterator->native();
+        if (CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(),
+                                 static_cast<int>(right.size()), TRUE) != CSTR_EQUAL) {
             return false;
         }
 #else
@@ -231,7 +242,7 @@ sha256_file(const std::filesystem::path& path, std::string& error) {
     const auto suffix = std::to_string(clock) + "-" +
                         std::to_string(sequence.fetch_add(1U, std::memory_order_relaxed));
     return target.parent_path() /
-           (target.filename().string() + "." + std::string{label} + "-" + suffix);
+           (target.filename().native() + std::filesystem::path{"." + std::string{label} + "-" + suffix}.native());
 }
 
 [[nodiscard]] bool copy_and_hash(const std::filesystem::path& source,
@@ -496,7 +507,7 @@ std::optional<std::filesystem::path> find_asset_source(
                 continue;
             }
             if (!contains_legacy_macos_bundle(entry.path()) &&
-                resembles_windows_install_name(entry.path().filename().string())) {
+                resembles_windows_install_name(path_text(entry.path().filename()))) {
                 append_standard_layouts(candidates, entry.path());
             }
         }

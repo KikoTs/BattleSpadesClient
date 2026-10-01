@@ -9,6 +9,8 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -115,6 +117,69 @@ int main() {
             root, 24U, {1.0F, 1.0F, 1.0F},
             battlespades::world::VxlColor{44U, 117U, 179U, 255U});
         expect(static_cast<bool>(colored), colored.error);
+    }
+    {
+        // Zombie hand KV6s carry retail team markers (128,0,128) and
+        // (64,0,64). Both ZombieHandTool (24, use_team_color) and
+        // ZombiePrefabTool (28, class-special-cased in Character.draw /
+        // draw_fps: set_kv6_default_color(*self.color) before each hand) must
+        // resolve them, or the sleeves render purple.
+        using battlespades::world::Kv6Model;
+        using battlespades::world::VxlColor;
+        const VxlColor team{22U, 58U, 90U, 255U}; // retail_character_color(blue)
+        const auto hand_colors = [&](std::string_view asset, std::optional<VxlColor> color) {
+            std::string error;
+            auto model = Kv6Model::load_file(root / asset, &error);
+            expect(model.has_value(), error);
+            bool has_marker{};
+            for (const auto& voxel : model->voxels()) {
+                has_marker = has_marker || (voxel.color.green == 0U &&
+                                            voxel.color.red == voxel.color.blue &&
+                                            (voxel.color.red == 64U || voxel.color.red == 128U));
+            }
+            expect(has_marker, "Zombie hand KV6 must carry retail team-colour markers");
+            if (color.has_value()) {
+                model->apply_default_color(*color);
+            }
+            std::vector<std::uint32_t> colors;
+            for (const auto& vertex : model->mesh().vertices) {
+                colors.push_back(vertex.abgr);
+            }
+            return colors;
+        };
+        const auto part_colors = [](const battlespades::world::ChunkMesh& mesh) {
+            std::vector<std::uint32_t> colors;
+            for (const auto& vertex : mesh.vertices) {
+                colors.push_back(vertex.abgr);
+            }
+            return colors;
+        };
+        const auto right = hand_colors("kv6/ZombieHand.kv6", team);
+        const auto left = hand_colors("kv6/ZombieHandLeft.kv6", team);
+        expect(right != hand_colors("kv6/ZombieHand.kv6", std::nullopt),
+               "team colour must change the Zombie hand marker voxels");
+        for (const std::uint8_t tool : {std::uint8_t{24U}, std::uint8_t{28U}}) {
+            const auto loaded = battlespades::world::load_weapon_models(
+                root, tool, {1.0F, 1.0F, 1.0F}, team);
+            expect(static_cast<bool>(loaded), loaded.error);
+            const auto& third = loaded.models->third_person_parts;
+            const auto& first = loaded.models->first_person_parts;
+            expect(part_colors(first.front()) == right && part_colors(third.front()) == right,
+                   "right Zombie hand must resolve its markers to the team colour");
+            expect(part_colors(third.back()) == left,
+                   "left Zombie hand must resolve its markers to the team colour");
+            if (tool == 24U) {
+                expect(part_colors(first.back()) == left,
+                       "first-person left Zombie hand must resolve its markers");
+            }
+        }
+        // The block palette still tints only BLOCK_MODEL, after the hands
+        // took the team colour.
+        const auto tinted = battlespades::world::load_weapon_models(
+            root, 28U, {1.0F, 0.25F, 0.25F}, team);
+        expect(static_cast<bool>(tinted), tinted.error);
+        expect(part_colors(tinted.models->first_person_parts[0U]) == right,
+               "block palette must not tint the team-coloured Zombie hand");
     }
     {
         const auto* prefab = battlespades::world::find_weapon_definition(28U);

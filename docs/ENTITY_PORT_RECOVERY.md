@@ -43,9 +43,9 @@ Scope per the user: exhaustive inventory, a debug spawner for each, and working 
 
 ## A. THE ENTITY INVENTORY
 
-The authoritative table is one 40-value tuple: `G:/AoSRevival/aceofspades_source/shared/constants.py:2801`. Ids 30–39 are `UNKNOWN_ENTITY1..10` in retail and are resolved at `G:/AoSRevival/BattleSpades/shared/constants.py:3399-3408`. All ids already exist in our client at `G:/AoSRevival/BattleSpadesClient/include/battlespades/shared/retail_constants.hpp` (e.g. `:62 AMMO_CRATE = 3`, `:836 HEALTH_CRATE = 4`, `:130 BLOCK_CRATE = 5`).
+The authoritative table is one 40-value tuple: `<retail-source>/shared/constants.py:2801`. Ids 30–39 are `UNKNOWN_ENTITY1..10` in retail and are resolved at `../BattleSpades/shared/constants.py:3399-3408`. All ids already exist in our client at `include/battlespades/shared/retail_constants.hpp` (e.g. `:62 AMMO_CRATE = 3`, `:836 HEALTH_CRATE = 4`, `:130 BLOCK_CRATE = 5`).
 
-Model column: only paths I verified on disk under `G:/AoSRevival/BattleSpadesClient/assets/original/kv6/`. Bindings from `G:/AoSRevival/aceofspades_source/aoslib/models.py`.
+Model column: only paths I verified on disk under `assets/original/kv6/`. Bindings from `<retail-source>/aoslib/models.py`.
 
 | id | Name | Model (verified on disk) | Category | Behaviour |
 |---|---|---|---|---|

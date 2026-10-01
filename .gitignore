@@ -1,4 +1,4 @@
-# CMake and IDE output
+# CMake, IDE and packaging output
 /out/
 /build/
 /dist/
@@ -8,12 +8,16 @@
 /*.zip
 /*.zip.sha256
 /.transactions/
-/.ida-mcp/
-/.claude/
-/.vs/
-/CMakeUserPresets.json
 /.cache/
 /compile_commands.json
+/CMakeUserPresets.json
+/.vs/
+/.vscode/
+/.idea/
+
+# Local tool and assistant state
+/.ida-mcp/
+/.claude/
 
 # Python tooling caches
 __pycache__/
@@ -31,18 +35,42 @@ __pycache__/
 /settings.toml
 /server_favorites.txt
 
-# Runtime diagnostics
+# Runtime diagnostics, captures and scratch files
 *.dmp
 *.log
 *.trace
+/*.png
+/*.jpg
+/*.bmp
+/*.csv
+*.bak
+*.orig
+*.rej
+*.tmp
+*.swp
+*~
+
+# Reverse-engineering databases (retail binaries and their analyses stay local)
 *.id0
 *.id1
 *.id2
 *.id3
 *.id4
 *.i64
+*.idb
 *.nam
 *.til
+*.pyd
+*.pyc
+
+# Credentials and local service configuration
+.env
+.env.*
+rclone.conf
+*.pem
+*.pfx
+*.p12
+*.key
 
 # Platform/editor noise
 .DS_Store

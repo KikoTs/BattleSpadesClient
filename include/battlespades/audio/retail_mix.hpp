@@ -37,6 +37,13 @@ inline constexpr float retail_reference_distance{1.0F};
 /** `DEFAULT_ATTENUATION` (constants.py:5056): the rolloff of every world cue. */
 inline constexpr float retail_default_attenuation{0.15F};
 
+/**
+ * Retail's OpenAL32.dll is OpenAL Soft 1.13 ("1.1 ALSOFT 1.13"), which has
+ * no HRTF (and no AL_SOFT_direct_channels). Modern OpenAL Soft enables HRTF
+ * automatically on headphone outputs; the context requests it off.
+ */
+inline constexpr bool retail_context_hrtf{false};
+
 /** `DEFAULT_MUSIC_FADE_TIME`: stop_music hands the track to a 6.5 s fade. */
 inline constexpr float retail_music_fade_seconds{6.5F};
 /** `SECONDARY_MUSIC_BED_FADE_TIME` for the class/team/UGC select bed. */

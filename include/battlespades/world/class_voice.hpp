@@ -33,10 +33,14 @@ struct ClassVoiceBank final {
     /** Percent chance the line plays at all when its event fires. */
     std::uint8_t chance{};
     /**
-     * Never play the same take twice running.
+     * Suppress the trigger straight after a played line (media.py
+     * `disallow_consecutive_plays`).
      *
-     * Encoded in the source as a NEGATIVE chance, which is a flag rather than a
-     * negative probability -- reading it literally silences the slot.
+     * Encoded in the source as a NEGATIVE chance (the jump/land VO rows),
+     * which is a flag rather than a negative probability -- reading it
+     * literally silences the slot. Positive-chance rows (spawn 25, death and
+     * fall-hurt 100, the Zombie groan) never set it. Not repeating the same
+     * take is separate and applies to every bank.
      */
     bool no_consecutive_repeat{};
 };

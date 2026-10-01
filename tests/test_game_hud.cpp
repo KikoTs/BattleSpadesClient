@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -112,6 +113,49 @@ int main() {
         expect(battlespades::frontend::game_hud_assets::minimap_zombie_heart ==
                    "png/ui/heart_icon_256x256.png",
                "Zombie heartbeat must use the shipped retail heart art");
+        // Player.display_map_icon_out_of_bounds (player.pyx:529-537).
+        {
+            using battlespades::frontend::player_marker_pins_to_minimap_edge;
+            using battlespades::frontend::PlayerMarkerEdgePinInputs;
+            expect(player_marker_pins_to_minimap_edge(
+                       PlayerMarkerEdgePinInputs{false, false, false, true, false, false}),
+                   "a Zombie viewer must keep every visible survivor pinned to the minimap edge");
+            expect(!player_marker_pins_to_minimap_edge(
+                       PlayerMarkerEdgePinInputs{false, false, true, true, false, false}),
+                   "the Zombie branch compares ids first and never pins the viewer");
+            expect(!player_marker_pins_to_minimap_edge(PlayerMarkerEdgePinInputs{}),
+                   "an ordinary visible player is culled outside the minimap window");
+            expect(!player_marker_pins_to_minimap_edge(
+                       PlayerMarkerEdgePinInputs{false, false, false, false, true, false}),
+                   "exposed teams alone reveal and pin nobody");
+            expect(player_marker_pins_to_minimap_edge(
+                       PlayerMarkerEdgePinInputs{false, false, false, false, true, true}) &&
+                       player_marker_pins_to_minimap_edge(
+                           PlayerMarkerEdgePinInputs{true, false, false, false, false, false}) &&
+                       player_marker_pins_to_minimap_edge(
+                           PlayerMarkerEdgePinInputs{false, true, false, false, false, false}),
+                   "exposed+seeing team, high visibility and carriers pin to the edge");
+
+            // A pinned survivor heart 300 blocks away still reaches the
+            // minimap draw list; an unpinned one is culled.
+            namespace art = battlespades::frontend::game_hud_assets;
+            GameHudModel model;
+            battlespades::frontend::GameHudMinimapState map;
+            map.visible = true;
+            map.focus_x = 100.0;
+            map.focus_y = 100.0;
+            map.markers.push_back({std::string{art::minimap_zombie_heart}, 400.0, 100.0, 25.6,
+                                   0.0, {255U, 0U, 0U, 255U}, true});
+            map.markers.push_back({std::string{art::minimap_player}, 100.0, 400.0, 16.0, 0.0,
+                                   {255U, 0U, 0U, 255U}, false});
+            model.set_minimap(std::move(map));
+            const auto list =
+                GameHudPresentation{}.build(model, GameHudPresentationContext{{800, 600}});
+            expect(sprite_count(list, art::minimap_zombie_heart) == 1U,
+                   "an edge-pinned survivor heart must still be drawn off-window");
+            expect(sprite_count(list, art::minimap_player) == 0U,
+                   "an unpinned far marker must stay culled");
+        }
 
         // Placeholder resolution renders retail bracketed key names.
         {
@@ -545,31 +589,94 @@ int main() {
                 expect(contains_text(list, "alpha") && contains_text(list, "beta"),
                        "help lines must be drawn");
                 expect(contains_text(list, "[H] Close"), "the close hint must be drawn");
+                // hud.pyd draw_loadout_item_hud (0x100a8030): translate(x, y),
+                // glScalef(0.5); the green weapon_frame (195 px, anchor 97)
+                // under EVERY tool entry at 1.8*scale/max_scale (scale 0.25,
+                // or max_scale 0.6 for the current entry), portraits (330 px)
+                // at glScalef(scale), then the red bracket (136 px) at 1.0.
                 expect(sprite_count(list, "png/ui/weapon_select/weapon_frame_selected.png") == 1U &&
-                           sprite_count(list, "png/ui/weapon_select/weapon_frame.png") == 2U,
-                       "wheel HUD must draw every slot with exactly one selected frame");
+                           sprite_count(list, "png/ui/weapon_select/weapon_frame.png") == 3U &&
+                           sprite_count(list, "png/ui/in_game_menus/prefab_selection/blueprint.png") ==
+                               0U,
+                       "tool entries get a green frame each, one bracket and no blueprint");
+                std::vector<const battlespades::ui::SpriteDrawCommand*> underlays;
+                std::optional<std::size_t> selected_bracket_order;
+                std::optional<std::size_t> selected_underlay_order;
+                std::optional<std::size_t> selected_icon_order;
+                for (std::size_t order{}; order < list.commands().size(); ++order) {
+                    const auto* sprite =
+                        std::get_if<battlespades::ui::SpriteDrawCommand>(&list.commands()[order]);
+                    if (sprite == nullptr) {
+                        continue;
+                    }
+                    if (sprite->asset_id == "png/ui/weapon_select/weapon_frame.png") {
+                        if (underlays.size() == 1U) {
+                            selected_underlay_order = order;
+                        }
+                        underlays.push_back(sprite);
+                    } else if (sprite->asset_id ==
+                               "png/ui/weapon_select/weapon_frame_selected.png") {
+                        selected_bracket_order = order;
+                    } else if (sprite->asset_id == "png/ui/weapons/spade.png") {
+                        selected_icon_order = order;
+                    }
+                }
+                const double strip_y = height * 0.70;
+                // Retail texture (w, anchor w/2 floored) blitted at (cx, y).
+                const auto blitted = [&](const battlespades::ui::SpriteDrawCommand& sprite,
+                                         double cx, double texture, double scale) {
+                    const double anchor = std::floor(texture / 2.0);
+                    return std::fabs(sprite.destination.width - texture * scale) < 1e-9 &&
+                           std::fabs(sprite.destination.height - texture * scale) < 1e-9 &&
+                           std::fabs(sprite.destination.x - (cx - anchor * scale)) < 1e-9 &&
+                           std::fabs(sprite.destination.y -
+                                     (strip_y - (texture - anchor) * scale)) < 1e-9;
+                };
+                expect(underlays.size() == 3U &&
+                           blitted(*underlays[0], width * 0.5 - 80.0, 195.0, 0.375) &&
+                           blitted(*underlays[1], width * 0.5, 195.0, 0.9) &&
+                           blitted(*underlays[2], width * 0.5 + 80.0, 195.0, 0.375),
+                       "green underlays must be 73.125 px (175.5 px current) on their slot");
                 const auto* selected_frame =
                     find_sprite(list, "png/ui/weapon_select/weapon_frame_selected.png");
                 expect(selected_frame != nullptr &&
-                           std::fabs(selected_frame->destination.width - 136.5) < 1e-9 &&
-                           std::fabs(selected_frame->destination.height - 136.5) < 1e-9,
-                       "the selected frame must keep its authored retail scale");
-                const auto* normal_frame =
-                    find_sprite(list, "png/ui/weapon_select/weapon_frame.png");
-                expect(normal_frame != nullptr &&
-                           std::fabs(normal_frame->destination.width - 48.75) < 1e-9 &&
-                           std::fabs(normal_frame->destination.height - 48.75) < 1e-9,
-                       "normal frames must use the recovered quarter scale");
+                           blitted(*selected_frame, width * 0.5, 136.0, 1.0),
+                       "the current bracket must be the int(195*0.7) texture at scale 1.0");
+                expect(selected_underlay_order && selected_icon_order &&
+                           selected_bracket_order &&
+                           *selected_underlay_order < *selected_icon_order &&
+                           *selected_icon_order < *selected_bracket_order,
+                       "the underlay must sit below the portrait and the bracket above it");
                 const auto* selected_icon = find_sprite(list, "png/ui/weapons/spade.png");
                 const auto* normal_icon = find_sprite(list, "png/ui/weapons/block.png");
                 expect(selected_icon != nullptr && normal_icon != nullptr &&
-                           std::fabs(selected_icon->destination.width - 148.5) < 1e-9 &&
-                           std::fabs(normal_icon->destination.width - 66.0) < 1e-9,
-                       "weapon portraits must include the retail half-scale transform");
+                           blitted(*selected_icon, width * 0.5, 330.0, 0.3) &&
+                           blitted(*normal_icon, width * 0.5 - 80.0, 330.0, 0.125) &&
+                           selected_icon->sampling == battlespades::ui::TextureFilter::linear,
+                       "portraits must use glScalef(scale) inside the half transform");
+                // weapon_name_font (Spades 18) under glScalef(0.5*k), drawn at
+                // (k*19, -k*19) with center=True: k = 2.0 current, 1.3 other.
                 const auto* selected_number = find_text(list, "2");
-                expect(selected_number != nullptr &&
-                           std::fabs(selected_number->destination.x - (width * 0.5 + 38.0)) < 1e-9,
-                       "the selected hotkey must sit at the expanded frame's lower-right");
+                const auto* normal_number = find_text(list, "1");
+                const auto label_at = [&](const battlespades::ui::TextDrawCommand& text,
+                                          double cx, double k) {
+                    const double offset = 0.5 * k * k * 19.0;
+                    return std::fabs(text.destination.x + text.destination.width * 0.5 -
+                                     (cx + offset)) < 1e-9 &&
+                           std::fabs(text.destination.y - (strip_y + offset)) < 1e-9 &&
+                           std::fabs(text.requested_font_size_pixels - 18.0 * 0.5 * k) < 1e-9 &&
+                           text.horizontal_alignment ==
+                               battlespades::ui::HorizontalTextAlignment::center &&
+                           text.vertical_alignment ==
+                               battlespades::ui::VerticalTextAlignment::baseline &&
+                           text.modulation.color.red == 255U &&
+                           text.modulation.color.green == 255U &&
+                           text.modulation.color.blue == 0U;
+                };
+                expect(selected_number != nullptr && normal_number != nullptr &&
+                           label_at(*selected_number, width * 0.5, 2.0) &&
+                           label_at(*normal_number, width * 0.5 - 80.0, 1.3),
+                       "hotkey digits must follow the recovered yellow Spades 18 labels");
                 expect(sprite_count(list, "png/ui/weapons/block.png") == 1U &&
                            contains_text(list, "1") && contains_text(list, "3"),
                        "the tool strip must render icons and all number-key labels");
@@ -735,11 +842,90 @@ int main() {
                    "map rotation must stop referencing the previous minimap preview");
 
             model.set_inventory_state(model.inventory_slots(), 2U, false);
-            const auto direct_hidden =
+            const auto strip_closed =
                 presentation.build(model, GameHudPresentationContext{{800, 600}, 1'000U, measure});
-            expect(sprite_count(direct_hidden, "png/ui/weapon_select/weapon_frame_selected.png") ==
-                       0U,
-                   "direct number selection must not open the wheel toolbar");
+            expect(sprite_count(strip_closed, "png/ui/weapon_select/weapon_frame_selected.png") ==
+                           0U &&
+                       sprite_count(strip_closed, "png/ui/weapon_select/weapon_frame.png") == 0U,
+                   "a closed tool strip (its one-second timer elapsed) must draw nothing");
+
+            // draw_tool_loadout_hud returns when the loadout has <= 1 entry.
+            model.set_inventory_state({GameHudInventorySlot{"png/ui/weapons/spade.png", "1"}},
+                                      0U, true);
+            const auto single_entry =
+                presentation.build(model, GameHudPresentationContext{{800, 600}, 1'000U, measure});
+            expect(sprite_count(single_entry, "png/ui/weapon_select/weapon_frame.png") == 0U,
+                   "a single-entry loadout must never show the tool strip");
+
+            // Prefab entries: draw_background=True, max_scale=0.8. The
+            // blueprint (171x101 at 0.64 -> 109x64, anchor 54/32) replaces the
+            // green frame at glScalef(1.1, 0.4) / (2.0, 0.9), lowered by
+            // 80*sy/2 retail units; the 211 px prefab image uses scale 0.25
+            // or 0.8; the current entry still gets the red bracket.
+            {
+                const std::string blueprint{
+                    "png/ui/in_game_menus/prefab_selection/blueprint.png"};
+                GameHudModel prefab_model;
+                prefab_model.set_inventory_state(
+                    {GameHudInventorySlot{"png/ui/weapons/spade.png", "1"},
+                     GameHudInventorySlot{"prefabs/prefab_barricade.png", "2", true, 211.0},
+                     GameHudInventorySlot{"prefabs/prefab_caltrop.png", "3", true, 211.0}},
+                    1U, true);
+                const auto strip_list = presentation.build(
+                    prefab_model, GameHudPresentationContext{{800, 600}, 1'000U, measure});
+                expect(sprite_count(strip_list, blueprint) == 2U &&
+                           sprite_count(strip_list, "png/ui/weapon_select/weapon_frame.png") ==
+                               1U &&
+                           sprite_count(strip_list,
+                                        "png/ui/weapon_select/weapon_frame_selected.png") == 1U,
+                       "prefab entries must draw a blueprint instead of the green frame");
+                const double y = 600.0 * 0.70;
+                const auto quad = [](const battlespades::ui::SpriteDrawCommand& sprite,
+                                     double left, double top, double w, double h) {
+                    return std::fabs(sprite.destination.x - left) < 1e-9 &&
+                           std::fabs(sprite.destination.y - top) < 1e-9 &&
+                           std::fabs(sprite.destination.width - w) < 1e-9 &&
+                           std::fabs(sprite.destination.height - h) < 1e-9;
+                };
+                std::vector<const battlespades::ui::SpriteDrawCommand*> plates;
+                std::optional<std::size_t> plate_order;
+                std::optional<std::size_t> selected_prefab_order;
+                for (std::size_t order{}; order < strip_list.commands().size(); ++order) {
+                    const auto* sprite = std::get_if<battlespades::ui::SpriteDrawCommand>(
+                        &strip_list.commands()[order]);
+                    if (sprite == nullptr) continue;
+                    if (sprite->asset_id == blueprint) {
+                        if (plates.empty()) plate_order = order;
+                        plates.push_back(sprite);
+                    } else if (sprite->asset_id == "prefabs/prefab_barricade.png") {
+                        selected_prefab_order = order;
+                    }
+                }
+                // Entry 1 (x=400) is current, entry 2 (x=480) is not.
+                expect(plates.size() == 2U &&
+                           quad(*plates[0], 400.0 - 54.0, y + 18.0 - 14.4, 109.0, 28.8) &&
+                           quad(*plates[1], 480.0 - 54.0 * 0.55, y + 8.0 - 32.0 * 0.2,
+                                109.0 * 0.55, 64.0 * 0.2),
+                       "blueprints must follow the recovered scales and downward offset");
+                const auto* current_prefab =
+                    find_sprite(strip_list, "prefabs/prefab_barricade.png");
+                const auto* other_prefab = find_sprite(strip_list, "prefabs/prefab_caltrop.png");
+                expect(current_prefab != nullptr && other_prefab != nullptr &&
+                           quad(*current_prefab, 400.0 - 105.0 * 0.4, y - 106.0 * 0.4,
+                                211.0 * 0.4, 211.0 * 0.4) &&
+                           quad(*other_prefab, 480.0 - 105.0 * 0.125, y - 106.0 * 0.125,
+                                211.0 * 0.125, 211.0 * 0.125),
+                       "prefab images must use the 0.8 / 0.25 item scale");
+                expect(plate_order && selected_prefab_order &&
+                           *plate_order < *selected_prefab_order,
+                       "the blueprint must be drawn beneath the prefab image");
+                const auto* spade_frame =
+                    find_sprite(strip_list, "png/ui/weapon_select/weapon_frame.png");
+                // The spade is not current: its 0.6 max_scale gives 0.375.
+                expect(spade_frame != nullptr &&
+                           std::fabs(spade_frame->destination.width - 195.0 * 0.375) < 1e-9,
+                       "tool entries beside prefabs keep the tool max_scale");
+            }
 
             // The complete developer catalog includes selectable tools whose
             // retail definition has no icon. Opening the wheel must retain a

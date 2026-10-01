@@ -17,9 +17,10 @@ diverging from them is a parity break:
   * Several classes are deliberately silent in some slots. A blank is an
     authored choice, not a gap, and is emitted as an empty bank.
 
-The middle `-1` field in a sound spec is NOT a probability: it is the retail
-flag meaning "never play the same take twice running". The third field is the
-actual 0..100 chance.
+The middle `-1` field in a sound spec is NOT a probability or a flag: it is the
+last-played take index (-1 = none yet); media.py never repeats a take anyway.
+The third field is the 0..100 chance, and a NEGATIVE chance additionally
+suppresses the trigger straight after a played line.
 """
 
 from __future__ import annotations
@@ -110,7 +111,12 @@ for class_id, entry in ns["CLASS_SOUNDS"].items():
             sound_spec = spec[0] if name == "PERIODIC_SOUND" and spec else spec
             if isinstance(sound_spec, (list, tuple)):
                 stem = sound_spec[0] if len(sound_spec) > 0 else ""
-                no_repeat = sound_spec[1] < 0 if len(sound_spec) > 1 else False
+                # media.get_sound_name: slot 1 is the last-played index
+                # (-1 = none), NOT a flag. A NEGATIVE chance (slot 2) is what
+                # disallows consecutive plays -- it suppresses the trigger
+                # right after a played line. Every row starts at -1, so
+                # reading slot 1 wrongly flagged 25/100-chance rows too.
+                no_repeat = sound_spec[2] < 0 if len(sound_spec) > 2 else False
                 chance = sound_spec[2] if len(sound_spec) > 2 else 0
             else:
                 stem = sound_spec

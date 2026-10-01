@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$ServerRoot = "G:\AoSRevival\BattleSpades",
-    [string]$BuildRoot = "G:\AoSRevival\BattleSpadesClient\out\build\native-dev",
+    [string]$ServerRoot = (Join-Path $PSScriptRoot "..\..\BattleSpades"),
+    [string]$BuildRoot = (Join-Path $PSScriptRoot "..\out\build\native-dev"),
     [int]$Port = 32768,
     [int]$Seconds = 12,
     [ValidateRange(0, 17)]
     [int]$Class = 1,
-    [string]$TracePath = "G:\AoSRevival\BattleSpadesClient\out\movement-parity.csv",
+    [string]$TracePath = (Join-Path $PSScriptRoot "..\out\movement-parity.csv"),
     # Optional probe flags, including bounded uplink/downlink delay and jitter.
     [string[]]$ClientArguments = @()
 )

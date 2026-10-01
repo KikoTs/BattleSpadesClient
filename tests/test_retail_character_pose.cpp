@@ -1,6 +1,8 @@
 #include "battlespades/world/retail_character_pose.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 
@@ -353,6 +355,60 @@ void walk_cycle_matches_character_update_animation() {
                 "crouch gait must use retail's 0.016/0.028 arc ratio");
 }
 
+void running_zombie_legs_stay_inside_the_retail_human_arc() {
+    using battlespades::world::retail_walk_max_swing_degrees;
+    // Ground terminal speed is accel / friction 4, accel = class multiplier x
+    // InitialInfo speed (CLASS_SPRINT_MULTIPLIER): Gangster sprint 1.5 x 1.5.
+    constexpr double gangster_sprint{1.5 * 1.5 / 4.0};
+    constexpr double soldier_sprint{1.40625 * 1.40625 / 4.0};
+    constexpr double zombie_sprint{1.65625 * 1.65625 / 4.0};
+    constexpr double fast_zombie_walk{1.1 * 3.0 / 4.0};
+    constexpr double fast_zombie_sprint{3.0 * 3.0 / 4.0};
+    expect_near(retail_walk_max_swing_degrees, 256.0 * 0.84 * gangster_sprint,
+                "the ceiling is retail's own peak at the fastest human gait");
+
+    // Every shipped human gait is untouched: 0 ms is the -255 ramp end.
+    const auto soldier =
+        evaluate_retail_walk_pose(0U, {soldier_sprint, 0.0, 0.0}, {1.0, 0.0, 0.0}, false);
+    expect_near(soldier.left.rotation_x_degrees, -255.0 * 0.84 * soldier_sprint,
+                "soldier sprint must remain bit-exact Character.update_animation");
+    const auto gangster =
+        evaluate_retail_walk_pose(511U, {gangster_sprint, 0.0, 0.0}, {1.0, 0.0, 0.0}, false);
+    expect_near(gangster.left.rotation_x_degrees, retail_walk_max_swing_degrees,
+                "the fastest human gait reaches, but is not cut by, the ceiling");
+
+    // Zombie speeds: the retail formula alone gives 146, 177 and 482 degrees.
+    for (const double speed : {zombie_sprint, fast_zombie_walk, fast_zombie_sprint}) {
+        const double retail_peak = 256.0 * 0.84 * speed;
+        expect(retail_peak > retail_walk_max_swing_degrees,
+               "zombie speeds leave the human arc in raw retail math");
+        double largest{};
+        for (std::uint64_t timer{}; timer < 1024U; ++timer) {
+            const auto pose =
+                evaluate_retail_walk_pose(timer, {-speed, 0.0, 0.0}, {-1.0, 0.0, 0.0}, false);
+            largest = std::max({largest, std::fabs(pose.left.rotation_x_degrees),
+                                std::fabs(pose.right.rotation_x_degrees)});
+            expect_near(pose.right.rotation_x_degrees, -pose.left.rotation_x_degrees,
+                        "scaled legs must still oppose one another");
+        }
+        expect(largest <= retail_walk_max_swing_degrees + 1.0e-9,
+               "a running zombie's legs must never swing past the human ceiling");
+        expect(largest > retail_walk_max_swing_degrees - 1.0,
+               "a running zombie still takes the widest human stride");
+    }
+
+    // Scaling keeps retail's triangle phase and forward/strafe ratio.
+    const auto slow = evaluate_retail_walk_pose(100U, {0.3, 0.1, 0.0}, {1.0, 0.0, 0.0}, false);
+    const auto fast = evaluate_retail_walk_pose(100U, {3.0, 1.0, 0.0}, {1.0, 0.0, 0.0}, false);
+    expect_near(fast.left.rotation_x_degrees / fast.left.rotation_y_degrees,
+                slow.left.rotation_x_degrees / slow.left.rotation_y_degrees,
+                "scaled strafing must keep the retail forward/side ratio");
+    const auto crossing =
+        evaluate_retail_walk_pose(255U, {fast_zombie_sprint, 0.0, 0.0}, {1.0, 0.0, 0.0}, false);
+    expect_near(crossing.left.rotation_x_degrees, 0.0,
+                "scaled legs still pass each other at retail's 255 ms crossing");
+}
+
 void digging_tools_use_retail_pitch_and_range() {
     using battlespades::world::retail_tool_arm_pitch_range;
     using battlespades::world::retail_tool_pitch;
@@ -449,6 +505,7 @@ int main() {
         aim_pitch_uses_retail_joint_pivots();
         riot_shield_uses_its_recovered_arm_pitch_range_and_bash();
         walk_cycle_matches_character_update_animation();
+        running_zombie_legs_stay_inside_the_retail_human_arc();
         digging_tools_use_retail_pitch_and_range();
         observer_tools_animate_and_use_remote_initial_positions();
         std::cout << "retail third-person character pose tests passed\n";

@@ -324,6 +324,42 @@ void block_gadget_holds_match_retail_tool_classes() {
                 "Disguise arms must inherit the tool z anchor");
 }
 
+void flare_block_is_held_like_the_block_with_both_hands() {
+    // flareBlockTool.py and blockTool.py share BLOCK_VIEW_MODEL, the
+    // (-0.04, 0, 0.3) / 45-degree hold, arms_position_offset (0.04, 0, -0.3)
+    // and AnimPlaceBlock: the Flare Block's first-person frame is the block
+    // tool's, hands included, at rest and mid-placement.
+    for (const double since : {1.0e9, 0.0, 0.2}) {
+        const auto block = evaluate_weapon_view_model({5U, since, 0U});
+        const auto flare = evaluate_weapon_view_model({22U, since, 0U});
+        expect(flare.draws_player_arms, "the Flare Block is held in the class hands");
+        expect(flare.tool_part_count == 1U && block.tool_part_count == 1U,
+               "the Flare Block draws the one block model");
+        expect_near(flare.model_scale, block.model_scale, "flare view size is the block's");
+        expect_near(flare.arm_model_scale, block.arm_model_scale, "flare arm size");
+        expect_near(flare.arm_rotation_ratio, block.arm_rotation_ratio, "flare arm ratio");
+        for (const auto axis : {0, 1, 2}) {
+            const auto pick = [axis](const ViewModelVector& v) {
+                return axis == 0 ? v.x : axis == 1 ? v.y : v.z;
+            };
+            expect_near(pick(flare.tool.position), pick(block.tool.position),
+                        "flare hold position is the block's");
+            expect_near(pick(flare.tool.orientation_degrees),
+                        pick(block.tool.orientation_degrees),
+                        "flare hold orientation is the block's");
+            expect_near(pick(flare.arms_position), pick(block.arms_position),
+                        "flare hands sit where the block's do");
+            expect_near(pick(flare.arms_orientation_degrees),
+                        pick(block.arms_orientation_degrees),
+                        "flare hands turn with the block's");
+        }
+    }
+    const auto rest = evaluate_weapon_view_model({22U, 1.0e9, 0U});
+    expect_near(rest.tool.orientation_degrees.y, 45.0, "FlareBlockTool initial yaw 45");
+    expect_near(rest.arms_position.x, 0.0, "the flare arm offset cancels its hold x");
+    expect_near(rest.arms_position.z, 0.0, "the flare arm offset cancels its hold z");
+}
+
 void rocket_launchers_use_the_recovered_fps_hold() {
     for (const auto tool_id : {std::uint8_t{12U}, std::uint8_t{13U},
                                std::uint8_t{46U}}) {
@@ -608,6 +644,7 @@ int main() {
         zombie_prefab_uses_its_recovered_hand_and_block_pose();
         minigun_barrel_uses_its_recovered_local_pose();
         block_gadget_holds_match_retail_tool_classes();
+        flare_block_is_held_like_the_block_with_both_hands();
         rocket_launchers_use_the_recovered_fps_hold();
         riot_shield_uses_its_recovered_fps_hold_and_bash();
         every_tool_uses_its_retail_first_person_hold();

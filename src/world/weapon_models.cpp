@@ -126,10 +126,18 @@ WeaponModelLoadResult load_weapon_models(
     std::string error;
     // force_default_color: Character.draw's use_color and
     // use_other_team_color paths also call set_kv6_default_color.
-    const auto model_team_color = definition->retail.use.use_team_color || force_default_color
+    constexpr std::uint8_t zombie_prefab_tool_id{28U};
+    // ZombiePrefabTool is use_color, not use_team_color, yet retail special-
+    // cases its class in both draw paths: set_kv6_default_color(*self.color)
+    // before each Zombie hand, block colour blend only on BLOCK_MODEL
+    // (character.pyd Character.draw pyx 1918-1957, draw_fps pyx 2186-2208,
+    // `weapon_object.__class__ == ZombiePrefabTool` at 0x10053C87/0x10060645).
+    // Without it the hands' (128,0,128)/(64,0,64) markers stayed purple.
+    // block.kv6 has no marker voxels, so the block itself is unaffected.
+    const auto model_team_color = definition->retail.use.use_team_color || force_default_color ||
+                                          tool_id == zombie_prefab_tool_id
                                       ? team_color
                                       : std::nullopt;
-    constexpr std::uint8_t zombie_prefab_tool_id{28U};
     const auto tint_only_part = tool_id == zombie_prefab_tool_id
                                     ? std::optional<std::size_t>{1U}
                                     : std::nullopt;

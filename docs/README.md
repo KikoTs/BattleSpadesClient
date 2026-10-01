@@ -23,6 +23,9 @@ the current source, retained executable, package or live service.
 | Retail invariants and evidence ordering | [Compatibility contract](COMPATIBILITY.md) |
 | Acceptance and future work | [Roadmap](ROADMAP.md) |
 | Content import and ownership | [Assets](../assets/README.md) |
+| Windows installer and auto-updater | [Installer and updater](INSTALLER_AND_UPDATER.md) |
+| Steam networking and Workshop maps | [Steam networking](STEAM_NETWORKING.md), [Steam Workshop](STEAM_WORKSHOP.md) |
+| Licence, legal notice, security, contributing | [LICENSING](../LICENSING.md), [LEGAL](../LEGAL.md), [SECURITY](../SECURITY.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 
 [Account progression, inventory and crates](ACCOUNT_PROGRESSION_INVENTORY_CRATES.md)
 is the shared product contract with the backend. It includes broader targets;
@@ -50,7 +53,7 @@ are historical. Reproduce findings on the current code before treating an old
   [UI parity browser](UI_PARITY_BROWSER.md).
 - Service/security evidence: [retail progression](PROGRESSION_RECOVERY.md),
   [server hardening specification](SERVER_UNTRUSTED_CLIENT_HARDENING.md),
-  [historical playtester audit](PLAYTESTER_CHANNEL_AUDIT_2026-08-24.md).
+  [historical playtester audit](archive/PLAYTESTER_CHANNEL_AUDIT_2026-08-24.md).
 - Frontend evidence: [retail UI map](research/RETAIL_UI_MAP.md),
   [asset audit](research/UI_ASSET_AUDIT.md),
   [scene catalogue](research/RETAIL_FRONTEND_CATALOG.md),
@@ -69,8 +72,12 @@ are historical. Reproduce findings on the current code before treating an old
   [jetpack attachment](recovery/JETPACK_ATTACHMENT_2026-08-05.md),
   [UI/audio evidence](recovery/UI_AUDIO_PARITY_2026-08-05.md).
 
+Dated fix reports, handoffs and raw recovery data from earlier passes are kept
+in [`archive/`](archive/) for reference. They describe the code as it was at
+the time and are not maintained.
+
 The authoritative server guides are indexed in its
-[README](../../BattleSpades/README.md#documentation). Server implementation
+[README](https://github.com/KikoTs/BattleSpades#documentation). Server implementation
 claims in old client research must be checked against those guides and source.
 
 ## Keeping documentation useful

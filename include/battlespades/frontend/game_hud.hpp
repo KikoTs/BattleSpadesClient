@@ -35,6 +35,9 @@ inline constexpr std::string_view help_font{"fonts/Spades.ttf"};
 inline constexpr std::string_view weapon_frame{"png/ui/weapon_select/weapon_frame.png"};
 inline constexpr std::string_view weapon_frame_selected{
     "png/ui/weapon_select/weapon_frame_selected.png"};
+/** images.py blueprint_background: the schematic under prefab/UGC strip entries. */
+inline constexpr std::string_view prefab_blueprint{
+    "png/ui/in_game_menus/prefab_selection/blueprint.png"};
 inline constexpr std::string_view ammo_frame{"png/ui/ammo/ammo_frame.png"};
 inline constexpr std::string_view score_frame{"png/ui/score/score_frame.png"};
 /** The blocks row's icon: TOOL_IMAGES[BLOCK_TOOL], the 330px block portrait. */
@@ -328,6 +331,16 @@ struct GameHudSounds final {
 struct GameHudInventorySlot final {
     std::string icon_asset;
     std::string hotkey_label;
+    /**
+     * draw_tool_loadout_hud passes draw_background=True, max_scale=0.8 for
+     * prefab and UGC entries: a blueprint plate replaces the green frame.
+     */
+    bool blueprint_background{};
+    /**
+     * Retail texture width of icon_asset after its load scale: TOOL_IMAGES
+     * load at 1.0 (330), prefab palette / UGC tool images at 0.64 (211).
+     */
+    double icon_texture_pixels{330.0};
 };
 
 /** Current equipped-tool ammunition rendered by the retail lower-right panel. */
@@ -523,6 +536,30 @@ struct GameHudMinimapState final {
  */
 [[nodiscard]] double zombie_heartbeat_marker_size(
     double elapsed_seconds) noexcept;
+
+/** Inputs of retail Player.display_map_icon_out_of_bounds(viewer). */
+struct PlayerMarkerEdgePinInputs {
+    bool high_minimap_visibility{};
+    bool carries_pickup{};
+    bool is_viewer{};
+    bool viewer_is_zombie{};
+    bool exposed_teams_always_on_minimap{};
+    /** `player.team.other.can_see_other_team` (the team opposite the player's). */
+    bool opposite_team_can_see_other{};
+};
+
+/**
+ * Whether a visible player's minimap marker is pinned to the minimap edge
+ * instead of culled once it leaves the 128 px window.
+ *
+ * player.pyd 0x100153E0 (player.pyx:529-537): true for a high-visibility
+ * player, a pickup carrier, any other player seen by a Zombie-class viewer
+ * (`self is not viewer and viewer.current_class.id == CLASS_ZOMBIE`), or
+ * when exposed_teams_always_on_minimap is set and the player's opposite
+ * team can see the other team.
+ */
+[[nodiscard]] bool player_marker_pins_to_minimap_edge(
+    const PlayerMarkerEdgePinInputs& inputs) noexcept;
 
 /**
  * Retail's exact common.vector_angle_2d conversion:

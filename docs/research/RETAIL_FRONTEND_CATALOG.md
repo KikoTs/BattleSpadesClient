@@ -6,7 +6,7 @@
 
 This is the parity inventory for the native client's debug screen browser. It
 describes the retail Python 2.7 frontend as recovered from
-`G:\AoSRevival\aceofspades_decompiled`, not the current C++ approximation.
+`<retail-decompiled>`, not the current C++ approximation.
 The machine-readable companion is
 `assets/catalog/retail-frontend-screens.json`.
 

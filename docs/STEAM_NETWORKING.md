@@ -26,10 +26,11 @@ do not meet: a player on Spacewar cannot join a host running as Ace of Spades.
 Setting `app_id` to `fallback_app_id` puts everyone on Spacewar instead, at the
 cost of every player showing as Spacewar in their friends list.
 
-The attach happens while the boot loader runs, with no wait for the relay
+The attach happens once at launch, before the renderer creates its Direct3D
+device (the overlay needs that order, see below), with no wait for the relay
 network; the pump thread warms the relays while the player is in the menus. An
-attach that fails leaves the retry to the first match, because a player may
-start Steam after the game.
+attach that fails is retried every 30 seconds and by the first match, because a
+player may start Steam after the game.
 
 ## Falling back
 
@@ -62,7 +63,7 @@ Spacewar.
 Every step writes to `BattleSpadesClient.log` beside the executable:
 
 ```
-[steam] runtime ready: app=224540 id=76561198158362762 relays=ready
+[steam] runtime ready: app=224540 id=76561198000000001 relays=ready
 [steam] hosting over the relay network on virtual port 0
 [steam] player joined over the relay network, now 1 connected
 [steam] tunnel state: connected
@@ -70,6 +71,61 @@ Every step writes to `BattleSpadesClient.log` beside the executable:
 [steam] presence published: Hosting Ancient Egypt, TDM
 [steam] lobby 109775242608886766 open for friends: Hosting Ancient Egypt, TDM
 ```
+
+## The Steam overlay
+
+Shift+Tab (friends, chat, browser, screenshots) is drawn by Steam's
+`GameOverlayRenderer64.dll`, which hooks the Direct3D 11 swap chain's `Present`
+and the window's input. It has to be in the process **before** bgfx creates the
+device, and it gets there one of two ways:
+
+- **Steam launches the game.** Steam injects the DLL at process creation, before
+  any of our code runs. This is the player path: the installer sets the launch
+  options of Ace of Spades (224540) to run `BattleSpades.exe`, and Play in
+  Steam starts it. A non-Steam-game shortcut to `BattleSpades.exe` also gets
+  the overlay.
+- **SteamAPI_Init loads it.** Started from Explorer, a shell or a debugger,
+  `steam_api64.dll` loads the overlay from the running Steam client during
+  SteamAPI_Init. The client therefore attaches to Steam at launch, before the
+  renderer starts; until 2026-09-30 it attached after the renderer, so the
+  overlay loaded too late to hook anything and Shift+Tab did nothing in a
+  developer run.
+
+For a developer run, Steam must be running and signed in, and the client must
+start with Steam. The client sets `SteamAppId` to 224540 itself before
+SteamAPI_Init, so `steam_appid.txt` is not needed; one containing `224540`
+beside `BattleSpadesClient.exe` does the same and does no harm. An account that
+does not own 224540 attaches as Spacewar (480), which has an overlay too.
+
+If Steam is started after the game, the 30-second retry attaches for presence
+and joins, but the overlay cannot hook a device that already exists: restart the
+game to get Shift+Tab.
+
+While the overlay is open the client releases relative mouse mode (the cursor
+shows and moves freely), drops held keys and buttons, and ignores keyboard and
+mouse events, so chat typed to a friend does not move or fire in the game.
+Closing it hands the mouse back to gameplay. Steam reports both through
+`GameOverlayActivated_t`, which the pump thread reads every millisecond, in the
+menus and during loads as well as in a match; `SteamOverlayInputGate`
+(`include/battlespades/platform/steam_overlay.hpp`) turns that into per-frame
+decisions and is covered by `aos_steam_overlay_tests`.
+
+The log says whether the overlay arrived and who brought it:
+
+```
+[steam] overlay renderer injected by Steam          (launched through Steam)
+[steam] overlay renderer loaded by SteamAPI_Init    (developer run)
+[steam] overlay renderer not loaded; Shift+Tab will not work in this run
+[steam] overlay enabled in this process (Shift+Tab)
+[steam] overlay opened
+[steam] overlay closed
+```
+
+"Not loaded" means Steam is not running, the in-game overlay is switched off in
+Steam's settings (globally or in the game's properties), or the runtime did not
+attach at all (look for `[steam] unavailable` above it). "Overlay enabled" can
+take a second or two after the first frame, because Steam reports it once its
+hook has seen a `Present`.
 
 ## Presence, lobbies, and finding a friend
 
@@ -83,7 +139,7 @@ callback when it runs. It must therefore carry its own switch; the bare
 option" (it is still accepted, for friends on older builds). Both keys are
 free-form and need nothing configured for the application id, which is what
 makes them usable on an id we do not own. `steam_player_group` groups the
-players of one match. See `STEAM_INTEGRATION_FIXES_2026-09-28.md`.
+players of one match. See [the Steam integration notes](archive/STEAM_INTEGRATION_FIXES_2026-09-28.md).
 
 A hosted match also opens a **friends-only** lobby carrying the same two
 values. A lobby needs no public address, so it reaches players behind any NAT.
@@ -148,6 +204,10 @@ achievement granted on a guess lands permanently on a player's real account.
 | `aos_steam_p2p_smoke host \| join <id>` | the transport across two machines, and the round trip through the relays |
 | `aos_steam_p2p_smoke host local \| join local` | accepting, forwarding and teardown without the relays |
 | `python3 tools/verify-frontend-pumps.py` | that every frontend pump is driven, since one that is not compiles and passes every test |
+| `aos_workshop_sync_probe [--download <dir>]` | this account's Workshop subscriptions; see [STEAM_WORKSHOP.md](STEAM_WORKSHOP.md) |
+
+The same runtime also keeps Workshop map subscriptions installed; see
+[STEAM_WORKSHOP.md](STEAM_WORKSHOP.md).
 
 ## Not done yet
 

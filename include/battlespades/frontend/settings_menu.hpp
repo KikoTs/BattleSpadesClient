@@ -103,6 +103,12 @@ struct SettingsLanguageOption final {
 struct SettingsMenuEnvironment final {
     SettingsMenuContext context{SettingsMenuContext::frontend};
     bool multisampling_supported{true};
+    /**
+     * The running renderer can change its MSAA sample count in place. False
+     * on Direct3D (see render::multisample_change_is_live): Antialiasing then
+     * reads RESTART_REQUIRED and Done reports a restart.
+     */
+    bool multisampling_live{true};
     bool glsl_shader_quality_supported{true};
     bool favorite_server_available{false};
     bool favorite_server{false};

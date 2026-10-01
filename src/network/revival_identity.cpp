@@ -10,6 +10,7 @@
 #include <array>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <mutex>
@@ -287,26 +288,50 @@ unprotect_secret(std::string_view protected_value) {
 #endif
 }
 
+/// UTF-8 file name; path::string() goes through the ANSI code page and throws
+/// for names outside it (a Cyrillic map name made publishing fail).
+[[nodiscard]] std::string utf8_name(const std::filesystem::path& path) {
+    const auto encoded = path.u8string();
+    return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+}
+
+/// A path-valued environment variable. On Windows the wide value is used so
+/// a profile such as C:\Users\Тодор survives any ANSI code page.
+[[nodiscard]] std::optional<std::filesystem::path> environment_directory(const char* name) {
+#if defined(_WIN32)
+    const std::wstring wide_name(name, name + std::strlen(name));
+    wchar_t* value{};
+    std::size_t size{};
+    if (_wdupenv_s(&value, &size, wide_name.c_str()) != 0 || value == nullptr) {
+        std::free(value);
+        return std::nullopt;
+    }
+    std::filesystem::path result{std::wstring{value}};
+    std::free(value);
+    if (result.empty()) return std::nullopt;
+    return result;
+#else
+    const auto value = environment_value(name);
+    if (!value.has_value() || value->empty()) return std::nullopt;
+    return std::filesystem::path{*value};
+#endif
+}
+
 } // namespace
 
 std::filesystem::path default_revival_state_path() {
     // Test/portable launchers may isolate identity state without touching the
     // user's installed session. Normal desktop launches never set this.
-    if (const auto override_path =
-            environment_value("AOS_REVIVAL_STATE_PATH");
-        override_path.has_value() && !override_path->empty()) {
-        return std::filesystem::path{*override_path};
+    if (const auto override_path = environment_directory("AOS_REVIVAL_STATE_PATH"); override_path.has_value()) {
+        return *override_path;
     }
 #if defined(_WIN32)
-    if (const auto local = environment_value("LOCALAPPDATA");
-        local.has_value() && !local->empty()) {
-        return std::filesystem::path{*local} / "AoS Revival" /
-               "launcher_state.json";
+    if (const auto local = environment_directory("LOCALAPPDATA"); local.has_value()) {
+        return *local / "AoS Revival" / "launcher_state.json";
     }
 #endif
-    if (const auto home = environment_value("HOME");
-        home.has_value() && !home->empty()) {
-        return std::filesystem::path{*home} / ".local" / "share" /
+    if (const auto home = environment_directory("HOME"); home.has_value()) {
+        return *home / ".local" / "share" /
                "AoS Revival" / "launcher_state.json";
     }
     return std::filesystem::current_path() / "AoS Revival" /
@@ -370,7 +395,7 @@ RevivalWorkshopProject read_revival_workshop_project(
         const auto limit = extension == ".ugc" ? 1U << 20U : 64U << 20U;
         if (size == 0U || size > limit) throw std::runtime_error{"A project file is empty or exceeds the archive size limit."};
         RevivalWorkshopFile file;
-        file.filename = path.filename().string();
+        file.filename = utf8_name(path.filename());
         file.modified_ticks = std::to_string(static_cast<long long>(modified.time_since_epoch().count()));
         file.kind = extension == ".vxl" ? "map" : extension == ".png" ? "preview" : "metadata";
         file.content_type = extension == ".txt" ? "text/plain" : extension == ".png" ? "image/png" : "application/octet-stream";
@@ -884,7 +909,7 @@ public:
                 auto payload = Json::parse(encoded, nullptr, false);
                 if (!payload.is_object() || !payload.contains("relay_lobby_id") ||
                     !payload.contains("event_id") || !payload["event_id"].is_string() ||
-                    payload["event_id"].get_ref<const std::string&>() != entry.path().stem().string()) continue;
+                    payload["event_id"].get_ref<const std::string&>() != utf8_name(entry.path().stem())) continue;
                 {
                     const std::scoped_lock lock{mutex};
                     if (hosted_results_directory_locked() != directory || access_token != token) break;

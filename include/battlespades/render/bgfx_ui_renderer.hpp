@@ -44,6 +44,24 @@ enum class GraphicsBackend : std::uint8_t {
 [[nodiscard]] std::string_view graphics_backend_name(GraphicsBackend backend) noexcept;
 
 /**
+ * Whether bgfx can change the backbuffer's MSAA sample count on a running
+ * renderer.
+ *
+ * On Direct3D 11 and 12 bgfx::reset does not resize the swap chain for a new
+ * sample count: it releases it and creates another on the same window. Any
+ * other holder of the old chain -- the Steam overlay hooks it as soon as it is
+ * created -- keeps it alive, the second flip-model chain on that HWND is
+ * refused, and bgfx raises Fatal::UnableToInitialize ("Failed to create swap
+ * chain."), which ends the process. VSync and resolution changes take the
+ * ResizeBuffers path on those backends and stay safe. `automatic` is
+ * conservatively not live.
+ */
+[[nodiscard]] constexpr bool multisample_change_is_live(GraphicsBackend backend) noexcept {
+    return backend == GraphicsBackend::vulkan || backend == GraphicsBackend::opengl ||
+           backend == GraphicsBackend::metal;
+}
+
+/**
  * Enumerates the renderers compiled into bgfx on this platform.
  *
  * `automatic` is always first. This query is safe before initialize() and is
@@ -243,9 +261,20 @@ public:
      * This is a main-thread operation and may not run between begin_frame()
      * and end_frame(). The requested flags are retained for every later
      * resize, matching the retail Settings menu's immediate VSync behavior.
+     *
+     * A new sample count is applied only where multisample_change_is_live()
+     * holds for the active backend. Elsewhere the running swap chain keeps
+     * its startup sample count, the request is remembered, and
+     * multisample_restart_pending() reports it so the caller can say the
+     * change takes effect after a restart.
      */
     [[nodiscard]] bool set_presentation_options(bool vertical_sync,
                                                 std::uint8_t multisample_samples);
+
+    /** A requested MSAA sample count is waiting for the next launch. */
+    [[nodiscard]] bool multisample_restart_pending() const noexcept;
+    /** The sample count the running swap chain was actually reset with. */
+    [[nodiscard]] std::uint8_t active_multisample_samples() const noexcept;
 
     /**
      * Loads a PNG below asset_root and retains one reference to its cache entry.

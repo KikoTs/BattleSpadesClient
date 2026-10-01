@@ -63,7 +63,7 @@ int main(int argc,char** argv){
         expect(cache.rendered_count()==requests.size()+1,"Missing models must not retry every frame");
         frontend::GameHudModel hud;hud.set_player_score(0,true);
         const auto head_asset=cache.request(head,"stock"),weapon_asset=cache.request(scope,"stock");
-        hud.set_class_portrait(head_asset,false);hud.set_ammo_state(weapon_asset,30,90,true);hud.set_inventory_state({{weapon_asset,"1"}},0U,true);
+        hud.set_class_portrait(head_asset,false);hud.set_ammo_state(weapon_asset,30,90,true);hud.set_inventory_state({{weapon_asset,"1"},{"png/ui/weapons/spade.png","2"}},0U,true);// retail hides a strip of <= 1 entries
         const auto draw=frontend::GameHudPresentation{}.build(hud,{{800,600},1000U});
         std::size_t heads=0,weapons=0;
         for(const auto& command:draw.commands())if(const auto* sprite=std::get_if<ui::SpriteDrawCommand>(&command)){

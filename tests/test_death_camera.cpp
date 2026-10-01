@@ -2,6 +2,8 @@
 #include "battlespades/frontend/live_client_policy.hpp"
 #include "battlespades/network/protocol168_players.hpp"
 #include "battlespades/render/camera_basis.hpp"
+#include "battlespades/world/entity_catalog.hpp"
+#include "battlespades/world/local_entity.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
 #include <cmath>
@@ -20,6 +22,7 @@ using battlespades::frontend::DeathCameraTarget;
 using battlespades::frontend::DeathKillerInfo;
 using battlespades::frontend::deathcam_valid_kill_type;
 using battlespades::frontend::FlyCameraKey;
+using battlespades::frontend::grave_camera_focus;
 using battlespades::world::Vec3;
 using battlespades::world::VxlColor;
 using battlespades::world::VxlMap;
@@ -36,6 +39,29 @@ void expect(bool value, const char* message) {
 [[nodiscard]] Vec3 camera_position(Vec3 eye) {
     eye.y -= 0.5;
     return eye;
+}
+
+/** Where `point` lands in normalised view space: (0, 0) is screen centre. */
+struct ViewProjection final {
+    double right{};
+    double up{};
+    double depth{};
+};
+
+[[nodiscard]] ViewProjection project(const battlespades::frontend::DeathCameraPose& pose,
+                                     Vec3 point) {
+    const auto basis = battlespades::render::world_camera_basis(pose.yaw_degrees,
+                                                                pose.pitch_degrees);
+    const Vec3 v{point.x - pose.eye.x, point.y - pose.eye.y, point.z - pose.eye.z};
+    const auto dot = [&v](const std::array<double, 3U>& axis) {
+        return v.x * axis[0U] + v.y * axis[1U] + v.z * axis[2U];
+    };
+    const double depth = dot(basis.forward);
+    return {dot(basis.right) / depth, dot(basis.up) / depth, depth};
+}
+
+[[nodiscard]] bool centred(const ViewProjection& p, double tolerance = 1.0e-9) {
+    return p.depth > 0.0 && std::abs(p.right) < tolerance && std::abs(p.up) < tolerance;
 }
 
 [[nodiscard]] std::shared_ptr<VxlMap> empty_world() {
@@ -75,25 +101,138 @@ int main() {
             expect(!camera.can_cycle_targets(),
                    "an ordinary death locks the chase camera to our own body");
             const auto pose = camera.pose();
-            expect(std::abs(distance(camera_position(pose.eye), death_eye) - 5.0) < 1.0e-6,
+            expect(std::abs(distance(pose.eye, death_eye) - 5.0) < 1.0e-6,
                    "the chase camera sits five blocks from the body with no wall behind");
-            const auto basis =
-                battlespades::render::world_camera_basis(pose.yaw_degrees, pose.pitch_degrees);
-            const Vec3 look{death_eye.x - pose.eye.x, death_eye.y + 0.5 - pose.eye.y,
-                            death_eye.z - pose.eye.z};
-            expect((basis.forward[0U] * look.x + basis.forward[1U] * look.y +
-                    basis.forward[2U] * look.z) / 5.0 > 0.999,
-                   "the chase camera aims at the retail focus, not 0.9 above it");
+            expect(centred(project(pose, death_eye)),
+                   "our own body is framed dead centre before a grave exists");
             expect(std::abs(pose.yaw_degrees - 90.0) < 1.0e-9 &&
                        std::abs(pose.pitch_degrees) < 1.0e-9,
                    "the scene camera starts with retail r_x/r_y zero, looking along -y");
+        }
+
+        // One retail Camera: the first-person look is the death camera's
+        // starting angle. Looking at the killer when shot keeps them in view
+        // past our body even on a first kill (which opens no killer view).
+        {
+            DeathCameraController camera;
+            camera.on_mouse_move(300.0, -200.0); // inactive: ignored
+            const Vec3 killer{100.0, 120.0, 200.0}; // +y: yaw -90 in this basis
+            camera.set_view_angles(-90.0, 0.0);
+            camera.begin_death(death_eye, DeathKillerInfo{9U, killer, 0U, 1U}, true);
+            expect(camera.mode() == DeathCameraMode::grave,
+                   "streak 1 still goes straight to the chase camera");
+            const auto pose = camera.pose();
+            expect(std::abs(pose.yaw_degrees + 90.0) < 1.0e-9 &&
+                       std::abs(pose.pitch_degrees) < 1.0e-9,
+                   "the death camera inherits the look angles");
+            expect(centred(project(pose, killer)) && centred(project(pose, death_eye)),
+                   "the killer we were facing stays centred, behind our body");
             camera.on_mouse_move(120.0, 40.0);
-            const auto turned = camera.pose();
             camera.end_life();
+            camera.set_view_angles(30.0, 95.0);
             camera.begin_death(death_eye, std::nullopt, false);
-            expect(camera.pose().yaw_degrees == turned.yaw_degrees &&
-                       camera.pose().pitch_degrees == turned.pitch_degrees,
-                   "respawn and the next death preserve the scene camera's own angles");
+            expect(std::abs(camera.pose().yaw_degrees - 30.0) < 1.0e-9 &&
+                       std::abs(camera.pose().pitch_degrees - 89.9) < 1.0e-9,
+                   "each death re-seeds from the current look, not the previous death's orbit");
+        }
+
+        // Streak 2 from a look facing away: the killer view turns the camera
+        // round to the killer (yaw and pitch) and frames them on screen centre.
+        {
+            DeathCameraController camera;
+            const Vec3 killer{80.0, 85.0, 192.0};
+            camera.set_view_angles(180.0, -30.0);
+            camera.begin_death(death_eye, DeathKillerInfo{9U, killer, 0U, 2U}, true);
+            expect(camera.mode() == DeathCameraMode::killer_view, "streak 2: killer view");
+            expect(project(camera.pose(), killer).depth < 0.0,
+                   "the fixture starts with the killer behind the camera");
+            for (int tick{}; tick < 84; ++tick) camera.tick(1.0 / 60.0);
+            const auto pose = camera.pose();
+            const auto seen = project(pose, killer);
+            expect(seen.depth > 0.0 && std::abs(seen.right) < 1.0e-3 &&
+                       std::abs(seen.up) < 1.0e-3,
+                   "after 1.4 s the killer view looks straight at the killer");
+            // validate_position runs before rotate (DeathController.update), so
+            // the orbit trails the turn by one tick's worth of angle.
+            expect(centred(project(pose, death_eye), 1.0e-3),
+                   "the orbit keeps our body centred in front of the killer");
+            expect(pose.pitch_degrees < 0.0,
+                   "a killer standing above us is looked up at (negative pitch)");
+        }
+
+        // The grave (entity 11) is framed on screen centre: the drawn
+        // tombstone's middle, not the packet origin at its corner.
+        {
+            namespace world = battlespades::world;
+            const auto* definition = world::find_entity_definition(11U);
+            expect(definition != nullptr && !definition->parts.empty(), "grave catalog row");
+            world::LocalEntity grave;
+            grave.id = 41U;
+            grave.type = 11U;
+            grave.position = {200.3, 150.7, 230.2};
+            grave.face = 4U;
+            grave.grounded = true;
+            const auto focus = grave_camera_focus(grave);
+            expect(distance(focus, {199.8, 150.2, 230.0 - 1.1}) < 1.0e-6,
+                   "grave focus: half-block display centring, 1.1 above the support surface");
+            // Cross-check through the renderer's own transform: grave.kv6 is
+            // 16x4x22 voxels; after offset_pivots(0,0,11) its centre sits at
+            // mesh (0, 11, 0) (Kv6Model stores authored axes as x, -z, y),
+            // and its lowest mesh y is 0.
+            const auto& part = definition->parts[0U];
+            const double adjust =
+                world::entity_vertical_contact_adjustment(grave, *definition, part, 0.0F);
+            const auto m = world::entity_presentation_transform(grave, *definition, part, adjust);
+            const double mesh_y = static_cast<double>(part.pivot_offset[2U]);
+            const Vec3 drawn{mesh_y * m[4U] + m[12U], mesh_y * m[5U] + m[13U],
+                             mesh_y * m[6U] + m[14U]};
+            expect(distance(focus, drawn) < 1.0e-4,
+                   "the focus is where entity_presentation_transform draws the stone's middle");
+
+            DeathCameraController camera;
+            camera.set_view_angles(37.0, 21.0);
+            camera.begin_death({200.3, 150.7, 228.0}, std::nullopt, true);
+            camera.bind_grave(grave.id, focus);
+            expect(centred(project(camera.pose(), drawn), 1.0e-5),
+                   "the bound grave projects onto the middle of the screen");
+            camera.on_mouse_move(-450.0, 300.0);
+            expect(centred(project(camera.pose(), drawn), 1.0e-5),
+                   "it stays centred while the dead player orbits it");
+            grave.grounded = false;
+            grave.position.z = 226.0;
+            camera.update_grave(grave.id, grave_camera_focus(grave));
+            expect(centred(project(camera.pose(), grave_camera_focus(grave)), 1.0e-9),
+                   "a falling grave is followed and kept centred");
+
+            // The streak-2 killer view orbits the same grave focus.
+            grave.grounded = true;
+            grave.position.z = 230.2;
+            DeathCameraController killer_cam;
+            killer_cam.set_view_angles(0.0, 0.0);
+            killer_cam.begin_death({200.3, 150.7, 228.0},
+                                   DeathKillerInfo{9U, {170.0, 150.0, 228.0}, 0U, 2U}, true);
+            killer_cam.bind_grave(grave.id, focus);
+            for (int tick{}; tick < 30; ++tick) killer_cam.tick(1.0 / 60.0);
+            expect(killer_cam.mode() == DeathCameraMode::killer_view &&
+                       centred(project(killer_cam.pose(), focus), 1.0e-3),
+                   "the killer view keeps the grave centred while it turns");
+
+            // A wall behind the grave pulls the eye in but keeps the framing.
+            auto map = empty_world();
+            for (std::uint32_t y{140U}; y <= 160U; ++y) {
+                for (std::uint32_t z{215U}; z <= 235U; ++z) {
+                    expect(map->set_voxel(202U, y, z, VxlColor{90U, 90U, 90U, 255U}),
+                           "wall voxel must be accepted");
+                }
+            }
+            DeathCameraController walled;
+            walled.set_terrain(map.get());
+            walled.set_view_angles(0.0, 0.0); // looking along -x: the wall is behind
+            walled.begin_death({200.3, 150.7, 228.0}, std::nullopt, true);
+            walled.bind_grave(grave.id, focus);
+            const auto pulled = walled.pose();
+            expect(pulled.eye.x < 202.0 && centred(project(pulled, drawn), 1.0e-5),
+                   "the pulled-in eye still frames the grave centrally");
         }
 
         // Second consecutive kill: the killer view faces the killer from the
@@ -109,7 +248,7 @@ int main() {
                    "chase is not available before 1.5 s");
             for (int tick{}; tick < 60; ++tick) camera.tick(1.0 / 60.0);
             const auto pose = camera.pose();
-            expect(std::abs(distance(camera_position(pose.eye), death_eye) - 5.0) < 1.0e-9,
+            expect(std::abs(distance(pose.eye, death_eye) - 5.0) < 1.0e-9,
                    "streak 2 keeps the chase eye five blocks behind the body");
             // The killer lies along -x, which is yaw 0 in this basis.
             expect(std::abs(pose.yaw_degrees) < 1.0,
@@ -138,7 +277,7 @@ int main() {
             camera.begin_death(death_eye,
                                DeathKillerInfo{9U, killer, 0U, 3U}, true);
             for (int tick{}; tick < 14; ++tick) camera.tick(1.0 / 60.0);
-            expect(std::abs(distance(camera_position(camera.pose().eye), death_eye) - 5.0) < 1.0e-9,
+            expect(std::abs(distance(camera.pose().eye, death_eye) - 5.0) < 1.0e-9,
                    "before the fly-in the camera uses the chase eye behind the body");
             camera.set_killer_position(Vec3{60.0, 70.0, 200.0});
             for (int tick{}; tick < 250; ++tick) camera.tick(1.0 / 60.0);

@@ -4,8 +4,8 @@
 
 Status: implementation specification  
 Audit date: 2026-07-30  
-Audited server: `G:\AoSRevival\BattleSpades`  
-Client implementation: `G:\AoSRevival\BattleSpadesClient`
+Audited server: `../BattleSpades`  
+Client implementation: `.`
 
 The BattleSpades server repository was inspected read-only for this document.
 It was not modified. The C++ client's offline developer-tool lock is a safety

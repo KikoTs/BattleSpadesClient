@@ -364,6 +364,19 @@ public:
                              float pitch = 1.0F,
                              bool reverb_send = true);
 
+    /**
+     * `Character.play_vo`: a character voice line (spawn, death, jump/land,
+     * fall-hurt, idle groan) at volume `gain`, rolloff 0.15, fixed pitch.
+     * `speaker` (non-zero, one per character) owns a single line: when this
+     * line starts, that speaker's previous line is closed, exactly like
+     * retail's stop_current_vo. A culled or missing line leaves it playing.
+     */
+    bool play_named_voice_line(std::uint16_t speaker,
+                               std::string_view stem,
+                               SoundPosition position,
+                               float gain,
+                               bool head_relative);
+
     /** Start a server-selected `music/<stem>.ogg` track at its wire offset. */
     [[nodiscard]] bool play_named_music(std::string_view stem, float start_offset = 0.0F);
     /**

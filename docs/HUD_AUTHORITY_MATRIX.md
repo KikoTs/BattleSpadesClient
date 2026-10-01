@@ -17,7 +17,7 @@ into the phrase "server authoritative":
 - **Presentation state**: the client derives animation, geometry, formatting,
   and short-lived feedback from authoritative state/events.
 
-The original `G:/AoSRevival/BattleSpades` server is a read-only compatibility
+The original `../BattleSpades` server is a read-only compatibility
 target. All compatibility work described here is implemented in this client.
 
 ## Result at a glance

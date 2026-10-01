@@ -13,10 +13,11 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include <shellapi.h>
 
 #include <cstdio>
 #endif
@@ -42,14 +43,6 @@ struct FolderDialogResult final {
     bool cancelled{};
 };
 
-[[nodiscard]] std::filesystem::path executable_directory() {
-    const char* const base = SDL_GetBasePath();
-    if (base == nullptr || *base == '\0') {
-        return std::filesystem::current_path();
-    }
-    return std::filesystem::path{base};
-}
-
 [[nodiscard]] std::filesystem::path path_from_utf8(std::string_view value) {
     std::u8string encoded;
     encoded.reserve(value.size());
@@ -58,6 +51,16 @@ struct FolderDialogResult final {
         encoded.push_back(static_cast<char8_t>(character));
     }
     return std::filesystem::path{encoded};
+}
+
+[[nodiscard]] std::filesystem::path executable_directory() {
+    const char* const base = SDL_GetBasePath();
+    if (base == nullptr || *base == '\0') {
+        return std::filesystem::current_path();
+    }
+    // SDL returns UTF-8; path(const char*) would decode it through the ANSI
+    // code page and break an install folder such as C:\Игры\BattleSpades.
+    return path_from_utf8(base);
 }
 
 [[nodiscard]] std::string path_to_utf8(const std::filesystem::path& value) {
@@ -97,7 +100,7 @@ struct FolderDialogResult final {
             error = "missing value after " + std::string{argument};
             return std::nullopt;
         }
-        const std::filesystem::path value{argv[index]};
+        const auto value = path_from_utf8(argv[index]);
         if (argument == "--source") {
             options.source = value;
         } else if (argument == "--manifest") {
@@ -343,12 +346,43 @@ void attach_parent_console_for_cli() {
 
 } // namespace
 
+#if defined(_WIN32)
+namespace {
+
+/// __argv/argv are ANSI: a Cyrillic --source folder would arrive as "?".
+/// Rebuild UTF-8 arguments from the wide command line instead.
+int run_with_utf8_arguments() {
+    int count{};
+    LPWSTR* wide = CommandLineToArgvW(GetCommandLineW(), &count);
+    std::vector<std::string> storage;
+    for (int index = 0; wide != nullptr && index < count; ++index) {
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide[index], -1, nullptr, 0, nullptr, nullptr);
+        std::string text(static_cast<std::size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
+        if (bytes > 1) {
+            WideCharToMultiByte(CP_UTF8, 0, wide[index], -1, text.data(), bytes, nullptr, nullptr);
+        }
+        storage.push_back(std::move(text));
+    }
+    LocalFree(wide);
+    std::vector<char*> arguments;
+    for (auto& argument : storage) arguments.push_back(argument.data());
+    arguments.push_back(nullptr);
+    return run_installer(static_cast<int>(storage.size()), arguments.data());
+}
+
+} // namespace
+#endif
+
 #if defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     if (__argc > 1) {
         attach_parent_console_for_cli();
     }
-    return run_installer(__argc, __argv);
+    return run_with_utf8_arguments();
+}
+#elif defined(_WIN32)
+int main() {
+    return run_with_utf8_arguments();
 }
 #else
 int main(int argc, char* argv[]) {

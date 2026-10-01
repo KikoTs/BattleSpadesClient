@@ -21,7 +21,7 @@ The authoritative evidence is:
 
 - `docs/research/RETAIL_FRONTEND_CATALOG.md`
 - `assets/catalog/retail-frontend-screens.json`
-- the preserved Python client under `G:\AoSRevival\aceofspades_decompiled`
+- the preserved Python client under `<retail-decompiled>`
 
 The generated native inventory is rebuilt with:
 

@@ -47,9 +47,14 @@ void append_attempts(std::ostringstream& message,
                      std::string_view label,
                      const std::filesystem::path& packaged,
                      const std::filesystem::path& developer) {
-    message << label << " roots tried: '" << packaged.string() << '\'';
+    // u8string: string() throws for paths outside the ANSI code page.
+    const auto text = [](const std::filesystem::path& path) {
+        const auto encoded = path.u8string();
+        return std::string{reinterpret_cast<const char*>(encoded.data()), encoded.size()};
+    };
+    message << label << " roots tried: '" << text(packaged) << '\'';
     if (!developer.empty()) {
-        message << ", '" << developer.string() << '\'';
+        message << ", '" << text(developer) << '\'';
     }
 }
 

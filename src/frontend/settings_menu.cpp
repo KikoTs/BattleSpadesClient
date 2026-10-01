@@ -1,6 +1,7 @@
 #include "battlespades/frontend/settings_menu.hpp"
 
 #include "battlespades/render/quality_profile.hpp"
+#include "battlespades/settings/graphics_apply.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1098,8 +1099,9 @@ bool SettingsMenuModel::target_enabled(SettingsMenuTarget target) const {
     case SettingsTargetKind::tab:
         return valid_tab(target.tab);
     case SettingsTargetKind::defaults_button:
-        return !(environment_.context == SettingsMenuContext::in_game &&
-                 active_tab_ == settings::SettingsTab::graphics);
+        // Native: graphics apply live in a match (settings/graphics_apply.hpp),
+        // so retail's in-game graphics lock no longer applies.
+        return true;
     case SettingsTargetKind::cancel_button:
     case SettingsTargetKind::done_button:
         return true;
@@ -1118,10 +1120,9 @@ bool SettingsMenuModel::target_enabled(SettingsMenuTarget target) const {
         return environment_.context == SettingsMenuContext::in_game &&
                environment_.favorite_server_available;
     }
-    if (active_tab_ == settings::SettingsTab::graphics &&
-        environment_.context == SettingsMenuContext::in_game) {
-        return false;
-    }
+    // Retail disabled the whole Graphics tab in a match
+    // (SETTINGS_GRAPHICS_DISABLED_MESSAGE). Every row now either applies live
+    // without touching the network session or is marked RESTART_REQUIRED.
     if (target.row == SettingsRowId::shader_quality &&
         session_->draft().graphics.compatibility_shader()) {
         // The recovered Compatibility Shader toggle owns
@@ -1142,9 +1143,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     result.maximum_scroll_index = maximum_scroll_index(active_tab_);
     result.in_game = environment_.context == SettingsMenuContext::in_game;
     result.dirty = session_->dirty() || favorite_server_ != initial_favorite_server_;
-    result.tooltip_key = result.in_game && active_tab_ == settings::SettingsTab::graphics
-                             ? "SETTINGS_GRAPHICS_DISABLED_MESSAGE"
-                             : "SETTINGS_MESSAGE";
+    result.tooltip_key = "SETTINGS_MESSAGE";
     result.focused = focused_;
     result.hovered = hovered_;
 
@@ -1289,6 +1288,9 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             item.choices = {"OFF", "2", "4"};
             item.value_text =
                 item.choice_index == 0U ? "OFF" : std::to_string(item.choice_index * 2U);
+            if (!environment_.multisampling_live) {
+                item.description = "RESTART_REQUIRED";
+            }
             break;
         case SettingsRowId::effect_quality:
             item.choice_index = quality_index(current.graphics.effect_quality);
@@ -2376,10 +2378,11 @@ void SettingsMenuModel::activate_done() {
     const auto previous = session_->committed();
     const auto draft = session_->draft();
     const auto resolution_changed = previous.graphics.resolution != draft.graphics.resolution;
+    // Startup-only resources. A deferred MSAA change is reported by the
+    // frontend from the renderer itself: only it knows whether the requested
+    // count differs from the one the swap chain was created with.
     const auto restart_required =
-        previous.graphics.graphics_api != draft.graphics.graphics_api ||
-        previous.graphics.texture_quality != draft.graphics.texture_quality ||
-        previous.graphics.model_quality != draft.graphics.model_quality;
+        settings::plan_graphics_apply(previous, draft, true).restart_only;
     const auto changed = session_->commit();
 
     effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::confirm});

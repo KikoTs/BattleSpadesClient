@@ -267,6 +267,21 @@ void announce_app_id(const std::string& app_id) noexcept {
 #endif
 }
 
+/**
+ * True when Steam's overlay renderer is mapped into this process.
+ *
+ * Steam injects it into a process it launches; otherwise SteamAPI_Init loads
+ * it. Either way it can only hook a Direct3D device created after it arrived,
+ * which is why the client attaches before the renderer starts.
+ */
+[[nodiscard]] bool overlay_renderer_loaded() noexcept {
+#if defined(_WIN32)
+    return GetModuleHandleW(L"GameOverlayRenderer64.dll") != nullptr;
+#else
+    return false;
+#endif
+}
+
 [[nodiscard]] std::filesystem::path default_library_name() {
 #if defined(_WIN32)
     return "steam_api64.dll";
@@ -527,6 +542,12 @@ struct SteamNetworkingRuntime::Impl final {
     std::string persona;
     std::string relay_detail;
     std::atomic_bool relay_available{};
+    /** Latest GameOverlayActivated_t state, written on the pump thread. */
+    std::atomic_bool overlay_active{};
+    /** Activations seen so far, so an open-and-close inside one frame is not lost. */
+    std::atomic<std::uint64_t> overlay_activations{};
+    /** Set once IsOverlayEnabled has been reported true, to log it once. */
+    bool overlay_reported{};
     HSteamPipe pipe{};
     std::string error;
 
@@ -643,11 +664,46 @@ struct SteamNetworkingRuntime::Impl final {
         return false;
     }
 
+    /**
+     * Shift+Tab (or an overlay dialog the game opened) showing and hiding.
+     *
+     * Freed unread before 2026-09-30, so the game kept the mouse in relative
+     * mode under an open overlay: the overlay drew, but its cursor could not
+     * move and the player's clicks and keys still steered the game.
+     */
+    [[nodiscard]] bool dispatch_overlay_callback(const CallbackMsg_t& message) {
+        if (message.m_iCallback != GameOverlayActivated_t::k_iCallback ||
+            message.m_pubParam == nullptr ||
+            message.m_cubParam < static_cast<int>(sizeof(GameOverlayActivated_t))) {
+            return false;
+        }
+        GameOverlayActivated_t event{};
+        std::memcpy(&event, message.m_pubParam, sizeof(event));
+        const bool active = event.m_bActive != 0U;
+        // The count first: a frame that reads the state closed must still see
+        // that an activation happened.
+        if (active) overlay_activations.fetch_add(1U);
+        overlay_active.store(active);
+        core::diagnostic("steam", active ? "overlay opened" : "overlay closed");
+        return true;
+    }
+
+    /** Log once when Steam reports the overlay hooked into this process. */
+    void report_overlay_enabled() {
+        if (overlay_reported || api.steam_utils == nullptr || api.overlay_enabled == nullptr) {
+            return;
+        }
+        auto* const utils = api.steam_utils();
+        if (utils == nullptr || !api.overlay_enabled(utils)) return;
+        overlay_reported = true;
+        core::diagnostic("steam", "overlay enabled in this process (Shift+Tab)");
+    }
+
     void dispatch_callbacks() {
         api.dispatch_run_frame(pipe);
         CallbackMsg_t message{};
         while (api.dispatch_next(pipe, &message)) {
-            if (dispatch_join_callback(message)) {
+            if (dispatch_join_callback(message) || dispatch_overlay_callback(message)) {
                 // Handled; freed below like every other message.
             } else if (message.m_iCallback == SteamNetConnectionStatusChangedCallback_t::k_iCallback &&
                 message.m_pubParam != nullptr) {
@@ -689,8 +745,15 @@ struct SteamNetworkingRuntime::Impl final {
     }
 
     void run(std::stop_token stop) {
+        // The overlay hooks the swap chain some time after SteamAPI_Init, so
+        // IsOverlayEnabled is asked about once a second until it answers yes.
+        auto next_overlay_check = std::chrono::steady_clock::now();
         while (!stop.stop_requested()) {
             dispatch_callbacks();
+            if (!overlay_reported && std::chrono::steady_clock::now() >= next_overlay_check) {
+                next_overlay_check += std::chrono::seconds{1};
+                report_overlay_enabled();
+            }
             {
                 // Held across the call for the same reason as the status
                 // handlers: a service borrows a host or client implementation
@@ -728,6 +791,8 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
         return false;
     }
 
+    // Injected by Steam before init means Steam launched this process.
+    const bool overlay_injected = overlay_renderer_loaded();
     auto app_id = std::to_string(impl->config.app_id);
     announce_app_id(app_id);
     SteamErrMsg message{};
@@ -779,6 +844,12 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
     core::diagnostic("steam", "runtime ready: app=" + app_id + " id=" +
                                   std::to_string(impl_->steam_id.load()) + " relays=" +
                                   (impl_->relay_available.load() ? "ready" : "unavailable"));
+    // The first question when Shift+Tab does nothing: did the overlay reach
+    // this process at all, and who brought it.
+    core::diagnostic("steam", overlay_injected       ? "overlay renderer injected by Steam"
+                              : overlay_renderer_loaded() ? "overlay renderer loaded by SteamAPI_Init"
+                                                          : "overlay renderer not loaded; "
+                                                            "Shift+Tab will not work in this run");
     return true;
 }
 
@@ -793,6 +864,11 @@ void SteamNetworkingRuntime::stop() noexcept {
 
 bool SteamNetworkingRuntime::ready() const noexcept {
     return impl_ != nullptr && impl_->ready.load();
+}
+
+void* SteamNetworkingRuntime::steamworks_symbol(const char* name) const noexcept {
+    if (impl_ == nullptr || impl_->api.handle == nullptr || name == nullptr) return nullptr;
+    return library_symbol(impl_->api.handle, name);
 }
 
 std::uint64_t SteamNetworkingRuntime::steam_id() const noexcept {
@@ -895,6 +971,14 @@ bool SteamNetworkingRuntime::overlay_enabled() const {
     }
     auto* const utils = impl_->api.steam_utils();
     return utils != nullptr && impl_->api.overlay_enabled(utils);
+}
+
+bool SteamNetworkingRuntime::overlay_active() const noexcept {
+    return impl_ != nullptr && impl_->overlay_active.load();
+}
+
+std::uint64_t SteamNetworkingRuntime::overlay_activations() const noexcept {
+    return impl_ == nullptr ? 0U : impl_->overlay_activations.load();
 }
 
 bool SteamNetworkingRuntime::open_invite_dialog(const std::string& connect,

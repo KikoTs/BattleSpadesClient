@@ -60,8 +60,13 @@ void zombie_idle_groans_survive_generation() {
                "Zombie periodic bank must contain all sixteen groans");
         expect(zombie->periodic.chance == 100U,
                "Zombie periodic groans must retain their authored chance");
-        expect(zombie->periodic.no_consecutive_repeat,
-               "Zombie periodic groans must not repeat the same take");
+        expect(!zombie->periodic.no_consecutive_repeat,
+               "the Zombie groan's chance is +100: no groan may be suppressed");
+        VoiceSelectionState state;
+        const auto first = choose_voice_line(zombie->periodic, 0U, 3U, state);
+        const auto second = choose_voice_line(zombie->periodic, 0U, 3U, state);
+        expect(!first.empty() && !second.empty() && first != second,
+               "Zombie groans must play every time without repeating the take");
     }
     const auto* soldier = find_class_voice(0U);
     expect(soldier != nullptr && soldier->periodic.stems.empty(),
@@ -87,6 +92,42 @@ void the_no_repeat_flag_is_honoured() {
     const auto third = choose_voice_line(bank, 0U, 3U, state);
     expect(!third.empty() && third != first,
            "the next allowed trigger must not reuse the prior take");
+}
+
+/**
+ * media.get_sound_name: row slot 1 is the last-played index (-1 for every
+ * row), not a flag; only a NEGATIVE chance suppresses the next trigger.
+ * SPAWN_VO_CHANCE = 25, DEATH_SOUND 100 and FULLHURT_VO_CHANCE = 100 are
+ * positive, JUMP/LAND = -33 and WATER_JUMP/WATER_LAND = -66 negative
+ * (constants_audio.py:163-168).
+ */
+void only_negative_chances_suppress_the_next_trigger() {
+    for (const auto& set : class_voice_table()) {
+        for (const ClassVoiceBank* bank :
+             {&set.death, &set.periodic, &set.spawn, &set.fall_hurt}) {
+            expect(!bank->no_consecutive_repeat,
+                   "class " + std::to_string(set.class_id) +
+                       ": a positive-chance bank must never suppress a trigger");
+        }
+        for (const ClassVoiceBank* bank :
+             {&set.jump, &set.water_jump, &set.land, &set.water_land}) {
+            expect(bank->stems.empty() || bank->no_consecutive_repeat,
+                   "class " + std::to_string(set.class_id) +
+                       ": a negative-chance VO bank must suppress the next trigger");
+        }
+    }
+    // The local player keeps one selection state across lives: two forced
+    // spawn lines and two death cries in a row must both play.
+    const auto* soldier = find_class_voice(0U);
+    expect(soldier != nullptr, "class 0 must exist");
+    VoiceSelectionState spawn_state;
+    expect(!choose_voice_line(soldier->spawn, 0U, 1U, spawn_state).empty() &&
+               !choose_voice_line(soldier->spawn, 0U, 1U, spawn_state).empty(),
+           "a forced spawn line was suppressed by the previous life's line");
+    VoiceSelectionState death_state;
+    expect(!choose_voice_line(soldier->death, 0U, 1U, death_state).empty() &&
+               !choose_voice_line(soldier->death, 0U, 1U, death_state).empty(),
+           "every other local death cry was silenced");
 }
 
 /** A zero chance or an empty bank must never produce a line. */
@@ -161,6 +202,7 @@ int main() {
         deliberate_silences_are_preserved();
         zombie_idle_groans_survive_generation();
         the_no_repeat_flag_is_honoured();
+        only_negative_chances_suppress_the_next_trigger();
         silent_banks_stay_silent();
         voice_chance_uses_101_outcomes();
         local_spawn_voice_matches_retail_lifecycle();

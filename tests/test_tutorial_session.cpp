@@ -1,6 +1,7 @@
 #include "battlespades/world/tutorial_bootstrap.hpp"
 #include "battlespades/world/tutorial_session.hpp"
 #include "battlespades/world/particle_system.hpp"
+#include "battlespades/world/retail_random.hpp"
 #include "battlespades/world/terrain_effects.hpp"
 #include "battlespades/world/vxl_map.hpp"
 #include "battlespades/world/weapon_zoom.hpp"
@@ -1528,9 +1529,9 @@ int main() {
             expect(session.equip_inventory_slot(0U) && session.selected_tool_id() == 0U,
                    "number 1 must directly equip the first catalog slot");
             auto event = session.take_inventory_event();
-            expect(event.has_value() && !event->animate_toolbar &&
-                       !session.inventory().toolbar_visible(),
-                   "number selection must not start the wheel toolbar animation");
+            expect(event.has_value() && event->animate_toolbar &&
+                       session.inventory().toolbar_visible(),
+                   "number selection must open the retail tool strip like the wheel");
             session.cycle_tool(1);
             event = session.take_inventory_event();
             expect(event.has_value() && event->animate_toolbar &&
@@ -1911,12 +1912,68 @@ int main() {
             // The first surface cell is x=138, so the centered native cube
             // overlaps the authored wall at x=137..138 (18 solid cells) and
             // x=139 is air. The x=136 layer is deliberately outside it.
-            expect(session.map().solid_voxels() == before - 18U,
-                   "one Zombie Hands swing must clear the solid part of its 27-cell cube");
+            //
+            // BS server/combat_runtime.py _apply_native_dig applies ZOMBIE_DAMAGE
+            // (17) with the stock ZombieHandTool block_damage 2: every cube
+            // cell takes ceil4(2 + 8 * random()) from random.Random(seed)
+            // in x-major order (server/block_damage_model.py), and a 5-health
+            // map voxel breaks only when that reaches 5. One swing therefore
+            // cracks all 18 solid cells but does not erase the whole cube.
+            const auto actions = session.take_weapon_actions();
+            const auto swing = std::ranges::find_if(actions, [](const auto& action) {
+                return action.kind == battlespades::world::WeaponActionKind::melee &&
+                       action.tool_id == 24U;
+            });
+            expect(swing != actions.end(), "Zombie Hands swing must be recorded");
+            battlespades::world::RetailRandom random{swing->seed};
+            std::size_t expected_destroyed{};
+            for (int dx{-1}; dx <= 1; ++dx)
+                for (int dy{-1}; dy <= 1; ++dy)
+                    for (int dz{-1}; dz <= 1; ++dz) {
+                        const double cell_damage =
+                            std::ceil((2.0 + 8.0 * random.random()) * 4.0) / 4.0;
+                        expect(cell_damage >= 2.0 && cell_damage <= 10.0,
+                               "Zombie Hands per-cell damage must stay within 2 + 8r");
+                        const auto x = static_cast<std::uint32_t>(138 + dx);
+                        const auto y = static_cast<std::uint32_t>(76 + dy);
+                        const auto z = static_cast<std::uint32_t>(230 + dz);
+                        if (x > 138U)
+                            continue; // x=139 is air but still consumed a draw.
+                        const bool breaks = cell_damage >= 5.0;
+                        expected_destroyed += breaks ? 1U : 0U;
+                        expect(session.map().solid(x, y, z) != breaks,
+                               "Zombie Hands must break exactly the cells whose seeded "
+                               "damage reaches map health 5");
+                        if (!breaks) {
+                            expect(std::fabs(session.map().damage_fraction(x, y, z) -
+                                             static_cast<float>(cell_damage / 5.0)) < 1.0e-4F,
+                                   "a surviving cell must keep the server's seeded crack");
+                        }
+                    }
+            expect(session.map().solid_voxels() == before - expected_destroyed,
+                   "one Zombie Hands swing must remove only the cells it broke");
+            expect(expected_destroyed < 18U,
+                   "this seed must leave a cracked cell, as the server would");
             for (std::uint32_t y{75U}; y <= 77U; ++y)
                 for (std::uint32_t z{229U}; z <= 231U; ++z)
-                    expect(session.map().solid(136U, y, z),
+                    expect(session.map().solid(136U, y, z) &&
+                               session.map().damage_fraction(136U, y, z) == 0.0F,
                            "Zombie Hands must not dig outside the centered cube");
+
+            // At least 2 per cell per swing: three swings always clear a
+            // 5-health map voxel (ZOMBIEHAND_SHOOT_INTERVAL 0.4 s apart).
+            for (int swings{}; swings < 2; ++swings) {
+                for (int tick{}; tick < 30; ++tick)
+                    session.tick();
+                session.set_primary_held(true);
+                session.tick();
+                session.set_primary_held(false);
+            }
+            for (std::uint32_t x{137U}; x <= 138U; ++x)
+                for (std::uint32_t y{75U}; y <= 77U; ++y)
+                    for (std::uint32_t z{229U}; z <= 231U; ++z)
+                        expect(!session.map().solid(x, y, z),
+                               "three Zombie Hands swings must clear the map cells of the cube");
         }
 
         // Every digging family owns a distinct server-visible footprint. Keep

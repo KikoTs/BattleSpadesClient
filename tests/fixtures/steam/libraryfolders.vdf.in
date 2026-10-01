@@ -1,0 +1,23 @@
+"libraryfolders"
+{
+	"0"
+	{
+		"path"		"@STEAM_ROOT@"
+		"label"		""
+		"contentid"		"316275340506993641"
+		"apps"
+		{
+			"228980"		"510846444"
+		}
+	}
+	"1"
+	{
+		"path"		"@LIBRARY1@"
+		"label"		"Games"
+		"apps"
+		{
+			"240"		"4888872627"
+			"224540"		"482897461"
+		}
+	}
+}

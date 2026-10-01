@@ -2,6 +2,8 @@
 
 #include "battlespades/render/camera_basis.hpp"
 #include "battlespades/shared/retail_constants.hpp"
+#include "battlespades/world/entity_catalog.hpp"
+#include "battlespades/world/local_entity.hpp"
 #include "battlespades/world/voxel_raycast.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
@@ -70,6 +72,27 @@ constexpr double retail_tick_hz{60.0};
 
 } // namespace
 
+world::Vec3 grave_camera_focus(const world::LocalEntity& grave) noexcept {
+    constexpr std::uint8_t grave_type{11U};
+    const auto* definition = world::find_entity_definition(grave_type);
+    if (definition == nullptr || definition->parts.empty()) {
+        return grave.position;
+    }
+    const auto& part = definition->parts[0U];
+    const auto origin = world::entity_presentation_position(grave, part);
+    // entity_vertical_contact_adjustment stands the model's base on this
+    // surface; with the pivot at the base the unadjusted base is the origin.
+    double base_z = origin.z;
+    if (grave.face == 4U && world::uses_entity_terrain_gravity(*definition)) {
+        base_z = grave.grounded ? std::floor(grave.position.z) : grave.position.z;
+    }
+    const double half_height = static_cast<double>(part.pivot_offset[2U]) *
+                               static_cast<double>(definition->model_size) *
+                               static_cast<double>(part.scale);
+    // Map z grows downward: the stone rises from its base toward -z.
+    return {origin.x, origin.y, base_z - grave.floating_offset - half_height};
+}
+
 bool deathcam_valid_kill_type(std::uint8_t kill_type) noexcept {
     return kill_type <= 6U || (kill_type >= 21U && kill_type <= 24U);
 }
@@ -116,6 +139,12 @@ world::Vec3 chase_camera_eye(const world::VxlMap* map, world::Vec3 focus, double
     return {focus.x + offset.x * scale, focus.y + offset.y * scale, focus.z + offset.z * scale};
 }
 
+void DeathCameraController::set_view_angles(double yaw_degrees, double pitch_degrees) noexcept {
+    if (!std::isfinite(yaw_degrees) || !std::isfinite(pitch_degrees)) return;
+    yaw_ = wrap_degrees(yaw_degrees);
+    pitch_ = std::clamp(pitch_degrees, -pitch_limit, pitch_limit);
+}
+
 void DeathCameraController::begin_death(world::Vec3 death_eye,
                                         std::optional<DeathKillerInfo> killer,
                                         bool deathcam_enabled, bool never_respawn) noexcept {
@@ -152,6 +181,7 @@ void DeathCameraController::activate_death_controller() noexcept {
     }
     working_position_ = fallback_anchor_;
     killer_eye_ = chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_);
+    killer_eye_orbits_body_ = true;
     target_position_ = working_position_;
     zoom_possible_ = false;
     mode_ = DeathCameraMode::killer_view;
@@ -311,9 +341,11 @@ void DeathCameraController::tick(double dt) noexcept {
                              interpolate(working_position_.y, target_position_.y, position_lerp, dt),
                              interpolate(working_position_.z, target_position_.z, position_lerp, dt)};
         killer_eye_ = working_position_;
+        killer_eye_orbits_body_ = false;
         if (killer_present_) set_killer_view(killer_->position, false);
     } else {
         killer_eye_ = chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_);
+        killer_eye_orbits_body_ = true;
     }
     pitch_ = std::clamp(interpolate_angle(pitch_, target_pitch_, angle_lerp, dt), -pitch_limit,
                         pitch_limit);
@@ -447,16 +479,22 @@ DeathCameraPose DeathCameraController::pose() const noexcept {
         eye.y += 0.5;
         return DeathCameraPose{eye, yaw_, pitch_};
     };
+    // The local player's own body and grave are framed dead centre: the eye
+    // lies on the ray back from the focus, with no set_position shift, so the
+    // tombstone projects onto the middle of the screen as it does in retail.
+    const auto body_pose = [this](world::Vec3 eye) {
+        return DeathCameraPose{eye, yaw_, pitch_};
+    };
     switch (mode_) {
     case DeathCameraMode::killer_view:
-        return drawn_pose(killer_eye_);
+        return killer_eye_orbits_body_ ? body_pose(killer_eye_) : drawn_pose(killer_eye_);
     case DeathCameraMode::chase:
         if (chase_target_.has_value()) {
             return drawn_pose(chase_camera_eye(terrain_, chase_target_->position, yaw_, pitch_));
         }
         [[fallthrough]];
     case DeathCameraMode::grave:
-        return drawn_pose(chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_));
+        return body_pose(chase_camera_eye(terrain_, own_body_focus(), yaw_, pitch_));
     case DeathCameraMode::spectator_free:
         return drawn_pose(fly_draw_position_);
     case DeathCameraMode::inactive:

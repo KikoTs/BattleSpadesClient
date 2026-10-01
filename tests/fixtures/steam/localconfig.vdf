@@ -1,0 +1,38 @@
+"UserLocalConfigStore"
+{
+	"Broadcast"
+	{
+		"Permissions"		"1"
+	}
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"SteamDefaultDialog"		"#app_games"
+				"apps"
+				{
+					"224540"
+					{
+						"LastPlayed"		"1790795128"
+						"Playtime"		"1234"
+						"cloud"
+						{
+							"last_sync_state"		"synchronized"
+						}
+					}
+					"320"
+					{
+						"BadgeData"		"02000000087b"
+						"LaunchOptions"		"-insecure"
+					}
+				}
+			}
+		}
+	}
+	"WebStorage"
+	{
+		"FriendStoreLocalPrefs_198097034"		"{\"ePerFriendRunningGameNotification\":1}"
+	}
+}

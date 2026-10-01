@@ -41,6 +41,33 @@ int main() {
     using battlespades::frontend::ClassSelectionAction;
     using battlespades::frontend::ClassSelectionMenuModel;
     try {
+        {
+            // Zombie mode: retail GameClass.build_class_loadout appends the
+            // Flare Block to every non-mafia class, the zombie included, but
+            // the server commits the infected kit (hands 24, zombie prefab
+            // 28, prefab 23). The first live life must come from that
+            // CreatePlayer: the zombie has no FPS arms to hold a block, and
+            // the server refuses tool 22 and PlaceFlareBlock from it.
+            namespace world = battlespades::world;
+            const auto requested = world::automatic_class_selection(4U, {});
+            expect(std::ranges::find(requested.loadout, world::flare_block_tool) !=
+                       requested.loadout.end(),
+                   "retail build_class_loadout gives the zombie request a Flare Block");
+            const world::ClassSelection committed{4U, {24U, 28U, 23U}, {}, {}};
+            const auto spawn = world::live_spawn_selection(committed, &requested);
+            expect(spawn.class_id == 4U && spawn.loadout == committed.loadout,
+                   "the first live life uses the server-committed zombie loadout");
+            expect(std::ranges::find(spawn.loadout, world::flare_block_tool) ==
+                       spawn.loadout.end(),
+                   "a zombie never spawns holding the Flare Block");
+            const auto* zombie = world::find_class_definition(4U);
+            expect(zombie != nullptr && zombie->first_person_arm_assets[0U].empty() &&
+                       zombie->first_person_arm_assets[1U].empty(),
+                   "CLASS_FPS_ARMS[CLASS_ZOMBIE] is empty: no class hands exist");
+            const world::ClassSelection empty{};
+            expect(world::live_spawn_selection(empty, &requested).loadout == requested.loadout,
+                   "without a committed loadout the request is the fallback");
+        }
         ClassSelectionMenuModel menu;
         constexpr std::array<std::uint8_t, 3U> advertised{0U, 12U, 17U};
         menu.configure(advertised, 1U, 0U);

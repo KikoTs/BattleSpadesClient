@@ -1,0 +1,17 @@
+"AppState"
+{
+	"appid"		"224540"
+	"universe"		"1"
+	"LauncherPath"		"C:\\Program Files (x86)\\Steam\\steam.exe"
+	"name"		"Ace of Spades"
+	"StateFlags"		"4"
+	"installdir"		"aceofspades"
+	"LastUpdated"		"1736348367"
+	"InstalledDepots"
+	{
+		"224541"
+		{
+			"manifest"		"4205866958513355347"
+		}
+	}
+}

@@ -14,10 +14,12 @@
 #include "battlespades/world/tutorial_session.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -118,6 +120,105 @@ void session_tests() {
     session.tick();
     expect(!session.zoomed(), "set_zoom(0) after the shot that empties the magazine");
     expect(session.take_attack_events().zoom_dropped, "the un-zoom plays the zoom_out cue");
+
+    // FlareBlockTool (22) held in a live session: one LMB press is one
+    // flare_place action (the frontend turns it into PlaceFlareBlock(104)),
+    // and the wallet it is judged against can pay FLAREBLOCK_COST.
+    {
+        TutorialSessionConfig flare_live;
+        flare_live.network_authoritative = true;
+        flare_live.initial_position = {130.5, 75.5, 230.75};
+        flare_live.initial_orientation = {0.0, 0.0, 1.0};
+        flare_live.initial_class_id = 0U;
+        flare_live.initial_loadout = {2U, 5U, 22U};
+        flare_live.initial_tool = static_cast<std::uint8_t>(22U);
+        TutorialWorldSession flare_session{platform_world(), flare_live};
+        expect(flare_session.selected_tool_id() == std::optional<std::uint8_t>{static_cast<std::uint8_t>(22U)},
+               "the live session holds the Flare Block");
+        expect(flare_block_affordable(flare_session.blocks_remaining(),
+                                      flare_session.infinite_blocks()),
+               "a fresh live wallet pays FLAREBLOCK_COST");
+        flare_session.set_primary_held(true);
+        flare_session.tick();
+        flare_session.set_primary_held(false);
+        const auto flare_actions = flare_session.take_weapon_actions();
+        expect(std::ranges::count_if(flare_actions, [](const WeaponAction& action) {
+                   return action.kind == WeaponActionKind::flare_place && action.tool_id == 22U;
+               }) == 1,
+               "one LMB press with tool 22 emits exactly one flare_place");
+    }
+
+    // Offline weapon lab (F4): FlareBlockTool places at the cube its ghost
+    // shows -- BlockToolCommon's target, out to MAX_BLOCK_DISTANCE -- not at
+    // the end of a four-block melee ray, and a refused cube is a build_error.
+    {
+        TutorialSessionConfig lab;
+        lab.initial_position = {130.5, 75.5, 230.75};
+        lab.initial_orientation = {6.0 / std::sqrt(36.0 + 2.25 * 2.25), 0.0,
+                                   2.25 / std::sqrt(36.0 + 2.25 * 2.25)};
+        const auto lab_map = platform_world();
+        TutorialWorldSession offline{lab_map, lab};
+        offline.debug_grant_full_loadout();
+        const auto slots = offline.inventory().slots();
+        const auto flare_slot = std::ranges::find(slots, std::uint8_t{22U}, &InventorySlot::tool_id);
+        expect(flare_slot != slots.end() &&
+                   offline.equip_inventory_slot(
+                       static_cast<std::size_t>(flare_slot - slots.begin())),
+               "the weapon lab can hold the Flare Block");
+        for (int settle = 0; settle < 60; ++settle) offline.tick();
+        const BlockOccupiedPredicate body = [&offline](BlockTargetCell cell) {
+            return block_cell_overlaps_body(cell, offline.player().position);
+        };
+        const auto aimed = resolve_block_target(*lab_map, offline.player().position,
+                                                offline.player().orientation,
+                                                retail_max_block_distance, body);
+        expect(aimed.valid && aimed.cell.has_value(), "the lab flare has a ghost cube");
+        const auto cell = *aimed.cell;
+        const double dx = cell[0U] + 0.5 - offline.player().position.x;
+        const double dy = cell[1U] + 0.5 - offline.player().position.y;
+        const double dz = cell[2U] + 0.5 - offline.player().position.z;
+        expect(std::sqrt(dx * dx + dy * dy + dz * dz) > 4.5,
+               "the ghost cube is past the old four-block melee reach");
+        const int wallet = offline.blocks_remaining();
+        static_cast<void>(offline.take_weapon_actions());
+        offline.set_primary_held(true);
+        offline.tick();
+        offline.set_primary_held(false);
+        expect(lab_map->solid(static_cast<std::uint32_t>(cell[0U]),
+                              static_cast<std::uint32_t>(cell[1U]),
+                              static_cast<std::uint32_t>(cell[2U])),
+               "LMB places the Flare Block on its ghost cube");
+        expect(offline.blocks_remaining() == wallet - retail_flare_block_cost,
+               "the Flare Block costs FLAREBLOCK_COST");
+        expect(offline.static_lights().lights().size() == 1U,
+               "the placed Flare Block registers its light");
+
+        // Aimed at the sky: no cube, nothing placed, one build_error edge.
+        TutorialSessionConfig sky = lab;
+        sky.initial_orientation = {0.0, 0.0, -1.0};
+        TutorialWorldSession skyward{platform_world(), sky};
+        skyward.debug_grant_full_loadout();
+        const auto sky_slots = skyward.inventory().slots();
+        const auto sky_flare =
+            std::ranges::find(sky_slots, std::uint8_t{22U}, &InventorySlot::tool_id);
+        expect(sky_flare != sky_slots.end() &&
+                   skyward.equip_inventory_slot(
+                       static_cast<std::size_t>(sky_flare - sky_slots.begin())),
+               "the sky probe holds the Flare Block");
+        for (int settle = 0; settle < 60; ++settle) skyward.tick();
+        static_cast<void>(skyward.take_weapon_actions());
+        const int sky_wallet = skyward.blocks_remaining();
+        skyward.set_primary_held(true);
+        skyward.tick();
+        skyward.set_primary_held(false);
+        const auto sky_actions = skyward.take_weapon_actions();
+        expect(skyward.blocks_remaining() == sky_wallet && skyward.static_lights().empty(),
+               "a Flare Block with no cube places nothing");
+        expect(std::ranges::count_if(sky_actions, [](const WeaponAction& action) {
+                   return action.kind == WeaponActionKind::placement_rejected;
+               }) == 1,
+               "a refused Flare Block plays build_error");
+    }
 
     // RPG2: stock (3, 3, 3, 3, 3) with clip_reload -- 6 per life, one rocket
     // per 1.0 s reload cycle.

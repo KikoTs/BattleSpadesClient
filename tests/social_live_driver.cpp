@@ -3,7 +3,7 @@
 // Drives the production RevivalIdentityService + RevivalSocialClient exactly as
 // the frontend does (tick + drain on a 16 ms "frame"), so convergence times and
 // errors are the ones a player would see. Point it only at a loopback dev
-// server (G:/AoSRevival/aos_revival/scripts/social-dev-server.mjs), never at
+// server (../aos_revival/scripts/social-dev-server.mjs), never at
 // www.aosplay.net: it creates accounts, lobbies and hundreds of chat events.
 //
 //   aos_social_live_driver http://127.0.0.1:18790 <scratch-dir> [prefix]

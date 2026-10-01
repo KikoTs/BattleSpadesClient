@@ -148,4 +148,18 @@ default_class_constructs(std::uint8_t class_id, const ClassSelectionRules& rules
     const std::array<std::size_t, 4U>& option_indices,
     std::span<const std::string> prefabs);
 
+/**
+ * The selection a live match's first life is built from: the loadout the
+ * server committed in the local CreatePlayer whenever it carried one, and the
+ * request we sent only when it did not. The server normalizes requests, and
+ * Zombie mode replaces them outright (the infected get 24, 28, 23 and no
+ * Flare Block), so building from the request handed a zombie a tool the server
+ * refuses and that has no FPS arms to hold it.
+ */
+[[nodiscard]] inline ClassSelection live_spawn_selection(const ClassSelection& committed,
+                                                         const ClassSelection* requested) {
+    if (committed.loadout.empty() && requested != nullptr) return *requested;
+    return committed;
+}
+
 } // namespace battlespades::world
