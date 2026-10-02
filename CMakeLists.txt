@@ -307,6 +307,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     install(
         FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/ui-layout.json"
+              "${CMAKE_CURRENT_SOURCE_DIR}/config/alsoft.conf"
         DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT Runtime
     )

@@ -10,8 +10,10 @@
 #include "battlespades/platform/sdl_window_module.hpp"
 #endif
 
+#include <cstring>
 #include <filesystem>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -400,6 +402,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 }
 #else
 int main(int argc, char* argv[]) {
+#if defined(__linux__)
+    {
+        // Prefer a real playback backend. An inherited "null" selection
+        // (sometimes injected by sandboxed launchers) silences all audio, so
+        // treat it the same as an unset value.
+        const char* alsoft_drivers = std::getenv("ALSOFT_DRIVERS");
+        if (alsoft_drivers == nullptr || std::strcmp(alsoft_drivers, "null") == 0) {
+            setenv("ALSOFT_DRIVERS", "alsa,pulse,pipewire", 1);
+        }
+    }
+    const char* sdl_video = std::getenv("SDL_VIDEO_DRIVER");
+    if (sdl_video == nullptr) {
+        sdl_video = std::getenv("SDL_VIDEODRIVER");
+    }
+    const char* display = std::getenv("DISPLAY");
+    if ((sdl_video == nullptr || std::string_view{sdl_video} == "wayland") &&
+        display != nullptr && *display != '\0') {
+        setenv("SDL_VIDEO_DRIVER", "x11", 1);
+        setenv("SDL_VIDEODRIVER", "x11", 1);
+    }
+#endif
 #if defined(__APPLE__) && defined(AOS_HAS_NATIVE_BACKENDS)
     const auto diagnostic_path =
         argc == 1 ? open_diagnostic_log() : std::filesystem::path{"BattleSpadesClient.log"};

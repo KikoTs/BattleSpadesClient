@@ -383,6 +383,16 @@ bool SdlWindowModule::start() {
 
     // This executable owns main(), so SDL must not install an SDL_main shim.
     SDL_SetMainReady();
+#if defined(__linux__)
+    if (std::getenv("SDL_VIDEO_DRIVER") == nullptr && std::getenv("SDL_VIDEODRIVER") == nullptr) {
+        const char* display = std::getenv("DISPLAY");
+        if (display != nullptr && *display != '\0') {
+            setenv("SDL_VIDEO_DRIVER", "x11", 0);
+            setenv("SDL_VIDEODRIVER", "x11", 0);
+            SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "x11", SDL_HINT_OVERRIDE);
+        }
+    }
+#endif
     impl_->owns_sdl_runtime = SDL_WasInit(0) == 0U;
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         impl_->last_error = sdl_error_or("SDL video initialization failed");
