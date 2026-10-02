@@ -85,16 +85,20 @@ void gameplay_mode_tag_beats_the_category_mode_tla() {
       {"ip":"204.168.157.43","port":27019,"name":"Real Demolition","game_mode":"DEM",
        "mode_tla":"dem","tags":["mode=0001","mode=0001"]},
       {"ip":"204.168.157.43","port":27020,"name":"Plain TDM","mode_tla":"tdm",
-       "tags":["mode=0001"]}
+       "tags":["mode=0001"]},
+      {"ip":"204.168.157.43","port":27021,"name":"Official Classic CTF","game_mode":"DEM",
+       "mode_tla":"dem","tags":["mode=0008","gamemode=CCTF","mode=0001"]},
+      {"ip":"204.168.157.43","port":27022,"name":"Unknown Gamemode","game_mode":"DEM",
+       "mode_tla":"dem","tags":["gamemode=foo","mode=0009","mode=0001"]}
     ])json";
     const auto parsed = battlespades::network::parse_public_server_list(json);
-    expect(parsed && parsed.servers.size() == 4U, "all four rows must parse");
+    expect(parsed && parsed.servers.size() == 6U, "all six rows must parse");
     std::vector<std::string> codes;
     for (const auto& server : parsed.servers) codes.push_back(server.mode_code);
     std::ranges::sort(codes);
-    const std::vector<std::string> expected{"ctf", "dem", "tdm", "zom"};
+    const std::vector<std::string> expected{"cctf", "ctf", "dem", "tc", "tdm", "zom"};
     expect(codes == expected,
-           "the gameplay mode tag must replace a category-derived dem label");
+           "a known gamemode tag must beat the ordinal, and an unknown one must fall back to it");
 }
 
 void lan_response_uses_datagram_source_as_authority() {

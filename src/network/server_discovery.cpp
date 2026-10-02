@@ -98,12 +98,18 @@ template <typename Integer>
 }
 
 /**
- * The gameplay ordinal from a listing's `mode=NNNN` tags.
+ * The gameplay mode from a listing's `gamemode=<code>` or `mode=NNNN` tags.
  *
- * Revival servers advertise their MODE_* id there, while the Steam A2S path
- * appends `mode=0001`, the SERVERMODE_PUBLIC browser category. The live
- * master (2026-09-29) derived `mode_tla` from that last tag and labelled
- * every CTF/TDM/TC/VIP/Zombie server "dem". When the tags disagree, the
+ * The official Revival master tags each server with its explicit mode code
+ * (`gamemode=cctf`). That wins whenever it names a known code, and it is the
+ * only way to tell Classic CTF from CTF, which share a MODE_* ordinal. An
+ * unknown code is ignored.
+ *
+ * Otherwise the ordinal comes from the `mode=NNNN` tags. Revival servers
+ * advertise their MODE_* id there, while the Steam A2S path appends
+ * `mode=0001`, the SERVERMODE_PUBLIC browser category. The live master
+ * (2026-09-29) derived `mode_tla` from that last tag and labelled every
+ * CTF/TDM/TC/VIP/Zombie server "dem". When the tags disagree, the
  * non-category ordinal is the gameplay mode; a real Demolition server
  * advertises only 0001 and keeps its label.
  */
@@ -118,10 +124,9 @@ template <typename Integer>
         if (!candidate.is_string()) continue;
         const auto tag = lowercase(candidate.get<std::string>());
         if (tag.starts_with("gamemode=")) {
-            const auto mode = tag.substr(9U);
-            if (!mode.empty()) {
-                return mode;
-            }
+            const auto mode = std::string_view{tag}.substr(9U);
+            if (std::ranges::find(codes, mode) != codes.end()) return std::string{mode};
+            continue;
         }
         if (!tag.starts_with("mode=") || tag.size() > 9U) continue;
         std::size_t ordinal{};
