@@ -535,9 +535,9 @@ void test_download_pipeline(const fs::path& root) {
     // 7. Every mirror down: a clear, retryable error.
     assets::RetailTransport down;
     down.fetch_range = [](const std::string&, std::uint64_t, const auto&, const auto&) {
-        assets::TransferResult result;
-        result.error = "Could not resolve host";
-        return result;
+        assets::TransferResult failure;
+        failure.error = "Could not resolve host";
+        return failure;
     };
     request.release = release_for(server.package);
     request.destination = install / "assets" / "original-6";
