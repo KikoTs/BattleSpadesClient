@@ -47,8 +47,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -1729,20 +1727,6 @@ bool OpenAlFrontendAudio::start() {
         impl_->last_error = "another OpenAL context is already current on the main thread";
         return false;
     }
-
-#if defined(__linux__)
-    // On Linux with OpenAL Soft, ensure a real hardware playback driver
-    // (ALSA / pipewire-alsa / PulseAudio) is selected rather than falling
-    // back to the "null" dummy sink. An inherited "null" selection (sometimes
-    // injected by sandboxed launchers) silences all audio, so treat it the
-    // same as an unset value.
-    {
-        const char* alsoft_drivers = std::getenv("ALSOFT_DRIVERS");
-        if (alsoft_drivers == nullptr || std::strcmp(alsoft_drivers, "null") == 0) {
-            setenv("ALSOFT_DRIVERS", "alsa,pulse,pipewire", 1);
-        }
-    }
-#endif
 
     try {
         impl_->last_error.clear();

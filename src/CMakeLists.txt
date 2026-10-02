@@ -778,28 +778,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             BattleSpades::World
             OpenAL::OpenAL
     )
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND DEFINED VCPKG_INSTALLED_DIR)
-        # OpenAL Soft statically embeds its ALSA backend, but the CMake
-        # package it exports does not propagate libasound to consumers. Link
-        # the vcpkg copy explicitly so the executable resolves the snd_*
-        # symbols. Both configurations are listed; the linker ignores the
-        # archive whose symbols are already satisfied.
-        file(GLOB _aos_asound_lib_dirs "${VCPKG_INSTALLED_DIR}/*/lib")
-        foreach(_aos_asound_lib_dir IN LISTS _aos_asound_lib_dirs)
-            get_filename_component(_aos_asound_triplet_dir "${_aos_asound_lib_dir}" DIRECTORY)
-            foreach(_aos_asound_candidate
-                    "${_aos_asound_lib_dir}/libasound.a"
-                    "${_aos_asound_triplet_dir}/debug/lib/libasound.a")
-                if(EXISTS "${_aos_asound_candidate}"
-                        AND NOT _aos_asound_candidate IN_LIST AOS_ALSA_LIBRARIES)
-                    list(APPEND AOS_ALSA_LIBRARIES "${_aos_asound_candidate}")
-                endif()
-            endforeach()
-        endforeach()
-        if(AOS_ALSA_LIBRARIES)
-            target_link_libraries(aos_audio_openal PRIVATE ${AOS_ALSA_LIBRARIES})
-        endif()
-    endif()
     aos_enable_strict_warnings(aos_audio_openal)
     if(APPLE)
         # Apple's supported compatibility framework is intentionally used for
@@ -987,10 +965,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             "${CMAKE_COMMAND}" -E copy_if_different
             "${PROJECT_SOURCE_DIR}/config/ui-layout.json"
             "$<TARGET_FILE_DIR:BattleSpadesClient>/ui-layout.json"
-        COMMAND
-            "${CMAKE_COMMAND}" -E copy_if_different
-            "${PROJECT_SOURCE_DIR}/config/alsoft.conf"
-            "$<TARGET_FILE_DIR:BattleSpadesClient>/alsoft.conf"
         VERBATIM
     )
     # The Steamworks library is loaded by name from the executable's directory.

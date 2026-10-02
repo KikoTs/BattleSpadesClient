@@ -211,16 +211,6 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
 }
 
 [[nodiscard]] int run_installer(int argc, char* argv[]) {
-#if defined(__linux__)
-    if (std::getenv("SDL_VIDEO_DRIVER") == nullptr && std::getenv("SDL_VIDEODRIVER") == nullptr) {
-        const char* display = std::getenv("DISPLAY");
-        if (display != nullptr && *display != '\0') {
-            setenv("SDL_VIDEO_DRIVER", "x11", 0);
-            setenv("SDL_VIDEODRIVER", "x11", 0);
-            SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "x11", SDL_HINT_OVERRIDE);
-        }
-    }
-#endif
     if (!SDL_Init(0U)) {
         std::cerr << "BattleSpadesAssetInstaller: SDL initialization failed: "
                   << SDL_GetError() << '\n';
