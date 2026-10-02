@@ -153,6 +153,10 @@ bash scripts/build.sh dev        # or: release
 The script picks `native-linux-*` or `native-macos-*`, builds, runs the tests
 and installs into `out/install/<preset>`.
 
+On Linux the client prefers X11, which Wayland desktops provide through
+XWayland, and falls back to native Wayland when no X server is available. Set
+`SDL_VIDEO_DRIVER=wayland` to use native Wayland directly.
+
 ### Presets
 
 | Platform | Configure / build / test presets |
