@@ -67,18 +67,35 @@ ensure_runtime_assets(const std::filesystem::path& executable_path) {
         return {std::nullopt, loaded.error, false};
     }
 
-    const auto packaged_root = executable_directory / "assets" / "original";
+    // <executable>/assets/original, else the user data folder the installer
+    // falls back to when the executable folder is read-only (for example a
+    // macOS app in /Applications or a translocated app), else the developer tree.
+    const auto locations = battlespades::assets::asset_root_locations(executable_directory);
     const auto developer_root = std::filesystem::path{AOS_DEVELOPER_ASSET_ROOT};
-    for (const auto& candidate : {packaged_root, developer_root}) {
+    const auto user_root = locations.user.value_or(std::filesystem::path{});
+    for (const auto& candidate : {locations.packaged, user_root, developer_root}) {
         if (candidate.empty()) {
             continue;
         }
         const auto check = battlespades::assets::verify_asset_tree(
             candidate, *loaded.manifest, AssetVerificationDepth::metadata);
         if (check) {
+            if (candidate == user_root) {
+                // The app may have moved since the import: re-point
+                // <data>/assets/client at this build's packaged client assets.
+                std::string link_error;
+                if (!battlespades::assets::link_packaged_client_assets(
+                        user_root.parent_path(), locations.packaged.parent_path(), link_error)) {
+                    std::cerr << "BattleSpadesClient: " << link_error << '\n';
+                }
+            }
             return {candidate, {}, false};
         }
     }
+    std::string destination_error;
+    const auto destination =
+        battlespades::assets::choose_asset_destination(executable_directory, destination_error)
+            .value_or(locations.packaged);
 
 #if defined(_WIN32)
     const auto installer = executable_directory / "BattleSpadesAssetInstaller.exe";
@@ -87,7 +104,7 @@ ensure_runtime_assets(const std::filesystem::path& executable_path) {
 #endif
     std::string installer_error;
     const auto outcome = battlespades::assets::run_asset_installer(
-        installer, manifest_path, packaged_root, installer_error);
+        installer, manifest_path, destination, installer_error);
     if (outcome == AssetInstallerExit::cancelled) {
         return {std::nullopt, std::move(installer_error), true};
     }
@@ -96,14 +113,14 @@ ensure_runtime_assets(const std::filesystem::path& executable_path) {
     }
 
     const auto installed = battlespades::assets::verify_asset_tree(
-        packaged_root, *loaded.manifest, AssetVerificationDepth::metadata);
+        destination, *loaded.manifest, AssetVerificationDepth::metadata);
     if (!installed) {
         return {std::nullopt,
                 "the asset installer completed but runtime verification failed: " +
                     installed.error,
                 false};
     }
-    return {packaged_root, {}, false};
+    return {destination, {}, false};
 }
 #endif
 
@@ -209,7 +226,11 @@ int run_client(int argc, char* argv[]) {
                     !client_assets_error
                 ? packaged_client_assets
                 : developer_client_assets;
-        frontend_config.asset_root = resources.paths->assets.root;
+        // The verified root, which may be the user data folder.
+        std::error_code asset_root_error;
+        const auto canonical_asset_root =
+            std::filesystem::weakly_canonical(*assets.root, asset_root_error);
+        frontend_config.asset_root = asset_root_error ? *assets.root : canonical_asset_root;
         frontend_config.shader_root = resources.paths->shaders.root;
         frontend_config.player_name = "Player";
         frontend_config.enable_audio = true;

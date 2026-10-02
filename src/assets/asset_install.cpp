@@ -1,5 +1,8 @@
 #include "battlespades/assets/asset_install.hpp"
 
+#include "battlespades/updater/file_util.hpp"
+#include "battlespades/updater/steam_library.hpp"
+
 #include <nlohmann/json.hpp>
 #include <sodium.h>
 
@@ -22,6 +25,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include <winioctl.h>
 #else
 #include <spawn.h>
 #include <sys/wait.h>
@@ -317,6 +321,209 @@ sha256_file(const std::filesystem::path& path, std::string& error) {
     return true;
 }
 
+constexpr std::array conventional_install_names{
+    std::string_view{"aceofspades"},
+    std::string_view{"Ace of Spades"},
+    std::string_view{"Ace of Spades Battle Builder"},
+};
+
+[[nodiscard]] bool is_directory_quietly(const std::filesystem::path& path) noexcept {
+    std::error_code code;
+    return !path.empty() && std::filesystem::is_directory(path, code) && !code;
+}
+
+[[nodiscard]] bool is_file_quietly(const std::filesystem::path& path) noexcept {
+    std::error_code code;
+    return std::filesystem::is_regular_file(path, code) && !code;
+}
+
+/// Case-insensitive, normalised identity, so "C:/Steam" and "c:\\steam\\" match.
+[[nodiscard]] std::string path_key(const std::filesystem::path& path) {
+    auto text = lowercase_ascii(path_text(path.lexically_normal()));
+    std::ranges::replace(text, '\\', '/');
+    while (text.size() > 1U && text.back() == '/') text.pop_back();
+    return text;
+}
+
+void push_unique(std::vector<std::filesystem::path>& list, const std::filesystem::path& path) {
+    if (path.empty()) return;
+    const auto key = path_key(path);
+    if (std::ranges::none_of(list, [&](const auto& existing) { return path_key(existing) == key; })) {
+        list.push_back(path);
+    }
+}
+
+[[nodiscard]] std::filesystem::path without_trailing_separator(const std::filesystem::path& path) {
+    auto normal = path.lexically_normal();
+    if (normal.filename().empty() && normal.has_parent_path() && normal.parent_path() != normal) {
+        normal = normal.parent_path();
+    }
+    return normal;
+}
+
+/// The last real component ("common" for both ".../common" and ".../common/").
+[[nodiscard]] std::string last_component_lower(const std::filesystem::path& path) {
+    return lowercase_ascii(path_text(without_trailing_separator(path).filename()));
+}
+
+/// Windows Steam inside one Wine prefix / CrossOver or Whisky bottle.
+void append_wine_prefix_steam_roots(std::vector<std::filesystem::path>& roots,
+                                    const std::filesystem::path& prefix) {
+    roots.push_back(prefix / "drive_c" / "Program Files (x86)" / "Steam");
+    roots.push_back(prefix / "drive_c" / "Program Files" / "Steam");
+}
+
+/// Every bottle below a CrossOver/Whisky/Bottles "Bottles" folder.
+void append_bottle_steam_roots(std::vector<std::filesystem::path>& roots,
+                               const std::filesystem::path& bottles) {
+    std::error_code code;
+    std::size_t visited{};
+    std::filesystem::directory_iterator iterator{
+        bottles, std::filesystem::directory_options::skip_permission_denied, code};
+    const std::filesystem::directory_iterator end;
+    while (!code && iterator != end && visited < maximum_discovery_children) {
+        const auto entry = *iterator;
+        iterator.increment(code);
+        ++visited;
+        std::error_code status_code;
+        if (entry.is_directory(status_code) && !status_code) {
+            append_wine_prefix_steam_roots(roots, entry.path());
+        }
+    }
+}
+
+/// Number of catalogued files present at all (any size) below `root`.
+[[nodiscard]] std::size_t count_present_assets(const std::filesystem::path& root,
+                                               const AssetManifest& manifest) {
+    std::size_t present{};
+    for (const auto& entry : manifest.files) {
+        if (is_file_quietly(root / entry.relative_path)) ++present;
+    }
+    return present;
+}
+
+/// A selected folder treated as a Steam root, a library, its steamapps or
+/// common folder, a Wine prefix, its drive_c, or a folder of bottles.
+void append_selected_steam_layouts(std::vector<std::filesystem::path>& candidates,
+                                   const std::filesystem::path& selected) {
+    const auto add_games = [&](const std::filesystem::path& root) {
+        for (const auto& game : steam_game_directories(root)) {
+            append_standard_layouts(candidates, game);
+        }
+    };
+    const auto folder = without_trailing_separator(selected);
+    add_games(folder);
+    const auto name = last_component_lower(folder);
+    if (name == "common" && last_component_lower(folder.parent_path()) == "steamapps") {
+        add_games(folder.parent_path().parent_path());
+    }
+    if (name == "steamapps") {
+        add_games(folder.parent_path());
+    }
+    std::vector<std::filesystem::path> wine_roots;
+    if (is_directory_quietly(folder / "drive_c")) {
+        append_wine_prefix_steam_roots(wine_roots, folder);
+    }
+    if (name == "drive_c") {
+        append_wine_prefix_steam_roots(wine_roots, folder.parent_path());
+    }
+    if (name == "bottles") {
+        append_bottle_steam_roots(wine_roots, folder);
+    }
+    for (const auto& root : wine_roots) {
+        add_games(root);
+    }
+}
+
+#if defined(_WIN32)
+[[nodiscard]] std::optional<std::filesystem::path> registry_path(HKEY root,
+                                                                 const wchar_t* key,
+                                                                 const wchar_t* value) {
+    DWORD bytes{};
+    if (RegGetValueW(root, key, value, RRF_RT_REG_SZ, nullptr, nullptr, &bytes) != ERROR_SUCCESS ||
+        bytes < sizeof(wchar_t)) {
+        return std::nullopt;
+    }
+    std::wstring text(bytes / sizeof(wchar_t), L'\0');
+    if (RegGetValueW(root, key, value, RRF_RT_REG_SZ, nullptr, text.data(), &bytes) != ERROR_SUCCESS) {
+        return std::nullopt;
+    }
+    while (!text.empty() && text.back() == L'\0') text.pop_back();
+    if (text.empty()) return std::nullopt;
+    return std::filesystem::path{text}.lexically_normal();
+}
+
+/// A directory junction: works without the symbolic-link privilege.
+[[nodiscard]] bool create_junction(const std::filesystem::path& link, const std::filesystem::path& target) {
+    std::error_code code;
+    const auto absolute_target = std::filesystem::absolute(target, code);
+    if (code || !std::filesystem::create_directory(link, code) || code) return false;
+    const HANDLE handle = CreateFileW(link.c_str(), GENERIC_WRITE, 0U, nullptr, OPEN_EXISTING,
+                                      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        std::filesystem::remove(link, code);
+        return false;
+    }
+    const std::wstring print = absolute_target.wstring();
+    const std::wstring substitute = L"\\??\\" + print;
+    const auto substitute_bytes = static_cast<WORD>(substitute.size() * sizeof(wchar_t));
+    const auto print_bytes = static_cast<WORD>(print.size() * sizeof(wchar_t));
+    // REPARSE_DATA_BUFFER (MountPointReparseBuffer) lives in the driver
+    // headers; lay it out by hand: tag, length, reserved, 4 offsets, names.
+    std::vector<unsigned char> buffer(16U + substitute_bytes + print_bytes + 2U * sizeof(wchar_t), 0U);
+    const auto put16 = [&buffer](std::size_t offset, WORD value) {
+        std::memcpy(buffer.data() + offset, &value, sizeof(value));
+    };
+    const DWORD tag = IO_REPARSE_TAG_MOUNT_POINT;
+    std::memcpy(buffer.data(), &tag, sizeof(tag));
+    put16(4U, static_cast<WORD>(buffer.size() - 8U));
+    put16(8U, 0U);
+    put16(10U, substitute_bytes);
+    put16(12U, static_cast<WORD>(substitute_bytes + sizeof(wchar_t)));
+    put16(14U, print_bytes);
+    std::memcpy(buffer.data() + 16U, substitute.data(), substitute_bytes);
+    std::memcpy(buffer.data() + 16U + substitute_bytes + sizeof(wchar_t), print.data(), print_bytes);
+    DWORD returned{};
+    const bool ok = DeviceIoControl(handle, FSCTL_SET_REPARSE_POINT, buffer.data(),
+                                    static_cast<DWORD>(buffer.size()), nullptr, 0U, &returned,
+                                    nullptr) != FALSE;
+    CloseHandle(handle);
+    if (!ok) std::filesystem::remove(link, code);
+    return ok;
+}
+#endif
+
+/// Removes a link (symbolic link or junction) or our own copied folder.
+void remove_link_or_copy(const std::filesystem::path& path) {
+    std::error_code code;
+#if defined(_WIN32)
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0U) {
+        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0U) {
+            RemoveDirectoryW(path.c_str());
+        } else {
+            DeleteFileW(path.c_str());
+        }
+        return;
+    }
+#endif
+    const auto status = std::filesystem::symlink_status(path, code);
+    if (code) return;
+    if (std::filesystem::is_symlink(status)) {
+        std::filesystem::remove(path, code);
+    } else if (std::filesystem::exists(status)) {
+        std::filesystem::remove_all(path, code);
+    }
+}
+
+[[nodiscard]] std::optional<std::filesystem::path> home_directory() {
+#if defined(_WIN32)
+    return environment_path("USERPROFILE");
+#else
+    return environment_path("HOME");
+#endif
+}
+
 #if defined(_WIN32)
 [[nodiscard]] std::wstring quote_windows_argument(const std::filesystem::path& path) {
     std::wstring result{L"\""};
@@ -483,6 +690,9 @@ std::optional<std::filesystem::path> find_asset_source(
         candidates.reserve(64U);
         append_standard_layouts(candidates, selected_directory);
         append_steam_layouts(candidates, selected_directory);
+        // Steam roots, libraries, "steamapps", "common", Wine prefixes and
+        // bottles: resolved through the Steam files, one level down.
+        append_selected_steam_layouts(candidates, selected_directory);
 
         // A Windows installation is commonly copied to macOS under a custom
         // folder such as AceOfSpades_no_steam_new. Probe only likely install
@@ -518,6 +728,7 @@ std::optional<std::filesystem::path> find_asset_source(
         // player has to fix. The other probed layouts are just noise.
         std::optional<std::filesystem::path> closest;
         AssetTreeCheck closest_check{};
+        std::size_t closest_present{};
         for (const auto& candidate : candidates) {
             std::error_code code;
             const auto normalized = std::filesystem::weakly_canonical(candidate, code);
@@ -533,20 +744,27 @@ std::optional<std::filesystem::path> find_asset_source(
                 error.clear();
                 return normalized;
             }
-            if (!closest.has_value() || check.files_checked > closest_check.files_checked) {
+            // Rank by how many catalogued files exist at all: verification
+            // stops at the first problem, so its count says little.
+            const auto present = count_present_assets(normalized, manifest);
+            if (!closest.has_value() || present > closest_present) {
                 closest = candidate;
                 closest_check = check;
+                closest_present = present;
             }
             ++failures;
         }
-        if (!closest.has_value()) {
+        if (!closest.has_value() || closest_present == 0U) {
+            // Nothing of the game is here (for example an empty Steam
+            // library, or "common" without Ace of Spades in it). Blaming the
+            // selected folder's first missing file only confused players.
             error = "no Ace of Spades game files were found in " + path_text(selected_directory);
             return std::nullopt;
         }
         std::ostringstream details;
         details << path_text(*closest) << " is not a matching Ace of Spades Battle Builder installation: "
-                << closest_check.error << " (" << closest_check.files_checked << " of "
-                << manifest.files.size() << " required files matched";
+                << closest_check.error << " (" << closest_present << " of "
+                << manifest.files.size() << " required files present";
         if (failures > 1U) {
             details << "; " << (failures - 1U) << " other layout"
                     << (failures == 2U ? "" : "s") << " checked";
@@ -563,45 +781,349 @@ std::optional<std::filesystem::path> find_asset_source(
     }
 }
 
-std::optional<std::filesystem::path>
-default_asset_source_directory() noexcept {
+SteamSearchEnvironment current_steam_search_environment() noexcept {
+    SteamSearchEnvironment environment;
     try {
-        std::vector<std::filesystem::path> candidates;
 #if defined(_WIN32)
+        environment.platform = HostPlatform::windows;
         for (const auto variable : {"ProgramFiles(x86)", "ProgramFiles"}) {
             if (const auto root = environment_path(variable); root.has_value()) {
-                candidates.push_back(*root / "Steam" / "steamapps" / "common" /
-                                     "aceofspades");
-                candidates.push_back(*root / "Steam" / "steamapps" / "common" /
-                                     "Ace of Spades");
+                environment.program_files.push_back(*root);
             }
         }
-#else
-        if (const auto home = environment_path("HOME"); home.has_value()) {
-#if defined(__APPLE__)
-            candidates.push_back(*home / "Library" / "Application Support" /
-                                 "Steam" / "steamapps" / "common" /
-                                 "Ace of Spades");
-            candidates.push_back(*home / "Library" / "Application Support" /
-                                 "Steam" / "steamapps" / "common" /
-                                 "aceofspades");
-#else
-            candidates.push_back(*home / ".local" / "share" / "Steam" /
-                                 "steamapps" / "common" / "Ace of Spades");
-            candidates.push_back(*home / ".steam" / "steam" / "steamapps" /
-                                 "common" / "Ace of Spades");
-#endif
+        for (const auto& found :
+             {registry_path(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", L"SteamPath"),
+              registry_path(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Valve\\Steam", L"InstallPath"),
+              registry_path(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Valve\\Steam", L"InstallPath")}) {
+            if (found.has_value()) environment.registry_steam_roots.push_back(*found);
         }
+#elif defined(__APPLE__)
+        environment.platform = HostPlatform::macos;
+#else
+        environment.platform = HostPlatform::linux_desktop;
 #endif
-        for (const auto& candidate : candidates) {
-            std::error_code code;
-            if (std::filesystem::is_directory(candidate, code) && !code) {
-                return candidate;
+        environment.home = home_directory();
+        environment.xdg_data_home = environment_path("XDG_DATA_HOME");
+    } catch (...) {
+    }
+    return environment;
+}
+
+std::vector<std::filesystem::path> steam_root_candidates(const SteamSearchEnvironment& environment) {
+    std::vector<std::filesystem::path> roots;
+    const auto& home = environment.home;
+    switch (environment.platform) {
+    case HostPlatform::windows:
+        for (const auto& root : environment.registry_steam_roots) roots.push_back(root);
+        for (const auto& root : environment.program_files) roots.push_back(root / "Steam");
+        break;
+    case HostPlatform::macos:
+        if (home.has_value()) {
+            // Native Steam for macOS cannot install Ace of Spades (Windows
+            // only), but a library may still hold a copied Windows folder.
+            roots.push_back(*home / "Library" / "Application Support" / "Steam");
+            append_bottle_steam_roots(roots, *home / "Library" / "Application Support" / "CrossOver" / "Bottles");
+            append_bottle_steam_roots(
+                roots, *home / "Library" / "Containers" / "com.isaacmarovitz.Whisky" / "Bottles");
+            append_wine_prefix_steam_roots(roots, *home / ".wine");
+        }
+        break;
+    case HostPlatform::linux_desktop:
+        if (environment.xdg_data_home.has_value()) roots.push_back(*environment.xdg_data_home / "Steam");
+        if (home.has_value()) {
+            // Steam Play (Proton) installs Windows games into these native
+            // libraries; Flatpak and Snap keep Steam in their sandboxes.
+            roots.push_back(*home / ".local" / "share" / "Steam");
+            roots.push_back(*home / ".steam" / "steam");
+            roots.push_back(*home / ".steam" / "root");
+            roots.push_back(*home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam");
+            roots.push_back(*home / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam");
+            roots.push_back(*home / "snap" / "steam" / "common" / ".local" / "share" / "Steam");
+            append_wine_prefix_steam_roots(roots, *home / ".wine");
+            append_bottle_steam_roots(roots, *home / ".local" / "share" / "bottles" / "bottles");
+        }
+        break;
+    }
+    std::vector<std::filesystem::path> unique;
+    for (const auto& root : roots) push_unique(unique, root);
+    return unique;
+}
+
+std::optional<std::filesystem::path> map_wine_drive_path(const std::filesystem::path& inside_prefix,
+                                                         std::string_view windows_path) {
+    if (windows_path.size() < 3U || std::isalpha(static_cast<unsigned char>(windows_path[0])) == 0 ||
+        windows_path[1] != ':' || (windows_path[2] != '\\' && windows_path[2] != '/')) {
+        return std::nullopt;
+    }
+    std::optional<std::filesystem::path> prefix;
+    std::filesystem::path walked;
+    for (const auto& component : inside_prefix) {
+        if (lowercase_ascii(path_text(component)) == "drive_c") {
+            prefix = walked;
+            break;
+        }
+        walked /= component;
+    }
+    if (!prefix.has_value() && is_directory_quietly(inside_prefix / "drive_c")) {
+        prefix = inside_prefix;
+    }
+    if (!prefix.has_value() || prefix->empty()) return std::nullopt;
+
+    const auto drive = static_cast<char>(std::tolower(static_cast<unsigned char>(windows_path[0])));
+    auto mapped = drive == 'c' ? *prefix / "drive_c" : *prefix / "dosdevices" / (std::string{drive} + ":");
+    std::string_view rest = windows_path.substr(3U);
+    while (!rest.empty()) {
+        const auto separator = rest.find_first_of("\\/");
+        const auto part = rest.substr(0U, separator);
+        if (!part.empty() && part != ".") {
+            if (part == "..") return std::nullopt;
+            mapped /= updater::path_from_utf8(part);
+        }
+        if (separator == std::string_view::npos) break;
+        rest.remove_prefix(separator + 1U);
+    }
+    return mapped;
+}
+
+std::vector<std::filesystem::path> steam_game_directories(const std::filesystem::path& steam_root_or_library) {
+    std::vector<std::filesystem::path> games;
+    try {
+        const auto root = without_trailing_separator(steam_root_or_library);
+        if (!is_directory_quietly(root)) return games;
+        std::vector<std::filesystem::path> libraries{root};
+        for (const auto& vdf : {root / "steamapps" / "libraryfolders.vdf", root / "config" / "libraryfolders.vdf"}) {
+            if (!is_file_quietly(vdf)) continue;
+            std::string error;
+            const auto text = updater::read_text_file(vdf, error);
+            if (!text.has_value()) continue;
+            const auto folders = updater::parse_library_folders(*text, error);
+            if (!folders.has_value()) continue;
+            for (const auto& folder : *folders) {
+#if defined(_WIN32)
+                push_unique(libraries, folder.path);
+#else
+                // Windows Steam in Wine records "C:\\..." paths.
+                const auto raw = updater::path_to_utf8(folder.path);
+                if (const auto mapped = map_wine_drive_path(root, raw); mapped.has_value()) {
+                    push_unique(libraries, *mapped);
+                } else if (folder.path.is_absolute()) {
+                    push_unique(libraries, folder.path);
+                }
+#endif
+            }
+        }
+        const auto manifest_name = "appmanifest_" + std::to_string(updater::ace_of_spades_app_id) + ".acf";
+        for (const auto& library : libraries) {
+            const auto common = library / "steamapps" / "common";
+            const auto app_manifest = library / "steamapps" / manifest_name;
+            if (is_file_quietly(app_manifest)) {
+                std::string error;
+                const auto text = updater::read_text_file(app_manifest, error);
+                const auto install = text.has_value() ? updater::parse_app_manifest_install_dir(*text)
+                                                      : std::optional<std::string>{};
+                if (install.has_value()) {
+                    const auto directory = common / updater::path_from_utf8(*install);
+                    if (is_directory_quietly(directory)) push_unique(games, directory);
+                    continue;
+                }
+            }
+            for (const auto name : conventional_install_names) {
+                const auto directory = common / std::filesystem::path{name};
+                if (is_directory_quietly(directory)) push_unique(games, directory);
             }
         }
     } catch (...) {
     }
+    return games;
+}
+
+DetectedAssetSource detect_asset_source(const AssetManifest& manifest,
+                                        const SteamSearchEnvironment& environment) {
+    DetectedAssetSource closest;
+    try {
+        std::vector<std::filesystem::path> folders;
+        for (const auto& root : steam_root_candidates(environment)) {
+            for (const auto& game : steam_game_directories(root)) push_unique(folders, game);
+        }
+        for (const auto& folder : folders) {
+            std::string error;
+            if (const auto source = find_asset_source(folder, manifest, error); source.has_value()) {
+                return {folder, *source, {}};
+            }
+            // Only a folder that holds the game counts as "found"; an empty
+            // leftover install folder is not worth proposing.
+            if (!closest.found() && error.find("no Ace of Spades game files were found") == std::string::npos) {
+                closest = {folder, std::nullopt, error};
+            }
+        }
+    } catch (...) {
+    }
+    return closest;
+}
+
+std::optional<std::filesystem::path> default_asset_source_directory() noexcept {
+    try {
+        const auto environment = current_steam_search_environment();
+        const auto roots = steam_root_candidates(environment);
+        for (const auto& root : roots) {
+            const auto games = steam_game_directories(root);
+            if (!games.empty()) return games.front();
+        }
+        for (const auto& root : roots) {
+            const auto common = root / "steamapps" / "common";
+            if (is_directory_quietly(common)) return common;
+        }
+    } catch (...) {
+    }
     return std::nullopt;
+}
+
+std::optional<std::filesystem::path> user_data_directory() noexcept {
+    try {
+#if defined(_WIN32)
+        if (const auto local = environment_path("LOCALAPPDATA"); local.has_value()) {
+            return *local / "BattleSpades";
+        }
+        return std::nullopt;
+#elif defined(__APPLE__)
+        if (const auto home = environment_path("HOME"); home.has_value()) {
+            return *home / "Library" / "Application Support" / "BattleSpades";
+        }
+        return std::nullopt;
+#else
+        if (const auto data = environment_path("XDG_DATA_HOME"); data.has_value() && data->is_absolute()) {
+            return *data / "BattleSpades";
+        }
+        if (const auto home = environment_path("HOME"); home.has_value()) {
+            return *home / ".local" / "share" / "BattleSpades";
+        }
+        return std::nullopt;
+#endif
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+AssetRootLocations asset_root_locations(const std::filesystem::path& executable_directory) {
+    AssetRootLocations locations;
+    locations.packaged = executable_directory / "assets" / "original";
+    if (const auto data = user_data_directory(); data.has_value()) {
+        locations.user = *data / "assets" / "original";
+    }
+    return locations;
+}
+
+bool directory_is_writable(const std::filesystem::path& directory) noexcept {
+    try {
+        std::error_code code;
+        std::filesystem::create_directories(directory, code);
+        if (code || !std::filesystem::is_directory(directory, code)) return false;
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto probe = directory / (".battlespades-write-test-" + std::to_string(stamp));
+        {
+            std::ofstream stream(probe, std::ios::binary | std::ios::trunc);
+            if (!stream) return false;
+            stream << "ok";
+            stream.flush();
+            if (!stream) {
+                stream.close();
+                std::filesystem::remove(probe, code);
+                return false;
+            }
+        }
+        std::filesystem::remove(probe, code);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool link_packaged_client_assets(const std::filesystem::path& user_assets_directory,
+                                 const std::filesystem::path& packaged_assets_directory,
+                                 std::string& error) noexcept {
+    try {
+        std::error_code code;
+        const auto target = packaged_assets_directory / "client";
+        const auto link = user_assets_directory / "client";
+        std::filesystem::create_directories(user_assets_directory, code);
+        if (code) {
+            error = "cannot create " + path_text(user_assets_directory) + ": " + code.message();
+            return false;
+        }
+        if (!is_directory_quietly(target)) {
+            // Nothing to link (developer build without packaged client assets).
+            error.clear();
+            return true;
+        }
+        const auto link_status = std::filesystem::symlink_status(link, code);
+        if (!code && std::filesystem::is_symlink(link_status)) {
+            const auto current = std::filesystem::read_symlink(link, code);
+            if (!code && path_key(current) == path_key(target)) {
+                error.clear();
+                return true;
+            }
+        }
+        remove_link_or_copy(link);
+        code.clear();
+        std::filesystem::create_directory_symlink(target, link, code);
+        if (!code) {
+            error.clear();
+            return true;
+        }
+#if defined(_WIN32)
+        if (create_junction(link, target)) {
+            error.clear();
+            return true;
+        }
+#endif
+        code.clear();
+        std::filesystem::copy(target, link,
+                              std::filesystem::copy_options::recursive |
+                                  std::filesystem::copy_options::overwrite_existing,
+                              code);
+        if (code) {
+            error = "cannot link " + path_text(link) + " to " + path_text(target) + ": " + code.message();
+            return false;
+        }
+        error.clear();
+        return true;
+    } catch (const std::exception& exception) {
+        error = std::string{"cannot prepare the user asset folder: "} + exception.what();
+        return false;
+    } catch (...) {
+        error = "cannot prepare the user asset folder";
+        return false;
+    }
+}
+
+std::optional<std::filesystem::path> choose_asset_destination(const std::filesystem::path& executable_directory,
+                                                              std::string& error) noexcept {
+    try {
+        const auto locations = asset_root_locations(executable_directory);
+        if (directory_is_writable(locations.packaged.parent_path())) {
+            error.clear();
+            return locations.packaged;
+        }
+        if (!locations.user.has_value()) {
+            error = path_text(locations.packaged.parent_path()) +
+                    " is not writable and no user data folder is known";
+            return std::nullopt;
+        }
+        const auto user_assets = locations.user->parent_path();
+        if (!directory_is_writable(user_assets)) {
+            error = "neither " + path_text(locations.packaged.parent_path()) + " nor " + path_text(user_assets) +
+                    " is writable";
+            return std::nullopt;
+        }
+        if (!link_packaged_client_assets(user_assets, locations.packaged.parent_path(), error)) {
+            return std::nullopt;
+        }
+        error.clear();
+        return locations.user;
+    } catch (...) {
+        error = "cannot choose an asset destination";
+        return std::nullopt;
+    }
 }
 
 AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source_root,
@@ -837,37 +1359,52 @@ NativeSteamImportResult import_native_steam_runtime(
 #endif
 }
 
-std::string explain_asset_install_error(std::string_view error) {
+std::string explain_asset_install_error(std::string_view error, bool download_offered) {
     const auto contains = [error](std::string_view needle) {
         return error.find(needle) != std::string_view::npos;
     };
+    // Only ever point at a choice that is actually on screen.
+    const std::string or_download =
+        download_offered ? " Or choose \"Download game assets\" instead." : std::string{};
+#if defined(_WIN32)
+    constexpr std::string_view where_is_the_game =
+        "Select the folder that contains aos.exe (in Steam: right-click Ace of Spades > Manage > "
+        "Browse local files).";
+#else
+    constexpr std::string_view where_is_the_game =
+        "Ace of Spades on Steam is a Windows game: install it with Steam Play (Proton) or in a "
+        "CrossOver/Wine bottle, or copy the Windows game folder to this computer, then select the "
+        "folder that contains aos.exe.";
+#endif
     std::string advice;
     if (contains("legacy macOS")) {
-        advice = "Copy a Windows installation of Ace of Spades to this computer and select that folder.";
-    } else if (contains("no Ace of Spades game files were found") ||
-               contains("is not a matching Ace of Spades")) {
+        advice = "Copy a Windows installation of Ace of Spades to this computer and select that folder." +
+                 or_download;
+    } else if (contains("no Ace of Spades game files were found")) {
+        advice = std::string{where_is_the_game} + or_download;
+    } else if (contains("is not a matching Ace of Spades")) {
         if (contains("missing") || contains("wrong size") || contains("wrong SHA-256")) {
             advice =
                 "Some original game files are missing or changed (for example by a mod). In Steam, "
                 "right-click Ace of Spades > Properties > Installed Files > \"Verify integrity of game "
-                "files\", then try again. Or choose \"Download game assets\" instead.";
+                "files\", then try again." +
+                or_download;
         } else {
-            advice =
-                "Select the folder that contains aos.exe (in Steam: right-click Ace of Spades > Manage > "
-                "Browse local files), or choose \"Download game assets\" instead.";
+            advice = std::string{where_is_the_game} + or_download;
         }
     } else if (contains("does not match the required retail version") || contains("wrong SHA-256")) {
         advice =
             "A game file changed while it was being copied, or it was modified. In Steam, right-click "
             "Ace of Spades > Properties > Installed Files > \"Verify integrity of game files\", then try "
-            "again. Or choose \"Download game assets\" instead.";
+            "again." +
+            or_download;
     } else if (contains("cannot create") || contains("cannot open asset copy pair") ||
                contains("cannot activate") || contains("cannot preserve") ||
                contains("failed while copying") || contains("failed while flushing") ||
-               contains("cannot copy steam_api.dll")) {
+               contains("cannot copy steam_api.dll") || contains("is not writable")) {
         advice =
             "BattleSpades could not write its copy of the game files. Close BattleSpades if it is running, "
-            "make sure the drive has about 500 MB free and that the BattleSpades folder is not read-only, "
+            "make sure the drive has about 1 GB free and that the BattleSpades folder is not read-only, "
             "then try again.";
     } else if (contains("destination cannot contain")) {
         advice = "Install BattleSpades into its own folder (for example <Ace of Spades>\\BattleSpades).";

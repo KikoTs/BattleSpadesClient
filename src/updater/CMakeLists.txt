@@ -14,25 +14,8 @@ endif()
 
 set(_aos_static_crt "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-add_library(
-    aos_updater_core
-    STATIC
-        binary_vdf.cpp
-        file_util.cpp
-        launch_flow.cpp
-        launcher_args.cpp
-        release_manifest.cpp
-        semver.cpp
-        sha256.cpp
-        steam_library.cpp
-        steam_registration.cpp
-        text_vdf.cpp
-        update_apply.cpp
-        zip_extract.cpp
-        update_manifest.cpp
-        update_plan.cpp
-        updater_config.cpp
-)
+include("${CMAKE_CURRENT_SOURCE_DIR}/core_sources.cmake")
+add_library(aos_updater_core STATIC ${AOS_UPDATER_CORE_SOURCES})
 add_library(BattleSpades::UpdaterCore ALIAS aos_updater_core)
 target_include_directories(aos_updater_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(

@@ -46,7 +46,7 @@ env:
   SDL_VIDEODRIVER: dummy
   # Fast unit tests that need neither retail assets nor a GPU, run on every
   # target. They cover the paths that previously broke only on one platform.
-  SMOKE_TESTS: "^aos_(core|asset_install|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
+  SMOKE_TESTS: "^aos_(core|asset_install|retail_download|retail_download_http|client_unicode|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
 
 jobs:
   plan:

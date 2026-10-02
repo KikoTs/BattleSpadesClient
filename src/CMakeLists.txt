@@ -329,10 +329,26 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         set(BUILD_SHARED_LIBS "${_aos_saved_build_shared_libs}")
     endif()
 
+    # The updater core again, with the default CRT: the asset installer reads
+    # the same release manifest, verifies and extracts the same packages and
+    # parses the same Steam library files on every OS.
+    include("${CMAKE_CURRENT_SOURCE_DIR}/updater/core_sources.cmake")
+    add_library(aos_updater_portable STATIC ${AOS_UPDATER_CORE_SOURCES})
+    add_library(BattleSpades::UpdaterPortable ALIAS aos_updater_portable)
+    target_include_directories(aos_updater_portable PUBLIC "${PROJECT_SOURCE_DIR}/include")
+    target_link_libraries(
+        aos_updater_portable
+        PUBLIC
+            BattleSpades::BuildOptions
+            nlohmann_json::nlohmann_json
+    )
+    aos_enable_strict_warnings(aos_updater_portable)
+
     add_library(
         aos_asset_install
         STATIC
             assets/asset_install.cpp
+            assets/retail_download.cpp
     )
     add_library(BattleSpades::AssetInstall ALIAS aos_asset_install)
     target_include_directories(
@@ -344,9 +360,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_asset_install
         PUBLIC
             BattleSpades::BuildOptions
+            BattleSpades::UpdaterPortable
         PRIVATE
             nlohmann_json::nlohmann_json
             unofficial-sodium::sodium
+            CURL::libcurl
     )
     aos_enable_strict_warnings(aos_asset_install)
 

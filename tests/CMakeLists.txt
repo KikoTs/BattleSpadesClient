@@ -803,6 +803,21 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_asset_install_tests)
     add_test(NAME aos_asset_install_tests COMMAND aos_asset_install_tests)
 
+    # Steam/Proton/CrossOver discovery and "Download game assets" (synthetic
+    # files only), plus the installer's real HTTP path against a local server.
+    add_executable(aos_retail_download_tests test_retail_download.cpp)
+    target_link_libraries(aos_retail_download_tests PRIVATE BattleSpades::AssetInstall)
+    aos_enable_strict_warnings(aos_retail_download_tests)
+    add_test(NAME aos_retail_download_tests COMMAND aos_retail_download_tests)
+    set_tests_properties(aos_retail_download_tests PROPERTIES TIMEOUT 120)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME aos_retail_download_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_retail_download_http.py"
+            "$<TARGET_FILE:BattleSpadesAssetInstaller>")
+        set_tests_properties(aos_retail_download_http_tests PROPERTIES TIMEOUT 120)
+    endif()
+
     add_executable(aos_ugc_preview_writer_tests test_ugc_preview_writer.cpp)
     target_link_libraries(aos_ugc_preview_writer_tests PRIVATE BattleSpades::FrontendNative)
     aos_enable_strict_warnings(aos_ugc_preview_writer_tests)

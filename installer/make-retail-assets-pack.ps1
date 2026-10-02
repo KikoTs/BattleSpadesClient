@@ -28,12 +28,22 @@ The script never uploads anything and refuses to write the pack inside the
 git repository except under out\ (ignored by git). Host the ZIP yourself, then
 pass the printed values to installer/make-update-manifest.ps1.
 
+It also runs on a gaming PC without a checkout of this repository: copy this
+one script anywhere (Windows PowerShell 5.1 is enough). The asset catalog is
+then taken from -Manifest, an installed BattleSpades (asset-manifest.json), or
+downloaded from the public repository; the pack is written to .\retail-assets.
+
 .EXAMPLE
 ./installer/make-retail-assets-pack.ps1 -Version 1.0.0
 
 .EXAMPLE
 ./installer/make-retail-assets-pack.ps1 -GameDir 'D:\SteamLibrary\steamapps\common\aceofspades' `
     -Version 1.0.0 -OutputDir 'D:\packs' -TestImport
+
+.EXAMPLE
+# On a PC with only the game and BattleSpades installed:
+powershell -ExecutionPolicy Bypass -File .\make-retail-assets-pack.ps1 -Version 1.0.0 `
+    -PublicUrl 'https://files.example.net/BattleSpades-retail-assets-1.0.0.zip' -TestImport
 #>
 [CmdletBinding()]
 param(
@@ -43,17 +53,34 @@ param(
     [string]$OutputDir = 'out/retail-assets',
     [string]$RootName,
     [switch]$TestImport,
-    [string]$Importer
+    [string]$Importer,
+    # Where you will host the ZIP; only used to print the exact manifest command.
+    [string[]]$PublicUrl = @(),
+    [string]$CatalogUrl = 'https://raw.githubusercontent.com/KikoTs/BattleSpadesClient/main/assets/catalog/original-assets.json'
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+# A checkout of this repository, or just this script copied to a gaming PC.
+$inRepo = Test-Path -LiteralPath (Join-Path $repo 'assets\catalog\original-assets.json')
+if (-not $inRepo -and -not $PSBoundParameters.ContainsKey('OutputDir')) { $OutputDir = 'retail-assets' }
 
 function Resolve-FromRepo([string]$path) {
     if ([IO.Path]::IsPathRooted($path)) { return [IO.Path]::GetFullPath($path) }
-    return [IO.Path]::GetFullPath((Join-Path $repo $path))
+    $base = if ($inRepo) { $repo } else { (Get-Location).Path }
+    return [IO.Path]::GetFullPath((Join-Path $base $path))
+}
+
+# Installed BattleSpades folders (the installer's default sits in the game folder).
+function Get-BattleSpadesInstalls([string]$gameDir) {
+    $dirs = @()
+    if ($gameDir) { $dirs += (Join-Path $gameDir 'BattleSpades') }
+    if ($env:LOCALAPPDATA) { $dirs += (Join-Path $env:LOCALAPPDATA 'Programs\BattleSpades') }
+    foreach ($root in @(${env:ProgramFiles}, ${env:ProgramFiles(x86)})) { if ($root) { $dirs += (Join-Path $root 'BattleSpades') } }
+    $dirs += $PSScriptRoot
+    return @($dirs | Where-Object { $_ -and (Test-Path -LiteralPath $_) })
 }
 
 # Ace of Spades (app 224540) through the Steam registry and libraryfolders.vdf.
@@ -95,7 +122,22 @@ if (-not $GameDir) {
     if (-not $GameDir) { throw 'Ace of Spades was not found through Steam; pass -GameDir <folder that contains aos.exe>.' }
 }
 $GameDir = (Resolve-Path -LiteralPath $GameDir).Path
-if (-not $Manifest) { $Manifest = Join-Path $repo 'assets\catalog\original-assets.json' }
+if (-not $Manifest) {
+    if ($inRepo) {
+        $Manifest = Join-Path $repo 'assets\catalog\original-assets.json'
+    } else {
+        foreach ($install in (Get-BattleSpadesInstalls $GameDir)) {
+            $candidate = Join-Path $install 'asset-manifest.json'
+            if (Test-Path -LiteralPath $candidate) { $Manifest = $candidate; break }
+        }
+        if (-not $Manifest) {
+            $Manifest = Join-Path ([IO.Path]::GetTempPath()) 'battlespades-original-assets.json'
+            Write-Host "Downloading the asset catalog from $CatalogUrl"
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -UseBasicParsing -Uri $CatalogUrl -OutFile $Manifest
+        }
+    }
+}
 $Manifest = (Resolve-Path -LiteralPath $Manifest).Path
 if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$') { throw "-Version '$Version' is not semver" }
 if (-not $RootName) { $RootName = "BattleSpades-retail-assets-$Version" }
@@ -104,7 +146,7 @@ if ($RootName -notmatch '^[A-Za-z0-9._-]+$') { throw "-RootName may only use let
 $outputPath = Resolve-FromRepo $OutputDir
 $repoPrefix = $repo.TrimEnd('\') + '\'
 $allowed = (Join-Path $repo 'out').TrimEnd('\') + '\'
-if (($outputPath.TrimEnd('\') + '\').StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+if ($inRepo -and ($outputPath.TrimEnd('\') + '\').StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase) -and
     -not ($outputPath.TrimEnd('\') + '\').StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Retail files must never land in the repository: choose an -OutputDir outside it or under out\ ($outputPath)."
 }
@@ -199,9 +241,17 @@ foreach ($file in $catalog.files) {
 # --- optional: run the real importer on the extracted pack -------------------
 if ($TestImport) {
     if (-not $Importer) {
-        $Importer = @(Get-ChildItem -Path (Join-Path $repo 'out\build') -Recurse -Filter BattleSpadesAssetInstaller.exe -ErrorAction SilentlyContinue |
-                      Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 | ForEach-Object FullName)
-        if (-not $Importer) { throw '-TestImport needs -Importer <BattleSpadesAssetInstaller.exe> (none found under out\build).' }
+        if ($inRepo) {
+            $Importer = @(Get-ChildItem -Path (Join-Path $repo 'out\build') -Recurse -Filter BattleSpadesAssetInstaller.exe -ErrorAction SilentlyContinue |
+                          Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 | ForEach-Object FullName)
+        }
+        if (-not $Importer) {
+            foreach ($install in (Get-BattleSpadesInstalls $GameDir)) {
+                $candidate = Join-Path $install 'BattleSpadesAssetInstaller.exe'
+                if (Test-Path -LiteralPath $candidate) { $Importer = $candidate; break }
+            }
+        }
+        if (-not $Importer) { throw '-TestImport needs -Importer <BattleSpadesAssetInstaller.exe> (none found under out\build or an installed BattleSpades).' }
     }
     $scratch = Join-Path ([IO.Path]::GetTempPath()) ("battlespades-pack-test-" + [guid]::NewGuid().ToString('N'))
     try {
@@ -236,8 +286,19 @@ Write-Host "  sha256:  $sha"
 Write-Host "  root:    $RootName"
 Write-Host "  version: $Version"
 Write-Host ''
-Write-Host 'Upload it yourself, then add it to the update manifest, e.g.:'
-Write-Host "  ./installer/make-update-manifest.ps1 <your usual -ClientPackage/-AssetsPackage/-MirrorBaseUrls ...> ``"
-Write-Host "      -RetailAssetsVersion $Version -RetailAssetsSize $size ``"
-Write-Host "      -RetailAssetsSha256 $sha -RetailAssetsRoot $RootName ``"
-Write-Host "      -RetailAssetsUrls 'https://<your host>/$RootName.zip'"
+$urls = if ($PublicUrl.Count -gt 0) { ($PublicUrl | ForEach-Object { "'$_'" }) -join ', ' } else { "'https://<your host>/$RootName.zip'" }
+Write-Host 'Upload the ZIP yourself (any HTTPS host that answers Range requests), then regenerate'
+Write-Host 'stable.json with your usual component packages plus these exact arguments:'
+Write-Host ''
+Write-Host "  ./installer/make-update-manifest.ps1 <your usual -ClientPackage/-ServerPackage/-AssetsPackage/-MirrorBaseUrls ...> ``"
+Write-Host "      -RetailAssetsVersion $Version ``"
+Write-Host "      -RetailAssetsSize $size ``"
+Write-Host "      -RetailAssetsSha256 $sha ``"
+Write-Host "      -RetailAssetsRoot $RootName ``"
+Write-Host "      -RetailAssetsUrls $urls ``"
+Write-Host '      -Verify'
+Write-Host ''
+Write-Host 'Once stable.json with retail_assets is live, BattleSpadesAssetInstaller offers'
+Write-Host '"Download game assets" on Windows, macOS and Linux; check it end to end with:'
+Write-Host '  BattleSpadesAssetInstaller --download --destination <scratch folder>\assets\original --report report.txt'
+

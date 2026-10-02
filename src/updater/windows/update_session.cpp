@@ -145,17 +145,8 @@ MirrorOutcome fetch_from_mirror(const std::string& url, const fs::path& archive,
         error = response.status == 0U ? response.error : "HTTP " + std::to_string(response.status);
         return MirrorOutcome::failed;
     }
-    const auto size = fs::file_size(partial, code);
-    if (code || size != release.size) {
+    if (!verify_package_file(partial, release.size, release.sha256, error)) {
         fs::remove(partial, code);
-        error = "size " + std::to_string(size) + " instead of " + std::to_string(release.size);
-        return MirrorOutcome::failed;
-    }
-    std::string hash_error;
-    const auto digest = sha256_hex_file(partial, hash_error);
-    if (!digest.has_value() || !same_sha256(*digest, release.sha256)) {
-        fs::remove(partial, code);
-        error = digest.has_value() ? "SHA-256 mismatch (" + *digest + ")" : hash_error;
         return MirrorOutcome::failed;
     }
     fs::rename(partial, archive, code);
@@ -167,11 +158,8 @@ MirrorOutcome fetch_from_mirror(const std::string& url, const fs::path& archive,
 }
 
 [[nodiscard]] bool verified_archive(const fs::path& archive, const ComponentRelease& release) {
-    std::error_code code;
-    if (!fs::is_regular_file(archive, code) || fs::file_size(archive, code) != release.size) return false;
     std::string ignored;
-    const auto digest = sha256_hex_file(archive, ignored);
-    return digest.has_value() && same_sha256(*digest, release.sha256);
+    return verify_package_file(archive, release.size, release.sha256, ignored);
 }
 
 /// Stage one verified archive as update/staging/<component>-<version>.
@@ -310,6 +298,10 @@ AssetImportResult run_asset_import(const UpdateLayout& layout, const std::option
     std::vector<std::string> arguments;
     if (source.has_value()) {
         arguments.insert(arguments.end(), {"--source", path_to_utf8(*source)});
+    } else {
+        // The launcher's first-run screen already offers every choice
+        // (including the download): the importer only shows its folder picker.
+        arguments.emplace_back("--choose-folder");
     }
     arguments.insert(arguments.end(), {"--destination", path_to_utf8(layout.install / "assets" / "original"),
                                        "--report", path_to_utf8(report_file)});

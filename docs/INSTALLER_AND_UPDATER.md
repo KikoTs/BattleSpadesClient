@@ -249,8 +249,9 @@ the game cannot start without its files.
    - After a failure the dialog shows **why and what to do**, from the
      importer's `--report` (for example "...maps/Alcatraz.vxl is missing
      (350 of 3689 required files matched). Some original game files are
-     missing or changed... Verify integrity of game files... Or choose
-     Download game assets instead.").
+     missing or changed... Verify integrity of game files..."). The importer
+     run by the launcher's "Select my folder" gets `--choose-folder` and never
+     suggests "Download game assets" itself; the launcher's own screen does.
    - Check box **"Also enable hosting (Create Match, Map Creator): download
      the server, 64 MB"** when the manifest has a server and none is
      installed. **Cancel** quits.
@@ -475,6 +476,48 @@ optional.
 
 Unknown keys, such as a `_comment`, are ignored.
 
+### BattleSpadesAssetInstaller on its own (macOS, Linux, Windows without the launcher)
+
+The client starts `BattleSpadesAssetInstaller` when no verified game files
+exist. Its flow mirrors the launcher's first-run screen (`plan_first_run`):
+
+1. It looks for Ace of Spades in every Steam installation it knows
+   (Windows: registry + Program Files; Linux: `~/.local/share/Steam`,
+   `~/.steam/steam`, Flatpak and Snap Steam, Steam Play/Proton libraries,
+   `~/.wine`, Bottles; macOS: native Steam, CrossOver and Whisky bottles,
+   `~/.wine`). Each Steam root is resolved through `libraryfolders.vdf` and
+   `appmanifest_224540.acf` `installdir` (Windows `C:\...` paths inside a
+   Wine prefix are mapped into its `drive_c`/`dosdevices`). Only folders that
+   really contain the game are proposed.
+2. It reads the release manifest (`updater.json` beside it, else
+   `https://www.aosplay.net/updates/stable.json`).
+3. One dialog, "Get the original game files": **Use the found folder**,
+   **Download game assets (N MB)** when the manifest has `retail_assets`,
+   **Choose folder...**, or, without `retail_assets`, the note "Automatic
+   download isn't available yet - choose your Ace of Spades folder" with
+   **Open aosplay.net/download**. Nothing found is not an error: the dialog
+   comes first.
+4. The download (libcurl, HTTPS) resumes `<assets>/.retail-download/*.partial`
+   with HTTP Range, checks size and SHA-256 (`verify_package_file`, shared
+   with the launcher), extracts with the updater's ZIP reader and imports the
+   result through the same `find_asset_source` + `install_asset_tree_atomic`
+   as a folder. Errors keep the partial file and offer **Retry download**.
+5. A picked folder may be the game folder, Steam's `common`, `steamapps`, a
+   library root, a Steam root, a Wine prefix / bottle, its `drive_c`, or a
+   `Bottles` folder.
+
+Destination: `<executable>/assets/original` when that folder is writable,
+otherwise the user data folder (`%LOCALAPPDATA%\BattleSpades`,
+`~/Library/Application Support/BattleSpades`,
+`$XDG_DATA_HOME/BattleSpades`) as `<data>/assets/original`, with
+`<data>/assets/client` linked to the packaged `assets/client` (re-linked on
+every start, so a moved or translocated `.app` keeps working). The client
+checks the packaged root, then the user data root.
+
+Automation: `--source <folder>` imports a folder, `--download
+[--manifest-url <url>]` runs the download path without a window; both write
+`--report <file>`.
+
 ### Packaging `retail_assets` (Kiril)
 
 Build the pack from your own installation with
@@ -497,8 +540,13 @@ refuses to write inside the repository except under `out\`:
   `steam_api.dll` / `steam_appid.txt`. No executables, configs, logs, mods or
   the BattleSpades subfolder.
 - `-TestImport` extracts the ZIP and runs `BattleSpadesAssetInstaller.exe` on
-  it (the newest one under `out\build`, or `-Importer`), the same validation
-  the launcher runs after a download.
+  it (the newest one under `out\build`, an installed BattleSpades, or
+  `-Importer`), the same validation the launcher runs after a download.
+- Runs on a gaming PC without this repository: copy the script anywhere and
+  run `powershell -ExecutionPolicy Bypass -File .\make-retail-assets-pack.ps1
+  -Version 1.0.0 -PublicUrl <where you will host it> -TestImport`. The catalog
+  then comes from an installed BattleSpades (`asset-manifest.json`) or the
+  public repository, and the pack goes to `.\retail-assets\`.
 - It prints the size, SHA-256, root and version, and the matching
   `make-update-manifest.ps1` arguments (`-RetailAssetsVersion`,
   `-RetailAssetsSize`, `-RetailAssetsSha256`, `-RetailAssetsRoot`,

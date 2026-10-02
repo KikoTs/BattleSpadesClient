@@ -159,12 +159,14 @@ void test_import_into_install_inside_game_folder(const fs::path& root) {
     // Errors say what to do.
     fs::remove(game / "maps" / "Training.vxl");
     expect(!assets::find_asset_source(game, manifest, error).has_value(), "missing file detected");
-    expect(error.find("1 of 2 required files matched") != std::string::npos,
+    expect(error.find("1 of 2 required files present") != std::string::npos,
            "the closest layout is reported, not every probed one: " + error);
-    const auto explained = assets::explain_asset_install_error(error);
+    const auto explained = assets::explain_asset_install_error(error, true);
     expect(explained.starts_with(error) && explained.find("Verify integrity of game files") != std::string::npos &&
                explained.find("Download game assets") != std::string::npos,
            "missing files point at Steam's verify and the download: " + explained);
+    expect(assets::explain_asset_install_error(error).find("Download game assets") == std::string::npos,
+           "the download is never suggested when it is not offered");
     expect(assets::explain_asset_install_error("cannot create asset staging directory: Access is denied.")
                    .find("could not write") != std::string::npos,
            "write failures explain the destination problem");
