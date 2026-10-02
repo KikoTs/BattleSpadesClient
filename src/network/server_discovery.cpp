@@ -117,6 +117,12 @@ template <typename Integer>
     for (const auto& candidate : *iterator) {
         if (!candidate.is_string()) continue;
         const auto tag = lowercase(candidate.get<std::string>());
+        if (tag.starts_with("gamemode=")) {
+            const auto mode = tag.substr(9U);
+            if (!mode.empty()) {
+                return mode;
+            }
+        }
         if (!tag.starts_with("mode=") || tag.size() > 9U) continue;
         std::size_t ordinal{};
         bool digits = tag.size() > 5U;

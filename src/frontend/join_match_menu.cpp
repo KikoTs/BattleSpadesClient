@@ -102,7 +102,19 @@ constexpr Rect direct_back_button = retail_bottom_left(248, 32, 78, 26);
     const auto canonical = [](char character) {
         return character == '-' ? '_' : ascii_lower(character);
     };
-    return std::ranges::equal(left, right, {}, canonical, canonical);
+    if (std::ranges::equal(left, right, {}, canonical, canonical)) {
+        return true;
+    }
+    const auto is_na = [](std::string_view r) {
+        return r == "na" || r == "north_america" || r == "north-america";
+    };
+    const auto is_us = [](std::string_view r) {
+        return r == "us_west" || r == "us_east" || r == "us" || r == "us-west" || r == "us-east";
+    };
+    if ((is_na(left) && is_us(right)) || (is_na(right) && is_us(left))) {
+        return true;
+    }
+    return false;
 }
 
 [[nodiscard]] constexpr std::uint64_t next_generation(std::uint64_t generation) noexcept {
