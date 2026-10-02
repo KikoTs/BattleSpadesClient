@@ -101,6 +101,75 @@ void test_asset_importer(const fs::path& root) {
     expect(check.valid, "imported tree verifies: " + check.error);
 }
 
+// Regression (0.2.1-beta.2, "I can't import mine from Steam"): the installer
+// puts BattleSpades in <Steam>\steamapps\common\aceofspades\BattleSpades, so
+// the import destination <...>\aceofspades\BattleSpades\assets\original lies
+// INSIDE the source folder. The importer refused that layout ("asset
+// destination cannot be inside the selected source tree") and the launcher
+// only logged "exit 1".
+void test_import_into_install_inside_game_folder(const fs::path& root) {
+    namespace assets = battlespades::assets;
+    assets::AssetManifest manifest;
+    const std::string png = "retail png bytes";
+    const std::string map = "retail vxl bytes";
+    manifest.files.push_back({fs::path{"png/a.png"}, png.size(), sha256(png)});
+    manifest.files.push_back({fs::path{"maps/Training.vxl"}, map.size(), sha256(map)});
+    manifest.total_bytes = png.size() + map.size();
+
+    const auto library = root / utf8_path("Steam Библиотека");
+    const auto game = library / "steamapps" / "common" / "aceofspades";
+    write_file(game / "png" / "a.png", png);
+    write_file(game / "maps" / "Training.vxl", map);
+    write_file(game / "aos.exe", "retail exe");
+    const auto install = game / "BattleSpades";
+    write_file(install / "BattleSpadesClient.exe", "client");
+    const auto destination = install / "assets" / "original";
+
+    std::string error;
+    const auto found = assets::find_asset_source(game, manifest, error);
+    expect(found.has_value() && fs::equivalent(*found, game), "Steam folder with BattleSpades inside: " + error);
+
+    auto installed = assets::install_asset_tree_atomic(*found, destination, manifest, {});
+    expect(installed.installed, "import into <aceofspades>\\BattleSpades\\assets\\original: " + installed.error);
+    auto check = assets::verify_asset_tree(destination, manifest, assets::AssetVerificationDepth::full_hash);
+    expect(check.valid, "imported tree verifies: " + check.error);
+    expect(fs::is_regular_file(game / "png" / "a.png"), "the retail files stay where they are");
+
+    // Importing again (repair) replaces the previous import in place.
+    installed = assets::install_asset_tree_atomic(*found, destination, manifest, {});
+    expect(installed.installed, "re-import over an existing import: " + installed.error);
+
+    // A destination that CONTAINS the source is still refused.
+    const auto around = assets::install_asset_tree_atomic(game, library / "steamapps", manifest, {});
+    expect(!around.installed && around.error.find("cannot contain") != std::string::npos,
+           "destination containing the source refused: " + around.error);
+
+    // A catalogued file may never be read from the destination itself.
+    assets::AssetManifest sneaky = manifest;
+    const std::string inner = "already imported";
+    write_file(destination / "inner.bin", inner);
+    sneaky.files.push_back({fs::path{"BattleSpades/assets/original/inner.bin"}, inner.size(), sha256(inner)});
+    sneaky.total_bytes += inner.size();
+    const auto self = assets::install_asset_tree_atomic(game, destination, sneaky, {});
+    expect(!self.installed && self.error.find("inside the asset destination") != std::string::npos,
+           "source file inside the destination refused: " + self.error);
+    check = assets::verify_asset_tree(destination, manifest, assets::AssetVerificationDepth::full_hash);
+    expect(check.valid, "a refused import leaves the previous import intact: " + check.error);
+
+    // Errors say what to do.
+    fs::remove(game / "maps" / "Training.vxl");
+    expect(!assets::find_asset_source(game, manifest, error).has_value(), "missing file detected");
+    expect(error.find("1 of 2 required files matched") != std::string::npos,
+           "the closest layout is reported, not every probed one: " + error);
+    const auto explained = assets::explain_asset_install_error(error);
+    expect(explained.starts_with(error) && explained.find("Verify integrity of game files") != std::string::npos &&
+               explained.find("Download game assets") != std::string::npos,
+           "missing files point at Steam's verify and the download: " + explained);
+    expect(assets::explain_asset_install_error("cannot create asset staging directory: Access is denied.")
+                   .find("could not write") != std::string::npos,
+           "write failures explain the destination problem");
+}
+
 void test_local_server(const fs::path& root) {
     using battlespades::platform::LocalServerLaunchConfig;
 
@@ -184,6 +253,7 @@ int main() {
         fs::create_directories(root);
         try {
             test_asset_importer(root);
+            test_import_into_install_inside_game_folder(root);
             test_local_server(root);
             test_hosting_gate(root);
         } catch (...) {

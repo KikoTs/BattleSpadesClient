@@ -6,6 +6,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace battlespades::assets {
@@ -122,6 +123,14 @@ default_asset_source_directory() noexcept;
 [[nodiscard]] NativeSteamImportResult import_native_steam_runtime(
     const std::filesystem::path& selected_directory,
     const std::filesystem::path& executable_directory) noexcept;
+
+/**
+ * Turns an importer error (from find_asset_source / install_asset_tree_atomic)
+ * into a message a player can act on: the original reason first, followed by
+ * what to do about it (verify the Steam files, free the destination, or use
+ * "Download game assets").
+ */
+[[nodiscard]] std::string explain_asset_install_error(std::string_view error);
 
 enum class AssetInstallerExit : std::uint8_t {
     installed,

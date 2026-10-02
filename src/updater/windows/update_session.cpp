@@ -3,6 +3,7 @@
 #include "win_util.hpp"
 
 #include "battlespades/updater/file_util.hpp"
+#include "battlespades/updater/launcher_args.hpp"
 #include "battlespades/updater/release_manifest.hpp"
 #include "battlespades/updater/semver.hpp"
 #include "battlespades/updater/sha256.hpp"
@@ -11,6 +12,14 @@
 
 #include <algorithm>
 #include <ctime>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 
 namespace battlespades::updater::win {
 namespace {
@@ -276,23 +285,68 @@ namespace {
 /// files against asset-manifest.json and installs them atomically into
 /// assets\original, exactly like "Use my Ace of Spades folder".
 bool import_retail_assets(const UpdateLayout& layout, const fs::path& root, std::string& error) {
-    const auto importer = layout.install / L"BattleSpadesAssetInstaller.exe";
-    std::error_code code;
-    if (!fs::is_regular_file(importer, code)) {
-        error = "BattleSpadesAssetInstaller.exe is missing";
-        return false;
-    }
-    const auto line = L"\"" + importer.wstring() + L"\" --source \"" + root.wstring() + L"\"";
-    const auto exit = run_hidden(importer.wstring(), line, 30U * 60U * 1000U);
-    if (!exit.has_value() || *exit != 0U) {
-        error = "the downloaded game files did not pass the asset check (importer exit " +
-                (exit.has_value() ? std::to_string(*exit) : std::string{"timeout"}) + ")";
+    const auto imported = run_asset_import(layout, root);
+    if (!imported.ok()) {
+        error = "the downloaded game files did not pass the asset check: " + imported.message;
         return false;
     }
     return true;
 }
 
 } // namespace
+
+AssetImportResult run_asset_import(const UpdateLayout& layout, const std::optional<fs::path>& source) {
+    AssetImportResult result;
+    const auto importer = layout.install / L"BattleSpadesAssetInstaller.exe";
+    std::error_code code;
+    if (!fs::is_regular_file(importer, code)) {
+        result.message = "BattleSpadesAssetInstaller.exe is missing from " + path_to_utf8(layout.install) +
+                         ". Reinstall BattleSpades.";
+        return result;
+    }
+    const auto report_file = layout.root() / "import-report.txt";
+    fs::create_directories(layout.root(), code);
+    fs::remove(report_file, code);
+    std::vector<std::string> arguments;
+    if (source.has_value()) {
+        arguments.insert(arguments.end(), {"--source", path_to_utf8(*source)});
+    }
+    arguments.insert(arguments.end(), {"--destination", path_to_utf8(layout.install / "assets" / "original"),
+                                       "--report", path_to_utf8(report_file)});
+    const auto line = widen(build_windows_command_line(path_to_utf8(importer), arguments));
+    if (source.has_value()) {
+        result.exit = run_hidden(importer.wstring(), line, 30U * 60U * 1000U);
+    } else {
+        // Interactive: the importer's own window and folder picker.
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        std::wstring mutable_line = line;
+        if (CreateProcessW(importer.c_str(), mutable_line.data(), nullptr, nullptr, FALSE, 0U, nullptr,
+                           layout.install.c_str(), &startup, &process)) {
+            CloseHandle(process.hThread);
+            WaitForSingleObject(process.hProcess, INFINITE);
+            DWORD exit_code{1U};
+            if (GetExitCodeProcess(process.hProcess, &exit_code)) result.exit = exit_code;
+            CloseHandle(process.hProcess);
+        }
+    }
+    std::string ignored;
+    auto report = read_text_file(report_file, ignored).value_or(std::string{});
+    fs::remove(report_file, code);
+    if (result.ok()) return result;
+    if (report == "ok") report.clear();
+    if (!report.empty()) {
+        result.message = std::move(report);
+    } else if (!result.exit.has_value()) {
+        result.message = "the asset importer could not be started or did not finish in time";
+    } else if (result.cancelled()) {
+        result.message = "the import was cancelled";
+    } else {
+        result.message = "the asset importer failed with exit code " + std::to_string(*result.exit);
+    }
+    return result;
+}
 
 SessionResult run_update_session(const UpdateLayout& layout, const UpdateManifest& manifest,
                                  const std::vector<PlannedUpdate>& updates, const UpdaterConfig& config,

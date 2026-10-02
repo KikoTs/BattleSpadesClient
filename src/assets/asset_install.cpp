@@ -37,7 +37,6 @@ constexpr std::size_t maximum_manifest_files{100'000U};
 constexpr std::size_t hash_buffer_size{1U << 20U};
 constexpr int installer_cancel_exit_code{2};
 constexpr std::size_t maximum_discovery_children{64U};
-constexpr std::size_t maximum_reported_candidates{8U};
 
 // Steam language depots do not always install these alongside an English
 // copy. Import them only when the player's selected Windows installation has
@@ -513,12 +512,19 @@ std::optional<std::filesystem::path> find_asset_source(
         }
 
         std::set<std::filesystem::path> attempted;
-        std::ostringstream details;
         std::size_t failures{};
+        // Report the layout that came closest (most catalogued files present):
+        // that is the actual game folder, and its first problem is what the
+        // player has to fix. The other probed layouts are just noise.
+        std::optional<std::filesystem::path> closest;
+        AssetTreeCheck closest_check{};
         for (const auto& candidate : candidates) {
             std::error_code code;
             const auto normalized = std::filesystem::weakly_canonical(candidate, code);
             if (code || !attempted.insert(normalized).second) {
+                continue;
+            }
+            if (!std::filesystem::is_directory(normalized, code) || code) {
                 continue;
             }
             const auto check =
@@ -527,21 +533,26 @@ std::optional<std::filesystem::path> find_asset_source(
                 error.clear();
                 return normalized;
             }
-            if (failures < maximum_reported_candidates) {
-                if (failures != 0U) {
-                    details << "; ";
-                }
-                details << path_text(candidate) << ": " << check.error;
+            if (!closest.has_value() || check.files_checked > closest_check.files_checked) {
+                closest = candidate;
+                closest_check = check;
             }
             ++failures;
         }
-        if (failures > maximum_reported_candidates) {
-            details << "; " << (failures - maximum_reported_candidates)
-                    << " additional layouts checked";
+        if (!closest.has_value()) {
+            error = "no Ace of Spades game files were found in " + path_text(selected_directory);
+            return std::nullopt;
         }
-        error = "the selected folder is not a matching Ace of Spades Battle Builder "
-                "installation (" +
-                details.str() + ")";
+        std::ostringstream details;
+        details << path_text(*closest) << " is not a matching Ace of Spades Battle Builder installation: "
+                << closest_check.error << " (" << closest_check.files_checked << " of "
+                << manifest.files.size() << " required files matched";
+        if (failures > 1U) {
+            details << "; " << (failures - 1U) << " other layout"
+                    << (failures == 2U ? "" : "s") << " checked";
+        }
+        details << ')';
+        error = details.str();
         return std::nullopt;
     } catch (const std::exception& exception) {
         error = std::string{"asset source discovery failed: "} + exception.what();
@@ -621,8 +632,15 @@ AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source
             return existing ? AssetInstallResult{true, {}}
                             : AssetInstallResult{false, existing.error};
         }
-        if (path_below(source, destination)) {
-            return {false, "asset destination cannot be inside the selected source tree"};
+        // The installer puts BattleSpades in <aceofspades>\BattleSpades, so the
+        // destination (<aceofspades>\BattleSpades\assets\original) is normally
+        // INSIDE the source tree. That is safe: only the catalogued files are
+        // read, and each one is checked below so none of them can come from
+        // the destination itself. Only a destination that contains the source
+        // (renaming it would move the source away) is refused.
+        if (path_below(destination, source)) {
+            return {false, "the asset destination cannot contain the Ace of Spades folder it imports from: " +
+                               path_text(destination)};
         }
 
         staging = unique_sibling(destination, "installing");
@@ -646,6 +664,12 @@ AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source
                         "source asset escapes through a redirected path: " +
                             path_text(source_file)};
             }
+            if (path_below(destination, normalized_source)) {
+                std::filesystem::remove_all(staging, code);
+                return {false,
+                        "source asset lies inside the asset destination: " +
+                            path_text(source_file)};
+            }
             std::string copy_error;
             if (!copy_and_hash(normalized_source, target_file, entry, copy_error)) {
                 std::filesystem::remove_all(staging, code);
@@ -667,7 +691,8 @@ AssetInstallResult install_asset_tree_atomic(const std::filesystem::path& source
                 continue;
             }
             const auto normalized_source = std::filesystem::weakly_canonical(source_file, code);
-            if (code || !path_below(source, normalized_source)) {
+            if (code || !path_below(source, normalized_source) ||
+                path_below(destination, normalized_source)) {
                 code.clear();
                 continue;
             }
@@ -810,6 +835,51 @@ NativeSteamImportResult import_native_steam_runtime(
         return {false, "Steam runtime import failed"};
     }
 #endif
+}
+
+std::string explain_asset_install_error(std::string_view error) {
+    const auto contains = [error](std::string_view needle) {
+        return error.find(needle) != std::string_view::npos;
+    };
+    std::string advice;
+    if (contains("legacy macOS")) {
+        advice = "Copy a Windows installation of Ace of Spades to this computer and select that folder.";
+    } else if (contains("no Ace of Spades game files were found") ||
+               contains("is not a matching Ace of Spades")) {
+        if (contains("missing") || contains("wrong size") || contains("wrong SHA-256")) {
+            advice =
+                "Some original game files are missing or changed (for example by a mod). In Steam, "
+                "right-click Ace of Spades > Properties > Installed Files > \"Verify integrity of game "
+                "files\", then try again. Or choose \"Download game assets\" instead.";
+        } else {
+            advice =
+                "Select the folder that contains aos.exe (in Steam: right-click Ace of Spades > Manage > "
+                "Browse local files), or choose \"Download game assets\" instead.";
+        }
+    } else if (contains("does not match the required retail version") || contains("wrong SHA-256")) {
+        advice =
+            "A game file changed while it was being copied, or it was modified. In Steam, right-click "
+            "Ace of Spades > Properties > Installed Files > \"Verify integrity of game files\", then try "
+            "again. Or choose \"Download game assets\" instead.";
+    } else if (contains("cannot create") || contains("cannot open asset copy pair") ||
+               contains("cannot activate") || contains("cannot preserve") ||
+               contains("failed while copying") || contains("failed while flushing") ||
+               contains("cannot copy steam_api.dll")) {
+        advice =
+            "BattleSpades could not write its copy of the game files. Close BattleSpades if it is running, "
+            "make sure the drive has about 500 MB free and that the BattleSpades folder is not read-only, "
+            "then try again.";
+    } else if (contains("destination cannot contain")) {
+        advice = "Install BattleSpades into its own folder (for example <Ace of Spades>\\BattleSpades).";
+    } else if (contains("asset manifest")) {
+        advice = "The BattleSpades installation is damaged. Reinstall BattleSpades.";
+    }
+    std::string message{error};
+    if (!advice.empty()) {
+        message += "\n\n";
+        message += advice;
+    }
+    return message;
 }
 
 AssetInstallerExit run_asset_installer(const std::filesystem::path& installer_executable,

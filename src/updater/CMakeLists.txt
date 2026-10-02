@@ -19,6 +19,7 @@ add_library(
     STATIC
         binary_vdf.cpp
         file_util.cpp
+        launch_flow.cpp
         launcher_args.cpp
         release_manifest.cpp
         semver.cpp

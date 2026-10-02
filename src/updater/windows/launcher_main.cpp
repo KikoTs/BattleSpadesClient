@@ -1,8 +1,14 @@
 // BattleSpadesLauncher.exe: the stable entry point Steam (and the Start menu)
 // runs.
-//  * First launch without game files: one screen to download them (manifest
-//    component retail_assets) or import them from an Ace of Spades folder,
-//    with an optional "enable hosting" (server) download.
+//  * Started by Steam through the Ace of Spades launch options
+//    ("<launcher>" %command%): a small chooser, "Play BattleSpades" (default)
+//    or "Play Ace of Spades (original)", which runs Steam's %command%
+//    unchanged. "Remember my choice" skips it; holding Shift, --choose or
+//    --reset-launch-choice brings it back. No %command%: BattleSpades starts.
+//  * First launch without game files: one screen to import them from the
+//    Steam copy (preselected when found), download them (manifest component
+//    retail_assets; the fallback when no Steam copy exists or the import
+//    failed) or pick a folder, with an optional "enable hosting" download.
 //  * Every launch: reads the update manifest and updates each INSTALLED
 //    component independently (client, server, assets, retail_assets), with
 //    resumable, mirror-by-mirror, size + SHA-256 verified downloads.
@@ -19,6 +25,7 @@
 #include "win_util.hpp"
 
 #include "battlespades/updater/file_util.hpp"
+#include "battlespades/updater/launch_flow.hpp"
 #include "battlespades/updater/launcher_args.hpp"
 #include "battlespades/updater/steam_library.hpp"
 #include "battlespades/updater/update_apply.hpp"
@@ -35,14 +42,18 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -58,6 +69,10 @@ constexpr int button_update_now = 2001;
 constexpr int button_later = 2002;
 constexpr int button_download_assets = 3001;
 constexpr int button_use_folder = 3002;
+constexpr int button_choose_folder = 3003;
+constexpr int button_download_page = 3004;
+constexpr int button_play_battlespades = 4001;
+constexpr int button_play_original = 4002;
 constexpr wchar_t window_class[] = L"BattleSpadesLauncherProgress";
 
 std::mutex log_mutex;
@@ -134,7 +149,9 @@ LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPAR
 }
 
 /// `button_label`: "Play without updating", "Quit" (required) or "Cancel" (opt-in installs).
-bool create_window(HINSTANCE instance, const wchar_t* button_label) {
+/// A null label shows a disabled "Please wait" button (work that cannot be stopped).
+bool create_window(HINSTANCE instance, const wchar_t* button_label, const wchar_t* title = L"BattleSpades update",
+                   const wchar_t* first_status = L"Preparing the update...") {
     ui.cancel = false;
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&controls);
@@ -154,7 +171,7 @@ bool create_window(HINSTANCE instance, const wchar_t* button_label) {
     AdjustWindowRectEx(&area, WS_CAPTION | WS_SYSMENU, FALSE, 0U);
     const int width = area.right - area.left;
     const int height = area.bottom - area.top;
-    ui.window = CreateWindowExW(0U, window_class, L"BattleSpades update", WS_CAPTION | WS_SYSMENU,
+    ui.window = CreateWindowExW(0U, window_class, title, WS_CAPTION | WS_SYSMENU,
                                 (GetSystemMetrics(SM_CXSCREEN) - width) / 2, (GetSystemMetrics(SM_CYSCREEN) - height) / 2,
                                 width, height, nullptr, nullptr, instance, nullptr);
     if (ui.window == nullptr) return false;
@@ -162,13 +179,14 @@ bool create_window(HINSTANCE instance, const wchar_t* button_label) {
     metrics.cbSize = sizeof(metrics);
     SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0U, dpi);
     HFONT font = CreateFontIndirectW(&metrics.lfMessageFont);
-    ui.label = CreateWindowExW(0U, L"STATIC", L"Preparing the update...", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
+    ui.label = CreateWindowExW(0U, L"STATIC", first_status, WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
                                scale(16), scale(16), scale(428), scale(22), ui.window, nullptr, instance, nullptr);
     ui.bar = CreateWindowExW(0U, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE, scale(16), scale(46), scale(428),
                              scale(20), ui.window, nullptr, instance, nullptr);
     SendMessageW(ui.bar, PBM_SETRANGE32, 0, 1000);
-    ui.skip = CreateWindowExW(0U, L"BUTTON", button_label,
-                              WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, scale(264), scale(84), scale(180), scale(30),
+    ui.skip = CreateWindowExW(0U, L"BUTTON", button_label != nullptr ? button_label : L"Please wait",
+                              WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | (button_label != nullptr ? 0 : WS_DISABLED),
+                              scale(264), scale(84), scale(180), scale(30),
                               ui.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(control_skip)), instance, nullptr);
     for (HWND control : {ui.label, ui.skip}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     ShowWindow(ui.window, SW_SHOWNORMAL);
@@ -274,92 +292,133 @@ void write_hosting_status(const up::UpdateLayout& layout, const up::UpdateManife
               (status.reason.empty() ? std::string{} : " (" + status.reason + ")"));
 }
 
-/// Runs a program visibly and waits (the interactive asset importer).
-std::optional<unsigned long> run_visible(const fs::path& program, const std::wstring& arguments) {
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process{};
-    std::wstring line = L"\"" + program.wstring() + L"\"" + arguments;
-    if (!CreateProcessW(program.c_str(), line.data(), nullptr, nullptr, FALSE, 0U, nullptr,
-                        program.parent_path().c_str(), &startup, &process)) {
-        return std::nullopt;
+/// Runs `work` on a worker thread behind a progress window with a marquee bar
+/// (work that reports no percentage and cannot be cancelled, e.g. an import).
+void run_with_progress(HINSTANCE instance, const wchar_t* title, const wchar_t* status,
+                       const std::function<void()>& work) {
+    if (!create_window(instance, nullptr, title, status)) {
+        work();
+        return;
     }
-    CloseHandle(process.hThread);
-    WaitForSingleObject(process.hProcess, INFINITE);
-    DWORD code{};
-    GetExitCodeProcess(process.hProcess, &code);
-    CloseHandle(process.hProcess);
-    return code;
+    PostMessageW(ui.window, message_progress, static_cast<WPARAM>(-1), 0);
+    std::thread worker{[&] {
+        work();
+        PostMessageW(ui.window, message_done, 0, 0);
+    }};
+    MSG message{};
+    while (GetMessageW(&message, nullptr, 0U, 0U) > 0) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    worker.join();
+    ui.window = nullptr;
 }
 
-/// "Use my Ace of Spades folder": the existing importer and its validation.
-bool import_from_folder(const up::UpdateLayout& layout, const std::optional<fs::path>& detected) {
-    const auto importer = layout.install / L"BattleSpadesAssetInstaller.exe";
-    if (detected.has_value()) {
-        const auto line = L"\"" + importer.wstring() + L"\" --source \"" + detected->wstring() + L"\"";
-        const auto exit = win::run_hidden(importer.wstring(), line, 30U * 60U * 1000U);
-        write_log("import from " + up::path_to_utf8(*detected) + ": exit " +
-                  (exit.has_value() ? std::to_string(*exit) : std::string{"failed to start"}));
-        if (exit.has_value() && *exit == 0U) return true;
-    }
-    // Not detected, or the detected folder did not verify: the importer's own
-    // folder picker (it explains what to select and validates the choice).
-    const auto exit = run_visible(importer, L"");
-    write_log("interactive import: exit " + (exit.has_value() ? std::to_string(*exit) : std::string{"failed to start"}));
-    return exit.has_value() && *exit == 0U && up::retail_assets_present(layout.install);
+/// "Use my Ace of Spades folder": the importer, hidden, behind a progress window.
+win::AssetImportResult import_detected_folder(HINSTANCE instance, const up::UpdateLayout& layout,
+                                              const fs::path& folder) {
+    win::AssetImportResult result;
+    run_with_progress(instance, L"BattleSpades", L"Copying and verifying the original game files...",
+                      [&] { result = win::run_asset_import(layout, folder); });
+    write_log("import from " + up::path_to_utf8(folder) + ": " +
+              (result.ok() ? std::string{"ok"} : result.message));
+    return result;
 }
 
 struct FirstRunChoice {
-    enum class Source { download, folder, quit } source{Source::quit};
+    std::optional<up::FirstRunAction> action;   ///< nullopt: the player quit
     bool enable_hosting{};
 };
 
 /**
- * The one first-run screen: how to get the original game files, plus an
- * optional "enable hosting" checkbox. Download is offered only when the
- * manifest publishes retail_assets; the detected Steam folder is shown.
+ * The one first-run screen: how to get the original game files, with the
+ * best option preselected (see up::plan_first_run), the last failure and what
+ * to do about it, plus an optional "enable hosting" checkbox.
  */
-FirstRunChoice ask_first_run(const up::UpdateManifest* manifest, const std::optional<fs::path>& detected,
-                             bool server_installed) {
+FirstRunChoice ask_first_run(const up::FirstRunScreen& screen, const up::UpdateManifest* manifest,
+                             const std::optional<fs::path>& detected, bool server_installed,
+                             const std::string& last_error) {
     const auto* retail = manifest != nullptr ? manifest->component(up::component_retail_assets) : nullptr;
     const auto* server = manifest != nullptr ? manifest->component(up::component_server) : nullptr;
-    const auto download_text = win::widen(
-        "Download game assets\n" + (retail != nullptr ? megabytes(retail->size) + " from the BattleSpades download servers"
-                                                      : std::string{}));
-    const auto folder_text = win::widen(
-        detected.has_value() ? "Use my Ace of Spades folder\nFound: " + up::path_to_utf8(*detected)
-                             : std::string{"Select my Ace of Spades folder\nThe Steam copy of Ace of Spades was not found automatically"});
+    const auto size = retail != nullptr ? megabytes(retail->size) : std::string{};
+
+    struct Link {
+        up::FirstRunAction action;
+        int id;
+        std::wstring text;
+    };
+    std::vector<Link> links;
+    for (const auto action : screen.actions) {
+        switch (action) {
+        case up::FirstRunAction::import_detected:
+            links.push_back({action, button_use_folder,
+                             win::widen((last_error.empty() ? "Use my Ace of Spades folder\nFound: "
+                                                            : "Try my Ace of Spades folder again\n") +
+                                        (detected.has_value() ? up::path_to_utf8(*detected) : std::string{}))});
+            break;
+        case up::FirstRunAction::choose_folder:
+            links.push_back({action, button_choose_folder,
+                             L"Select my Ace of Spades folder\nPick the folder that contains aos.exe"});
+            break;
+        case up::FirstRunAction::download:
+            links.push_back({action, button_download_assets,
+                             win::widen(screen.retry_download
+                                            ? "Retry download\nContinues where it stopped (" + size + " in total)"
+                                            : "Download game assets\n" + size +
+                                                  " from the BattleSpades download servers")});
+            break;
+        case up::FirstRunAction::open_download_page:
+            links.push_back({action, button_download_page,
+                             win::widen("Get the game files from aosplay.net\nOpens " +
+                                        std::string{up::retail_download_page_url} + " in your browser")});
+            break;
+        }
+    }
+    std::vector<TASKDIALOG_BUTTON> buttons;
+    int default_button = links.empty() ? 0 : links.front().id;
+    for (const auto& link : links) {
+        buttons.push_back({link.id, link.text.c_str()});
+        if (link.action == screen.preselected) default_button = link.id;
+    }
+
+    std::string content = "BattleSpades does not include the original Ace of Spades files. ";
+    content += retail != nullptr ? "Import them from your own copy or download them; both end with the same "
+                                   "verified files."
+                                 : "Import them from your own copy of Ace of Spades.";
+    if (screen.note == up::FirstRunNote::download_unavailable) {
+        content += "\n\nAutomatic download of the game files is not available yet. You can get them from " +
+                   std::string{up::retail_download_page_url} + ".";
+    } else if (screen.note == up::FirstRunNote::offline) {
+        content += "\n\nThe BattleSpades download servers could not be reached, so the automatic download is not "
+                   "available right now. You can also get the files from " +
+                   std::string{up::retail_download_page_url} + ".";
+    }
+    if (!last_error.empty()) content += "\n\nThe last attempt did not work:\n" + last_error;
+    const auto content_text = win::widen(content);
     const auto hosting_text = win::widen(
         server != nullptr ? "Also enable hosting (Create Match, Map Creator): download the server, " + megabytes(server->size)
                           : std::string{});
-    std::vector<TASKDIALOG_BUTTON> buttons;
-    if (retail != nullptr) buttons.push_back({button_download_assets, download_text.c_str()});
-    buttons.push_back({button_use_folder, folder_text.c_str()});
-    const std::wstring content =
-        manifest == nullptr
-            ? L"BattleSpades does not include the original Ace of Spades files. Downloading them needs an internet "
-              L"connection; you can also import them from your own copy."
-            : L"BattleSpades does not include the original Ace of Spades files. Choose how to get them; both ways "
-              L"end with the same verified files.";
+
     TASKDIALOGCONFIG config{};
     config.cbSize = sizeof(config);
     config.dwFlags = TDF_USE_COMMAND_LINKS | TDF_ALLOW_DIALOG_CANCELLATION;
     config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
     config.pszWindowTitle = L"BattleSpades";
-    config.pszMainIcon = TD_INFORMATION_ICON;
+    config.pszMainIcon = last_error.empty() ? TD_INFORMATION_ICON : TD_WARNING_ICON;
     config.pszMainInstruction = L"Get the original game files";
-    config.pszContent = content.c_str();
+    config.pszContent = content_text.c_str();
     config.cButtons = static_cast<UINT>(buttons.size());
     config.pButtons = buttons.data();
-    config.nDefaultButton = detected.has_value() ? button_use_folder : buttons.front().nButtonID;
+    config.nDefaultButton = default_button;
     if (server != nullptr && !server_installed) config.pszVerificationText = hosting_text.c_str();
     int pressed{};
     BOOL hosting{};
     FirstRunChoice choice;
     if (FAILED(TaskDialogIndirect(&config, &pressed, nullptr, &hosting))) return choice;
     choice.enable_hosting = hosting != FALSE;
-    if (pressed == button_download_assets) choice.source = FirstRunChoice::Source::download;
-    if (pressed == button_use_folder) choice.source = FirstRunChoice::Source::folder;
+    for (const auto& link : links) {
+        if (link.id == pressed) choice.action = link.action;
+    }
     return choice;
 }
 
@@ -376,31 +435,183 @@ FirstRunChoice ask_first_run(const up::UpdateManifest* manifest, const std::opti
 bool first_run(HINSTANCE instance, const up::UpdateLayout& layout, const up::UpdateManifest* manifest,
                const up::UpdaterConfig& config) {
     const auto detected = detect_ace_of_spades();
-    const auto installed = up::read_installed_versions(layout.install);
+    up::FirstRunInputs inputs;
+    inputs.game_folder_found = detected.has_value();
+    inputs.manifest_reachable = manifest != nullptr;
+    inputs.download_offered = manifest != nullptr && manifest->component(up::component_retail_assets) != nullptr;
+    std::string last_error;
     for (;;) {
-        const auto choice = ask_first_run(manifest, detected, installed.contains("server"));
-        if (choice.source == FirstRunChoice::Source::quit) return false;
-        std::vector<std::string> wanted;
-        if (choice.source == FirstRunChoice::Source::download) wanted.emplace_back(up::component_retail_assets);
-        if (choice.enable_hosting) wanted.emplace_back(up::component_server);
-        if (choice.source == FirstRunChoice::Source::folder && !import_from_folder(layout, detected)) {
-            MessageBoxW(nullptr, L"The game files were not imported. Choose again.", L"BattleSpades",
-                        MB_ICONWARNING | MB_OK);
+        const auto installed = up::read_installed_versions(layout.install);
+        const auto screen = up::plan_first_run(inputs);
+        const auto choice = ask_first_run(screen, manifest, detected, installed.contains("server"), last_error);
+        if (!choice.action.has_value()) return false;
+        const auto action = *choice.action;
+        if (action == up::FirstRunAction::open_download_page) {
+            ShellExecuteW(nullptr, L"open", win::widen(up::retail_download_page_url).c_str(), nullptr, nullptr,
+                          SW_SHOWNORMAL);
             continue;
         }
+
+        std::vector<std::string> wanted;
+        if (action == up::FirstRunAction::import_detected && detected.has_value()) {
+            const auto imported = import_detected_folder(instance, layout, *detected);
+            if (!imported.ok()) {
+                inputs.import_failed = true;
+                last_error = imported.message;
+                continue;
+            }
+        } else if (action == up::FirstRunAction::choose_folder) {
+            const auto imported = win::run_asset_import(layout, std::nullopt);
+            write_log("interactive import: " + (imported.ok() ? std::string{"ok"} : imported.message));
+            if (imported.cancelled()) continue;   // the player closed the picker: same screen, no error
+            if (!imported.ok()) {
+                inputs.import_failed = true;
+                last_error = imported.message;
+                continue;
+            }
+        } else if (action == up::FirstRunAction::download) {
+            wanted.emplace_back(up::component_retail_assets);
+        }
+        if (choice.enable_hosting) wanted.emplace_back(up::component_server);
+
         if (manifest != nullptr && !wanted.empty()) {
             const auto updates = up::plan_install(*manifest, installed, wanted);
             const auto result = run_session_with_window(instance, layout, *manifest, updates, config, L"Cancel");
             for (const auto& item : result.applied) write_log("installed " + item);
-            if (result.outcome == win::SessionOutcome::cancelled) write_log("first-run download cancelled");
-            else if (!result.failed.empty()) write_log("first-run download failed: " + result.error);
+            const bool retail_failed =
+                std::ranges::find(result.failed, std::string{up::component_retail_assets}) != result.failed.end();
+            if (result.outcome == win::SessionOutcome::cancelled) {
+                write_log("first-run download cancelled");
+                if (action == up::FirstRunAction::download) {
+                    inputs.download_failed = true;
+                    last_error = "The download was stopped. It continues where it stopped when you retry.";
+                }
+            } else if (!result.failed.empty()) {
+                write_log("first-run download failed: " + result.error);
+                if (retail_failed) {
+                    inputs.download_failed = true;
+                    last_error = result.error +
+                                 "\n\nCheck your internet connection and retry; the download continues where it stopped.";
+                }
+            }
         }
         if (up::retail_assets_present(layout.install)) return true;
-        MessageBoxW(nullptr,
-                    L"The game files are not installed yet. An interrupted download continues where it stopped "
-                    L"next time.",
-                    L"BattleSpades", MB_ICONWARNING | MB_OK);
+        if (last_error.empty()) last_error = "The game files are not installed yet.";
     }
+}
+
+/// The launch options the player had before BattleSpades (for the original game).
+std::string recorded_previous_launch_options() {
+    std::string error;
+    const auto state =
+        up::load_registration_state(win::local_app_data() / L"BattleSpades" / L"steam-registration.json", error);
+    return state.has_value() ? up::previous_launch_options(*state, up::ace_of_spades_app_id) : std::string{};
+}
+
+struct LaunchChoice {
+    std::optional<up::LaunchTarget> target;   ///< nullopt: closed / Esc
+    bool remember{};
+};
+
+/// "What do you want to play?" when Steam starts Ace of Spades. Enter plays
+/// BattleSpades, arrow keys / Tab move, Esc closes without starting anything.
+LaunchChoice ask_launch_target(HINSTANCE instance) {
+    TASKDIALOG_BUTTON buttons[] = {
+        {button_play_battlespades, L"Play &BattleSpades\nThe modern Ace of Spades client with the BattleSpades servers"},
+        {button_play_original, L"Play &Ace of Spades (original)\nStarts the original game exactly as Steam would"},
+    };
+    TASKDIALOGCONFIG config{};
+    config.cbSize = sizeof(config);
+    config.hInstance = instance;
+    config.dwFlags = TDF_USE_COMMAND_LINKS | TDF_ALLOW_DIALOG_CANCELLATION | TDF_USE_HICON_MAIN;
+    config.pszWindowTitle = L"Ace of Spades";
+    config.hMainIcon = LoadIconW(instance, MAKEINTRESOURCEW(1));
+    config.pszMainInstruction = L"What do you want to play?";
+    config.cButtons = static_cast<UINT>(std::size(buttons));
+    config.pButtons = buttons;
+    config.nDefaultButton = button_play_battlespades;
+    config.pszVerificationText = L"&Remember my choice";
+    config.pszFooter = L"Hold Shift while pressing Play in Steam to choose again.";
+    int pressed{};
+    BOOL remember{};
+    LaunchChoice choice;
+    if (FAILED(TaskDialogIndirect(&config, &pressed, nullptr, &remember))) {
+        choice.target = up::LaunchTarget::battlespades;   // no dialog possible: the default
+        return choice;
+    }
+    if (pressed == button_play_battlespades) choice.target = up::LaunchTarget::battlespades;
+    if (pressed == button_play_original) choice.target = up::LaunchTarget::original;
+    choice.remember = remember != FALSE && choice.target.has_value();
+    return choice;
+}
+
+/// Runs Steam's %command% (the retail game) unchanged and waits, so Steam's
+/// playtime and overlay stay attached to it.
+int launch_original(const std::vector<std::string>& original_command) {
+    const auto previous = recorded_previous_launch_options();
+    const auto line = up::build_original_command_line(original_command, previous);
+    write_log("starting the original game: " + line);
+    const auto executable = up::path_from_utf8(original_command.front());
+    std::error_code code;
+    if (!fs::is_regular_file(executable, code)) {
+        MessageBoxW(nullptr,
+                    (L"The original game was not found:\n" + executable.wstring() +
+                     L"\n\nIn Steam, right-click Ace of Spades > Properties > Installed Files > Verify integrity of "
+                     L"game files.")
+                        .c_str(),
+                    L"Ace of Spades", MB_ICONERROR | MB_OK);
+        return 1;
+    }
+    auto command_line = win::widen(line);
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    const auto directory = executable.parent_path();
+    // No application name: a wrapper from the previous launch options may be
+    // first on the line; otherwise the quoted retail exe is.
+    if (!CreateProcessW(nullptr, command_line.data(), nullptr, nullptr, FALSE, 0U, nullptr, directory.c_str(),
+                        &startup, &process)) {
+        const auto error = GetLastError();
+        MessageBoxW(nullptr, (L"Could not start Ace of Spades (error " + std::to_wstring(error) + L").").c_str(),
+                    L"Ace of Spades", MB_ICONERROR | MB_OK);
+        return 1;
+    }
+    CloseHandle(process.hThread);
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD exit_code{};
+    GetExitCodeProcess(process.hProcess, &exit_code);
+    CloseHandle(process.hProcess);
+    return static_cast<int>(exit_code);
+}
+
+/**
+ * The installer could not register with Steam because Steam was running (it
+ * rewrites its config on exit). It left update\steam-register.pending with
+ * the helper flags; finish it now if Steam is closed, silently.
+ */
+void complete_pending_steam_registration(const up::UpdateLayout& layout) {
+    const auto marker = layout.root() / "steam-register.pending";
+    std::string error;
+    const auto text = up::read_text_file(marker, error);
+    if (!text.has_value()) return;
+    if (win::is_steam_running()) {
+        write_log("Steam registration still pending: Steam is running");
+        return;
+    }
+    std::vector<std::string> arguments{"register", "--launcher", up::path_to_utf8(win::current_executable())};
+    for (const char* flag : {"--launch-options", "--shortcut"}) {
+        if (text->find(flag) != std::string::npos) arguments.emplace_back(flag);
+    }
+    std::error_code code;
+    if (arguments.size() == 3U) {
+        fs::remove(marker, code);
+        return;
+    }
+    const auto helper = layout.install / L"BattleSpadesSetupHelper.exe";
+    const auto line = win::widen(up::build_windows_command_line(up::path_to_utf8(helper), arguments));
+    const auto exit = win::run_hidden(helper.wstring(), line, 60U * 1000U);
+    write_log("pending Steam registration: exit " + (exit.has_value() ? std::to_string(*exit) : std::string{"failed"}));
+    if (exit.has_value() && *exit != 2U) fs::remove(marker, code);
 }
 
 /// The per-launch phase. Returns whether the game may start.
@@ -574,7 +785,38 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, win::widen(arguments.error).c_str(), L"BattleSpades", MB_ICONERROR | MB_OK);
         return 2;
     }
-    if (!arguments.dropped_command.empty()) write_log("ignoring Steam's retail command " + arguments.dropped_command);
+    const auto choice_file = layout.root() / "launch-choice.json";
+    if (arguments.reset_launch_choice) {
+        std::string error;
+        const bool cleared = up::save_launch_choice(choice_file, std::nullopt, error);
+        write_log(cleared ? "launch choice reset" : "launch choice reset failed: " + error);
+        MessageBoxW(nullptr,
+                    cleared ? L"Done. The next time you press Play on Ace of Spades in Steam, BattleSpades asks "
+                              L"whether to play BattleSpades or the original game."
+                            : win::widen("The remembered choice could not be reset: " + error).c_str(),
+                    L"BattleSpades", (cleared ? MB_ICONINFORMATION : MB_ICONERROR) | MB_OK);
+        return cleared ? 0 : 1;
+    }
+
+    // Steam's Play on Ace of Spades: BattleSpades or the original game?
+    up::LaunchChoiceInputs choice_inputs;
+    choice_inputs.has_original_command = !arguments.original_command.empty();
+    choice_inputs.remembered = up::load_launch_choice(choice_file);
+    choice_inputs.shift_held = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    choice_inputs.force_chooser = arguments.choose;
+    auto decision = up::decide_launch(choice_inputs);
+    if (decision == up::LaunchDecision::ask) {
+        const auto picked = ask_launch_target(instance);
+        if (!picked.target.has_value()) return 0;   // closed: start nothing
+        if (picked.remember) {
+            std::string error;
+            if (!up::save_launch_choice(choice_file, picked.target, error)) write_log("cannot remember: " + error);
+        }
+        decision = *picked.target == up::LaunchTarget::original ? up::LaunchDecision::original
+                                                                 : up::LaunchDecision::battlespades;
+    }
+    if (decision == up::LaunchDecision::original) return launch_original(arguments.original_command);
+    if (!arguments.dropped_command.empty()) write_log("playing BattleSpades instead of " + arguments.dropped_command);
 
     up::empty_trash(layout);
 
@@ -597,6 +839,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             write_log(restored.ok ? "rolled back an interrupted " + component + " update"
                                   : "interrupted " + component + " rollback failed: " + restored.error);
         }
+        complete_pending_steam_registration(layout);
     }
 
     auto config = up::load_updater_config(install / "updater.json");

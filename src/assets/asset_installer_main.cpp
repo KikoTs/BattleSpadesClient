@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -32,6 +33,7 @@ struct InstallerOptions final {
     std::optional<std::filesystem::path> source{};
     std::filesystem::path manifest{};
     std::filesystem::path destination{};
+    std::optional<std::filesystem::path> report{};
     bool help{};
 };
 
@@ -74,7 +76,10 @@ struct FolderDialogResult final {
         "\n"
         "Interactive: BattleSpadesAssetInstaller\n"
         "Automation:  BattleSpadesAssetInstaller --source <AoS directory> "
-        "[--manifest <file>] [--destination <directory>]\n";
+        "[--manifest <file>] [--destination <directory>] [--report <file>]\n"
+        "\n"
+        "--report writes the result (\"ok\", or why the import failed and what\n"
+        "to do about it) to <file> as UTF-8, for the launcher to show.\n";
 }
 
 [[nodiscard]] std::optional<InstallerOptions> parse_options(int argc,
@@ -92,7 +97,7 @@ struct FolderDialogResult final {
             continue;
         }
         if (argument != "--source" && argument != "--manifest" &&
-            argument != "--destination") {
+            argument != "--destination" && argument != "--report") {
             error = "unknown argument: " + std::string{argument};
             return std::nullopt;
         }
@@ -105,12 +110,48 @@ struct FolderDialogResult final {
             options.source = value;
         } else if (argument == "--manifest") {
             options.manifest = value;
+        } else if (argument == "--report") {
+            options.report = value;
         } else {
             options.destination = value;
         }
     }
     error.clear();
     return options;
+}
+
+/// The launcher reads this instead of a bare exit code (a GUI-subsystem
+/// process has no stderr the launcher could capture).
+void write_report(const std::optional<std::filesystem::path>& report, std::string_view text) {
+    if (!report.has_value()) {
+        return;
+    }
+    std::error_code code;
+    if (report->has_parent_path()) {
+        std::filesystem::create_directories(report->parent_path(), code);
+    }
+    std::ofstream output{*report, std::ios::binary | std::ios::trunc};
+    output.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+/// "Choose another folder" (true) or "Cancel" (false).
+[[nodiscard]] bool ask_retry(SDL_Window* window, const std::string& message) {
+    const SDL_MessageBoxButtonData buttons[] = {
+        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Choose another folder"},
+        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel"},
+    };
+    SDL_MessageBoxData data{};
+    data.flags = SDL_MESSAGEBOX_ERROR;
+    data.window = window;
+    data.title = "The game files could not be imported";
+    data.message = message.c_str();
+    data.numbuttons = static_cast<int>(std::size(buttons));
+    data.buttons = buttons;
+    int pressed{0};
+    if (!SDL_ShowMessageBox(&data, &pressed)) {
+        return false;
+    }
+    return pressed == 1;
 }
 
 void SDLCALL folder_dialog_callback(void* userdata,
@@ -173,7 +214,7 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
     const auto source = battlespades::assets::find_asset_source(
         selected, manifest, discovery_error);
     if (!source.has_value()) {
-        error = std::move(discovery_error);
+        error = battlespades::assets::explain_asset_install_error(discovery_error);
         return failure_exit_code;
     }
 
@@ -197,13 +238,13 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
             }
         });
     if (!result) {
-        error = result.error;
+        error = battlespades::assets::explain_asset_install_error(result.error);
         return failure_exit_code;
     }
     const auto steam = battlespades::assets::import_native_steam_runtime(
         *source, executable_directory());
     if (!steam) {
-        error = steam.error;
+        error = battlespades::assets::explain_asset_install_error(steam.error);
         return failure_exit_code;
     }
     error.clear();
@@ -232,11 +273,15 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
 
     const auto loaded = battlespades::assets::load_asset_manifest(parsed->manifest);
     if (!loaded) {
-        std::cerr << "BattleSpadesAssetInstaller: " << loaded.error << '\n';
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-                                 "BattleSpades asset installer",
-                                 loaded.error.c_str(),
-                                 nullptr);
+        const auto message = battlespades::assets::explain_asset_install_error(loaded.error);
+        std::cerr << "BattleSpadesAssetInstaller: " << message << '\n';
+        write_report(parsed->report, message);
+        if (!parsed->source.has_value()) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                     "BattleSpades asset installer",
+                                     message.c_str(),
+                                     nullptr);
+        }
         SDL_Quit();
         return failure_exit_code;
     }
@@ -251,6 +296,8 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
         if (result != success_exit_code) {
             std::cerr << "BattleSpadesAssetInstaller: " << install_error << '\n';
         }
+        write_report(parsed->report, result == success_exit_code ? std::string_view{"ok"}
+                                                                  : std::string_view{install_error});
         SDL_Quit();
         return result;
     }
@@ -306,6 +353,7 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
                                    window,
                                    install_error);
         if (result_code == success_exit_code) {
+            write_report(parsed->report, "ok");
             SDL_SetWindowTitle(window, "BattleSpades assets are ready");
             SDL_ShowSimpleMessageBox(
                 SDL_MESSAGEBOX_INFORMATION,
@@ -316,12 +364,8 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
             break;
         }
 
-        const bool retry = SDL_ShowSimpleMessageBox(
-            SDL_MESSAGEBOX_ERROR,
-            "This is not a compatible Ace of Spades installation",
-            install_error.c_str(),
-            window);
-        if (!retry) {
+        write_report(parsed->report, install_error);
+        if (!ask_retry(window, install_error)) {
             result_code = failure_exit_code;
             break;
         }
