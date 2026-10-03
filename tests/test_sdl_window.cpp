@@ -208,12 +208,12 @@ void sdl_window_preserves_lifecycle_and_input_events() {
     // the next tick must see the remaining events in their original order.
     {
         const auto push_motion = [window_id](float dx) {
-            SDL_Event motion{};
-            motion.motion.type = SDL_EVENT_MOUSE_MOTION;
-            motion.motion.timestamp = SDL_GetTicksNS();
-            motion.motion.windowID = window_id;
-            motion.motion.xrel = dx;
-            expect(SDL_PushEvent(&motion), "SDL rejected injected look motion");
+            SDL_Event look{};
+            look.motion.type = SDL_EVENT_MOUSE_MOTION;
+            look.motion.timestamp = SDL_GetTicksNS();
+            look.motion.windowID = window_id;
+            look.motion.xrel = dx;
+            expect(SDL_PushEvent(&look), "SDL rejected injected look motion");
         };
         push_motion(1.0F);
         push_motion(2.0F);
