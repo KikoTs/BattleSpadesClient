@@ -900,6 +900,7 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"NOT_SUPPORTED_BACKEND", "Not supported by this graphics API"},
         {"ENHANCED_ONLY", "Enhanced shader tiers only"},
         {"RESTART_REQUIRED", "Restart required"},
+        {"ANTIALIAS_POST_CHAIN", "Off while render scale or post effects are on"},
         {"MAIN_GAME_CONTROLS", "Main Game Controls"},
         {"MOUSE_SENSITIVITY", "Mouse Sensitivity"},
         {"FORWARD", "Forward"},
@@ -1512,6 +1513,20 @@ struct NativeFrontendModule::Impl final {
         const auto graphics = effective_graphics();
         return render::with_shadow_options(
             render::profile_for(graphics.shader_quality, graphics.effect_quality), graphics);
+    }
+
+    /**
+     * Hands the renderer everything the Graphics tab decides per frame: the
+     * tier profile with the shadow rows, the world post chain and the
+     * world-texture sampling. All three are cheap to re-apply every frame,
+     * which keeps every settings path (preview, Done, Cancel, Alt+Enter) in
+     * sync without tracking each assignment.
+     */
+    void apply_world_presentation() {
+        const auto graphics = effective_graphics();
+        world_renderer.set_quality_profile(active_quality_profile());
+        world_renderer.set_post_settings(render::post_settings_for(graphics));
+        world_renderer.set_texture_filtering(render::texture_filtering_for(graphics));
     }
 
     /** World vertical field of view for a zoom ramp, from the Graphics tab. */
@@ -8685,6 +8700,15 @@ struct NativeFrontendModule::Impl final {
         environment.multisampling_live =
             render::multisample_change_is_live(renderer.active_backend());
         environment.glsl_shader_quality_supported = true;
+        if (world_renderer.is_initialized()) {
+            // Rows the running backend cannot draw stay visible but disabled.
+            const auto post = world_renderer.post_capabilities();
+            environment.post_chain_supported = post.chain;
+            environment.ambient_occlusion_supported = post.ambient_occlusion;
+            environment.motion_blur_supported = post.motion_blur;
+            environment.bloom_supported = post.bloom;
+            environment.edge_adaptive_upscale_supported = post.edge_adaptive_upscale;
+        }
         environment.graphics_apis.clear();
         for (const auto backend : render::supported_graphics_backends()) {
             environment.graphics_apis.push_back(settings_api(backend));
@@ -27578,7 +27602,7 @@ struct NativeFrontendModule::Impl final {
             // real submit. Paying that cost after SELECT made the first
             // playable frame look frozen. Submit one representative terrain,
             // skydome and shadow frame behind the opaque loading UI instead.
-            world_renderer.set_quality_profile(active_quality_profile());
+            apply_world_presentation();
             render::WorldCamera camera;
             camera.eye = {256.0, 256.0, 96.0};
             camera.yaw_degrees = 0.0;
@@ -27610,7 +27634,7 @@ struct NativeFrontendModule::Impl final {
             // constructor value (256, 256, 0), so the eye sits 362 blocks off
             // the dome's centre and the skyline fills the view. The map lies
             // behind the eye; below the horizon is the fog colour.
-            world_renderer.set_quality_profile(active_quality_profile());
+            apply_world_presentation();
             render::WorldCamera camera;
             camera.eye = {0.0, 0.0, 0.0};
             camera.yaw_degrees = 90.0;
@@ -27709,6 +27733,11 @@ struct NativeFrontendModule::Impl final {
                  local_jetpack_death_state() != nullptr)
                                        ? world_fov(0.0)
                                        : world_fov(tutorial_session->zoom_level());
+            // The first-person tool keeps retail's projection whatever the world
+            // FOV: a wider view must not stretch the weapon, and the scripted
+            // sight images are laid out for it.
+            camera.view_model_fov_y_degrees =
+                world::zoom_fov_y_degrees(tutorial_session->zoom_level());
             camera.fog_distance = static_cast<double>(
                 static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
             const auto tool_draws = (result_camera.has_value() ||
@@ -27752,7 +27781,7 @@ struct NativeFrontendModule::Impl final {
             // retail screenshot parity stays runnable; switching tier costs no
             // re-mesh.
             const auto quality = active_quality_profile();
-            world_renderer.set_quality_profile(quality);
+            apply_world_presentation();
             particles.set_quality_scale(quality.effect_scale);
             // Interiors are dark because the sky cannot see into them. Build the
             // horizon once the map exists and re-upload only when it changes.
@@ -28078,7 +28107,7 @@ bool NativeFrontendModule::start() {
             return false;
         }
 
-        const auto initialized = impl_->renderer.initialize(render::BgfxUiRendererConfig{
+        render::BgfxUiRendererConfig renderer_config{
             render::NativeWindow{
                 native.display,
                 native.window,
@@ -28097,7 +28126,12 @@ bool NativeFrontendModule::start() {
             msaa_samples(startup_settings.graphics.antialiasing),
             texture_quality_tier(startup_settings.graphics.texture_quality),
             impl_->config.renderer_debug,
-        });
+        };
+        // Graphics > Reduce Input Latency: one queued frame, or two for
+        // steadier frame times on a GPU-bound system. Startup-only in bgfx.
+        renderer_config.max_frame_latency =
+            static_cast<std::uint8_t>(startup_settings.graphics.low_latency ? 1U : 2U);
+        const auto initialized = impl_->renderer.initialize(renderer_config);
         if (!initialized) {
             impl_->last_error =
                 "bgfx initialization failed for " +

@@ -1,5 +1,6 @@
 #include "battlespades/frontend/settings_menu.hpp"
 
+#include "battlespades/render/graphics_options.hpp"
 #include "battlespades/render/quality_profile.hpp"
 #include "battlespades/settings/graphics_apply.hpp"
 #include "battlespades/settings/graphics_presets.hpp"
@@ -1755,6 +1756,10 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                 item.choice_index == 0U ? "OFF" : std::to_string(item.choice_index * 2U);
             if (!environment_.multisampling_live) {
                 item.description = "RESTART_REQUIRED";
+            }
+            if (render::post_settings_for(current.graphics).active()) {
+                // The post chain draws the world into a single-sample target.
+                item.description = "ANTIALIAS_POST_CHAIN";
             }
             break;
         case SettingsRowId::effect_quality:
