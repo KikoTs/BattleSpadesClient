@@ -285,6 +285,11 @@ struct ParseState final {
     std::set<std::string, std::less<>> recognized_keys{};
     std::vector<std::string> ignored_keys{};
     std::string error{};
+    // Pre-`window_mode` files: retail [main] fullscreen and the native
+    // [graphics] fullscreen_mode, resolved once the whole file is read.
+    std::optional<bool> legacy_fullscreen{};
+    std::optional<bool> legacy_borderless{};
+    bool window_mode_read{false};
 
     [[nodiscard]] bool fail(std::size_t line, std::string message) {
         error = "line " + std::to_string(line) + ": " + std::move(message);
@@ -317,6 +322,81 @@ template <typename Value, typename Parser>
     }
     destination = *parsed;
     return true;
+}
+
+/**
+ * The native Graphics additions in [graphics]. Nothing when `key` is not one
+ * of them; otherwise whether the value was accepted. Range checks are left to
+ * validate_settings so a bad value fails the load like any other.
+ */
+[[nodiscard]] std::optional<bool> parse_native_graphics(ParseState& state,
+                                                        std::size_t line,
+                                                        std::string_view key,
+                                                        std::string_view value) {
+    auto& graphics = state.candidate.graphics;
+    const auto number = [&](double& destination) {
+        if (!state.remember(line, key)) {
+            return false;
+        }
+        const auto parsed = parse_double(value);
+        if (!parsed.has_value()) {
+            return state.fail(line, std::string{key} + " must be a finite number");
+        }
+        destination = *parsed;
+        return true;
+    };
+    const auto toggle = [&](bool& destination) {
+        if (!state.remember(line, key)) {
+            return false;
+        }
+        const auto parsed = parse_bool(value);
+        if (!parsed.has_value()) {
+            return state.fail(line, std::string{key} + " must be true or false");
+        }
+        destination = *parsed;
+        return true;
+    };
+    const auto named = [&](const auto& names, auto& destination) {
+        if (!state.remember(line, key)) {
+            return false;
+        }
+        const auto text = parse_string(value);
+        const auto parsed = text.has_value() ? parse_enum(names, *text) : std::nullopt;
+        if (!parsed.has_value()) {
+            return state.fail(line, std::string{key} + " has an unsupported value");
+        }
+        destination = *parsed;
+        return true;
+    };
+    if (key == "field_of_view") return number(graphics.field_of_view);
+    if (key == "render_scale") return number(graphics.render_scale);
+    if (key == "sharpness") return number(graphics.sharpness);
+    if (key == "brightness") return number(graphics.brightness);
+    if (key == "gamma") return number(graphics.gamma);
+    if (key == "low_latency") return toggle(graphics.low_latency);
+    if (key == "show_fps") return toggle(graphics.show_fps);
+    if (key == "anisotropic_filtering") return toggle(graphics.anisotropic_filtering);
+    if (key == "smooth_textures") return toggle(graphics.smooth_textures);
+    if (key == "frame_limit") return named(frame_limit_names, graphics.frame_limit);
+    if (key == "upscale") return named(upscale_filter_names, graphics.upscale);
+    if (key == "shadow_quality") return named(shadow_quality_names, graphics.shadow_quality);
+    if (key == "shadow_distance") return named(shadow_distance_names, graphics.shadow_distance);
+    if (key == "ambient_occlusion") return named(effect_level_names, graphics.ambient_occlusion);
+    if (key == "bloom") return named(effect_level_names, graphics.bloom);
+    if (key == "motion_blur") return named(effect_level_names, graphics.motion_blur);
+    if (key == "color_vision") return named(color_vision_names, graphics.color_vision);
+    if (key == "frame_rate_cap") {
+        if (!state.remember(line, key)) {
+            return false;
+        }
+        const auto parsed = parse_unsigned(value);
+        if (!parsed.has_value() || *parsed > 0xFFFFU) {
+            return state.fail(line, "frame_rate_cap must be a whole number");
+        }
+        graphics.frame_rate_cap = static_cast<std::uint16_t>(*parsed);
+        return true;
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] bool parse_assignment(ParseState& state,
@@ -387,7 +467,7 @@ template <typename Value, typename Parser>
                 return state.fail(line, "toggle must be true or false");
             }
             if (key == "fullscreen") {
-                state.candidate.main.fullscreen = *parsed;
+                state.legacy_fullscreen = *parsed;
             } else if (key == "show_skins") {
                 state.candidate.main.show_skins = *parsed;
             } else if (key == "show_other_skins") {
@@ -440,6 +520,10 @@ template <typename Value, typename Parser>
             state.candidate.graphics.hud_scale = *parsed;
             return true;
         }
+        if (const auto handled = parse_native_graphics(state, line, key, value);
+            handled.has_value()) {
+            return *handled;
+        }
         if (key == "fullscreen_mode") {
             if (!state.remember(line, key)) {
                 return false;
@@ -448,7 +532,21 @@ template <typename Value, typename Parser>
             if (!parsed.has_value() || (*parsed != "borderless" && *parsed != "exclusive")) {
                 return state.fail(line, "fullscreen_mode must be \"borderless\" or \"exclusive\"");
             }
-            state.candidate.graphics.borderless_fullscreen = *parsed == "borderless";
+            state.legacy_borderless = *parsed == "borderless";
+            return true;
+        }
+        if (key == "window_mode") {
+            if (!state.remember(line, key)) {
+                return false;
+            }
+            const auto parsed = parse_string(value);
+            const auto mode = parsed.has_value() ? parse_window_mode(*parsed) : std::nullopt;
+            if (!mode.has_value()) {
+                return state.fail(
+                    line, "window_mode must be \"windowed\", \"borderless\" or \"exclusive\"");
+            }
+            state.candidate.graphics.window_mode = *mode;
+            state.window_mode_read = true;
             return true;
         }
         if (!state.remember(line, key)) {
@@ -552,6 +650,7 @@ template <typename Value, typename Parser>
         return fallback.str();
     };
 
+    const auto& g = settings.graphics;
     std::ostringstream output;
     output.imbue(std::locale::classic());
     output << "# BattleSpadesClient settings\n"
@@ -562,7 +661,9 @@ template <typename Value, typename Parser>
            << "master_volume = " << decimal(settings.main.master_volume) << "\n"
            << "music_volume = " << decimal(settings.main.music_volume) << "\n"
            << "audio_device = " << std::quoted(settings.main.audio_device) << "\n"
-           << "fullscreen = " << (settings.main.fullscreen ? "true" : "false") << "\n"
+           << "# Legacy mirror of [graphics] window_mode for older builds; ignored here.\n"
+           << "fullscreen = " << (is_fullscreen(settings.graphics.window_mode) ? "true" : "false")
+           << "\n"
            << "invert_mouse = " << (settings.main.invert_mouse ? "true" : "false") << "\n"
            << "show_skins = " << (settings.main.show_skins ? "true" : "false") << "\n"
            << "show_other_skins = " << (settings.main.show_other_skins ? "true" : "false") << "\n"
@@ -580,15 +681,41 @@ template <typename Value, typename Parser>
            << "texture_quality = \"" << quality_name(settings.graphics.texture_quality) << "\"\n"
            << "model_quality = \"" << quality_name(settings.graphics.model_quality) << "\"\n"
            << "vsync = " << (settings.graphics.vsync ? "true" : "false") << "\n"
-           << "# Native: \"borderless\" (desktop fullscreen) or \"exclusive\" (retail mode switch).\n"
+           << "# \"windowed\", \"borderless\" (desktop-sized, no display mode change) or\n"
+           << "# \"exclusive\" (switches the display to `resolution`).\n"
+           << "window_mode = \"" << window_mode_name(settings.graphics.window_mode) << "\"\n"
+           << "# Legacy mirror of window_mode for older builds; ignored when window_mode is set.\n"
            << "fullscreen_mode = \""
-           << (settings.graphics.borderless_fullscreen ? "borderless" : "exclusive") << "\"\n"
+           << (settings.graphics.window_mode == WindowMode::exclusive ? "exclusive" : "borderless")
+           << "\"\n"
            << "# Native: render-only frames between 60 Hz ticks on high-refresh displays.\n"
            << "render_interpolation = "
            << (settings.graphics.render_interpolation ? "true" : "false") << "\n"
            << "# Native: in-game HUD magnification for high-DPI displays; 1.0 = retail\n"
            << "# raw pixels, 0 = auto (floor(height / 1080)).\n"
-           << "hud_scale = " << decimal(settings.graphics.hud_scale) << "\n\n"
+           << "hud_scale = " << decimal(settings.graphics.hud_scale) << "\n"
+           << "# Native Graphics additions; each default matches the renderer before them.\n"
+           << "field_of_view = " << decimal(g.field_of_view) << "\n"
+           << "# \"display\" (one frame per refresh), \"custom\" (frame_rate_cap) or \"unlimited\".\n"
+           << "frame_limit = \"" << enum_name(frame_limit_names, g.frame_limit) << "\"\n"
+           << "frame_rate_cap = " << g.frame_rate_cap << "\n"
+           << "low_latency = " << (g.low_latency ? "true" : "false") << "\n"
+           << "show_fps = " << (g.show_fps ? "true" : "false") << "\n"
+           << "render_scale = " << decimal(g.render_scale) << "\n"
+           << "upscale = \"" << enum_name(upscale_filter_names, g.upscale) << "\"\n"
+           << "sharpness = " << decimal(g.sharpness) << "\n"
+           << "anisotropic_filtering = " << (g.anisotropic_filtering ? "true" : "false") << "\n"
+           << "smooth_textures = " << (g.smooth_textures ? "true" : "false") << "\n"
+           << "shadow_quality = \"" << enum_name(shadow_quality_names, g.shadow_quality) << "\"\n"
+           << "shadow_distance = \"" << enum_name(shadow_distance_names, g.shadow_distance)
+           << "\"\n"
+           << "ambient_occlusion = \"" << enum_name(effect_level_names, g.ambient_occlusion)
+           << "\"\n"
+           << "bloom = \"" << enum_name(effect_level_names, g.bloom) << "\"\n"
+           << "motion_blur = \"" << enum_name(effect_level_names, g.motion_blur) << "\"\n"
+           << "brightness = " << decimal(g.brightness) << "\n"
+           << "gamma = " << decimal(g.gamma) << "\n"
+           << "color_vision = \"" << enum_name(color_vision_names, g.color_vision) << "\"\n\n"
            << "[controls]\n"
            << "mouse_sensitivity = " << decimal(settings.controls.mouse_sensitivity) << "\n\n"
            << "[controls.bindings]\n"
@@ -724,6 +851,17 @@ SettingsLoadResult TomlSettingsStore::load() const {
     if (!input.eof()) {
         result.error = "failed while reading settings file";
         return result;
+    }
+
+    if (!state.window_mode_read && (state.legacy_fullscreen.has_value() ||
+                                    state.legacy_borderless.has_value())) {
+        // Migration: Fullscreen OFF is windowed; ON keeps the kind the file
+        // chose, where an unset fullscreen_mode was the native borderless
+        // default. A file with neither key keeps the borderless default.
+        state.candidate.graphics.window_mode =
+            !state.legacy_fullscreen.value_or(true) ? WindowMode::windowed
+            : state.legacy_borderless.value_or(true) ? WindowMode::borderless
+                                                     : WindowMode::exclusive;
     }
 
     const auto validation = validate_settings(state.candidate);

@@ -569,6 +569,12 @@ void TutorialWorldSession::set_look_preferences(double mouse_sensitivity,
     config_.invert_mouse = invert_mouse;
 }
 
+void TutorialWorldSession::set_field_of_view(double degrees) noexcept {
+    if (std::isfinite(degrees)) {
+        config_.field_of_view = std::clamp(degrees, 30.0, 150.0);
+    }
+}
+
 void TutorialWorldSession::apply_look_delta(double delta_x, double delta_y) noexcept {
     // Retail look model in degrees: sensitivity is degrees per raw count
     // (default 0.1). The retail matrix construction was never decompiled, so
@@ -2916,7 +2922,7 @@ double TutorialWorldSession::weapon_crosshair_radius_pixels(double viewport_heig
         return 6.0;
     }
     return sandbox_inventory_.weapons().crosshair_radius_pixels(
-        viewport_height, zoom_fov_y_degrees(zoom_level_), zoomed_);
+        viewport_height, zoom_fov_y_degrees(zoom_level_, config_.field_of_view), zoomed_);
 }
 
 double TutorialWorldSession::weapon_spin_fraction() const noexcept {

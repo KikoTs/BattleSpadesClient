@@ -247,6 +247,11 @@ target_link_libraries(aos_quality_profile_tests PRIVATE BattleSpades::Settings)
 aos_enable_strict_warnings(aos_quality_profile_tests)
 add_test(NAME aos_quality_profile_tests COMMAND aos_quality_profile_tests)
 
+add_executable(aos_graphics_options_tests test_graphics_options.cpp)
+target_link_libraries(aos_graphics_options_tests PRIVATE BattleSpades::Settings BattleSpades::Core)
+aos_enable_strict_warnings(aos_graphics_options_tests)
+add_test(NAME aos_graphics_options_tests COMMAND aos_graphics_options_tests)
+
 add_executable(aos_graphics_apply_tests test_graphics_apply.cpp)
 target_link_libraries(aos_graphics_apply_tests PRIVATE BattleSpades::Settings)
 aos_enable_strict_warnings(aos_graphics_apply_tests)

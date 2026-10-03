@@ -168,6 +168,8 @@ struct TutorialSessionConfig final {
     /** Retail Controls slider value; 0.1 is the recovered default. */
     double mouse_sensitivity{0.1};
     bool invert_mouse{false};
+    /** Hip-fire vertical field of view (Graphics tab); sizes the spread reticle. */
+    double field_of_view{75.0};
     double fixed_dt{1.0 / 60.0};
     /** StateData(45) world gravity; LunarBase advertises 26/64. */
     double gravity{1.0};
@@ -251,6 +253,8 @@ public:
      * standalone sessions share this runtime boundary.
      */
     void set_look_preferences(double mouse_sensitivity, bool invert_mouse) noexcept;
+    /** Hip-fire vertical field of view in degrees; presentation only. */
+    void set_field_of_view(double degrees) noexcept;
 
     /**
      * Primary attack (left mouse) held state. The pistol and block tool are

@@ -158,6 +158,91 @@ constexpr std::array<NamedCode, 12U> remaining_keyboard_codes{{
     return false;
 }
 
+template <typename Enum, std::size_t Count>
+[[nodiscard]] constexpr bool listed(const EnumNames<Enum, Count>& names, Enum value) noexcept {
+    return !enum_name(names, value).empty();
+}
+
+[[nodiscard]] bool within(double value, double minimum, double maximum) noexcept {
+    return std::isfinite(value) && value >= minimum && value <= maximum;
+}
+
+[[nodiscard]] double clamped(double value, double minimum, double maximum,
+                             double fallback) noexcept {
+    return std::isfinite(value) ? std::clamp(value, minimum, maximum) : fallback;
+}
+
+/** Why the native Graphics additions are invalid; empty when they are not. */
+[[nodiscard]] std::string_view native_graphics_error(const GraphicsSettings& graphics) noexcept {
+    if (!within(graphics.field_of_view, minimum_field_of_view, maximum_field_of_view)) {
+        return "field_of_view must be between 60 and 110 degrees";
+    }
+    if (graphics.frame_rate_cap < minimum_frame_rate_cap ||
+        graphics.frame_rate_cap > maximum_frame_rate_cap) {
+        return "frame_rate_cap must be between 60 and 480";
+    }
+    if (!within(graphics.render_scale, minimum_render_scale, maximum_render_scale)) {
+        return "render_scale must be between 0.5 and 2.0";
+    }
+    if (!within(graphics.sharpness, 0.0, 1.0)) {
+        return "sharpness must be between 0 and 1";
+    }
+    if (!within(graphics.brightness, -0.25, 0.25)) {
+        return "brightness must be between -0.25 and 0.25";
+    }
+    if (!within(graphics.gamma, 0.7, 1.6)) {
+        return "gamma must be between 0.7 and 1.6";
+    }
+    if (!listed(frame_limit_names, graphics.frame_limit) ||
+        !listed(upscale_filter_names, graphics.upscale) ||
+        !listed(shadow_quality_names, graphics.shadow_quality) ||
+        !listed(shadow_distance_names, graphics.shadow_distance) ||
+        !listed(effect_level_names, graphics.ambient_occlusion) ||
+        !listed(effect_level_names, graphics.bloom) ||
+        !listed(effect_level_names, graphics.motion_blur) ||
+        !listed(color_vision_names, graphics.color_vision)) {
+        return "graphics option contains an unknown enum value";
+    }
+    return {};
+}
+
+void normalize_native_graphics(GraphicsSettings& result, const GraphicsSettings& source,
+                               const GraphicsSettings& defaults) noexcept {
+    result.field_of_view = clamped(source.field_of_view, minimum_field_of_view,
+                                   maximum_field_of_view, defaults.field_of_view);
+    result.frame_rate_cap = std::clamp(source.frame_rate_cap, minimum_frame_rate_cap,
+                                       maximum_frame_rate_cap);
+    result.render_scale = clamped(source.render_scale, minimum_render_scale,
+                                  maximum_render_scale, defaults.render_scale);
+    result.sharpness = clamped(source.sharpness, 0.0, 1.0, defaults.sharpness);
+    result.brightness = clamped(source.brightness, -0.25, 0.25, defaults.brightness);
+    result.gamma = clamped(source.gamma, 0.7, 1.6, defaults.gamma);
+    const auto keep = [](const auto& names, auto value, auto fallback) {
+        return listed(names, value) ? value : fallback;
+    };
+    result.frame_limit = keep(frame_limit_names, source.frame_limit, defaults.frame_limit);
+    result.upscale = keep(upscale_filter_names, source.upscale, defaults.upscale);
+    result.shadow_quality =
+        keep(shadow_quality_names, source.shadow_quality, defaults.shadow_quality);
+    result.shadow_distance =
+        keep(shadow_distance_names, source.shadow_distance, defaults.shadow_distance);
+    result.ambient_occlusion =
+        keep(effect_level_names, source.ambient_occlusion, defaults.ambient_occlusion);
+    result.bloom = keep(effect_level_names, source.bloom, defaults.bloom);
+    result.motion_blur = keep(effect_level_names, source.motion_blur, defaults.motion_blur);
+    result.color_vision = keep(color_vision_names, source.color_vision, defaults.color_vision);
+}
+
+[[nodiscard]] constexpr bool valid_window_mode(WindowMode value) noexcept {
+    switch (value) {
+    case WindowMode::windowed:
+    case WindowMode::borderless:
+    case WindowMode::exclusive:
+        return true;
+    }
+    return false;
+}
+
 [[nodiscard]] constexpr bool valid_shader_quality(ShaderQuality value) noexcept {
     switch (value) {
     case ShaderQuality::compatibility:
@@ -379,6 +464,10 @@ ClientSettings normalize_settings(const ClientSettings& source) noexcept {
     result.graphics.model_quality = valid_quality(source.graphics.model_quality)
                                         ? source.graphics.model_quality
                                         : defaults.graphics.model_quality;
+    result.graphics.window_mode = valid_window_mode(source.graphics.window_mode)
+                                      ? source.graphics.window_mode
+                                      : defaults.graphics.window_mode;
+    normalize_native_graphics(result.graphics, source.graphics, defaults.graphics);
     result.controls.mouse_sensitivity = normalized_unit_value(source.controls.mouse_sensitivity,
                                                               defaults.controls.mouse_sensitivity);
 
@@ -430,8 +519,12 @@ SettingsValidationResult validate_settings(const ClientSettings& settings) {
         !valid_draw_distance(settings.graphics.draw_distance) ||
         !valid_shader_quality(settings.graphics.shader_quality) ||
         !valid_quality(settings.graphics.texture_quality) ||
-        !valid_quality(settings.graphics.model_quality)) {
+        !valid_quality(settings.graphics.model_quality) ||
+        !valid_window_mode(settings.graphics.window_mode)) {
         return {false, "graphics option contains an unknown enum value"};
+    }
+    if (const auto error = native_graphics_error(settings.graphics); !error.empty()) {
+        return {false, std::string{error}};
     }
     if (!unit_value_valid(settings.controls.mouse_sensitivity)) {
         return {false, "mouse sensitivity must be finite and between 0 and 1"};

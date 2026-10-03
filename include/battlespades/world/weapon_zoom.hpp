@@ -98,4 +98,17 @@ struct ZoomTransitionRate final {
     return hip_fov_y_degrees - fov_y_degrees_per_zoom * zoom_level;
 }
 
+/**
+ * The same ramp for a player-chosen hip field of view (Graphics tab). The
+ * zoom keeps retail's magnification relative to hip fire (half the field of
+ * view at a 1.0 ramp), and the retail 75 degrees reproduces the function
+ * above exactly.
+ */
+[[nodiscard]] constexpr double zoom_fov_y_degrees(double zoom_level, double hip_fov) noexcept {
+    if (hip_fov == hip_fov_y_degrees) {
+        return zoom_fov_y_degrees(zoom_level);
+    }
+    return hip_fov * (zoom_fov_y_degrees(zoom_level) / hip_fov_y_degrees);
+}
+
 } // namespace battlespades::world

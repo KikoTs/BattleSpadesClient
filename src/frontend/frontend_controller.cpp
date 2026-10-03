@@ -112,13 +112,6 @@ struct FrontendController::Impl final {
         if (before.main.music_volume != after.main.music_volume) {
             emit_audio(RuntimeAudioEffectKind::set_music_volume, after.main.music_volume);
         }
-        if (before.main.fullscreen != after.main.fullscreen) {
-            emit(RuntimeDisplayEffect{
-                RuntimeDisplayEffectKind::set_fullscreen,
-                after.main.fullscreen,
-                after.graphics.resolution,
-            });
-        }
     }
 
     void emit_live_vsync_difference(const settings::ClientSettings& before,
@@ -141,7 +134,6 @@ struct FrontendController::Impl final {
             emit_live_main_differences(before, effect.draft);
             applied_preview.main.master_volume = effect.draft.main.master_volume;
             applied_preview.main.music_volume = effect.draft.main.music_volume;
-            applied_preview.main.fullscreen = effect.draft.main.fullscreen;
             break;
         case SettingsRowId::music_volume:
             if (before.main.music_volume != effect.draft.main.music_volume) {
@@ -149,16 +141,6 @@ struct FrontendController::Impl final {
                            effect.draft.main.music_volume);
             }
             applied_preview.main.music_volume = effect.draft.main.music_volume;
-            break;
-        case SettingsRowId::fullscreen:
-            if (before.main.fullscreen != effect.draft.main.fullscreen) {
-                emit(RuntimeDisplayEffect{
-                    RuntimeDisplayEffectKind::set_fullscreen,
-                    effect.draft.main.fullscreen,
-                    effect.draft.graphics.resolution,
-                });
-            }
-            applied_preview.main.fullscreen = effect.draft.main.fullscreen;
             break;
         case SettingsRowId::vsync:
             emit_live_vsync_difference(before, effect.draft);
@@ -177,6 +159,10 @@ struct FrontendController::Impl final {
         const auto previous = applied_preview;
         emit_live_main_differences(applied_preview, value);
         emit_live_vsync_difference(applied_preview, value);
+        if (apply_resolution && applied_preview.graphics.window_mode != value.graphics.window_mode) {
+            emit(RuntimeDisplayEffect{RuntimeDisplayEffectKind::set_window_mode, false,
+                                      value.graphics.resolution, value.graphics.window_mode});
+        }
         if (apply_resolution && applied_preview.graphics.resolution != value.graphics.resolution) {
             emit(RuntimeDisplayEffect{
                 RuntimeDisplayEffectKind::set_resolution,
@@ -206,6 +192,10 @@ struct FrontendController::Impl final {
         const auto previous = applied_preview;
         emit_live_main_differences(applied_preview, value);
         emit_live_vsync_difference(applied_preview, value);
+        if (applied_preview.graphics.window_mode != value.graphics.window_mode) {
+            emit(RuntimeDisplayEffect{RuntimeDisplayEffectKind::set_window_mode, false,
+                                      value.graphics.resolution, value.graphics.window_mode});
+        }
         if (applied_preview.graphics.resolution != value.graphics.resolution) {
             emit(RuntimeDisplayEffect{
                 RuntimeDisplayEffectKind::set_resolution,
@@ -279,7 +269,7 @@ struct FrontendController::Impl final {
             return;
         }
 
-        if (command.resolution_changed) {
+        if (command.display_changed) {
             pending_resolution_commit = command;
             suppress_committed_close = true;
             // The temporary mode must be visible immediately, but user-facing

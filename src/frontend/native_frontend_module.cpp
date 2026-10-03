@@ -39,6 +39,7 @@
 #include "battlespades/frontend/leaderboard_menu.hpp"
 #include "battlespades/frontend/leaderboard_presentation.hpp"
 #include "battlespades/frontend/live_client_policy.hpp"
+#include "battlespades/frontend/frame_rate_meter.hpp"
 #include "battlespades/frontend/render_interpolation.hpp"
 #include "battlespades/frontend/world_draw_interpolation.hpp"
 #include "battlespades/frontend/loading_presentation.hpp"
@@ -104,6 +105,7 @@
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
+#include "battlespades/render/graphics_options.hpp"
 #include "battlespades/render/world_renderer.hpp"
 #include "battlespades/shared/retail_constants.hpp"
 #include "battlespades/settings/settings_session.hpp"
@@ -252,6 +254,7 @@ constexpr std::uint32_t scancode_up{82U};
 constexpr std::uint32_t scancode_keypad_enter{88U};
 constexpr std::uint16_t shift_modifier_mask{0x0003U};
 constexpr std::uint16_t control_modifier_mask{0x00C0U};
+constexpr std::uint16_t alt_modifier_mask{0x0300U};
 constexpr std::uint8_t chat_big_type{3U};
 constexpr std::string_view settings_edo_font{"fonts/Edo.ttf"};
 constexpr std::string_view settings_standard_font{"fonts/A750-Sans-Medium.ttf"};
@@ -848,6 +851,55 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"COMPATIBILITY_SHADER", "Compatibility Shader"},
         // Retail shipped this localization identifier without the second I.
         {"COMPATIBILTY_SHADER", "Compatibility Shader"},
+        // Native Graphics rows (window mode and the display/quality additions).
+        {"WINDOW_MODE", "Window Mode"},
+        {"WINDOW_MODE_WINDOWED", "Windowed"},
+        {"WINDOW_MODE_BORDERLESS", "Borderless"},
+        {"WINDOW_MODE_EXCLUSIVE", "Fullscreen"},
+        {"WINDOW_MODE_HINT", "Alt+Enter switches fullscreen and windowed"},
+        {"WINDOW_MODE_DESKTOP", "Desktop"},
+        {"GRAPHICS_DISPLAY", "Display"},
+        {"GRAPHICS_QUALITY_GROUP", "Quality"},
+        {"GRAPHICS_EFFECTS", "Effects"},
+        {"GRAPHICS_COLOR", "Colour and Brightness"},
+        {"GRAPHICS_PRESET", "Quality Preset"},
+        {"PRESET_RETAIL", "Retail"},
+        {"PRESET_CUSTOM", "Custom"},
+        {"ULTRA", "Ultra"},
+        {"AUTO", "Auto"},
+        {"FRAME_LIMIT", "Frame Rate Limit"},
+        {"FRAME_LIMIT_DISPLAY", "Match Display"},
+        {"FRAME_LIMIT_UNLIMITED", "Unlimited"},
+        {"FIELD_OF_VIEW", "Field of View"},
+        {"RENDER_SCALE", "Render Scale"},
+        {"UPSCALING", "Upscaling"},
+        {"UPSCALE_BILINEAR", "Bilinear"},
+        {"UPSCALE_EDGE_ADAPTIVE", "Edge-adaptive"},
+        {"UPSCALE_FULL_RESOLUTION", "Only below 100% render scale"},
+        {"SHARPENING", "Sharpening"},
+        {"LOW_LATENCY", "Reduce Input Latency"},
+        {"SHOW_FPS", "Show FPS"},
+        {"SHADOW_QUALITY", "Shadow Quality"},
+        {"SHADOW_DISTANCE", "Shadow Distance"},
+        {"SHADOW_NEAR", "Near"},
+        {"SHADOW_FAR", "Far"},
+        {"SHADOWS_OFF", "Shadows are off"},
+        {"AMBIENT_OCCLUSION", "Ambient Occlusion"},
+        {"ANISOTROPIC_FILTERING", "Anisotropic Filtering"},
+        {"TEXTURE_FILTERING", "Texture Filtering"},
+        {"TEXTURE_CRISP", "Crisp"},
+        {"TEXTURE_SMOOTH", "Smooth"},
+        {"BLOOM", "Bloom"},
+        {"MOTION_BLUR", "Motion Blur"},
+        {"BRIGHTNESS", "Brightness"},
+        {"GAMMA", "Gamma"},
+        {"COLOR_VISION", "Colour Vision"},
+        {"PROTANOPIA", "Protanopia"},
+        {"DEUTERANOPIA", "Deuteranopia"},
+        {"TRITANOPIA", "Tritanopia"},
+        {"NOT_SUPPORTED_BACKEND", "Not supported by this graphics API"},
+        {"ENHANCED_ONLY", "Enhanced shader tiers only"},
+        {"RESTART_REQUIRED", "Restart required"},
         {"MAIN_GAME_CONTROLS", "Main Game Controls"},
         {"MOUSE_SENSITIVITY", "Mouse Sensitivity"},
         {"FORWARD", "Forward"},
@@ -1287,13 +1339,10 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
     result.rows.reserve(menu.rows.size());
     bool controls_section_expanded{true};
     for (const auto& row : menu.rows) {
-        if (menu.active_tab == settings::SettingsTab::controls) {
-            if (row.id == SettingsRowId::main_controls_category ||
-                row.id == SettingsRowId::ugc_controls_category) {
-                controls_section_expanded = row.expanded;
-            } else if (!controls_section_expanded) {
-                continue;
-            }
+        if (row.kind == SettingsRowKind::category) {
+            controls_section_expanded = row.expanded;
+        } else if (!controls_section_expanded) {
+            continue;
         }
         SettingsPresentationRow visual;
         visual.kind = presentation_kind(row);
@@ -1325,7 +1374,9 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
                 std::remove(visual.value_key.begin(), visual.value_key.end(), ' '),
                 visual.value_key.end());
             visual.supplementary_value_key =
-                row.description == "FULLSCREEN" ? "(fullscreen)" : "(windowed)";
+                row.description == "WINDOW_MODE_EXCLUSIVE"    ? "(fullscreen)"
+                : row.description == "WINDOW_MODE_BORDERLESS" ? "(borderless)"
+                                                              : "(windowed)";
             const auto first = std::min(row.dropdown_first_index, row.choices.size());
             const auto count = std::min(row.dropdown_visible_count, row.choices.size() - first);
             visual.dropdown_options.assign(row.choices.begin() + static_cast<std::ptrdiff_t>(first),
@@ -1447,6 +1498,25 @@ struct NativeFrontendModule::Impl final {
      */
     [[nodiscard]] settings::ShaderQuality effective_shader_quality() const noexcept {
         return config.shader_quality_override.value_or(applied_settings.graphics.shader_quality);
+    }
+
+    /** Applied graphics with the command-line tier override folded in. */
+    [[nodiscard]] settings::GraphicsSettings effective_graphics() const noexcept {
+        auto graphics = applied_settings.graphics;
+        graphics.shader_quality = effective_shader_quality();
+        return graphics;
+    }
+
+    /** The tier profile with the Graphics tab's shadow rows applied. */
+    [[nodiscard]] render::QualityProfile active_quality_profile() const noexcept {
+        const auto graphics = effective_graphics();
+        return render::with_shadow_options(
+            render::profile_for(graphics.shader_quality, graphics.effect_quality), graphics);
+    }
+
+    /** World vertical field of view for a zoom ramp, from the Graphics tab. */
+    [[nodiscard]] double world_fov(double zoom_level) const noexcept {
+        return world::zoom_fov_y_degrees(zoom_level, applied_settings.graphics.field_of_view);
     }
 
     /**
@@ -2054,6 +2124,9 @@ struct NativeFrontendModule::Impl final {
     };
     InterpolationScene interpolation_scene;
     CameraEyeInterpolator camera_interpolator;
+    FrameRateMeter frame_rate_meter;
+    /** Fullscreen mode Alt+Enter returns to from windowed. */
+    settings::WindowMode last_fullscreen_mode{settings::WindowMode::borderless};
     /** {yaw, pitch} the render-only frame being drawn turned past its tick frame. */
     std::array<double, 2U> frame_look_offset{};
     /**
@@ -8677,7 +8750,7 @@ struct NativeFrontendModule::Impl final {
         // retail semantics on every subsequent launch.
         if (!loaded || !loaded.file_found) {
             const auto current_extent = window.logical_extent();
-            initial.main.fullscreen = window.is_fullscreen();
+            initial.graphics.window_mode = current_window_mode();
             initial.graphics.resolution = {
                 current_extent.width,
                 current_extent.height,
@@ -8712,10 +8785,11 @@ struct NativeFrontendModule::Impl final {
         if (loaded && loaded.file_found &&
             !window.apply_display_mode(
                 {initial.graphics.resolution.width, initial.graphics.resolution.height},
-                initial.main.fullscreen, fullscreen_kind_for(initial.graphics))) {
+                settings::is_fullscreen(initial.graphics.window_mode),
+                fullscreen_kind_for(initial.graphics.window_mode))) {
             settings_warning = "saved display mode could not be applied";
             const auto actual_extent = window.logical_extent();
-            applied_settings.main.fullscreen = window.is_fullscreen();
+            applied_settings.graphics.window_mode = current_window_mode();
             applied_settings.graphics.resolution = {actual_extent.width, actual_extent.height};
         }
 
@@ -8723,24 +8797,61 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] static platform::FullscreenKind fullscreen_kind_for(
-        const settings::GraphicsSettings& graphics) noexcept {
-        return graphics.borderless_fullscreen ? platform::FullscreenKind::borderless
-                                              : platform::FullscreenKind::exclusive;
+        settings::WindowMode mode) noexcept {
+        return mode == settings::WindowMode::exclusive ? platform::FullscreenKind::exclusive
+                                                       : platform::FullscreenKind::borderless;
+    }
+
+    /**
+     * Alt+Enter: the current fullscreen mode <-> windowed, applied and saved
+     * at once. Pressing it again is the undo, so there is no keep/revert
+     * prompt; it is ignored while the Settings menu or that prompt owns the
+     * display settings.
+     */
+    void toggle_fullscreen_hotkey() {
+        if (screen() == FrontendScreen::settings ||
+            screen() == FrontendScreen::resolution_confirmation ||
+            resolution_rollback.has_value()) {
+            return;
+        }
+        const auto previous = confirmed_settings;
+        auto next = previous;
+        next.graphics.window_mode = settings::alt_enter_window_mode(
+            previous.graphics.window_mode, last_fullscreen_mode);
+        if (!apply_runtime_settings(next, true)) {
+            static_cast<void>(apply_runtime_settings(previous, true));
+            return;
+        }
+        settings_session = settings::SettingsSession{next};
+        confirmed_settings = next;
+        static_cast<void>(save_settings(next));
+    }
+
+    /** The mode the native window is actually in. */
+    [[nodiscard]] settings::WindowMode current_window_mode() const noexcept {
+        if (!window.is_fullscreen()) {
+            return settings::WindowMode::windowed;
+        }
+        return window.fullscreen_kind() == platform::FullscreenKind::exclusive
+                   ? settings::WindowMode::exclusive
+                   : settings::WindowMode::borderless;
     }
 
     [[nodiscard]] bool apply_display(const settings::ClientSettings& value) {
         const platform::WindowExtent requested{value.graphics.resolution.width,
                                                value.graphics.resolution.height};
-        const auto kind = fullscreen_kind_for(value.graphics);
-        if (window.is_fullscreen() == value.main.fullscreen &&
-            (!value.main.fullscreen || window.fullscreen_kind() == kind) &&
+        const auto mode = value.graphics.window_mode;
+        if (current_window_mode() == mode &&
             // Borderless always covers the desktop; its extent is not the
             // requested resolution, so only the mode itself is compared.
-            ((value.main.fullscreen && kind == platform::FullscreenKind::borderless) ||
-             window.logical_extent() == requested)) {
+            (mode == settings::WindowMode::borderless || window.logical_extent() == requested)) {
             return true;
         }
-        if (!window.apply_display_mode(requested, value.main.fullscreen, kind)) {
+        if (const auto leaving = current_window_mode(); settings::is_fullscreen(leaving)) {
+            last_fullscreen_mode = leaving;
+        }
+        if (!window.apply_display_mode(requested, settings::is_fullscreen(mode),
+                                       fullscreen_kind_for(mode))) {
             settings_warning = "display mode change was rejected by SDL";
             return false;
         }
@@ -8792,9 +8903,64 @@ struct NativeFrontendModule::Impl final {
             if (tutorial_session != nullptr) {
                 tutorial_session->set_look_preferences(
                     value.controls.mouse_sensitivity, value.main.invert_mouse);
+                tutorial_session->set_field_of_view(value.graphics.field_of_view);
             }
         }
         return success;
+    }
+
+    /**
+     * Native Graphics rows that the renderer reads every frame preview live,
+     * like VSync: the player sees the change behind the menu, Cancel restores
+     * the confirmed settings and Done keeps them. Rows with a restart, a
+     * display change or a terrain re-mesh still wait for Done.
+     */
+    [[nodiscard]] static constexpr bool native_graphics_preview_row(SettingsRowId row) noexcept {
+        switch (row) {
+        case SettingsRowId::frame_limit:
+        case SettingsRowId::field_of_view:
+        case SettingsRowId::render_scale:
+        case SettingsRowId::upscale:
+        case SettingsRowId::sharpness:
+        case SettingsRowId::show_fps:
+        case SettingsRowId::shadow_quality:
+        case SettingsRowId::shadow_distance:
+        case SettingsRowId::ambient_occlusion:
+        case SettingsRowId::anisotropic_filtering:
+        case SettingsRowId::texture_filtering:
+        case SettingsRowId::bloom:
+        case SettingsRowId::motion_blur:
+        case SettingsRowId::brightness:
+        case SettingsRowId::gamma:
+        case SettingsRowId::color_vision:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    void preview_native_graphics(const settings::GraphicsSettings& draft) {
+        auto& applied = applied_settings.graphics;
+        applied.field_of_view = draft.field_of_view;
+        applied.frame_limit = draft.frame_limit;
+        applied.frame_rate_cap = draft.frame_rate_cap;
+        applied.show_fps = draft.show_fps;
+        applied.render_scale = draft.render_scale;
+        applied.upscale = draft.upscale;
+        applied.sharpness = draft.sharpness;
+        applied.anisotropic_filtering = draft.anisotropic_filtering;
+        applied.smooth_textures = draft.smooth_textures;
+        applied.shadow_quality = draft.shadow_quality;
+        applied.shadow_distance = draft.shadow_distance;
+        applied.ambient_occlusion = draft.ambient_occlusion;
+        applied.bloom = draft.bloom;
+        applied.motion_blur = draft.motion_blur;
+        applied.brightness = draft.brightness;
+        applied.gamma = draft.gamma;
+        applied.color_vision = draft.color_vision;
+        if (tutorial_session != nullptr) {
+            tutorial_session->set_field_of_view(applied.field_of_view);
+        }
     }
 
     [[nodiscard]] bool apply_live_preview(SettingsRowId source,
@@ -8830,18 +8996,6 @@ struct NativeFrontendModule::Impl final {
                 return false;
             }
             applied_settings.main.music_volume = draft.main.music_volume;
-            return true;
-        case SettingsRowId::fullscreen:
-            if (!apply_display(draft)) {
-                // A failed live display mutation must not leave the draft
-                // claiming a mode the active SDL window never entered.
-                auto main = settings_session.draft().main;
-                main.fullscreen = applied_settings.main.fullscreen;
-                settings_session.set_main(main);
-                return false;
-            }
-            applied_settings.main.fullscreen = draft.main.fullscreen;
-            applied_settings.graphics.resolution = draft.graphics.resolution;
             return true;
         case SettingsRowId::vsync:
             if (renderer.is_initialized() &&
@@ -8962,11 +9116,13 @@ struct NativeFrontendModule::Impl final {
                         case SettingsRowId::language:
                         case SettingsRowId::master_volume:
                         case SettingsRowId::music_volume:
-                        case SettingsRowId::fullscreen:
                         case SettingsRowId::vsync:
                             static_cast<void>(apply_live_preview(payload.source, payload.draft));
                             break;
                         default:
+                            if (native_graphics_preview_row(payload.source)) {
+                                preview_native_graphics(payload.draft.graphics);
+                            }
                             break;
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsDefaultsCommand>) {
@@ -8978,11 +9134,10 @@ struct NativeFrontendModule::Impl final {
                                 apply_live_preview(SettingsRowId::master_volume, payload.draft));
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::music_volume, payload.draft));
-                            static_cast<void>(
-                                apply_live_preview(SettingsRowId::fullscreen, payload.draft));
                         } else if (payload.tab == settings::SettingsTab::graphics) {
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::vsync, payload.draft));
+                            preview_native_graphics(payload.draft.graphics);
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsCommitCommand>) {
                         // settingsMenu.save_pressed: Done in a match returns to
@@ -8992,7 +9147,7 @@ struct NativeFrontendModule::Impl final {
                             close_settings(done_to_game);
                             return;
                         }
-                        if (payload.resolution_changed) {
+                        if (payload.display_changed) {
                             resolution_rollback = confirmed_settings;
                             if (!apply_runtime_settings(payload.settings, true)) {
                                 const auto rollback = *resolution_rollback;
@@ -20784,6 +20939,7 @@ struct NativeFrontendModule::Impl final {
         session_config.fall_on_water_damage =
             !network_match || match_initial_info.enable_fall_on_water_damage;
         session_config.mouse_sensitivity = applied_settings.controls.mouse_sensitivity;
+        session_config.field_of_view = applied_settings.graphics.field_of_view;
         session_config.invert_mouse = applied_settings.main.invert_mouse;
         if (network_match) {
             // StateData, not InitialInfo, owns the map's native world gravity.
@@ -26285,8 +26441,8 @@ struct NativeFrontendModule::Impl final {
                                  ? death_camera.pose().pitch_degrees
                                  : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world::hip_fov_y_degrees
-                                 : world::zoom_fov_y_degrees(
+                                 ? world_fov(0.0)
+                                 : world_fov(
                                        tutorial_session->zoom_level());
         std::uint8_t local_team{};
         if (local_player_id.has_value()) {
@@ -26426,8 +26582,8 @@ struct NativeFrontendModule::Impl final {
         const double pitch = death_camera.active() ? death_camera.pose().pitch_degrees
                                                     : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world::hip_fov_y_degrees
-                                 : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+                                 ? world_fov(0.0)
+                                 : world_fov(tutorial_session->zoom_level());
         // Entity.create_3dText: Text3D('.', position, 0.005,
         // disable_depth_test=True) with the default white colour and
         // text3d_font (Edo 22). Text3DRenderer draws it through walls, scaled
@@ -26596,8 +26752,8 @@ struct NativeFrontendModule::Impl final {
         const double pitch = death_camera.active() ? death_camera.pose().pitch_degrees
                                                     : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world::hip_fov_y_degrees
-                                 : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+                                 ? world_fov(0.0)
+                                 : world_fov(tutorial_session->zoom_level());
         const auto white =
             ui::ColorModulation{ui::ColorRgba8{255U, 255U, 255U, 255U}, 1'000U, 1'000U};
         const auto smoothed_position = [this](const network::RemotePlayerReplica& player) {
@@ -27115,6 +27271,26 @@ struct NativeFrontendModule::Impl final {
         return list;
     }
 
+    /** Graphics > Show FPS: frame rate and frame times in the top-right corner. */
+    void append_frame_rate(ui::DrawList& list, platform::WindowExtent extent) const {
+        if (!applied_settings.graphics.show_fps || !frame_rate_meter.reading().has_value()) {
+            return;
+        }
+        const double width = static_cast<double>(extent.width);
+        list.push(ui::TextDrawCommand{FrameRateMeter::text(*frame_rate_meter.reading()),
+                                      std::string{settings_standard_font},
+                                      ui::DrawRect{std::max(0.0, width - 250.0), 4.0, 240.0, 16.0},
+                                      ui::DrawSpace::window_pixels,
+                                      14.0,
+                                      0.0,
+                                      1U,
+                                      ui::HorizontalTextAlignment::right,
+                                      ui::VerticalTextAlignment::center,
+                                      ui::TextTransform::preserve,
+                                      ui::TextFit::none,
+                                      {}});
+    }
+
     /**
      * Period of render-only frames between fixed ticks; zero keeps the retail
      * one-frame-per-tick presentation (setting off, <=75 Hz display, no live
@@ -27125,10 +27301,11 @@ struct NativeFrontendModule::Impl final {
             screen() != FrontendScreen::tutorial_world || !world_renderer.is_initialized()) {
             return std::chrono::nanoseconds::zero();
         }
-        return render_interpolation_paced_period(
-            applied_settings.graphics.render_interpolation,
-            window.current_refresh_rate_millihertz(), applied_settings.graphics.vsync,
-            current_tick_fixed_delta);
+        const auto& graphics = applied_settings.graphics;
+        return limited_frame_period(graphics.frame_limit, graphics.frame_rate_cap,
+                                    graphics.render_interpolation,
+                                    window.current_refresh_rate_millihertz(), graphics.vsync,
+                                    current_tick_fixed_delta);
     }
 
     /**
@@ -27248,6 +27425,7 @@ struct NativeFrontendModule::Impl final {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
+        frame_rate_meter.record(FrameRateMeter::Clock::now());
         return true;
     }
 
@@ -27338,6 +27516,7 @@ struct NativeFrontendModule::Impl final {
         // high-refresh display lowers it to this frame's place in the tick.
         double ui_anchor_alpha{1.0};
         auto list = build_active_draw_list(extent);
+        append_frame_rate(list, extent);
         if (!prepare_resources(list)) {
             return false;
         }
@@ -27365,7 +27544,7 @@ struct NativeFrontendModule::Impl final {
                 camera.yaw_degrees = tutorial_session->yaw();
                 camera.pitch_degrees = tutorial_session->pitch();
                 camera.fov_y_degrees =
-                    world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+                    world_fov(tutorial_session->zoom_level());
             } else {
                 camera.eye = {gallery ? 10.5 : 4.2, 0.0, gallery ? 2.15 : 0.78};
                 camera.yaw_degrees = 0.0;
@@ -27399,8 +27578,7 @@ struct NativeFrontendModule::Impl final {
             // real submit. Paying that cost after SELECT made the first
             // playable frame look frozen. Submit one representative terrain,
             // skydome and shadow frame behind the opaque loading UI instead.
-            world_renderer.set_quality_profile(render::profile_for(
-                effective_shader_quality(), applied_settings.graphics.effect_quality));
+            world_renderer.set_quality_profile(active_quality_profile());
             render::WorldCamera camera;
             camera.eye = {256.0, 256.0, 96.0};
             camera.yaw_degrees = 0.0;
@@ -27432,8 +27610,7 @@ struct NativeFrontendModule::Impl final {
             // constructor value (256, 256, 0), so the eye sits 362 blocks off
             // the dome's centre and the skyline fills the view. The map lies
             // behind the eye; below the horizon is the fog colour.
-            world_renderer.set_quality_profile(render::profile_for(
-                effective_shader_quality(), applied_settings.graphics.effect_quality));
+            world_renderer.set_quality_profile(active_quality_profile());
             render::WorldCamera camera;
             camera.eye = {0.0, 0.0, 0.0};
             camera.yaw_degrees = 90.0;
@@ -27530,8 +27707,8 @@ struct NativeFrontendModule::Impl final {
             camera.fov_y_degrees =
                 (result_camera.has_value() || death_camera.active() ||
                  local_jetpack_death_state() != nullptr)
-                                       ? world::zoom_fov_y_degrees(0.0)
-                                       : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+                                       ? world_fov(0.0)
+                                       : world_fov(tutorial_session->zoom_level());
             camera.fog_distance = static_cast<double>(
                 static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
             const auto tool_draws = (result_camera.has_value() ||
@@ -27574,8 +27751,7 @@ struct NativeFrontendModule::Impl final {
             // (Compatibility Shader) resolves to the recovered baked tables so
             // retail screenshot parity stays runnable; switching tier costs no
             // re-mesh.
-            const auto quality = render::profile_for(effective_shader_quality(),
-                                                     applied_settings.graphics.effect_quality);
+            const auto quality = active_quality_profile();
             world_renderer.set_quality_profile(quality);
             particles.set_quality_scale(quality.effect_scale);
             // Interiors are dark because the sky cannot see into them. Build the
@@ -27706,6 +27882,7 @@ struct NativeFrontendModule::Impl final {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
+        frame_rate_meter.record(FrameRateMeter::Clock::now());
         save_pending_screenshot();
         consume_ugc_preview_capture();
         if (renderer.last_frame_dropped_draws() != 0U &&
@@ -28638,6 +28815,15 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 impl_->ui_layout_editor.set_active(!impl_->ui_layout_editor.active());
                 impl_->play_confirm();
             }
+            continue;
+        }
+        if (event.type == platform::WindowEventType::key_pressed && !event.repeated &&
+            (event.scancode == scancode_return || event.scancode == scancode_keypad_enter) &&
+            (event.modifiers & alt_modifier_mask) != 0U &&
+            (event.modifiers & control_modifier_mask) == 0U && !impl_->boot_loading) {
+            // Alt+Enter toggles fullscreen everywhere, chat and menus included;
+            // it never reaches them as a plain Enter.
+            impl_->toggle_fullscreen_hotkey();
             continue;
         }
         if (impl_->ui_layout_editor.active()) {

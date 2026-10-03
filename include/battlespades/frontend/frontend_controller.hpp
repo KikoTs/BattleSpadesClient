@@ -43,15 +43,16 @@ struct RuntimeAudioEffect final {
 };
 
 enum class RuntimeDisplayEffectKind : std::uint8_t {
-    set_fullscreen,
+    set_window_mode,
     set_resolution,
     set_vsync,
 };
 
 struct RuntimeDisplayEffect final {
-    RuntimeDisplayEffectKind kind{RuntimeDisplayEffectKind::set_fullscreen};
+    RuntimeDisplayEffectKind kind{RuntimeDisplayEffectKind::set_window_mode};
     bool enabled{};
     settings::Resolution resolution{};
+    settings::WindowMode window_mode{settings::WindowMode::borderless};
 
     [[nodiscard]] friend constexpr bool operator==(const RuntimeDisplayEffect&,
                                                    const RuntimeDisplayEffect&) = default;

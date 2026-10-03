@@ -523,6 +523,11 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
                 // logical resize. Notify the renderer explicitly even on
                 // platforms that omit a separate pixel-size event.
                 impl_->push_window_event(WindowEventType::drawable_resized, source.window);
+                if (source.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) {
+                    // Resolution choices and exclusive modes follow the display
+                    // the window is on.
+                    impl_->refresh_display_modes();
+                }
             }
             break;
         case SDL_EVENT_WINDOW_MINIMIZED:

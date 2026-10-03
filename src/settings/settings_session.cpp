@@ -48,22 +48,20 @@ void SettingsSession::reset_tab(SettingsTab tab) noexcept {
     const auto defaults = retail_default_settings();
     switch (tab) {
     case SettingsTab::main:
-        // Retail config.MAIN_DEFAULT names only these four keys. Language,
-        // audio device, skins, weapon motion and ability hints are native
-        // additions and survive the Main tab's Defaults button.
+        // Retail config.MAIN_DEFAULT names only these keys (its fourth,
+        // fullscreen, is the Graphics tab's window mode now). Language, audio
+        // device, skins, weapon motion and ability hints are native additions
+        // and survive the Main tab's Defaults button.
         draft_.main.master_volume = defaults.main.master_volume;
         draft_.main.music_volume = defaults.main.music_volume;
-        draft_.main.fullscreen = defaults.main.fullscreen;
         draft_.main.invert_mouse = defaults.main.invert_mouse;
         break;
     case SettingsTab::graphics: {
         // settings.toml-only native preferences have no menu row, so the
         // retail Defaults button must not silently reset them.
-        const bool borderless = draft_.graphics.borderless_fullscreen;
         const bool interpolation = draft_.graphics.render_interpolation;
         const double hud_scale = draft_.graphics.hud_scale;
         draft_.graphics = defaults.graphics;
-        draft_.graphics.borderless_fullscreen = borderless;
         draft_.graphics.render_interpolation = interpolation;
         draft_.graphics.hud_scale = hud_scale;
         break;
