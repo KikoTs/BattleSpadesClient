@@ -55,8 +55,11 @@ public:
 
     /**
      * Presents one render-only frame `alpha` (0 <= alpha < 1) of the way from
-     * the last tick to the next. Implementations must not poll input, advance
-     * simulation or touch the network: the fixed-step cadence is unchanged.
+     * the last tick to the next. Implementations must not advance simulation or
+     * touch the network, and may take input only as WindowPort::
+     * take_leading_mouse_motion() allows: pointer motion that turns the view,
+     * which the next tick reads exactly as if it had waited. The fixed-step
+     * cadence and every simulated or transmitted value are unchanged.
      */
     [[nodiscard]] virtual TickDecision present_intermediate(double alpha) {
         static_cast<void>(alpha);

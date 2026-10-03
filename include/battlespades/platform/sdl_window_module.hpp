@@ -91,6 +91,7 @@ public:
     [[nodiscard]] NativeWindowHandle native_handle() const noexcept override;
     [[nodiscard]] MouseState mouse_state() const noexcept override;
     [[nodiscard]] std::span<const WindowEvent> events() const noexcept override;
+    [[nodiscard]] std::span<const WindowEvent> take_leading_mouse_motion() override;
     [[nodiscard]] std::span<const DisplayMode> display_modes() const noexcept override;
     [[nodiscard]] bool is_fullscreen() const noexcept override;
     [[nodiscard]] FullscreenKind fullscreen_kind() const noexcept override;

@@ -14,7 +14,7 @@ namespace battlespades::frontend {
  * high-refresh display the frontend presents extra frames between ticks and
  * draws the camera eye `alpha` of the way from the previous tick's eye to the
  * current one (a one-tick presentation delay for position only; yaw/pitch
- * always use the latest mouse input). Jumps longer than `snap_distance`
+ * always use the latest mouse input, see LiveLookFollow). Jumps longer than `snap_distance`
  * (respawn, teleport, camera-mode switch) are never smoothed.
  */
 class CameraEyeInterpolator final {
@@ -65,6 +65,43 @@ private:
     std::array<double, 3U> current_{};
     std::uint64_t tick_{};
     bool valid_{false};
+};
+
+/**
+ * How a render-only frame orients the camera.
+ *
+ * Mouse look is consumed between ticks (WindowPort::take_leading_mouse_motion)
+ * and accumulates in the session's yaw/pitch, which the next tick turns into
+ * the networked orientation exactly as before. A render-only frame of a
+ * first-person view must therefore draw the camera at the LATEST look angles,
+ * not at the angles the last tick frame was drawn with: re-using the tick
+ * frame's camera turned the view in 60 Hz steps on a 144 Hz display, three
+ * identical orientations and then a jump, which is the judder players see
+ * when they move the mouse quickly.
+ *
+ * Views that do not follow the player's look (death camera, match results,
+ * construct placement) keep the tick frame's orientation.
+ */
+struct LiveLookFollow final {
+    bool follows{false};
+    /** Added to the live angles (a jetpack corpse spins the dead view). */
+    double yaw_offset_degrees{};
+    double pitch_offset_degrees{};
+    double pitch_limit_degrees{90.0};
+
+    /** {yaw, pitch} for a render-only frame; the tick frame's angles when not following. */
+    [[nodiscard]] constexpr std::array<double, 2U> orient(double live_yaw, double live_pitch,
+                                                          double tick_yaw,
+                                                          double tick_pitch) const noexcept {
+        if (!follows) {
+            return {tick_yaw, tick_pitch};
+        }
+        const double pitch = live_pitch + pitch_offset_degrees;
+        return {live_yaw + yaw_offset_degrees,
+                pitch < -pitch_limit_degrees
+                    ? -pitch_limit_degrees
+                    : (pitch > pitch_limit_degrees ? pitch_limit_degrees : pitch)};
+    }
 };
 
 /** Displays at or below this refresh rate keep exactly one frame per tick. */

@@ -64,6 +64,13 @@ target_link_libraries(aos_camera_basis_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_camera_basis_tests)
 add_test(NAME aos_camera_basis_tests COMMAND aos_camera_basis_tests)
 
+# Mouse look must turn the camera every presented frame, not in 60 Hz steps,
+# without changing the orientation the ticks send. Simulated clock; no GPU.
+add_executable(aos_look_smoothness_tests test_look_smoothness.cpp)
+target_link_libraries(aos_look_smoothness_tests PRIVATE BattleSpades::World BattleSpades::Core)
+aos_enable_strict_warnings(aos_look_smoothness_tests)
+add_test(NAME aos_look_smoothness_tests COMMAND aos_look_smoothness_tests)
+
 add_executable(aos_shadow_projection_tests test_shadow_projection.cpp)
 target_link_libraries(aos_shadow_projection_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_shadow_projection_tests)

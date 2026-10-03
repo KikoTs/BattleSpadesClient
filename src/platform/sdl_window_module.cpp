@@ -5,6 +5,7 @@
 #include <SDL3/SDL_main.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -325,6 +326,8 @@ struct SdlWindowModule::Impl final {
     NativeWindowHandle native_handle{};
     MouseState mouse_state{};
     std::vector<WindowEvent> events;
+    // Pointer motion taken between ticks (take_leading_mouse_motion).
+    std::vector<WindowEvent> early_motion;
     std::vector<DisplayMode> display_modes;
     std::string last_error;
     std::thread::id owner_thread{};
@@ -464,6 +467,7 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
         return core::TickDecision::stop;
     }
 
+    impl_->early_motion.clear();
     impl_->events.clear();
     impl_->close_requested = false;
 
@@ -683,6 +687,7 @@ void SdlWindowModule::stop() noexcept {
         impl_->image_cursor = nullptr;
     }
 
+    impl_->early_motion.clear();
     impl_->events.clear();
     impl_->display_modes.clear();
     impl_->mouse_state = {};
@@ -730,6 +735,56 @@ MouseState SdlWindowModule::mouse_state() const noexcept {
 
 std::span<const WindowEvent> SdlWindowModule::events() const noexcept {
     return impl_->events;
+}
+
+std::span<const WindowEvent> SdlWindowModule::take_leading_mouse_motion() {
+    impl_->early_motion.clear();
+    if (impl_->window == nullptr || impl_->owner_thread != std::this_thread::get_id()) {
+        return {};
+    }
+    SDL_PumpEvents();
+    constexpr int batch{64};
+    std::array<SDL_Event, static_cast<std::size_t>(batch)> queued{};
+    // Bounded like tick(): a mouse polling at 8 kHz queues ~60 events in the
+    // longest gap between two render-only frames.
+    for (std::size_t round{}; round < 8U; ++round) {
+        const int peeked =
+            SDL_PeepEvents(queued.data(), batch, SDL_PEEKEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        int leading{};
+        while (leading < peeked && queued[static_cast<std::size_t>(leading)].type ==
+                                       SDL_EVENT_MOUSE_MOTION &&
+               impl_->belongs_to_window(
+                   queued[static_cast<std::size_t>(leading)].motion.windowID)) {
+            ++leading;
+        }
+        if (leading <= 0) {
+            break;
+        }
+        // Events are only ever appended behind the peeked ones, so the first
+        // `leading` motion events in the queue are exactly the run above.
+        const int taken = SDL_PeepEvents(queued.data(), leading, SDL_GETEVENT,
+                                         SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_MOTION);
+        for (int index{}; index < taken; ++index) {
+            const auto& motion = queued[static_cast<std::size_t>(index)].motion;
+            impl_->mouse_state = {
+                .x = motion.x,
+                .y = motion.y,
+                .pressed_buttons = translate_mouse_buttons(motion.state),
+            };
+            impl_->early_motion.push_back(WindowEvent{
+                .type = WindowEventType::mouse_moved,
+                .timestamp_ns = motion.timestamp,
+                .mouse_x = motion.x,
+                .mouse_y = motion.y,
+                .mouse_delta_x = motion.xrel,
+                .mouse_delta_y = motion.yrel,
+            });
+        }
+        if (taken < batch || leading < peeked) {
+            break;
+        }
+    }
+    return impl_->early_motion;
 }
 
 std::span<const DisplayMode> SdlWindowModule::display_modes() const noexcept {

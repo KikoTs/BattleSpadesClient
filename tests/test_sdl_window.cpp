@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -201,6 +202,51 @@ void sdl_window_preserves_lifecycle_and_input_events() {
                "Normal and flipped wheels must share fractional deltas and pointer coordinates");
     }
     expect(wheel_count == 2U, "Both wheel directions must cross the platform boundary");
+
+    // Render-only frames take the motion at the head of the queue to turn the
+    // camera between ticks, but never motion queued behind a button or key:
+    // the next tick must see the remaining events in their original order.
+    {
+        const auto push_motion = [window_id](float dx) {
+            SDL_Event motion{};
+            motion.motion.type = SDL_EVENT_MOUSE_MOTION;
+            motion.motion.timestamp = SDL_GetTicksNS();
+            motion.motion.windowID = window_id;
+            motion.motion.xrel = dx;
+            expect(SDL_PushEvent(&motion), "SDL rejected injected look motion");
+        };
+        push_motion(1.0F);
+        push_motion(2.0F);
+        SDL_Event press{};
+        press.button.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        press.button.timestamp = SDL_GetTicksNS();
+        press.button.windowID = window_id;
+        press.button.button = SDL_BUTTON_LEFT;
+        press.button.down = true;
+        press.button.clicks = 1U;
+        expect(SDL_PushEvent(&press), "SDL rejected injected fire press");
+        push_motion(4.0F);
+
+        const auto early = window.take_leading_mouse_motion();
+        expect(early.size() == 2U && early[0U].mouse_delta_x == 1.0F &&
+                   early[1U].mouse_delta_x == 2.0F,
+               "the leading look motion must be taken in order");
+        expect(window.take_leading_mouse_motion().empty(),
+               "motion behind a button press must wait for the tick");
+        expect(window.tick(TickContext{}) == TickDecision::continue_running,
+               "the tick after early look must continue");
+        std::vector<WindowEvent> events;
+        for (const auto& event : window.events()) {
+            if (event.type == WindowEventType::mouse_moved ||
+                event.type == WindowEventType::mouse_button_pressed) {
+                events.push_back(event);
+            }
+        }
+        expect(events.size() == 2U && events[0U].type == WindowEventType::mouse_button_pressed &&
+                   events[1U].type == WindowEventType::mouse_moved &&
+                   events[1U].mouse_delta_x == 4.0F,
+               "the tick must receive the press and the motion behind it, and nothing twice");
+    }
 
     push_window_event(SDL_EVENT_WINDOW_CLOSE_REQUESTED, window_id);
     expect(window.tick(TickContext{}) == TickDecision::stop,

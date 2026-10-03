@@ -2049,9 +2049,13 @@ struct NativeFrontendModule::Impl final {
         std::vector<render::ZoneVolumeDraw> zones;
         ui::DrawList ui;
         bool scripted_images{false};
+        /** Whether render-only frames turn the camera with the live look angles. */
+        LiveLookFollow look{};
     };
     InterpolationScene interpolation_scene;
     CameraEyeInterpolator camera_interpolator;
+    /** {yaw, pitch} the render-only frame being drawn turned past its tick frame. */
+    std::array<double, 2U> frame_look_offset{};
     /**
      * Everything else that moves, blended between the last two ticks for each
      * presented frame. Presentation only: simulation, prediction and hit
@@ -27152,7 +27156,8 @@ struct NativeFrontendModule::Impl final {
         const auto shift = world_anchors.shift(
             command.world_anchor, alpha,
             {at_frame[0U] - at_tick[0U], at_frame[1U] - at_tick[1U],
-             at_frame[2U] - at_tick[2U]});
+             at_frame[2U] - at_tick[2U]},
+            frame_look_offset);
         moved.destination.x += shift[0U];
         moved.destination.y += shift[1U];
         return moved;
@@ -27196,6 +27201,18 @@ struct NativeFrontendModule::Impl final {
         }
         auto camera = interpolation_scene.camera;
         camera.eye = camera_interpolator.sample(alpha);
+        if (tutorial_session != nullptr) {
+            // The view turns with the mouse input taken since the tick
+            // (present_intermediate); only position and moving parts are
+            // interpolated between ticks.
+            const auto angles = interpolation_scene.look.orient(
+                tutorial_session->yaw(), tutorial_session->pitch(),
+                interpolation_scene.camera.yaw_degrees, interpolation_scene.camera.pitch_degrees);
+            camera.yaw_degrees = angles[0U];
+            camera.pitch_degrees = angles[1U];
+        }
+        frame_look_offset = {camera.yaw_degrees - interpolation_scene.camera.yaw_degrees,
+                             camera.pitch_degrees - interpolation_scene.camera.pitch_degrees};
         motion_interpolation.sample(alpha);
         particles.build_draw_list({static_cast<float>(camera.eye[0U]),
                                    static_cast<float>(camera.eye[1U]),
@@ -27226,11 +27243,48 @@ struct NativeFrontendModule::Impl final {
                 break;
             }
         }
+        frame_look_offset = {};
         if (!renderer.end_frame()) {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
         return true;
+    }
+
+    /**
+     * Applies the mouse look queued since the last read before a frame is
+     * drawn (render-only frames and the tick's own frame), so the camera
+     * turns at display rate. Only the leading
+     * run of pointer motion is taken; anything behind a key or button event
+     * waits for the tick, which therefore sees the same events in the same
+     * order and the same accumulated look angles as before.
+     */
+    void take_live_look() {
+        if (!world_look_captured() || steam_overlay_gate.suspended() ||
+            ui_layout_editor.active()) {
+            return;
+        }
+        for (const auto& event : window.take_leading_mouse_motion()) {
+            apply_world_look(event.mouse_delta_x, event.mouse_delta_y);
+        }
+    }
+
+    /** Captured mouse motion turns the live-world view (or the death camera). */
+    [[nodiscard]] bool world_look_captured() const {
+        return mouse_captured && tutorial_session != nullptr &&
+               screen() == FrontendScreen::tutorial_world;
+    }
+
+    void apply_world_look(float delta_x, float delta_y) {
+        if (death_camera.active()) {
+            death_camera.on_mouse_move(delta_x, delta_y);
+        } else if (retail_gameplay_input_locked()) {
+            // The LookAtController / forced ViewScores owns the view.
+        } else {
+            tutorial_session->apply_look_delta(delta_x, delta_y);
+            viewmodel_mouse_dx += delta_x;
+            viewmodel_mouse_dy += delta_y;
+        }
     }
 
     [[nodiscard]] bool render_frame() {
@@ -27395,7 +27449,14 @@ struct NativeFrontendModule::Impl final {
             }
         } else if (tutorial_session != nullptr && tutorial_world_in_stack() &&
                    world_renderer.is_initialized()) {
+            // The tick read its input before the simulation ran; motion queued
+            // since then turns this frame too, so the tick frame is no staler
+            // than the render-only frames around it. The simulation already
+            // took this tick's orientation, and the next tick reads the
+            // accumulated angles exactly as if the motion had waited.
+            take_live_look();
             render::WorldCamera camera;
+            LiveLookFollow look_follow{};
             const auto result_camera = match_results.visible()
                                            ? resolve_match_result_camera(
                                                  match_state_info.screenshot_camera_points,
@@ -27443,10 +27504,12 @@ struct NativeFrontendModule::Impl final {
                 camera.yaw_degrees = tutorial_session->yaw() + corpse->rotation_degrees.x;
                 camera.pitch_degrees = std::clamp(
                     tutorial_session->pitch() + corpse->rotation_degrees.y, -89.0, 89.0);
+                look_follow = {true, corpse->rotation_degrees.x, corpse->rotation_degrees.y, 89.0};
             } else {
                 camera.eye = tutorial_session->eye_position();
                 camera.yaw_degrees = tutorial_session->yaw();
                 camera.pitch_degrees = tutorial_session->pitch();
+                look_follow.follows = true;
             }
             // Render-only interpolation on high-refresh displays: the tick
             // frame shows the eye one tick behind, and render_intermediate_frame
@@ -27597,6 +27660,7 @@ struct NativeFrontendModule::Impl final {
                 // Retain what the render-only frames cannot rebuild; the
                 // moving parts live in motion_interpolation.
                 interpolation_scene.camera = camera;
+                interpolation_scene.look = look_follow;
                 interpolation_scene.lights = std::move(frame_lights);
                 interpolation_scene.valid = true;
             }
@@ -28280,6 +28344,9 @@ core::TickDecision NativeFrontendModule::present_intermediate(double alpha) {
     if (impl_ == nullptr || !impl_->started || impl_->stop_requested) {
         return core::TickDecision::continue_running;
     }
+    if (impl_->interpolation_scene.valid) {
+        impl_->take_live_look();
+    }
     return impl_->render_intermediate_frame(alpha) ? core::TickDecision::continue_running
                                                    : core::TickDecision::stop;
 }
@@ -28673,18 +28740,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             }
             break;
         case platform::WindowEventType::mouse_moved:
-            if (impl_->mouse_captured && impl_->tutorial_session != nullptr &&
-                impl_->screen() == FrontendScreen::tutorial_world) {
-                if (impl_->death_camera.active()) {
-                    impl_->death_camera.on_mouse_move(event.mouse_delta_x, event.mouse_delta_y);
-                } else if (impl_->retail_gameplay_input_locked()) {
-                    // The LookAtController / forced ViewScores owns the view.
-                } else {
-                    impl_->tutorial_session->apply_look_delta(event.mouse_delta_x,
-                                                              event.mouse_delta_y);
-                    impl_->viewmodel_mouse_dx += event.mouse_delta_x;
-                    impl_->viewmodel_mouse_dy += event.mouse_delta_y;
-                }
+            if (impl_->world_look_captured()) {
+                impl_->apply_world_look(event.mouse_delta_x, event.mouse_delta_y);
                 break;
             }
             if (const auto point = mapped_point(event.mouse_x, event.mouse_y); point.has_value()) {

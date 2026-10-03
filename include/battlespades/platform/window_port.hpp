@@ -196,6 +196,21 @@ public:
      */
     [[nodiscard]] virtual std::span<const WindowEvent> events() const noexcept = 0;
 
+    /**
+     * Between ticks: removes the pointer-motion events queued at the head of
+     * the platform queue, up to the first event of any other kind, and returns
+     * them in order. Render-only frames use this to turn the camera with the
+     * mouse at display rate instead of at the 60 Hz tick rate.
+     *
+     * Only the leading run is taken, so no motion ever overtakes a key or
+     * button event: the next tick sees exactly the same event order, and the
+     * simulation reads the same accumulated look angles, as if every event had
+     * waited for it. The span is invalidated by the next call, tick or stop.
+     */
+    [[nodiscard]] virtual std::span<const WindowEvent> take_leading_mouse_motion() {
+        return {};
+    }
+
     /** Snapshot of display modes suitable for the Graphics/Resolution row. */
     [[nodiscard]] virtual std::span<const DisplayMode> display_modes() const noexcept = 0;
 
