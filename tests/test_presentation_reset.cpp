@@ -156,6 +156,10 @@ void direct3d_keeps_its_swap_chain(render::GraphicsBackend backend, std::string_
     present_frames(renderer, 3);
     expect(held_chain != nullptr,
            std::string{name} + ": the overlay stand-in never saw a Present; the test is vacuous");
+    // Every reset carries BGFX_RESET_MAXANISOTROPY from init on (the Texture
+    // Filtering setting switches per-draw sampler flags instead), so a resize
+    // or VSync toggle is a ResizeBuffers on the SAME chain the overlay holds.
+    const auto* const startup_chain = held_chain;
 
     // The crash: Antialiasing OFF -> 4x. Before the fix this aborted inside
     // bgfx's render thread on the next frame.
@@ -177,6 +181,8 @@ void direct3d_keeps_its_swap_chain(render::GraphicsBackend backend, std::string_
     // Resizing (resolution / fullscreen) is a ResizeBuffers too.
     expect(renderer.resize({1'280U, 720U}), std::string{renderer.last_error()});
     present_frames(renderer, 3);
+    expect(held_chain == startup_chain,
+           std::string{name} + ": VSync and resize resets must keep the overlay's swap chain");
 
     // Choosing the startup value again clears the pending notice.
     expect(renderer.set_presentation_options(false, 0U), std::string{renderer.last_error()});

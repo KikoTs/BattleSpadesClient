@@ -207,7 +207,11 @@ static_assert(sizeof(UiVertex) == 24U);
 }
 
 [[nodiscard]] std::uint32_t reset_flags(const BgfxUiRendererConfig& config) noexcept {
-    std::uint32_t flags = BGFX_RESET_NONE;
+    // Always on, at init and at every reset alike: it only sets the device
+    // maximum that BGFX_SAMPLER_*_ANISOTROPIC samplers use, so the Texture
+    // Filtering setting switches per draw and never changes these flags (a
+    // flag change can recreate the D3D swap chain the Steam overlay holds).
+    std::uint32_t flags = BGFX_RESET_MAXANISOTROPY;
     if (config.vertical_sync) {
         flags |= BGFX_RESET_VSYNC;
     }
@@ -825,7 +829,8 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     // queue fill 2-3 frames ahead under VSync because 60.000 Hz ticks never
     // match a 59.94 Hz panel: +30-50 ms of input latency. One queued frame
     // (plus bgfx's own render thread) keeps VSync latency near retail.
-    init.resolution.maxFrameLatency = bgfx_max_frame_latency;
+    init.resolution.maxFrameLatency =
+        static_cast<std::uint8_t>(std::clamp<int>(config.max_frame_latency, 1, 3));
 
     impl_->owner_thread = std::this_thread::get_id();
 #if defined(__APPLE__)
