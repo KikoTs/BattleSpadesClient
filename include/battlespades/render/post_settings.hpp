@@ -73,6 +73,25 @@ struct PostSettings final {
                                                    const PostSettings&) = default;
 };
 
+/**
+ * What the running backend can do with PostSettings. A feature reported
+ * false is ignored by the renderer (the world draws as if it were off), so the
+ * frontend can hide or disable its row with a reason.
+ */
+struct PostCapabilities final {
+    /** Offscreen scene target and every fullscreen pass loaded. */
+    bool chain{};
+    /** Needs a depth buffer the post passes can sample. */
+    bool ambient_occlusion{};
+    /** Needs a depth buffer the post passes can sample. */
+    bool motion_blur{};
+    bool bloom{};
+    bool edge_adaptive_upscale{};
+
+    [[nodiscard]] friend constexpr bool operator==(const PostCapabilities&,
+                                                   const PostCapabilities&) = default;
+};
+
 /** Sampler treatment of world-space textures (skydome, particles, AO atlas). */
 struct TextureFiltering final {
     /** Linear filtering; false samples texels point-sampled (crisp). */

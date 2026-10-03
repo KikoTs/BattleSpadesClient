@@ -59,6 +59,11 @@ target_link_libraries(aos_pause_menu_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_pause_menu_tests)
 add_test(NAME aos_pause_menu_tests COMMAND aos_pause_menu_tests)
 
+add_executable(aos_post_math_tests test_post_math.cpp)
+target_link_libraries(aos_post_math_tests PRIVATE BattleSpades::World)
+aos_enable_strict_warnings(aos_post_math_tests)
+add_test(NAME aos_post_math_tests COMMAND aos_post_math_tests)
+
 add_executable(aos_camera_basis_tests test_camera_basis.cpp)
 target_link_libraries(aos_camera_basis_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_camera_basis_tests)
@@ -1052,6 +1057,22 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
         aos_enable_strict_warnings(aos_shadow_stability_render_tests)
         add_test(NAME aos_shadow_stability_render_tests COMMAND aos_shadow_stability_render_tests)
+        # World post chain: every effect against the same frame with it off, on
+        # each desktop backend this machine can start (others report SKIP).
+        add_executable(aos_post_process_render_tests test_post_process_render.cpp)
+        target_link_libraries(aos_post_process_render_tests PRIVATE
+            BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+        target_include_directories(aos_post_process_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_post_process_render_tests PRIVATE
+            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        aos_enable_strict_warnings(aos_post_process_render_tests)
+        foreach(_aos_post_backend IN ITEMS direct3d11 direct3d12 vulkan opengl)
+            add_test(NAME aos_post_process_render_${_aos_post_backend}
+                     COMMAND aos_post_process_render_tests ${_aos_post_backend})
+            set_tests_properties(aos_post_process_render_${_aos_post_backend}
+                                 PROPERTIES RESOURCE_LOCK gpu TIMEOUT 120)
+        endforeach()
         add_executable(aos_inventory_view_tests test_inventory_view.cpp)
         add_executable(aos_cosmetic_icon_tests test_cosmetic_icons.cpp)
         target_link_libraries(aos_cosmetic_icon_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)

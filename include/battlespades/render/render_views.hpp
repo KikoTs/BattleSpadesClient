@@ -30,6 +30,26 @@ inline constexpr std::uint16_t post_view_id_base{7U};
 inline constexpr std::uint16_t post_view_count{16U};
 
 /**
+ * The world post chain (render::PostSettings), used only while it is active.
+ * With it inactive the world and first-person views draw straight into the
+ * backbuffer and none of these views is touched.
+ *
+ * Ambient occlusion and motion blur apply to the world alone, so while either
+ * is on the first-person view moves from view_model_view_id to
+ * post_view_model_view_id and draws over their result.
+ */
+inline constexpr std::uint16_t post_ssao_view_id{post_view_id_base};
+inline constexpr std::uint16_t post_world_view_id{post_view_id_base + 1U};
+inline constexpr std::uint16_t post_view_model_view_id{post_view_id_base + 2U};
+/** Bright pass, three downsamples and three upsamples. */
+inline constexpr std::uint16_t post_bloom_view_id_base{post_view_id_base + 3U};
+inline constexpr std::uint16_t post_bloom_view_count{7U};
+/** Composite into an intermediate target when sharpening follows it. */
+inline constexpr std::uint16_t post_upscale_view_id{post_bloom_view_id_base +
+                                                    post_bloom_view_count};
+static_assert(post_upscale_view_id < post_view_id_base + post_view_count);
+
+/**
  * Resolves the offscreen HDR scene to the backbuffer.
  *
  * Everything the world draws reaches the screen through this view, and every

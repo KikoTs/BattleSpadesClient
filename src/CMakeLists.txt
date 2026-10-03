@@ -722,6 +722,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_render_bgfx
         STATIC
             render/bgfx_ui_renderer.cpp
+            render/post_process.cpp
             render/texture_quality.cpp
             render/world_renderer.cpp
     )
