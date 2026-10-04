@@ -2866,6 +2866,23 @@ struct NativeFrontendModule::Impl final {
     std::optional<std::uint8_t> uploaded_sandbox_tool;
     std::uint32_t sandbox_tool_part_count{};
     std::unique_ptr<world::ScriptedWeapon> scripted_weapon;
+    using ScriptedSkinMeshes = std::vector<std::pair<std::size_t, world::ChunkMesh>>;
+    /** A scripted skin compiled, and its viewmodel parts meshed, off the game thread. */
+    struct PreparedScriptedSkin final {
+        std::unique_ptr<world::ScriptedWeapon> skin;
+        std::shared_ptr<const ScriptedSkinMeshes> meshes;
+        std::string error;
+    };
+    /**
+     * Skins being prepared for the loadout, keyed by scripted_skin_key. Meshing
+     * a high-detail skin takes up to ~200 ms (the AWP has a million vertices),
+     * which used to freeze the game every time the weapon was pulled out.
+     */
+    std::map<std::string, std::future<PreparedScriptedSkin>> scripted_skin_jobs;
+    /** Meshes already built per key: pulling a skin out again never re-meshes it. */
+    std::map<std::string, std::shared_ptr<const ScriptedSkinMeshes>> scripted_skin_meshes;
+    /** Loadout, team and class the skin preparation last ran for. */
+    std::string scripted_skin_prewarm_signature;
     std::string scripted_cosmetic_id;
     std::vector<std::string> failed_scripted_skins;
     std::map<std::size_t,std::uint32_t> scripted_model_slots;
@@ -9076,14 +9093,11 @@ struct NativeFrontendModule::Impl final {
             resolution_rollback.reset();
             const bool restart_notice = resolution_restart_required;
             resolution_restart_required = false;
-            if (settings_opened_from_gameplay) {
-                static_cast<void>(navigation.pop_instant());
-                close_settings();
-            } else {
-                return_to_select();
-            }
-            // After navigation, so a match shows it on the HUD rather than in
-            // a settings warning nobody will see.
+            // Keep returns to the settings screen the change was made on,
+            // in the frontend and in a match alike.
+            return_to_settings();
+            // After navigation, so the notice lands in the settings warning
+            // line the player is now looking at.
             if (restart_notice) {
                 show_restart_notice();
             }
@@ -9680,7 +9694,7 @@ struct NativeFrontendModule::Impl final {
         using namespace std::chrono_literals;
         if(skin_variant_preferences&&applied_skin_variant_revision!=skin_variant_preferences->revision()){
             applied_skin_variant_revision=skin_variant_preferences->revision();
-            uploaded_sandbox_tool.reset();failed_scripted_skins.clear();
+            uploaded_sandbox_tool.reset();failed_scripted_skins.clear();scripted_skin_prewarm_signature.clear();
         }
         const auto before=inventory_menu.data.equipped;
         if (inventory_session) inventory_session->pump(inventory_menu);
@@ -9690,7 +9704,7 @@ struct NativeFrontendModule::Impl final {
         }
         if (before!=inventory_menu.data.equipped) {
             uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
-            uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();
+            uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();scripted_skin_prewarm_signature.clear();
             remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
             remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
             inventory_preload_pending.clear();
@@ -18275,7 +18289,28 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] text::TextRasterResult rasterized(const ui::TextDrawCommand& command,
                                                     std::uint32_t pixel_height) {
-        return rasterized_text(command, localized_text(command.localization_key), pixel_height);
+        return rasterized_text(command, single_line_text(localized_text(command.localization_key)),
+                               pixel_height);
+    }
+
+    /**
+     * Single-line slots draw a line break as a space. The rasterizer rejects
+     * line breaks outright, and a multi-line localized string (CHANGE_MSAA_SETTINGS
+     * in the settings warning line) used to stop the whole frontend.
+     */
+    [[nodiscard]] static std::string single_line_text(std::string text) {
+        std::string flat;
+        flat.reserve(text.size());
+        for (const char ch : text) {
+            if (ch == '\r' || ch == '\n') {
+                if (!flat.empty() && flat.back() != ' ') {
+                    flat.push_back(' ');
+                }
+            } else {
+                flat.push_back(ch);
+            }
+        }
+        return flat;
     }
 
     struct FittedText final {
@@ -25174,33 +25209,134 @@ struct NativeFrontendModule::Impl final {
         scripted_motion={};
     }
 
+    /** Compiles a scripted skin and meshes its model parts; runs on a worker thread. */
+    [[nodiscard]] static PreparedScriptedSkin
+    prepare_scripted_skin(const std::filesystem::path& manifest,
+                          const world::SkinVariantSelection& variant, world::VxlColor team,
+                          const world::ClassModelOverrides& arms,
+                          std::shared_ptr<const ScriptedSkinMeshes> cached) {
+        PreparedScriptedSkin prepared;
+        prepared.skin = std::make_unique<world::ScriptedWeapon>();
+        if (!prepared.skin->load(manifest, prepared.error, variant)) {
+            prepared.skin.reset();
+            return prepared;
+        }
+        if (cached) {
+            prepared.meshes = std::move(cached);
+            return prepared;
+        }
+        auto meshes = std::make_shared<ScriptedSkinMeshes>();
+        const auto& resources = prepared.skin->resources();
+        for (std::size_t id{}; id < resources.size(); ++id) {
+            if (resources[id].kind == 0 && !resources[id].path.empty()) {
+                meshes->emplace_back(id, prepared.skin->model_mesh(id, team, arms));
+            }
+        }
+        prepared.meshes = std::move(meshes);
+        return prepared;
+    }
+
+    /** Everything a skin's prepared meshes depend on. */
+    [[nodiscard]] std::string scripted_skin_key(const InventoryCosmetic& item) const {
+        const auto team = world::retail_character_color(local_player_team_color());
+        const auto class_id = first_person_class_id();
+        const auto* character = local_equipped_cosmetic("class:" + std::to_string(class_id) + ":body");
+        std::string key = item.id;
+        key += '|' + std::to_string(team.red) + ',' + std::to_string(team.green) + ',' +
+               std::to_string(team.blue) + '|' + std::to_string(class_id) + '|' +
+               (character != nullptr ? character->id : std::string{});
+        if (skin_variant_preferences) {
+            for (const auto& [name, value] : skin_variant_preferences->selection(item.id)) {
+                key += '|' + name + '=' + value;
+            }
+        }
+        return key;
+    }
+
+    /** Starts preparing `item` in the background unless it already is. */
+    void queue_scripted_skin(const InventoryCosmetic* item) {
+        if (item == nullptr || item->scripted_skin.empty() ||
+            std::ranges::find(failed_scripted_skins, item->id) != failed_scripted_skins.end()) {
+            return;
+        }
+        auto key = scripted_skin_key(*item);
+        if (scripted_skin_jobs.contains(key)) return;
+        const auto* character =
+            local_equipped_cosmetic("class:" + std::to_string(first_person_class_id()) + ":body");
+        auto arms = inventory_character_parts(character, config.asset_root);
+        auto variant = skin_variant_preferences ? skin_variant_preferences->selection(item->id)
+                                                : world::SkinVariantSelection{};
+        const auto cached = scripted_skin_meshes.find(key);
+        scripted_skin_jobs.emplace(
+            std::move(key),
+            std::async(std::launch::async, prepare_scripted_skin,
+                       config.asset_root.parent_path() / item->scripted_skin, std::move(variant),
+                       world::retail_character_color(local_player_team_color()), std::move(arms),
+                       cached != scripted_skin_meshes.end() ? cached->second : nullptr));
+    }
+
+    /** Prepares every scripted skin in the current loadout before it is pulled out. */
+    void prewarm_scripted_skins() {
+        if (tutorial_session == nullptr || !applied_settings.main.show_skins) return;
+        std::vector<const InventoryCosmetic*> items;
+        std::string signature = std::to_string(first_person_class_id());
+        const auto team = local_player_team_color();
+        signature += '|' + std::to_string(team.red) + ',' + std::to_string(team.green) + ',' +
+                     std::to_string(team.blue);
+        for (const auto& slot : tutorial_session->inventory().slots()) {
+            const auto* item =
+                local_equipped_cosmetic("weapon:" + std::to_string(slot.tool_id) + ":view");
+            if (item == nullptr || item->scripted_skin.empty()) continue;
+            items.push_back(item);
+            signature += '|' + item->id;
+        }
+        if (signature == scripted_skin_prewarm_signature) return;
+        scripted_skin_prewarm_signature = std::move(signature);
+        std::set<std::string> wanted;
+        for (const auto* item : items) wanted.insert(scripted_skin_key(*item));
+        // Keep memory to the current loadout: a high-detail skin's meshes are
+        // tens of megabytes.
+        std::erase_if(scripted_skin_meshes,
+                      [&wanted](const auto& entry) { return !wanted.contains(entry.first); });
+        for (const auto* item : items) queue_scripted_skin(item);
+    }
+
     bool load_scripted_weapon(const InventoryCosmetic* item,std::uint8_t tool) {
         if(!item||item->scripted_skin.empty()||std::ranges::none_of(item->parents,[tool](const auto& p){return p.tool==tool;}))return false;
         if(std::ranges::find(failed_scripted_skins,item->id)!=failed_scripted_skins.end())return false;
-        auto skin=std::make_unique<world::ScriptedWeapon>();std::string error;
-        const auto variant=skin_variant_preferences?skin_variant_preferences->selection(item->id):world::SkinVariantSelection{};
-        if(!skin->load(config.asset_root.parent_path()/item->scripted_skin,error,variant)){
-            failed_scripted_skins.push_back(item->id);settings_warning="Skin animation failed: "+error;return false;
+        // Normally prepared already by prewarm_scripted_skins; otherwise this
+        // waits for it exactly as the old synchronous load did.
+        queue_scripted_skin(item);
+        const auto key=scripted_skin_key(*item);
+        auto job=scripted_skin_jobs.extract(key);
+        if(job.empty())return false;
+        auto prepared=job.mapped().get();
+        if(!prepared.skin){
+            failed_scripted_skins.push_back(item->id);settings_warning="Skin animation failed: "+prepared.error;return false;
         }
-        const auto* character=local_equipped_cosmetic("class:"+std::to_string(first_person_class_id())+":body");
-        const auto arms=inventory_character_parts(character,config.asset_root);
+        scripted_skin_meshes[key]=prepared.meshes;
+        auto skin=std::move(prepared.skin);
         world_renderer.clear_view_model();std::uint32_t slot=0;
+        for(const auto& [id,mesh]:*prepared.meshes){
+            if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
+                settings_warning="Skin model failed: "+skin->resources()[id].name;clear_scripted_weapon();return false;
+            }scripted_model_slots[id]=slot++;
+        }
         for(std::size_t id=0;id<skin->resources().size();++id){const auto& r=skin->resources()[id];
-            if(r.path.empty())continue;
-            // draw_fps default colour is Character.color (team * 0.5).
-            if(r.kind==0){auto mesh=skin->model_mesh(id,world::retail_character_color(local_player_team_color()),arms);
-                if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
-                    settings_warning="Skin model failed: "+r.name;clear_scripted_weapon();return false;
-                }scripted_model_slots[id]=slot++;
-            }else if(r.kind==2&&audio_started)scripted_sounds[id]=audio->preload_skin_sound(r.path);
+            if(r.kind==2&&!r.path.empty()&&audio_started)scripted_sounds[id]=audio->preload_skin_sound(r.path);
         }
         if(slot==0)return false;
+        std::string error;
         if(!scripted_images.load(renderer,*skin,error))settings_warning="Skin sight image failed: "+error;
         if(tutorial_session&&skin->variant().magnification>0.F)
             tutorial_session->set_skin_zoom(tool,world::skin_variant_zoom_target(skin->variant().magnification));
         scripted_cosmetic_id=item->id;scripted_weapon=std::move(skin);scripted_time=std::chrono::steady_clock::now();
         if(audio_started)static_cast<void>(audio->play_cosmetic_cue(item->id,"raise",0,{},.7F,true));
-        uploaded_sandbox_tool=tool;uploaded_tool.reset();view_model_meshes_uploaded=false;return true;
+        uploaded_sandbox_tool=tool;uploaded_tool.reset();view_model_meshes_uploaded=false;
+        // A fresh script instance for the next time this weapon is pulled out;
+        // its meshes come from the cache, so that is only the script compile.
+        queue_scripted_skin(item);
+        return true;
     }
 
     std::vector<render::ViewModelDraw> scripted_weapon_draws() {
@@ -25258,6 +25394,7 @@ struct NativeFrontendModule::Impl final {
         // Inventory refresh invalidates the arm cache even while the same
         // weapon is held. Refresh before uploading its viewmodel again.
         if(!load_tutorial_class_arms(first_person_class_id())) return false;
+        prewarm_scripted_skins();
         const auto selected = tutorial_session->selected_tool_id();
         if (!selected.has_value() || uploaded_sandbox_tool == selected) {
             return true;
