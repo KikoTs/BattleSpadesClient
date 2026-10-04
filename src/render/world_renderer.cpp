@@ -3093,9 +3093,19 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             // face. Unculled, that one aimed shot painted the whole scope.
             // KV6 winding matches the terrain's CW-culled chunks, so outside
             // views are byte-identical with and without the cull.
+            //
+            // Lit parts are culled too. Unculled, a high-detail scripted skin
+            // (a million vertices) shaded every back face through the full
+            // world shader as well and halved the frame rate while held. A
+            // mirroring transform (negative determinant) reverses the winding,
+            // so it culls the opposite side and still shows its outside.
+            const auto& m = draw.transform;
+            const float determinant = m[0U] * (m[5U] * m[10U] - m[6U] * m[9U]) -
+                                      m[4U] * (m[1U] * m[10U] - m[2U] * m[9U]) +
+                                      m[8U] * (m[1U] * m[6U] - m[2U] * m[5U]);
             bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
                            BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
-                           (draw.unlit ? BGFX_STATE_CULL_CW : 0U));
+                           (determinant < 0.0F ? BGFX_STATE_CULL_CCW : BGFX_STATE_CULL_CW));
             bgfx::submit(first_person_view, impl_->program);
         }
     }
