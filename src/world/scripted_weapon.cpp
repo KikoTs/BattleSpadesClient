@@ -13,6 +13,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 
@@ -210,6 +211,11 @@ struct ScriptedWeapon::Impl {
 ScriptedWeapon::ScriptedWeapon():impl_(std::make_unique<Impl>()){}
 ScriptedWeapon::~ScriptedWeapon()=default;
 bool ScriptedWeapon::load(const std::filesystem::path& file,std::string& error,const SkinVariantSelection& selection){
+    // Skins compile on worker threads (loadout preparation, inventory
+    // previews) while the game thread runs others; AngelScript needs its
+    // shared thread manager set up once before engines exist on several threads.
+    static std::once_flag threads_prepared;
+    std::call_once(threads_prepared,[]{asPrepareMultithread();});
     impl_=std::make_unique<Impl>();auto& p=*impl_;
     try {
         p.root=file.parent_path();p.manifest=nlohmann::json::parse(read(file));
