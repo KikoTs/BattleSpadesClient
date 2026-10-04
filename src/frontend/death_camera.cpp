@@ -32,6 +32,14 @@ constexpr double mouse_movement_to_chase_cam{100.0};
 constexpr double chase_distance{5.0};
 // Camera.add_mouse_motion clamps r_x to +-89.9.
 constexpr double pitch_limit{89.9};
+/**
+ * The camera on our own body or grave starts at least this far above it,
+ * looking down at the centred stone. Retail kept the first-person pitch, which
+ * usually left the eye level with the ground behind the grave.
+ */
+constexpr double grave_minimum_pitch{20.0};
+/** Clearance kept between the chase eye and the first solid face behind it. */
+constexpr double chase_wall_clearance{0.35};
 // flyController.py: FLYCAMERA_TRAVEL_SPEED 30.0, SPEED_NORMALIZE 10, 0.7 vertical.
 constexpr double fly_travel_speed{30.0};
 constexpr double fly_speed_normalize{10.0};
@@ -103,22 +111,19 @@ world::Vec3 chase_camera_eye(const world::VxlMap* map, world::Vec3 focus, double
     const world::Vec3 back{-basis.forward[0U], -basis.forward[1U], -basis.forward[2U]};
     double distance = chase_distance;
     if (map != nullptr) {
-        const double half_diagonal = std::sqrt(3.0) * 0.5;
+        // The distance to the face the ray actually enters. Retail measured to
+        // the hit cell's centre, which moves in whole-block steps as the
+        // orbit sweeps across cells: near the ground the zoom visibly jumped
+        // every few degrees of mouse movement.
         const auto hit = world::trace_first_solid(
             *map,
             {static_cast<float>(focus.x), static_cast<float>(focus.y),
              static_cast<float>(focus.z)},
             {static_cast<float>(back.x), static_cast<float>(back.y), static_cast<float>(back.z)},
-            static_cast<float>(chase_distance + half_diagonal + 1.0));
+            static_cast<float>(chase_distance + chase_wall_clearance));
         if (hit.has_value()) {
-            const world::Vec3 centre{static_cast<double>(hit->cell.x) + 0.5,
-                                     static_cast<double>(hit->cell.y) + 0.5,
-                                     static_cast<double>(hit->cell.z) + 0.5};
-            const double to_hit = length({centre.x - focus.x, centre.y - focus.y,
-                                          centre.z - focus.z});
-            if (to_hit < distance + half_diagonal) {
-                distance = std::max(to_hit - half_diagonal - 0.5, 0.0);
-            }
+            distance = std::clamp(static_cast<double>(hit->distance) - chase_wall_clearance, 0.0,
+                                  chase_distance);
         }
     }
     world::Vec3 offset{back.x * distance, back.y * distance, back.z * distance};
@@ -167,6 +172,9 @@ void DeathCameraController::begin_death(world::Vec3 death_eye,
         activate_death_controller();
     } else {
         mode_ = DeathCameraMode::grave;
+    }
+    if (mode_ == DeathCameraMode::grave) {
+        pitch_ = std::max(pitch_, grave_minimum_pitch);
     }
 }
 
