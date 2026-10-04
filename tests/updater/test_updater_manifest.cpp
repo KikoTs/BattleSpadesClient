@@ -324,6 +324,10 @@ void test_config_and_arguments() {
     std::string error;
     auto config = up::parse_updater_config("{}", error);
     expect(up::manifest_endpoint(config) == "https://www.aosplay.net/updates/stable.json", "default manifest URL");
+    expect(up::manifest_locations(up::manifest_endpoint(config)).size() == 2U,
+           "the default manifest has its GitHub copy as a second location");
+    expect(up::manifest_locations("https://mirror.example/s.json").size() == 1U,
+           "an explicit manifest URL gets no mirror");
     expect(!config.github_fallback && config.large_update_bytes == 200ULL * 1024ULL * 1024ULL && config.max_deferrals == 3U,
            "defaults");
     config = up::parse_updater_config(R"({"channel": "beta"})", error);

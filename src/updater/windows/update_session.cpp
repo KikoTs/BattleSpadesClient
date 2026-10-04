@@ -239,21 +239,28 @@ void prune_stages(const UpdateLayout& layout, const std::vector<PlannedUpdate>& 
 
 Discovery discover_updates(const UpdaterConfig& config, const SessionCallbacks& callbacks) {
     Discovery discovery;
-    const auto endpoint = manifest_endpoint(config);
-    log(callbacks, "checking " + endpoint);
-    const auto response = http_get(endpoint, small_options(config, false), maximum_manifest_body);
-    if (response.status == 200U) {
-        auto manifest = parse_update_manifest(response.body, discovery.error);
-        if (manifest.has_value()) {
-            discovery.source = DiscoverySource::manifest;
-            discovery.manifest = std::move(manifest);
+    for (const auto& endpoint : manifest_locations(manifest_endpoint(config))) {
+        log(callbacks, "checking " + endpoint);
+        const auto response = http_get(endpoint, small_options(config, false), maximum_manifest_body);
+        if (response.status == 200U) {
+            std::string parse_error;
+            auto manifest = parse_update_manifest(response.body, parse_error);
+            if (manifest.has_value()) {
+                discovery.source = DiscoverySource::manifest;
+                discovery.manifest = std::move(manifest);
+                discovery.error.clear();
+                return discovery;
+            }
+            // A broken manifest is a publishing error, not an outage: no fallback.
+            discovery.error = "invalid update manifest: " + parse_error;
             return discovery;
         }
-        // A broken manifest is a publishing error, not an outage: no fallback.
-        discovery.error = "invalid update manifest: " + discovery.error;
-        return discovery;
+        const auto problem = response.status == 0U
+                                 ? endpoint + ": " + response.error
+                                 : endpoint + " answered HTTP " + std::to_string(response.status);
+        log(callbacks, "unreachable: " + problem);
+        discovery.error += (discovery.error.empty() ? "" : "; ") + problem;
     }
-    discovery.error = response.status == 0U ? response.error : endpoint + " answered HTTP " + std::to_string(response.status);
     if (!config.github_fallback) return discovery;
     log(callbacks, "manifest unreachable (" + discovery.error + ")");
     std::string error;

@@ -271,7 +271,9 @@ std::string download_unavailable_message() {
 std::string download_offline_message(std::string_view reason) {
     std::string message =
         "The BattleSpades download server could not be reached, so the game files cannot be downloaded "
-        "right now. Check your internet connection and try again, or choose your Ace of Spades folder.";
+        "right now. Some internet providers block it (for example in Russia): turn on a VPN and try again, "
+        "or choose your Ace of Spades folder.\n\nHelp: " +
+        std::string{retail_download_page};
     if (!reason.empty()) {
         message += "\n\n(";
         message += reason;
@@ -372,13 +374,15 @@ RetailOffer fetch_retail_offer(const RetailTransport& transport, const std::stri
         offer.error = "no HTTP transport";
         return offer;
     }
-    std::string body;
-    const auto result = transport.fetch_text(manifest_url, maximum_manifest_bytes, body);
-    if (!result.error.empty() || result.status != 200) {
-        offer.error = manifest_url + ": " + http_problem(result);
-        return offer;
+    // aosplay.net first, then the GitHub copy: in some countries the site's
+    // host is blocked while GitHub still answers.
+    for (const auto& location : updater::manifest_locations(manifest_url)) {
+        std::string body;
+        const auto result = transport.fetch_text(location, maximum_manifest_bytes, body);
+        if (result.error.empty() && result.status == 200) return retail_offer_from_manifest(body);
+        offer.error += (offer.error.empty() ? "" : "; ") + location + ": " + http_problem(result);
     }
-    return retail_offer_from_manifest(body);
+    return offer;
 }
 
 std::string default_release_manifest_url(const std::filesystem::path& executable_directory) {

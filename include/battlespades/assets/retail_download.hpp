@@ -25,7 +25,7 @@ namespace battlespades::assets {
  * the player selected, so both ways end with identical, verified files.
  */
 
-inline constexpr std::string_view retail_download_page = "https://www.aosplay.net/download";
+inline constexpr std::string_view retail_download_page = "https://www.aosplay.net/download#game-files";
 
 /** Shown instead of a download button when the manifest has no retail_assets. */
 [[nodiscard]] std::string download_unavailable_message();

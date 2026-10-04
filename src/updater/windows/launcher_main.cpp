@@ -369,7 +369,7 @@ FirstRunChoice ask_first_run(const up::FirstRunScreen& screen, const up::UpdateM
             break;
         case up::FirstRunAction::open_download_page:
             links.push_back({action, button_download_page,
-                             win::widen("Get the game files from aosplay.net\nOpens " +
+                             win::widen("How to get the game files\nOpens " +
                                         std::string{up::retail_download_page_url} + " in your browser")});
             break;
         }
@@ -390,8 +390,9 @@ FirstRunChoice ask_first_run(const up::FirstRunScreen& screen, const up::UpdateM
                    std::string{up::retail_download_page_url} + ".";
     } else if (screen.note == up::FirstRunNote::offline) {
         content += "\n\nThe BattleSpades download servers could not be reached, so the automatic download is not "
-                   "available right now. You can also get the files from " +
-                   std::string{up::retail_download_page_url} + ".";
+                   "available right now. Some internet providers block them (for example in Russia): turning on "
+                   "a VPN and starting the game again usually fixes it. Help: " +
+                   std::string{up::retail_download_page_url};
     }
     if (!last_error.empty()) content += "\n\nThe last attempt did not work:\n" + last_error;
     const auto content_text = win::widen(content);

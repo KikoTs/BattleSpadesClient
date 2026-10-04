@@ -65,7 +65,7 @@ bool save_launch_choice(const std::filesystem::path& file, std::optional<LaunchT
 // which order, and which one is preselected. One screen, one click.
 // ---------------------------------------------------------------------------
 
-inline constexpr std::string_view retail_download_page_url = "https://www.aosplay.net/download";
+inline constexpr std::string_view retail_download_page_url = "https://www.aosplay.net/download#game-files";
 
 enum class FirstRunAction {
     import_detected,     ///< "Use my Ace of Spades folder" (the Steam copy found automatically)

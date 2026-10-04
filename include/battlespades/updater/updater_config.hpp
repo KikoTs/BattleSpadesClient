@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include <string_view>
 
 namespace battlespades::updater {
@@ -41,6 +42,9 @@ struct UpdaterConfig {
 [[nodiscard]] UpdaterConfig load_updater_config(const std::filesystem::path& file);
 /// The stable.json URL: manifest_url, else the channel's file on aosplay.net.
 [[nodiscard]] std::string manifest_endpoint(const UpdaterConfig& config);
+/// Where to look for `primary`, in order: itself, then the GitHub copy when it
+/// is the default stable.json (an explicit manifest_url or channel gets no mirror).
+[[nodiscard]] std::vector<std::string> manifest_locations(const std::string& primary);
 /// The GitHub API URL of the legacy fallback.
 [[nodiscard]] std::string release_endpoint(const UpdaterConfig& config);
 /// "owner/name" with GitHub's allowed characters only.

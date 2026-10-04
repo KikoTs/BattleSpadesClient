@@ -309,6 +309,25 @@ void test_offer_decision() {
     expect(!offline.manifest_reachable && !offline.available() && !offline.error.empty(), "offline is reported");
     expect(!assets::fetch_retail_offer(transport, "http://example.com/stable.json").manifest_reachable,
            "plain http to the internet is refused");
+
+    // aosplay.net unreachable: the GitHub copy of stable.json still offers it.
+    std::vector<std::string> asked;
+    assets::RetailTransport blocked_site;
+    blocked_site.fetch_text = [&](const std::string& url, std::size_t, std::string& body) {
+        asked.push_back(url);
+        assets::TransferResult result;
+        if (url.starts_with("https://www.aosplay.net/")) {
+            result.error = "Connection timed out";
+            return result;
+        }
+        body = with_retail;
+        result.status = 200;
+        return result;
+    };
+    expect(assets::fetch_retail_offer(blocked_site, "https://www.aosplay.net/updates/stable.json").available(),
+           "the GitHub manifest copy is used when aosplay.net is blocked");
+    expect(asked.size() == 2U && asked[1U].starts_with("https://github.com/KikoTs/BattleSpadesClient/releases/"),
+           "aosplay.net is asked first, then GitHub");
 }
 
 // --- a stored (uncompressed) ZIP writer for the synthetic package -----------
