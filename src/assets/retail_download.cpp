@@ -379,10 +379,33 @@ RetailOffer fetch_retail_offer(const RetailTransport& transport, const std::stri
     for (const auto& location : updater::manifest_locations(manifest_url)) {
         std::string body;
         const auto result = transport.fetch_text(location, maximum_manifest_bytes, body);
-        if (result.error.empty() && result.status == 200) return retail_offer_from_manifest(body);
+        if (result.error.empty() && result.status == 200) {
+            auto fetched = retail_offer_from_manifest(body);
+            fetched.manifest_json = std::move(body);
+            return fetched;
+        }
         offer.error += (offer.error.empty() ? "" : "; ") + location + ": " + http_problem(result);
     }
     return offer;
+}
+
+RetailOffer fetch_retail_offer(const RetailTransport& transport, const std::string& manifest_url,
+                               const std::filesystem::path& saved_copy) {
+    auto offer = fetch_retail_offer(transport, manifest_url);
+    std::string ignored;
+    if (offer.manifest_reachable) {
+        if (offer.release.has_value() && !offer.manifest_json.empty()) {
+            static_cast<void>(updater::write_file_atomic(saved_copy, offer.manifest_json, ignored));
+        }
+        return offer;
+    }
+    const auto saved = updater::read_text_file(saved_copy, ignored);
+    if (!saved.has_value()) return offer;
+    auto fallback = retail_offer_from_manifest(*saved);
+    if (!fallback.available()) return offer;
+    fallback.from_saved_copy = true;
+    fallback.error = offer.error;
+    return fallback;
 }
 
 std::string default_release_manifest_url(const std::filesystem::path& executable_directory) {

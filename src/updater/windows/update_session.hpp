@@ -26,6 +26,8 @@ struct Discovery {
     DiscoverySource source{DiscoverySource::none};
     std::optional<UpdateManifest> manifest;
     std::string error;
+    /** The stable.json text behind `manifest` (empty for the GitHub release fallback). */
+    std::string body;
 };
 
 /**

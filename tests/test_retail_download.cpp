@@ -328,6 +328,35 @@ void test_offer_decision() {
            "the GitHub manifest copy is used when aosplay.net is blocked");
     expect(asked.size() == 2U && asked[1U].starts_with("https://github.com/KikoTs/BattleSpadesClient/releases/"),
            "aosplay.net is asked first, then GitHub");
+
+    // A list that arrived once keeps the download offered when the server is
+    // slow or blocked on a later start.
+    {
+        const auto saved = std::filesystem::temp_directory_path() / "aos_retail_saved_manifest_test.json";
+        std::error_code ignored;
+        std::filesystem::remove(saved, ignored);
+        bool online = true;
+        assets::RetailTransport flaky;
+        flaky.fetch_text = [&](const std::string&, std::size_t, std::string& body) {
+            assets::TransferResult result;
+            if (!online) {
+                result.error = "Operation timed out";
+                return result;
+            }
+            body = with_retail;
+            result.status = 200;
+            return result;
+        };
+        const auto first = assets::fetch_retail_offer(flaky, "https://www.aosplay.net/updates/stable.json", saved);
+        expect(first.available() && !first.from_saved_copy && std::filesystem::exists(saved),
+               "a fetched list is saved");
+        online = false;
+        const auto later = assets::fetch_retail_offer(flaky, "https://www.aosplay.net/updates/stable.json", saved);
+        expect(later.available() && later.from_saved_copy, "offline: the download is offered from the saved list");
+        std::filesystem::remove(saved, ignored);
+        const auto never = assets::fetch_retail_offer(flaky, "https://www.aosplay.net/updates/stable.json", saved);
+        expect(!never.available(), "offline with no saved list: no download offered");
+    }
 }
 
 // --- a stored (uncompressed) ZIP writer for the synthetic package -----------

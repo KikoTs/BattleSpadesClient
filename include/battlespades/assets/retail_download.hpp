@@ -36,6 +36,10 @@ struct RetailOffer final {
     bool manifest_reachable{};
     std::optional<updater::ComponentRelease> release{};
     std::string error{};   ///< why the manifest could not be read
+    /** The offer comes from the saved copy because the server did not answer. */
+    bool from_saved_copy{};
+    /** The fetched stable.json text, for the saved copy. */
+    std::string manifest_json{};
 
     /** True only when a "Download game assets" button may be shown. */
     [[nodiscard]] bool available() const noexcept { return manifest_reachable && release.has_value(); }
@@ -75,6 +79,12 @@ struct RetailTransport final {
 
 /** Fetches `manifest_url` and decides whether the download can be offered. */
 [[nodiscard]] RetailOffer fetch_retail_offer(const RetailTransport& transport, const std::string& manifest_url);
+/**
+ * As above, and keeps `saved_copy` up to date: a successful fetch replaces it,
+ * and when every location fails the offer is read from it instead.
+ */
+[[nodiscard]] RetailOffer fetch_retail_offer(const RetailTransport& transport, const std::string& manifest_url,
+                                             const std::filesystem::path& saved_copy);
 
 /**
  * The manifest URL: updater.json beside the installer when present

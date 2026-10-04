@@ -300,6 +300,8 @@ struct Context final {
     const assets::AssetManifest* catalog{};
     std::filesystem::path destination{};
     std::filesystem::path executable_directory{};
+    /** <install>/update/last-manifest.json; unset for an explicit --manifest-url. */
+    std::optional<std::filesystem::path> saved_manifest{};
 };
 
 [[nodiscard]] int import_folder(const std::filesystem::path& selected,
@@ -557,6 +559,14 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
     }
 }
 
+/** Fetches the offer, through the saved copy of the list when this run uses one. */
+[[nodiscard]] assets::RetailOffer fetch_offer(const assets::RetailTransport& transport, const std::string& manifest_url,
+                                              const Context& context) {
+    return context.saved_manifest.has_value()
+               ? assets::fetch_retail_offer(transport, manifest_url, *context.saved_manifest)
+               : assets::fetch_retail_offer(transport, manifest_url);
+}
+
 [[nodiscard]] int run_choice_flow(SDL_Window* window,
                                   const Context& context,
                                   const std::string& manifest_url,
@@ -568,7 +578,7 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
                  -1.0);
     run_with_progress(window, progress, [&] {
         detected = assets::detect_asset_source(*context.catalog, assets::current_steam_search_environment());
-        offer = assets::fetch_retail_offer(assets::curl_retail_transport(std::chrono::seconds{8}), manifest_url);
+        offer = fetch_offer(assets::curl_retail_transport(std::chrono::seconds{20}), manifest_url, context);
     });
 
     up::FirstRunInputs inputs;
@@ -650,7 +660,8 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
 [[nodiscard]] int run_headless_download(const Context& context,
                                         const std::string& manifest_url,
                                         const std::optional<std::filesystem::path>& report) {
-    const auto offer = assets::fetch_retail_offer(assets::curl_retail_transport(), manifest_url);
+    const auto offer =
+        fetch_offer(assets::curl_retail_transport(), manifest_url, context);
     if (!offer.available()) {
         const auto message = offer.manifest_reachable ? assets::download_unavailable_message()
                                                       : assets::download_offline_message(offer.error);
@@ -730,6 +741,11 @@ choose_source_folder(SDL_Window* window, bool& cancelled, std::string& error) {
     const auto manifest_url = parsed->manifest_url.has_value()
                                   ? *parsed->manifest_url
                                   : assets::default_release_manifest_url(context.executable_directory);
+    // Shared with the Windows launcher (<install>/update). An explicit
+    // --manifest-url (tests, development) neither reads nor replaces it.
+    if (!parsed->manifest_url.has_value()) {
+        context.saved_manifest = context.executable_directory / "update" / std::string{up::saved_manifest_name};
+    }
 
     if (parsed->source.has_value()) {
         std::string install_error;

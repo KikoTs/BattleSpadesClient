@@ -249,6 +249,7 @@ Discovery discover_updates(const UpdaterConfig& config, const SessionCallbacks& 
                 discovery.source = DiscoverySource::manifest;
                 discovery.manifest = std::move(manifest);
                 discovery.error.clear();
+                discovery.body = response.body;
                 return discovery;
             }
             // A broken manifest is a publishing error, not an outage: no fallback.

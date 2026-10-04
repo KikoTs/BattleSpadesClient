@@ -619,19 +619,41 @@ void complete_pending_steam_registration(const up::UpdateLayout& layout) {
 UpdateDecision update_phase(HINSTANCE instance, const up::UpdateLayout& layout, const up::UpdaterConfig& config,
                             bool check_updates) {
     std::optional<up::UpdateManifest> manifest;
+    const bool needs_game_files = !up::retail_assets_present(layout.install);
+    const auto saved_manifest = layout.root() / std::string{up::saved_manifest_name};
     if (check_updates) {
         win::SessionCallbacks silent;
         silent.log = write_log;
-        auto discovery = win::discover_updates(config, silent);
+        // Without the game files there is nothing to play yet, so a slow
+        // connection may take longer before the download button is given up on.
+        auto patient = config;
+        if (needs_game_files) patient.check_timeout_ms = std::max<std::uint32_t>(config.check_timeout_ms, 20000U);
+        auto discovery = win::discover_updates(patient, silent);
         if (discovery.manifest.has_value()) {
             manifest = std::move(discovery.manifest);
+            if (!discovery.body.empty()) {
+                std::string ignored;
+                static_cast<void>(up::write_file_atomic(saved_manifest, discovery.body, ignored));
+            }
         } else {
             write_log("update check skipped: " + discovery.error);
         }
     }
     const up::UpdateManifest* known = manifest.has_value() ? &*manifest : nullptr;
 
-    if (!up::retail_assets_present(layout.install) && !first_run(instance, layout, known, config)) {
+    // Server slow or blocked this time: the first-run screen still offers the
+    // download from the last list that arrived. Updates never use it.
+    std::optional<up::UpdateManifest> saved;
+    if (known == nullptr && needs_game_files) {
+        std::string error;
+        if (const auto text = up::read_text_file(saved_manifest, error); text.has_value()) {
+            saved = up::parse_update_manifest(*text, error);
+            if (saved.has_value()) write_log("update list unreachable; offering the game files from the saved copy");
+        }
+    }
+    const up::UpdateManifest* first_run_list = known != nullptr ? known : saved.has_value() ? &*saved : nullptr;
+
+    if (needs_game_files && !first_run(instance, layout, first_run_list, config)) {
         return UpdateDecision::quit;
     }
     if (known == nullptr) return UpdateDecision::launch;   // offline: play what is installed
