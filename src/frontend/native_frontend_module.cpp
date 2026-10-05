@@ -2001,6 +2001,8 @@ struct NativeFrontendModule::Impl final {
     std::optional<world::OfficialMapEnvironment> live_official_environment;
     /** When the browser's Steam server list query started, while it runs. */
     std::optional<std::chrono::steady_clock::time_point> steam_browser_query_started;
+    /** The same for Quick Play's search. */
+    std::optional<std::chrono::steady_clock::time_point> steam_quick_play_query_started;
     /** Top-surface brightness of the loaded map, measured by the loader. */
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
@@ -11450,14 +11452,21 @@ struct NativeFrontendModule::Impl final {
         }
         pending_quick_play_refresh.reset();
         quick_play_refresh_stop = std::stop_source{};
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        steam_quick_play_query_started.reset();
+        if (steam_runtime.ready() && steam_runtime.begin_internet_server_query(ace_of_spades_steam_app_id)) {
+            steam_quick_play_query_started = std::chrono::steady_clock::now();
+        }
+#endif
         quick_play_refresh_worker = std::async(
             std::launch::async,
-            [request, url = config.public_server_list_url,
+            [request, url = config.public_server_list_url, cache_file = server_list_cache_file(),
              stop = quick_play_refresh_stop.get_token()] {
                 network::DiscoveryResult discovery;
                 try {
                     network::PublicDiscoveryConfig web;
                     web.url = url;
+                    web.cache_file = cache_file;
                     discovery = network::discover_public_servers(web, stop);
                 } catch (const std::exception& error) {
                     discovery.error = error.what();
@@ -11472,7 +11481,20 @@ struct NativeFrontendModule::Impl final {
             quick_play_refresh_worker.wait_for(0ms) != std::future_status::ready) {
             return;
         }
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_quick_play_query_started.has_value() && !steam_runtime.internet_server_query_done() &&
+            std::chrono::steady_clock::now() - *steam_quick_play_query_started < 4s) {
+            return;
+        }
+#endif
         auto outcome = quick_play_refresh_worker.get();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_quick_play_query_started.has_value()) {
+            steam_quick_play_query_started.reset();
+            outcome.discovery =
+                network::merge_discovered_servers(std::move(outcome.discovery), steam_listed_discovery());
+        }
+#endif
         if (!outcome.discovery) {
             static_cast<void>(quick_play_menu.fail_search(outcome.request));
         } else {
@@ -11503,6 +11525,34 @@ struct NativeFrontendModule::Impl final {
             begin_quick_play_refresh(*pending_quick_play_refresh);
         }
     }
+
+#if defined(AOS_HAS_STEAM_NETWORKING)
+    /** Steam's server list answers so far, in the browser's listing form. */
+    [[nodiscard]] network::DiscoveryResult steam_listed_discovery() {
+        std::vector<network::SteamListedServer> steam_rows;
+        for (const auto& row : steam_runtime.internet_servers()) {
+            network::SteamListedServer converted;
+            converted.host = std::to_string((row.ip >> 24U) & 0xFFU) + "." +
+                             std::to_string((row.ip >> 16U) & 0xFFU) + "." +
+                             std::to_string((row.ip >> 8U) & 0xFFU) + "." +
+                             std::to_string(row.ip & 0xFFU);
+            converted.port = row.port;
+            converted.query_port = row.query_port;
+            converted.name = row.name;
+            converted.map = row.map;
+            converted.tags = row.tags;
+            converted.players = row.players;
+            converted.maximum_players = row.maximum_players;
+            converted.bots = row.bots;
+            converted.password = row.password;
+            converted.steam_id = row.steam_id;
+            converted.ping = row.ping;
+            steam_rows.push_back(std::move(converted));
+        }
+        steam_runtime.cancel_internet_server_query();
+        return network::parse_steam_server_list(steam_rows);
+    }
+#endif
 
     /** Last good AoSPlay server list, used when the master cannot be reached. */
     [[nodiscard]] std::filesystem::path server_list_cache_file() const {
@@ -11600,28 +11650,7 @@ struct NativeFrontendModule::Impl final {
 #if defined(AOS_HAS_STEAM_NETWORKING)
         if (steam_browser_query_started.has_value()) {
             steam_browser_query_started.reset();
-            std::vector<network::SteamListedServer> steam_rows;
-            for (const auto& row : steam_runtime.internet_servers()) {
-                network::SteamListedServer converted;
-                converted.host = std::to_string((row.ip >> 24U) & 0xFFU) + "." +
-                                 std::to_string((row.ip >> 16U) & 0xFFU) + "." +
-                                 std::to_string((row.ip >> 8U) & 0xFFU) + "." +
-                                 std::to_string(row.ip & 0xFFU);
-                converted.port = row.port;
-                converted.query_port = row.query_port;
-                converted.name = row.name;
-                converted.map = row.map;
-                converted.tags = row.tags;
-                converted.players = row.players;
-                converted.maximum_players = row.maximum_players;
-                converted.bots = row.bots;
-                converted.password = row.password;
-                converted.steam_id = row.steam_id;
-                converted.ping = row.ping;
-                steam_rows.push_back(std::move(converted));
-            }
-            steam_runtime.cancel_internet_server_query();
-            auto steam_discovery = network::parse_steam_server_list(steam_rows);
+            auto steam_discovery = steam_listed_discovery();
             if (outcome.request.source != ServerBrowserSource::friends &&
                 outcome.request.source != ServerBrowserSource::local) {
                 core::diagnostic("browser", "Steam server list: " +
