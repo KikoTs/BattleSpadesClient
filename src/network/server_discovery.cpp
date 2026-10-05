@@ -219,6 +219,15 @@ template <typename Integer>
             result.steam_host_id = 0U;
         }
     }
+    // Registered by the server's Steam sidecar (heartbeat steam_server_id),
+    // or the id Steam's own list carries; either lets the two lists agree.
+    if (const auto steam = bounded_string(value, "steam_server_id"); !steam.empty()) {
+        try {
+            result.steam_server_id = std::stoull(steam);
+        } catch (const std::exception&) {
+            result.steam_server_id = 0U;
+        }
+    }
     // `players` counts bots, so a bot-filled server reads as full. Keep the
     // human figure when the listing separates them.
     result.human_players = bounded_integer<std::uint16_t>(value, "human_players", result.players);
@@ -644,6 +653,7 @@ DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
         }
         entry["tags"] = std::move(tags);
         if (relay && row.steam_id != 0U) entry["steam_host_id"] = std::to_string(row.steam_id);
+        if (row.steam_id != 0U) entry["steam_server_id"] = std::to_string(row.steam_id);
         list.push_back(std::move(entry));
     }
     auto parsed = parse_public_server_list(list.dump(), maximum_servers);
@@ -662,9 +672,15 @@ DiscoveryResult merge_discovered_servers(DiscoveryResult primary, const Discover
     };
     for (const auto& extra : secondary.servers) {
         const auto identifier = extra.game.identifier();
+        // The SteamID the server registered with AoSPlay is the surest match.
         auto existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
-            return server.game.identifier() == identifier;
+            return extra.steam_server_id != 0U && server.steam_server_id == extra.steam_server_id;
         });
+        if (existing == primary.servers.end()) {
+            existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
+                return server.game.identifier() == identifier;
+            });
+        }
         // Steam lists a server at its retail port (32887) while AoSPlay lists
         // the game port; the same host with the same name, or the only row
         // at that host, is the same server.

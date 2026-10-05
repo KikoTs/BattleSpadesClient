@@ -61,6 +61,8 @@ struct DiscoveredServer final {
     bool password_protected{};
     /** Found through Steam's own server list rather than (only) AoSPlay. */
     bool steam_listed{};
+    /** The SteamID this server is registered under in Valve's server list. */
+    std::uint64_t steam_server_id{};
 };
 
 struct DiscoveryResult final {

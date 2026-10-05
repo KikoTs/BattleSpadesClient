@@ -186,6 +186,16 @@ void steam_rows_parse_like_master_rows_and_merge() {
     expect(merged.servers.size() == 2U && merged.servers[0].name == "AoSPlay name" &&
                merged.servers[0].steam_listed,
            "an address both lists know keeps the AoSPlay row; Steam adds the rest");
+    // A registered SteamID matches even across hosts that differ (NAT/IP).
+    battlespades::network::DiscoveryResult registered;
+    registered.servers.push_back(official);
+    registered.servers.back().game.host = "10.0.0.1";
+    registered.servers.back().name = "Renamed";
+    registered.servers.back().steam_listed = false;
+    registered.servers.back().steam_server_id = 90000000000001ULL;
+    const auto by_id = battlespades::network::merge_discovered_servers(registered, parsed);
+    expect(by_id.servers.size() == 2U && by_id.servers[0].steam_listed,
+           "the registered SteamID ties a Steam row to its AoSPlay row");
     battlespades::network::DiscoveryResult failed;
     failed.error = "public server list request failed";
     expect(battlespades::network::merge_discovered_servers(failed, parsed).error.empty(),
