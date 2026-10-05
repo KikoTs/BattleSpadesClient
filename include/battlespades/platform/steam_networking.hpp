@@ -43,6 +43,28 @@ struct SteamFriendMatch final {
     std::string connect;
 };
 
+/**
+ * One game server from Steam's own server list (ISteamMatchmakingServers),
+ * the list the original game browsed. Steam answers it even where our web
+ * services are blocked, so the browser merges it with the AoSPlay list.
+ */
+struct SteamListedGameServer final {
+    /** IPv4 in host byte order. */
+    std::uint32_t ip{};
+    std::uint16_t port{};
+    std::uint16_t query_port{};
+    std::string name;
+    std::string map;
+    /** Semicolon-separated server tags (v168;region=europe;mode=0001;...). */
+    std::string tags;
+    std::uint16_t players{};
+    std::uint16_t maximum_players{};
+    std::uint16_t bots{};
+    bool password{};
+    std::uint64_t steam_id{};
+    int ping{};
+};
+
 /** One friends-only lobby Steam offers, as the browser would show it. */
 struct SteamLobbyListing final {
     std::uint64_t lobby_id{};
@@ -188,6 +210,17 @@ public:
      * friends-only host is visible here even though no lobby search can see it.
      */
     [[nodiscard]] std::vector<SteamFriendMatch> friend_matches() const;
+    /**
+     * Starts a Steam internet server list query for `app_id` (Ace of Spades
+     * is 224540), replacing any query in flight. Works while attached as
+     * Spacewar too: the list is per queried app, not per attached app.
+     */
+    bool begin_internet_server_query(std::uint32_t app_id);
+    /** Servers that have answered so far. */
+    [[nodiscard]] std::vector<SteamListedGameServer> internet_servers() const;
+    /** True once Steam finished the query (or there is none). */
+    [[nodiscard]] bool internet_server_query_done() const;
+    void cancel_internet_server_query();
     /**
      * The friends-only lobbies this account can see, newest offer first.
      *

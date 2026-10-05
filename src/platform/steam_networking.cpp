@@ -193,6 +193,15 @@ struct SteamApi final {
     const char*(S_CALLTYPE* friend_persona)(ISteamFriends*, uint64){};
     const char*(S_CALLTYPE* friend_presence)(ISteamFriends*, uint64, const char*){};
     ISteamUserStats*(S_CALLTYPE* user_stats)(){};
+    ISteamMatchmakingServers*(S_CALLTYPE* matchmaking_servers)(){};
+    HServerListRequest(S_CALLTYPE* request_internet_servers)(ISteamMatchmakingServers*, AppId_t,
+                                                             MatchMakingKeyValuePair_t**, uint32,
+                                                             ISteamMatchmakingServerListResponse*){};
+    gameserveritem_t*(S_CALLTYPE* server_details)(ISteamMatchmakingServers*, HServerListRequest,
+                                                  int){};
+    int(S_CALLTYPE* server_count)(ISteamMatchmakingServers*, HServerListRequest){};
+    bool(S_CALLTYPE* server_list_refreshing)(ISteamMatchmakingServers*, HServerListRequest){};
+    void(S_CALLTYPE* release_server_list)(ISteamMatchmakingServers*, HServerListRequest){};
     bool(S_CALLTYPE* set_achievement)(ISteamUserStats*, const char*){};
     bool(S_CALLTYPE* get_achievement)(ISteamUserStats*, const char*, bool*){};
     bool(S_CALLTYPE* set_stat_int32)(ISteamUserStats*, const char*, int32){};
@@ -430,6 +439,21 @@ void announce_app_id(const std::string& app_id) noexcept {
     // carries matches; only these features are unavailable.
     const std::array optional_bindings{
         Binding{"SteamAPI_SteamUtils_v010", reinterpret_cast<void**>(&api.steam_utils)},
+        // Steam's game server list (what the original game browsed).
+        Binding{"SteamAPI_SteamMatchmakingServers_v002",
+                reinterpret_cast<void**>(&api.matchmaking_servers)},
+        Binding{"SteamAPI_SteamMatchmakingServers_v003",
+                reinterpret_cast<void**>(&api.matchmaking_servers)},
+        Binding{"SteamAPI_ISteamMatchmakingServers_RequestInternetServerList",
+                reinterpret_cast<void**>(&api.request_internet_servers)},
+        Binding{"SteamAPI_ISteamMatchmakingServers_GetServerDetails",
+                reinterpret_cast<void**>(&api.server_details)},
+        Binding{"SteamAPI_ISteamMatchmakingServers_GetServerCount",
+                reinterpret_cast<void**>(&api.server_count)},
+        Binding{"SteamAPI_ISteamMatchmakingServers_IsRefreshing",
+                reinterpret_cast<void**>(&api.server_list_refreshing)},
+        Binding{"SteamAPI_ISteamMatchmakingServers_ReleaseRequest",
+                reinterpret_cast<void**>(&api.release_server_list)},
         Binding{"SteamAPI_SteamUtils_v011", reinterpret_cast<void**>(&api.steam_utils)},
         Binding{"SteamAPI_ISteamUtils_IsOverlayEnabled",
                 reinterpret_cast<void**>(&api.overlay_enabled)},
@@ -530,8 +554,22 @@ constexpr std::chrono::seconds host_route_allowance{30};
 
 } // namespace
 
+/**
+ * Steam calls these as results arrive; the browser polls GetServerDetails
+ * instead, so only completion is recorded.
+ */
+class ServerListResponse final : public ISteamMatchmakingServerListResponse {
+public:
+    void ServerResponded(HServerListRequest, int) override {}
+    void ServerFailedToRespond(HServerListRequest, int) override {}
+    void RefreshComplete(HServerListRequest, EMatchMakingServerResponse) override { done = true; }
+    std::atomic_bool done{true};
+};
+
 struct SteamNetworkingRuntime::Impl final {
     SteamApi api;
+    ServerListResponse server_list_response;
+    HServerListRequest server_list_request{};
     SteamNetworkingRuntimeConfig config;
     mutable std::mutex mutex;
     std::jthread pump;
@@ -857,6 +895,8 @@ void SteamNetworkingRuntime::stop() noexcept {
     if (impl_ == nullptr) return;
     impl_->pump.request_stop();
     if (impl_->pump.joinable()) impl_->pump.join();
+    // A server list request holds a pointer to our response object.
+    cancel_internet_server_query();
     if (impl_->api.shutdown != nullptr) impl_->api.shutdown();
     close_library(impl_->api.handle);
     impl_.reset();
@@ -1041,6 +1081,78 @@ std::uint64_t SteamNetworkingRuntime::create_lobby(const std::string& status,
     }
     core::diagnostic("steam", "Steam did not answer the lobby request in time");
     return 0U;
+}
+
+bool SteamNetworkingRuntime::begin_internet_server_query(std::uint32_t app_id) {
+    if (impl_ == nullptr || !impl_->ready.load() || impl_->api.matchmaking_servers == nullptr ||
+        impl_->api.request_internet_servers == nullptr) {
+        return false;
+    }
+    cancel_internet_server_query();
+    const std::lock_guard lock{impl_->mutex};
+    auto* const servers = impl_->api.matchmaking_servers();
+    if (servers == nullptr) return false;
+    impl_->server_list_response.done = false;
+    impl_->server_list_request = impl_->api.request_internet_servers(
+        servers, static_cast<AppId_t>(app_id), nullptr, 0U, &impl_->server_list_response);
+    if (impl_->server_list_request == nullptr) {
+        impl_->server_list_response.done = true;
+        return false;
+    }
+    return true;
+}
+
+std::vector<SteamListedGameServer> SteamNetworkingRuntime::internet_servers() const {
+    std::vector<SteamListedGameServer> rows;
+    if (impl_ == nullptr || impl_->api.matchmaking_servers == nullptr ||
+        impl_->api.server_count == nullptr || impl_->api.server_details == nullptr) {
+        return rows;
+    }
+    const std::lock_guard lock{impl_->mutex};
+    if (impl_->server_list_request == nullptr) return rows;
+    auto* const servers = impl_->api.matchmaking_servers();
+    if (servers == nullptr) return rows;
+    const int count = std::min(impl_->api.server_count(servers, impl_->server_list_request), 1024);
+    rows.reserve(static_cast<std::size_t>(std::max(count, 0)));
+    const auto text = [](const char* value, std::size_t capacity) {
+        return std::string{value, ::strnlen(value, capacity)};
+    };
+    for (int index{}; index < count; ++index) {
+        const auto* const item = impl_->api.server_details(servers, impl_->server_list_request, index);
+        if (item == nullptr || !item->m_bHadSuccessfulResponse) continue;
+        SteamListedGameServer row;
+        row.ip = item->m_NetAdr.GetIP();
+        row.port = item->m_NetAdr.GetConnectionPort();
+        row.query_port = item->m_NetAdr.GetQueryPort();
+        row.name = text(item->GetName(), 64U);
+        row.map = text(item->m_szMap, sizeof(item->m_szMap));
+        row.tags = text(item->m_szGameTags, sizeof(item->m_szGameTags));
+        row.players = static_cast<std::uint16_t>(std::clamp(item->m_nPlayers, 0, 255));
+        row.maximum_players = static_cast<std::uint16_t>(std::clamp(item->m_nMaxPlayers, 0, 255));
+        row.bots = static_cast<std::uint16_t>(std::clamp(item->m_nBotPlayers, 0, 255));
+        row.password = item->m_bPassword;
+        row.steam_id = item->m_steamID.ConvertToUint64();
+        row.ping = item->m_nPing;
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+bool SteamNetworkingRuntime::internet_server_query_done() const {
+    return impl_ == nullptr || impl_->server_list_response.done.load();
+}
+
+void SteamNetworkingRuntime::cancel_internet_server_query() {
+    if (impl_ == nullptr) return;
+    const std::lock_guard lock{impl_->mutex};
+    if (impl_->server_list_request != nullptr && impl_->api.release_server_list != nullptr &&
+        impl_->api.matchmaking_servers != nullptr) {
+        if (auto* const servers = impl_->api.matchmaking_servers(); servers != nullptr) {
+            impl_->api.release_server_list(servers, impl_->server_list_request);
+        }
+    }
+    impl_->server_list_request = nullptr;
+    impl_->server_list_response.done = true;
 }
 
 std::vector<SteamFriendMatch> SteamNetworkingRuntime::friend_matches() const {

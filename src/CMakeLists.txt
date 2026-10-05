@@ -498,6 +498,12 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         target_link_libraries(aos_steam_p2p_smoke PRIVATE BattleSpades::SteamNet)
         aos_enable_strict_warnings(aos_steam_p2p_smoke)
 
+        # Prints Steam's own server list for Ace of Spades (what the browser
+        # merges beside AoSPlay). Needs a running Steam client.
+        add_executable(aos_steam_server_list_probe "${PROJECT_SOURCE_DIR}/tools/steam_server_list_probe.cpp")
+        target_link_libraries(aos_steam_server_list_probe PRIVATE BattleSpades::SteamNet)
+        aos_enable_strict_warnings(aos_steam_server_list_probe)
+
         # Lists this account's Workshop subscriptions (and, with --download,
         # fetches them into a scratch directory) without the game.
         add_executable(aos_workshop_sync_probe "${PROJECT_SOURCE_DIR}/tools/workshop_sync_probe.cpp")
