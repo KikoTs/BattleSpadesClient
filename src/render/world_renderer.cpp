@@ -2614,7 +2614,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         for (const auto& draw : world_models) {
             const bool translucent = draw.opacity < 0.999F;
             if (translucent != translucent_pass || draw.slot >= world_model_slot_count ||
-                !(draw.opacity > 0.0F)) {
+                !(draw.opacity > 0.0F) || draw.shadow_only) {
                 continue;
             }
             const auto& slot = impl_->world_model_slots[draw.slot];
@@ -3120,7 +3120,9 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     post_camera.far_plane = far_plane;
     post_camera.eye = camera.eye;
     post_camera.forward = basis.forward;
-    impl_->post.finish(post_frame, impl_->post_settings,
+    auto post_settings = impl_->post_settings;
+    post_settings.bloom_threshold = impl_->atmosphere.bloom_threshold;
+    impl_->post.finish(post_frame, post_settings,
                        PostExtent{drawable.width, drawable.height}, post_camera);
     impl_->post.note_camera(post_camera);
     impl_->stats.post_passes = impl_->post.last_pass_count();

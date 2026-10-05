@@ -134,6 +134,11 @@ struct WorldModelDraw final {
      * drawn from one tick's state.
      */
     std::uint32_t motion_key{};
+    /**
+     * Casts a sun shadow but is never drawn in the visible passes: the local
+     * player's own body in first person, which the camera sits inside.
+     */
+    bool shadow_only{};
 };
 
 /** One retail sniper LaserAttachment already clipped against the live world. */
