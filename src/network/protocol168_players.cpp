@@ -327,6 +327,10 @@ bool Protocol168Roster::update_world_state(
         return false;
     }
     auto& player = *players_[row.player_id];
+    // A new life always arrives as CreatePlayer (the server withholds its
+    // rows until that is acknowledged). A live row that lands after KillAction
+    // is stale and used to stand the corpse back up and move it.
+    if (player.dead && row.health > 0) return false;
     if (world_loop.has_value()) {
         if (*world_loop < 0) return false;
         if (player.world_update_loop.has_value()) {
