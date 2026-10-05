@@ -1017,8 +1017,7 @@ void both_mouse_buttons_never_double_a_dig() {
         both.set_primary(true);
         both.tick(dt);
         bool secondary{};
-        std::size_t frame{};
-        for (double elapsed{dt}; elapsed < duration; elapsed += dt, ++frame) {
+        for (double elapsed{dt}; elapsed < duration; elapsed += dt) {
             // RMB hammered every other frame, starting one frame after LMB.
             secondary = !secondary;
             both.set_secondary(secondary);
