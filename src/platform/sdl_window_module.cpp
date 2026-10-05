@@ -386,6 +386,13 @@ bool SdlWindowModule::start() {
 
     // This executable owns main(), so SDL must not install an SDL_main shim.
     SDL_SetMainReady();
+#if defined(__linux__)
+    // Prefer XWayland, falling back to native Wayland when no X server is
+    // available. A normal-priority hint never overrides SDL_VIDEO_DRIVER (or
+    // the legacy SDL_VIDEODRIVER) from the environment, so users and CI keep
+    // their explicit choice.
+    static_cast<void>(SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11,wayland"));
+#endif
     impl_->owns_sdl_runtime = SDL_WasInit(0) == 0U;
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         impl_->last_error = sdl_error_or("SDL video initialization failed");
