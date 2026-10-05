@@ -78,6 +78,12 @@ struct PauseMenuServerState final {
     bool ugc_mode{};
     /** This client owns the Map Creator session (game_scene.is_ugc_host). */
     bool ugc_host{};
+    /**
+     * GameScene.class_selection_has_choices: one class with weapon or
+     * construct choices (the Classic Deuce's rifle/SMG/shotgun) still opens
+     * SelectClass, so EscapeMenu enables Change Class for it.
+     */
+    bool class_has_choices{};
 };
 
 [[nodiscard]] PauseMenuEnvironment
