@@ -1996,6 +1996,8 @@ struct NativeFrontendModule::Impl final {
      * prevents an unknown custom map from inheriting unrelated local lighting.
      */
     std::optional<world::OfficialMapEnvironment> live_official_environment;
+    /** Top-surface brightness of the loaded map, measured by the loader. */
+    world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
     std::string live_skydome_name{"Classic_B.txt"};
     std::optional<world::ClassSelection> pending_class_selection;
@@ -2595,6 +2597,21 @@ struct NativeFrontendModule::Impl final {
     };
     std::map<std::uint8_t, RemotePlayerRenderRig> remote_player_rigs;
     /**
+     * The local player's own body, uploaded into its (otherwise unused) rig
+     * slot range so it can cast a moving sun shadow in first person. Kept out
+     * of remote_player_rigs: everything iterating that map treats entries as
+     * other players (hit feedback, audio, motion ticks).
+     */
+    struct LocalBodyShadowRig final {
+        std::uint32_t base{};
+        std::uint8_t class_id{};
+        std::uint8_t team{};
+        std::string appearance;
+        world::VxlColor color{};
+        bool combined_arms{};
+    };
+    std::optional<LocalBodyShadowRig> local_body_shadow_rig;
+    /**
      * Shared character accessory meshes (render::WorldRenderer's
      * character_accessory band): key -> slot and last frame drawn.
      */
@@ -3134,7 +3151,7 @@ struct NativeFrontendModule::Impl final {
         inventory_autoload=true;
         uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
         remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
-        remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
+        remote_player_rigs.clear(); local_body_shadow_rig.reset(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
         if (social_client == nullptr ||
             social_client->status(std::chrono::steady_clock::now()).closing) {
             initialize_social_client();
@@ -9706,7 +9723,7 @@ struct NativeFrontendModule::Impl final {
             uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
             uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();scripted_skin_prewarm_signature.clear();
             remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
-            remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
+            remote_player_rigs.clear(); local_body_shadow_rig.reset(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
             inventory_preload_pending.clear();
             for (const auto& item : inventory_menu.data.items) {
                 if (item.owned && item.enabled && std::ranges::any_of(inventory_menu.data.equipped,
@@ -12059,8 +12076,26 @@ struct NativeFrontendModule::Impl final {
             world_renderer.set_atmosphere(atmosphere);
             world_renderer.set_fog_color(match_state_info.fog_color);
             world_renderer.set_retail_fog_color(match_state_info.fog_color);
+        } else {
+            fit_ugc_atmosphere_to_map();
         }
         return true;
+    }
+
+    /**
+     * Workshop/UGC maps have no hand-tuned lighting: fit the sky-derived
+     * atmosphere to the map's own brightness (dark city maps lift, bright
+     * sand maps stop blowing out). Runs once the dome and the map are both
+     * known, whichever arrives last; set_skydome restores the sky-only base.
+     */
+    void fit_ugc_atmosphere_to_map() {
+        if (!network_match || live_official_environment.has_value() || !map_surface_brightness.valid() ||
+            !world_renderer.is_initialized())
+            return;
+        auto atmosphere = world_renderer.atmosphere();
+        if (atmosphere.source.ends_with("+surface")) return;
+        world::normalize_atmosphere_for_map(atmosphere, map_surface_brightness);
+        world_renderer.set_atmosphere(atmosphere);
     }
 
     void clear_live_chunk_remeshes() noexcept {
@@ -15057,6 +15092,7 @@ struct NativeFrontendModule::Impl final {
                                            victim_position,
                                            false);
                     static_cast<void>(tutorial_roster.update_health(kill->player_id, 0));
+                    freeze_dead_player_motion(kill->player_id);
                     const auto feed_color = [this](const network::RemotePlayerReplica& player) {
                         if (local_player_id == player.player_id) {
                             return ui::ColorRgba8{255U, 255U, 255U, 255U};
@@ -19995,6 +20031,7 @@ struct NativeFrontendModule::Impl final {
             match_state_info.has_map_ended,
             match_state_info.mode_type == 12U,
             is_ugc_host(),
+            class_selection_has_choices(local->team),
         })};
         if (open_message.has_value() && pause_menu.environment().ugc_host) {
             pause_menu.show_message(*open_message);
@@ -20582,6 +20619,7 @@ struct NativeFrontendModule::Impl final {
         world_anchors.reset();
         interpolation_scene = {};
         live_official_environment.reset();
+        map_surface_brightness = {};
         live_skydome_name = "Classic_B.txt";
         server_minimap_billboards.clear();
         server_minimap_zones.clear();
@@ -20696,6 +20734,7 @@ struct NativeFrontendModule::Impl final {
         death_camera = DeathCameraController{};
         remote_cosmetics.clear();
         remote_player_rigs.clear();
+        local_body_shadow_rig.reset();
         character_accessory_slots.clear();
         spawn_blinks.clear();
         exploded_corpse_generations.fill(std::nullopt);
@@ -20872,6 +20911,8 @@ struct NativeFrontendModule::Impl final {
         minimap_pixels = std::move(derived_world->minimap_rgba);
         minimap_map_revision = derived_world->map_revision;
         minimap_texture_upload_pending = true;
+        map_surface_brightness = derived_world->surface_brightness;
+        fit_ugc_atmosphere_to_map();
         if (world_renderer.is_initialized()) {
             const auto emissive_palette = world::emissive_palette_for(tutorial_map_name);
             world_renderer.set_emissive_cast_gain(emissive_palette.cast_gain);
@@ -24025,7 +24066,147 @@ struct NativeFrontendModule::Impl final {
             if (!sync_remote_player_rig(replica))
                 return false;
         }
+        sync_local_body_shadow_rig();
         return true;
+    }
+
+    /**
+     * KillAction: stop a pack-less victim where it fell. The server sends no
+     * more rows for the dead, so the interpolator would otherwise keep
+     * stepping the last buttons (forward, sprint) and the corpse walked off.
+     */
+    void freeze_dead_player_motion(std::uint8_t player_id) {
+        const auto* replica = tutorial_roster.player(player_id);
+        const auto rig = remote_player_rigs.find(player_id);
+        if (replica == nullptr || rig == remote_player_rigs.end() ||
+            world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value())
+            return;
+        auto still = rig->second.motion.sample();
+        still.dead = true;
+        still.velocity = {};
+        still.input_flags = 0U;
+        still.jetpack_active = false;
+        rig->second.motion.reset(still);
+    }
+
+    /** True when the sun shadow is detailed enough for the own-body shadow (High/Ultra). */
+    [[nodiscard]] bool local_body_shadow_enabled() const {
+        return network_match && local_player_id.has_value() &&
+               active_quality_profile().shadow_resolution >= 2048U;
+    }
+
+    /** Uploads the local player's body meshes when class, team or skin change. */
+    void sync_local_body_shadow_rig() {
+        if (!local_body_shadow_enabled()) return;
+        const auto* local = tutorial_roster.player(*local_player_id);
+        if (local == nullptr || local->dead) return;
+        const auto color = world::retail_character_color(remote_team_color(local->team));
+        const auto* body_cosmetic = equipped_cosmetic(
+            local->player_id, cosmetic_slot_key(CosmeticSlotKey::class_body, local->class_id));
+        const auto* hat_cosmetic = equipped_cosmetic(
+            local->player_id, cosmetic_slot_key(CosmeticSlotKey::class_hat, local->class_id));
+        const auto appearance = (body_cosmetic ? body_cosmetic->id : "") + std::string{"/"} +
+                                (hat_cosmetic ? hat_cosmetic->id : "");
+        if (local_body_shadow_rig.has_value() && local_body_shadow_rig->class_id == local->class_id &&
+            local_body_shadow_rig->team == local->team && local_body_shadow_rig->appearance == appearance &&
+            local_body_shadow_rig->color == color) {
+            return;
+        }
+        const auto color_key = (static_cast<std::uint32_t>(color.red) << 24U) |
+                               (static_cast<std::uint32_t>(color.green) << 16U) |
+                               (static_cast<std::uint32_t>(color.blue) << 8U) | color.alpha;
+        const auto class_key = std::pair{
+            (static_cast<std::uint64_t>(local->class_id) << 32U) | color_key, appearance};
+        auto cached = remote_class_model_cache.find(class_key);
+        if (cached == remote_class_model_cache.end()) {
+            const auto palette = body_cosmetic ? std::optional{body_cosmetic->palette} : std::nullopt;
+            const auto head = hat_cosmetic ? inventory_verified_model(*hat_cosmetic, config.asset_root) : nullptr;
+            const auto parts = inventory_character_parts(body_cosmetic, config.asset_root);
+            auto loaded = world::load_class_models(config.asset_root, local->class_id, color,
+                                                   model_inverse_scale, palette, head.get(), &parts);
+            if (!loaded) return;   // presentation only: no shadow rather than an error
+            cached = remote_class_model_cache.emplace(class_key, std::move(*loaded.models)).first;
+        }
+        const auto& character = cached->second;
+        LocalBodyShadowRig rig;
+        rig.base = RemotePlayerRenderRig::slot_base +
+                   static_cast<std::uint32_t>(local->player_id) * RemotePlayerRenderRig::slot_stride;
+        rig.class_id = local->class_id;
+        rig.team = local->team;
+        rig.appearance = appearance;
+        rig.color = color;
+        rig.combined_arms = character.combined_arms.has_value();
+        for (std::uint32_t slot = rig.base; slot <= rig.base + 11U; ++slot) pending_remote_mesh_clears.erase(slot);
+        const bool uploaded =
+            world_renderer.set_world_model_mesh(rig.base, character.standing_torso_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 1U, character.crouching_torso_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 2U, character.head_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 3U, character.left_leg_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 4U, character.right_leg_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 5U, character.crouching_left_leg_preview) &&
+            world_renderer.set_world_model_mesh(rig.base + 6U, character.crouching_right_leg_preview) &&
+            (!rig.combined_arms || world_renderer.set_world_model_mesh(rig.base + 10U, *character.combined_arms));
+        if (uploaded) local_body_shadow_rig = std::move(rig);
+        else local_body_shadow_rig.reset();
+    }
+
+    /**
+     * The local body posed like a remote player's (torso, pitched head and
+     * arms, walking legs), flagged shadow_only: it throws a moving shadow
+     * while the first-person camera, which sits inside it, never sees it.
+     */
+    [[nodiscard]] std::vector<render::WorldModelDraw> local_body_shadow_draws() {
+        std::vector<render::WorldModelDraw> draws;
+        if (!local_body_shadow_rig.has_value() || tutorial_session == nullptr || !local_body_shadow_enabled())
+            return draws;
+        const auto* local = tutorial_roster.player(*local_player_id);
+        if (local == nullptr || local->dead || death_camera.active() || local_jetpack_death_state() != nullptr ||
+            ugc_prefab_control.active() || local->class_id != local_body_shadow_rig->class_id ||
+            local->team != local_body_shadow_rig->team)
+            return draws;
+        const MotionScope motion_scope{draws, motion_key(MotionCategory::player, *local_player_id)};
+        const auto& player = tutorial_session->player();
+        const auto& rig = *local_body_shadow_rig;
+        const bool crouching = player.crouch;
+        auto root = mat_rotate_z(static_cast<float>(world::retail_character_root_yaw_degrees(
+            {player.orientation.x, player.orientation.y, player.orientation.z})));
+        root = mat_mul(root, mat_translate(static_cast<float>(player.position.x),
+                                           static_cast<float>(player.position.y),
+                                           static_cast<float>(player.position.z)));
+        // Looking straight down would swing the head and arms through the
+        // torso's shadow; a capped nod reads the same from the ground.
+        const double aim_pitch =
+            std::clamp(std::asin(std::clamp(player.orientation.z, -1.0, 1.0)) * 180.0 / std::numbers::pi,
+                       -45.0, 45.0);
+        draws.push_back({crouching ? rig.base + 1U : rig.base, root});
+        constexpr float head_pivot_z{0.3F};
+        auto head = mat_translate(0.0F, 0.0F, -head_pivot_z);
+        head = mat_mul(head, mat_rotate_x(static_cast<float>(aim_pitch)));
+        head = mat_mul(head, mat_translate(0.0F, 0.0F, head_pivot_z));
+        draws.push_back({rig.base + 2U, mat_mul(head, root)});
+        if (rig.combined_arms) {
+            auto arms = mat_translate(0.F, 0.F, -.25F);
+            arms = mat_mul(arms, mat_rotate_x(static_cast<float>(aim_pitch)));
+            arms = mat_mul(arms, mat_translate(0.F, crouching ? -.3F : 0.F, crouching ? .35F : .25F));
+            draws.push_back({rig.base + 10U, mat_mul(arms, root)});
+        }
+        const auto walk_pose = world::evaluate_retail_walk_pose(
+            static_cast<std::uint64_t>(character_animation_timer_ms),
+            world::ViewModelVector{player.velocity.x, player.velocity.y, player.velocity.z},
+            {player.orientation.x, player.orientation.y, player.orientation.z}, crouching);
+        const float leg_pivot_y = crouching ? -0.3F : 0.0F;
+        const float leg_pivot_z = crouching ? 0.7F : 1.1F;
+        const auto animated_leg = [&](float pivot_x, const world::RetailLegPose& leg_pose) {
+            auto model = mat_translate(-pivot_x, -leg_pivot_y, -leg_pivot_z);
+            model = mat_mul(model, mat_rotate_x(static_cast<float>(leg_pose.rotation_x_degrees)));
+            model = mat_mul(model, mat_rotate_y(static_cast<float>(leg_pose.rotation_y_degrees)));
+            model = mat_mul(model, mat_translate(pivot_x, leg_pivot_y, leg_pivot_z));
+            return mat_mul(model, root);
+        };
+        draws.push_back({crouching ? rig.base + 5U : rig.base + 3U, animated_leg(0.25F, walk_pose.left)});
+        draws.push_back({crouching ? rig.base + 6U : rig.base + 4U, animated_leg(-0.25F, walk_pose.right)});
+        for (auto& draw : draws) draw.shadow_only = true;
+        return draws;
     }
 
     [[nodiscard]] bool load_tutorial_packet_players() {
@@ -24340,22 +24521,32 @@ struct NativeFrontendModule::Impl final {
                 player.dead && !draws_jetpack_corpse && !equipped_jetpack.has_value() &&
                 match_initial_info.classic &&
                 exploded_corpse_generations[player.player_id & 0x7FU] != player.generation;
-            if (rig == remote_player_rigs.end() ||
+            // Our own player never has a rig, but Character.draw leaves its
+            // ClassicCorpse too: the death camera looks at it.
+            const bool own_classic_corpse = draws_classic_corpse && network_match &&
+                                            local_player_id == player.player_id &&
+                                            rig == remote_player_rigs.end();
+            if ((rig == remote_player_rigs.end() && !own_classic_corpse) ||
                 (player.dead && !draws_jetpack_corpse && !draws_classic_corpse))
                 continue;
             if (draws_classic_corpse) {
-                if (rig->second.disguised)
+                if (!own_classic_corpse && rig->second.disguised)
                     continue;
-                const auto& corpse_motion = rig->second.motion.sample();
+                const auto corpse_position = own_classic_corpse ? player.position
+                                                                : rig->second.motion.sample().position;
+                const auto corpse_orientation = own_classic_corpse
+                                                    ? player.orientation
+                                                    : rig->second.motion.sample().orientation;
                 auto corpse_root = mat_rotate_z(static_cast<float>(
-                    world::retail_character_root_yaw_degrees({corpse_motion.orientation.x,
-                                                              corpse_motion.orientation.y,
-                                                              corpse_motion.orientation.z})));
+                    world::retail_character_root_yaw_degrees(
+                        {corpse_orientation.x, corpse_orientation.y, corpse_orientation.z})));
                 corpse_root = mat_mul(
-                    corpse_root, mat_translate(static_cast<float>(corpse_motion.position.x),
-                                               static_cast<float>(corpse_motion.position.y),
-                                               static_cast<float>(corpse_motion.position.z)));
-                const auto corpse_color = rig->second.resolved_team_color;
+                    corpse_root, mat_translate(static_cast<float>(corpse_position.x),
+                                               static_cast<float>(corpse_position.y),
+                                               static_cast<float>(corpse_position.z)));
+                const auto corpse_color =
+                    own_classic_corpse ? world::retail_character_color(remote_team_color(player.team))
+                                       : rig->second.resolved_team_color;
                 const auto slot = character_accessory_slot(
                     "corpse:" + std::to_string(character_color_key(corpse_color)),
                     [&]() {
@@ -25709,9 +25900,16 @@ struct NativeFrontendModule::Impl final {
                 network_match && match_initial_info.enable_player_score;
             game_hud.set_numeric_health_visible(
                 !network_match || match_initial_info.enable_numeric_hp);
+            // The server's SetScore total is authoritative. Reading the box's
+            // own last value kept a HUD reset (rejoin, map change) at 0 until
+            // the next award arrived.
+            const bool server_score_known = network_match && local_player_id.has_value() &&
+                                            *local_player_id < server_player_score_valid.size() &&
+                                            server_player_score_valid[*local_player_id];
             game_hud.set_player_score(
-                network_match ? game_hud.player_score()
-                              : tutorial_session->targets_destroyed() * 100,
+                server_score_known ? server_player_scores[*local_player_id]
+                : network_match    ? game_hud.player_score()
+                                   : tutorial_session->targets_destroyed() * 100,
                 player_score_visible);
 
             // draw_healthbar draws class_icons[class.id][team.id] beside the
@@ -27911,6 +28109,8 @@ struct NativeFrontendModule::Impl final {
             terrain_draws.insert(terrain_draws.end(), retail_effect_models.begin(),
                                  retail_effect_models.end());
             terrain_draws.insert(terrain_draws.end(), packet_players.begin(), packet_players.end());
+            auto own_body_shadow = local_body_shadow_draws();
+            terrain_draws.insert(terrain_draws.end(), own_body_shadow.begin(), own_body_shadow.end());
             // One resolve drives both the renderer and the particle budget.
             // Re-applying every frame keeps them in sync with any settings path
             // without having to find every assignment site. Legacy
@@ -28807,10 +29007,16 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         const double remote_motion_gravity =
             impl_->network_match ? impl_->match_state_info.gravity : 1.0;
         for (auto& [player_id, rig] : impl_->remote_player_rigs) {
-            rig.motion.tick(dt, remote_motion_map, remote_motion_gravity);
+            const auto* replica = impl_->tutorial_roster.player(player_id);
+            // A dead body without a pack lies where it fell (the server sends
+            // it no more rows); stepping it on its last held keys walked the
+            // corpse away. Jetpack corpses keep flying on their own rows.
+            if (replica == nullptr || !replica->dead ||
+                world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value()) {
+                rig.motion.tick(dt, remote_motion_map, remote_motion_gravity);
+            }
             // MinigunWeapon.update for observers: the barrel spools while the
             // replicated primary trigger (WorldUpdate action bit 0x01) is held.
-            const auto* replica = impl_->tutorial_roster.player(player_id);
             const bool minigun = replica != nullptr && !replica->dead && replica->tool_id == 8U;
             rig.minigun_spin =
                 minigun ? world::advance_retail_remote_minigun_spin(
