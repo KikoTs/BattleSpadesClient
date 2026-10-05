@@ -1019,9 +1019,18 @@ void GameHudModel::add_score_award(std::int32_t delta,
     }
 
     auto& lines = score_award_.lines;
-    const bool reset_stack =
-        lines.empty() || lines.size() >= maximum_score_lines ||
-        lines.front().ttl_seconds < score_fade_time;
+    // A full stack that is still on screen absorbs the award into its title.
+    // Restarting it here wiped reason rows that had not appeared yet, and
+    // their points never reached the title: a headshot, revenge and multikill
+    // landing within a second showed far less than was actually awarded.
+    if (!lines.empty() && lines.size() >= maximum_score_lines &&
+        lines.front().ttl_seconds >= score_fade_time) {
+        score_award_.displayed_delta = saturating_score_add(score_award_.displayed_delta, delta);
+        constexpr double extended_ttl{score_line_delay + score_message_ttl};
+        for (auto& line : lines) line.ttl_seconds = std::max(line.ttl_seconds, extended_ttl);
+        return;
+    }
+    const bool reset_stack = lines.empty() || lines.front().ttl_seconds < score_fade_time;
     if (reset_stack) {
         // The reset path seeds the visible title with this amount. Retail gives
         // its first reason a zero score, otherwise HUD.update would count the
