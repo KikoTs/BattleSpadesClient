@@ -23093,11 +23093,20 @@ struct NativeFrontendModule::Impl final {
                                  static_cast<float>(shadow->fade)});
             }
         };
-        if (tutorial_session->alive()) {
+        // With real sun shadows the characters cast their own shadow, and the
+        // retail disc under them read as a second, fake one. Remote bodies
+        // are always in the shadow pass; the local body only at High/Ultra.
+        const auto quality = active_quality_profile();
+        const bool sun_shadows = quality.enhanced_lighting && quality.shadow_cascades > 0U &&
+                                 quality.shadow_resolution > 0U &&
+                                 world_renderer.atmosphere().key_intensity > 0.0F;
+        const bool own_body_casts =
+            sun_shadows && local_body_shadow_enabled() && local_body_shadow_rig.has_value();
+        if (tutorial_session->alive() && !own_body_casts) {
             add_character(tutorial_session->player().position);
         }
         for (const auto& replica : tutorial_roster.present_players()) {
-            if (replica.dead || (replica.team != 2U && replica.team != 3U) ||
+            if (sun_shadows || replica.dead || (replica.team != 2U && replica.team != 3U) ||
                 (local_player_id.has_value() && replica.player_id == *local_player_id)) {
                 continue;
             }
