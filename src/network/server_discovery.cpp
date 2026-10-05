@@ -12,6 +12,10 @@
 #include <chrono>
 #include <cctype>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <sstream>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -142,6 +146,26 @@ template <typename Integer>
     }
     if (tags_seen < 2U || !gameplay.has_value()) return std::nullopt;
     return std::string{codes[*gameplay]};
+}
+
+/** Steam region tags (fra, ewr, america, ...) as the browser's region names. */
+[[nodiscard]] std::string steam_region(std::string value) {
+    std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 14U> aliases{{
+        {"eu", "europe"}, {"fra", "europe"}, {"ams", "europe"}, {"lon", "europe"}, {"par", "europe"},
+        {"america", "us_east"}, {"na", "us_east"}, {"us", "us_east"}, {"ewr", "us_east"},
+        {"nyc", "us_east"}, {"lax", "us_west"}, {"sea", "us_west"}, {"sgp", "asia"}, {"syd", "australia"},
+    }};
+    for (const auto& [alias, region] : aliases) {
+        if (value == alias) return std::string{region};
+    }
+    return value;
+}
+
+[[nodiscard]] bool known_mode_code(std::string_view code) {
+    static constexpr std::array<std::string_view, 12U> codes{
+        "tdm", "ctf", "cctf", "zom", "vip", "tc", "dia", "dem", "mh", "oc", "ugc", "tut"};
+    return std::ranges::find(codes, code) != codes.end();
 }
 
 [[nodiscard]] std::optional<DiscoveredServer> parse_public_entry(const nlohmann::json& value) {
@@ -546,8 +570,129 @@ DiscoveryResult select_discovered_servers(
     return source;
 }
 
+namespace {
+
+DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, std::stop_token stop,
+                                         std::string& body);
+
+}
+
 DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config,
                                         std::stop_token stop) {
+    std::string body;
+    auto fetched = fetch_public_server_list(config, stop, body);
+    if (config.cache_file.empty() || stop.stop_requested()) return fetched;
+    std::error_code code;
+    if (fetched && !fetched.servers.empty()) {
+        // Atomic replace: a crash mid-write must not leave a broken copy.
+        auto temporary = config.cache_file;
+        temporary += ".tmp";
+        std::filesystem::create_directories(config.cache_file.parent_path(), code);
+        {
+            std::ofstream out{temporary, std::ios::binary | std::ios::trunc};
+            out.write(body.data(), static_cast<std::streamsize>(body.size()));
+        }
+        std::filesystem::rename(temporary, config.cache_file, code);
+        if (code) std::filesystem::remove(temporary, code);
+        return fetched;
+    }
+    if (fetched) return fetched;
+    std::ifstream in{config.cache_file, std::ios::binary};
+    if (!in) return fetched;
+    std::string saved{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    auto cached = parse_public_server_list(saved, config.maximum_servers);
+    if (!cached || cached.servers.empty()) return fetched;
+    cached.from_cache = true;
+    return cached;
+}
+
+DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
+                                        std::size_t maximum_servers) {
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& row : rows) {
+        if (row.host.empty() || row.port == 0U) continue;
+        nlohmann::json entry;
+        entry["ip"] = row.host;
+        entry["port"] = row.port;
+        if (row.query_port != 0U) entry["queryPort"] = row.query_port;
+        if (row.ping > 0) entry["ping"] = std::min(row.ping, 65'000);
+        entry["name"] = row.name;
+        // Steam listings name the map with its mode prefix (TDM_Alcatraz,
+        // CCTF_Hiesville); every server carries playlist=8 and the category
+        // mode=0001, so the prefix is where the gameplay mode lives.
+        std::string map = row.map.empty() ? std::string{"Unknown"} : row.map;
+        if (const auto underscore = map.find('_'); underscore != std::string::npos && underscore <= 4U) {
+            const auto prefix = lowercase(map.substr(0U, underscore));
+            if (known_mode_code(prefix)) {
+                entry["mode_tla"] = prefix;
+                map = map.substr(underscore + 1U);
+            }
+        }
+        entry["map"] = map;
+        entry["players"] = row.players;
+        entry["max_players"] = row.maximum_players;
+        entry["human_players"] = row.players > row.bots ? row.players - row.bots : 0;
+        entry["password"] = row.password;
+        nlohmann::json tags = nlohmann::json::array();
+        bool relay{};
+        std::stringstream split{row.tags};
+        for (std::string tag; std::getline(split, tag, ';');) {
+            if (tag.empty()) continue;
+            if (tag.starts_with("region=")) entry["region"] = steam_region(tag.substr(7U));
+            if (tag == steam_relay_tag) relay = true;
+            tags.push_back(tag);
+        }
+        entry["tags"] = std::move(tags);
+        if (relay && row.steam_id != 0U) entry["steam_host_id"] = std::to_string(row.steam_id);
+        list.push_back(std::move(entry));
+    }
+    auto parsed = parse_public_server_list(list.dump(), maximum_servers);
+    if (list.empty()) parsed.error.clear();
+    for (auto& server : parsed.servers) {
+        server.steam_listed = true;
+        if (server.classic && server.mode_code == "ctf") server.mode_code = "cctf";
+    }
+    return parsed;
+}
+
+DiscoveryResult merge_discovered_servers(DiscoveryResult primary, const DiscoveryResult& secondary) {
+    const auto lower = [](std::string value) {
+        std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    };
+    for (const auto& extra : secondary.servers) {
+        const auto identifier = extra.game.identifier();
+        auto existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
+            return server.game.identifier() == identifier;
+        });
+        // Steam lists a server at its retail port (32887) while AoSPlay lists
+        // the game port; the same host with the same name, or the only row
+        // at that host, is the same server.
+        if (existing == primary.servers.end()) {
+            const auto same_host = [&](const DiscoveredServer& server) {
+                return server.game.host == extra.game.host;
+            };
+            const auto at_host = std::ranges::count_if(primary.servers, same_host);
+            existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
+                return same_host(server) && (at_host == 1 || lower(server.name) == lower(extra.name));
+            });
+        }
+        if (existing != primary.servers.end()) {
+            if (existing->steam_host_id == 0U) existing->steam_host_id = extra.steam_host_id;
+            existing->steam_listed = existing->steam_listed || extra.steam_listed;
+            continue;
+        }
+        primary.servers.push_back(extra);
+    }
+    // Rows from either source make the list usable even if the other failed.
+    if (!primary.servers.empty()) primary.error.clear();
+    return primary;
+}
+
+namespace {
+
+DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, std::stop_token stop,
+                                         std::string& body) {
     DiscoveryResult output;
     if (config.url.empty() || config.timeout.count() <= 0 ||
         config.maximum_payload_bytes == 0U || config.maximum_servers == 0U) {
@@ -606,8 +751,11 @@ DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config,
         output.error = "public server list returned HTTP " + std::to_string(status);
         return output;
     }
+    body = buffer.bytes;
     return parse_public_server_list(buffer.bytes, config.maximum_servers);
 }
+
+}  // namespace
 
 DiscoveryResult discover_lan_servers(const LanDiscoveryConfig& config) {
     std::vector<ServerEndpoint> endpoints;

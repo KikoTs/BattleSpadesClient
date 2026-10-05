@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -152,6 +155,62 @@ void friend_server_selection_matches_authoritative_social_ids() {
 
 } // namespace
 
+void steam_rows_parse_like_master_rows_and_merge() {
+    using battlespades::network::SteamListedServer;
+    std::vector<SteamListedServer> steam{
+        // Real rows as Steam returns them (2026-10-05): retail port, mode in
+        // the map prefix, playlist=8 and the category mode=0001 on everyone.
+        {"15.235.106.95", 32887U, 32887U, "Revival Official | NA CCTF", "CCTF_Crossroads",
+         "v168;playlist=8;region=america;mode=0001;classic", 10U, 24U, 4U, false, 90000000000001ULL, 40},
+        {"5.6.7.8", 32887U, 0U, "Relay host", "ZOM_Atlantis", "v168;playlist=8;mode=0001;sdr", 2U, 16U, 0U,
+         true, 90000000000002ULL, 0},
+    };
+    const auto parsed = battlespades::network::parse_steam_server_list(steam);
+    expect(parsed && parsed.servers.size() == 2U, "both Steam rows must parse");
+    const auto& official = parsed.servers[0];
+    expect(official.mode_code == "cctf" && official.map == "Crossroads" && official.classic &&
+               official.region == "us_east" && official.human_players == 6U && official.steam_listed &&
+               official.steam_host_id == 0U,
+           "Steam rows decode mode from the map prefix, region aliases and humans");
+    const auto& relay = parsed.servers[1];
+    expect(relay.mode_code == "zom" && relay.steam_host_id == 90000000000002ULL && relay.password_protected,
+           "an sdr-tagged row carries its Steam id as the P2P host");
+
+    // AoSPlay lists the same server at its game port.
+    battlespades::network::DiscoveryResult aosplay;
+    aosplay.servers.push_back(official);
+    aosplay.servers.back().steam_listed = false;
+    aosplay.servers.back().game.port = 27015U;
+    aosplay.servers.back().name = "AoSPlay name";
+    const auto merged = battlespades::network::merge_discovered_servers(aosplay, parsed);
+    expect(merged.servers.size() == 2U && merged.servers[0].name == "AoSPlay name" &&
+               merged.servers[0].steam_listed,
+           "an address both lists know keeps the AoSPlay row; Steam adds the rest");
+    battlespades::network::DiscoveryResult failed;
+    failed.error = "public server list request failed";
+    expect(battlespades::network::merge_discovered_servers(failed, parsed).error.empty(),
+           "Steam rows make the browser usable when AoSPlay failed");
+}
+
+void saved_list_answers_when_the_master_is_unreachable() {
+    const auto cache = std::filesystem::temp_directory_path() / "aos_serverlist_cache_test.json";
+    {
+        std::ofstream out{cache, std::ios::binary | std::ios::trunc};
+        out << R"json([{"ip":"1.2.3.4","port":27015,"name":"Saved","mode_tla":"tdm","tags":[]}])json";
+    }
+    battlespades::network::PublicDiscoveryConfig config;
+    config.url = "https://127.0.0.1:9/serverlist/";
+    config.timeout = std::chrono::milliseconds{800};
+    config.cache_file = cache;
+    const auto result = battlespades::network::discover_public_servers(config);
+    expect(result && result.from_cache && result.servers.size() == 1U &&
+               result.servers[0].name == "Saved",
+           "an unreachable master falls back to the saved list");
+    std::filesystem::remove(cache);
+    const auto none = battlespades::network::discover_public_servers(config);
+    expect(!none && none.servers.empty(), "no saved list: the failure is reported");
+}
+
 int main() {
     try {
         endpoints_are_strict_and_retail_local_is_supported();
@@ -160,7 +219,9 @@ int main() {
         lan_response_uses_datagram_source_as_authority();
         opaque_lobby_ids_resolve_to_current_endpoints();
         friend_server_selection_matches_authoritative_social_ids();
-        std::cout << "6/6 tests passed\n";
+        steam_rows_parse_like_master_rows_and_merge();
+        saved_list_answers_when_the_master_is_unreachable();
+        std::cout << "8/8 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';
