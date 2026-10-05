@@ -372,6 +372,9 @@ leaderboard_rows(LeaderboardRequest request, const network::AosPlayLeaderboardRe
  * variable is absent, while giving live-smoke runs evidence about which
  * gameplay-thread boundary actually stalled.
  */
+/** Ace of Spades: Battle Builder's Steam app id, for Steam's game server list. */
+constexpr std::uint32_t ace_of_spades_steam_app_id{224540U};
+
 class PerformanceScope final {
 public:
     explicit PerformanceScope(std::string_view label, std::chrono::microseconds threshold) noexcept
@@ -1996,6 +1999,8 @@ struct NativeFrontendModule::Impl final {
      * prevents an unknown custom map from inheriting unrelated local lighting.
      */
     std::optional<world::OfficialMapEnvironment> live_official_environment;
+    /** When the browser's Steam server list query started, while it runs. */
+    std::optional<std::chrono::steady_clock::time_point> steam_browser_query_started;
     /** Top-surface brightness of the loaded map, measured by the loader. */
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
@@ -11499,9 +11504,15 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    /** Last good AoSPlay server list, used when the master cannot be reached. */
+    [[nodiscard]] std::filesystem::path server_list_cache_file() const {
+        return config.settings_path.parent_path() / "serverlist-cache.json";
+    }
+
     void launch_browser_refresh(ServerBrowserRefreshRequest request) {
         pending_browser_refresh.reset();
         const auto public_url = config.public_server_list_url;
+        const auto cache_file = server_list_cache_file();
         const auto local_ports = config.local_server_ports;
         std::vector<std::string> friend_server_ids;
         if (request.source == ServerBrowserSource::friends && social_client) {
@@ -11525,10 +11536,19 @@ struct NativeFrontendModule::Impl final {
         if (request.source == ServerBrowserSource::friends && steam_runtime.ready()) {
             pending_friend_matches = steam_runtime.friend_matches();
         }
+        // Steam's own game server list (what the original game browsed),
+        // queried beside AoSPlay: it answers where our web services are
+        // blocked, and lists servers registered only with Steam.
+        steam_browser_query_started.reset();
+        if (request.source != ServerBrowserSource::local &&
+            request.source != ServerBrowserSource::friends && steam_runtime.ready() &&
+            steam_runtime.begin_internet_server_query(ace_of_spades_steam_app_id)) {
+            steam_browser_query_started = std::chrono::steady_clock::now();
+        }
 #endif
         browser_refresh_worker =
             std::async(std::launch::async,
-                       [request, public_url, local_ports,
+                       [request, public_url, local_ports, cache_file,
                         friend_server_ids = std::move(friend_server_ids)]() mutable {
                 network::DiscoveryResult discovery;
                 if (request.source == ServerBrowserSource::local) {
@@ -11538,11 +11558,13 @@ struct NativeFrontendModule::Impl final {
                 } else if (request.source == ServerBrowserSource::friends) {
                     network::PublicDiscoveryConfig web;
                     web.url = public_url;
+                    web.cache_file = cache_file;
                     discovery = network::select_discovered_servers(
                         network::discover_public_servers(web), friend_server_ids);
                 } else {
                     network::PublicDiscoveryConfig web;
                     web.url = public_url;
+                    web.cache_file = cache_file;
                     discovery = network::discover_public_servers(web);
                 }
                 return BrowserRefreshOutcome{request, std::move(discovery)};
@@ -11567,7 +11589,52 @@ struct NativeFrontendModule::Impl final {
             browser_refresh_worker.wait_for(0ms) != std::future_status::ready) {
             return;
         }
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        // Give Steam's list a few seconds past AoSPlay's answer.
+        if (steam_browser_query_started.has_value() && !steam_runtime.internet_server_query_done() &&
+            std::chrono::steady_clock::now() - *steam_browser_query_started < 4s) {
+            return;
+        }
+#endif
         auto outcome = browser_refresh_worker.get();
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_browser_query_started.has_value()) {
+            steam_browser_query_started.reset();
+            std::vector<network::SteamListedServer> steam_rows;
+            for (const auto& row : steam_runtime.internet_servers()) {
+                network::SteamListedServer converted;
+                converted.host = std::to_string((row.ip >> 24U) & 0xFFU) + "." +
+                                 std::to_string((row.ip >> 16U) & 0xFFU) + "." +
+                                 std::to_string((row.ip >> 8U) & 0xFFU) + "." +
+                                 std::to_string(row.ip & 0xFFU);
+                converted.port = row.port;
+                converted.query_port = row.query_port;
+                converted.name = row.name;
+                converted.map = row.map;
+                converted.tags = row.tags;
+                converted.players = row.players;
+                converted.maximum_players = row.maximum_players;
+                converted.bots = row.bots;
+                converted.password = row.password;
+                converted.steam_id = row.steam_id;
+                converted.ping = row.ping;
+                steam_rows.push_back(std::move(converted));
+            }
+            steam_runtime.cancel_internet_server_query();
+            auto steam_discovery = network::parse_steam_server_list(steam_rows);
+            if (outcome.request.source != ServerBrowserSource::friends &&
+                outcome.request.source != ServerBrowserSource::local) {
+                core::diagnostic("browser", "Steam server list: " +
+                                                std::to_string(steam_discovery.servers.size()) +
+                                                " server(s); AoSPlay " +
+                                                (outcome.discovery.from_cache ? "saved copy"
+                                                 : outcome.discovery ? "live"
+                                                                     : "unreachable"));
+                outcome.discovery =
+                    network::merge_discovered_servers(std::move(outcome.discovery), steam_discovery);
+            }
+        }
+#endif
         if (outcome.request.generation == server_browser.refresh_generation() &&
             server_browser.refreshing()) {
             for (const auto& discovered : outcome.discovery.servers) {
@@ -11750,9 +11817,18 @@ struct NativeFrontendModule::Impl final {
         if (!request.identity_ticket) {
             return start_match_transport(request, timeout_ms, config.player_name);
         }
-        if (request.identity_server_id.empty() || !identity_service->has_online_session()) {
+        if (request.identity_server_id.empty()) {
             settings_warning = "This server requires an online AoSPlay identity.";
             return false;
+        }
+        if (!identity_service->has_online_session()) {
+            // No AoSPlay session, usually because aosplay.net cannot be
+            // reached (blocked in some countries). Servers admit unticketed
+            // players unless they require identity, so try without a ticket
+            // rather than refusing outright.
+            core::diagnostic("identity", "no online AoSPlay session; joining " + request.identifier +
+                                             " without a join ticket");
+            return start_match_transport(request, timeout_ms, config.player_name);
         }
         if (pending_match_identity.has_value()) {
             queued_match_identity = MatchIdentityRequest{request, timeout_ms, map_transition};
@@ -11826,7 +11902,22 @@ struct NativeFrontendModule::Impl final {
             }
             return;
         }
-        if (!outcome.ticket) {
+        std::string join_name;
+        const bool ticketed = static_cast<bool>(outcome.ticket);
+        if (ticketed) {
+            join_name = std::move(outcome.ticket.join_code);
+        } else if (outcome.ticket.error_code == "network_error" ||
+                   outcome.ticket.error_code == "service_unavailable" ||
+                   outcome.ticket.error_code == "invalid_response") {
+            // aosplay.net did not answer (outage, or blocked by the player's
+            // provider). The game server itself may still be reachable and
+            // admits unticketed players unless it requires identity.
+            core::diagnostic("identity", "AoSPlay unreachable (" + outcome.ticket.error_code +
+                                             "); joining " + outcome.request.identifier +
+                                             " without a join ticket");
+            join_name = config.player_name;
+        }
+        if (join_name.empty()) {
             if (outcome.map_transition) {
                 schedule_map_transition_retry(outcome.ticket.error);
             } else {
@@ -11837,10 +11928,10 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         settings_warning.clear();
-        core::diagnostic("identity", "connecting with the join ticket to " + outcome.request.host +
-                                         ":" + std::to_string(outcome.request.port));
-        if (!start_match_transport(
-                outcome.request, outcome.timeout_ms, std::move(outcome.ticket.join_code))) {
+        core::diagnostic("identity", "connecting to " + outcome.request.host + ":" +
+                                         std::to_string(outcome.request.port) +
+                                         (ticketed ? " with the join ticket" : " without a ticket"));
+        if (!start_match_transport(outcome.request, outcome.timeout_ms, std::move(join_name))) {
             const auto error = match_connection ? match_connection->status().error : settings_warning;
             if (outcome.map_transition) {
                 schedule_map_transition_retry(error);
