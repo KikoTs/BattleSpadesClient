@@ -452,7 +452,7 @@ void PostProcessor::finish(const Frame& frame, const PostSettings& settings, Pos
                                              1.0F / static_cast<float>(extent.height), 0.0F, 0.0F};
             };
             std::uint16_t view = post_bloom_view_id_base;
-            const std::array<float, 4U> threshold{0.72F, 0.25F, 0.0F, 0.0F};
+            const std::array<float, 4U> threshold{settings.bloom_threshold, 0.25F, 0.0F, 0.0F};
             auto texel = texel_of(scene);
             bind(0U, s_colour_, source);
             bgfx::setUniform(u_texel_, texel.data());

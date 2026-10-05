@@ -48,6 +48,8 @@ struct PostSettings final {
     bool bloom{false};
     /** 0 .. 1. */
     float bloom_intensity{0.5F};
+    /** Bright-pass threshold; set per frame from the map atmosphere. */
+    float bloom_threshold{0.72F};
     /**
      * Camera motion blur as a shutter fraction of the frame interval
      * (0 = off, 0.5 = a 180-degree shutter). The blur length is the camera's

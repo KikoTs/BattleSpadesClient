@@ -59,6 +59,8 @@ struct MapAtmosphere final {
     float exposure{1.7F};
     /** Overcast skies want far less specular than a desert noon. */
     float specular_strength{0.14F};
+    /** Post-process bloom bright-pass threshold (tonemapped); bright maps raise it. */
+    float bloom_threshold{0.72F};
 
     /** Provenance for the debug overlay. Never affects rendering. */
     std::string source{"default"};
@@ -66,6 +68,30 @@ struct MapAtmosphere final {
 
 /** Never let a map be too dark to play. Idempotent. */
 void clamp_atmosphere_for_play(MapAtmosphere& atmosphere) noexcept;
+
+class VxlMap;
+
+/** How bright a map's top surfaces are: luminance of the top voxel of each column, 0..1. */
+struct MapSurfaceBrightness final {
+    float mean{};
+    float p95{};
+    [[nodiscard]] bool valid() const noexcept { return mean > 0.0F; }
+};
+
+/** One pass over the column tops; cheap enough for the map loader thread. */
+[[nodiscard]] MapSurfaceBrightness measure_map_surface_brightness(const VxlMap& map) noexcept;
+
+/**
+ * Fits a sky-derived atmosphere to what the map is built from. The
+ * derivation only sees the sky, so a sand map under a desert sky blew out
+ * to white (worse with bloom) while dark city blocks under a sunless sky
+ * stayed murky. Lifts or lowers ambient and sun toward a mid-grey screen
+ * value, opens the white point so the brightest surfaces keep detail, and
+ * raises the bloom threshold so only real highlights glow. For maps with no
+ * hand-tuned lighting (workshop/UGC); applying it twice is harmless only
+ * from the same base, so callers start from the sky-derived atmosphere.
+ */
+void normalize_atmosphere_for_map(MapAtmosphere& atmosphere, const MapSurfaceBrightness& surface) noexcept;
 
 /**
  * Derives a map's atmosphere from its shipped skydome assets.

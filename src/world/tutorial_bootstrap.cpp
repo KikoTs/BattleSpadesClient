@@ -126,6 +126,7 @@ void TutorialWorldBootstrap::start() {
             BootstrapDerivedWorld derived;
             derived.skylight.rebuild(*shared_map);
             derived.minimap_rgba = build_minimap_overview_rgba(*shared_map);
+            derived.surface_brightness = measure_map_surface_brightness(*shared_map);
             derived.emissive.build(*shared_map, palette, StaticLightField{});
             derived.map_revision = shared_map->revision();
             if (state->cancelled.load()) {

@@ -1,5 +1,6 @@
 #include "battlespades/world/map_atmosphere.hpp"
 #include "battlespades/render/skydome_animation.hpp"
+#include "battlespades/world/vxl_map.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -589,6 +590,61 @@ void clamp_atmosphere_for_play(MapAtmosphere& atmosphere) noexcept {
     } else {
         atmosphere.sun_direction = {0.36F, 0.26F, -0.90F};
     }
+}
+
+MapSurfaceBrightness measure_map_surface_brightness(const VxlMap& map) noexcept {
+    // 64-bin histogram of top-surface luminance (the shader lights the raw
+    // sRGB colour, so that is what is measured).
+    std::array<std::uint32_t, 64U> bins{};
+    double sum{};
+    std::uint32_t count{};
+    for (std::uint32_t y{}; y < VxlMap::depth; ++y) {
+        for (std::uint32_t x{}; x < VxlMap::width; ++x) {
+            const auto z = map.surface_z(x, y);
+            if (z >= VxlMap::height - 1U) continue;   // the forced sea/bed layer
+            const auto color = map.color(x, y, z);
+            if (!color.has_value()) continue;
+            const float luminance = (0.2126F * color->red + 0.7152F * color->green + 0.0722F * color->blue) / 255.0F;
+            sum += luminance;
+            ++count;
+            ++bins[std::min<std::size_t>(63U, static_cast<std::size_t>(luminance * 64.0F))];
+        }
+    }
+    MapSurfaceBrightness surface;
+    if (count == 0U) return surface;
+    surface.mean = static_cast<float>(sum / count);
+    const auto target = static_cast<std::uint32_t>(std::ceil(count * 0.95));
+    std::uint32_t seen{};
+    for (std::size_t bin{}; bin < bins.size(); ++bin) {
+        seen += bins[bin];
+        if (seen >= target) {
+            surface.p95 = (static_cast<float>(bin) + 1.0F) / 64.0F;
+            break;
+        }
+    }
+    return surface;
+}
+
+void normalize_atmosphere_for_map(MapAtmosphere& atmosphere, const MapSurfaceBrightness& surface) noexcept {
+    if (!surface.valid()) return;
+    // Typical lit value of an average surface; aim it at a mid-grey 0.45.
+    const float lit_mid = surface.mean * (atmosphere.ambient_intensity + 0.8F * atmosphere.key_intensity);
+    if (lit_mid > 1.0e-4F) {
+        const float gain = std::clamp(0.45F / lit_mid, 0.6F, 1.8F);
+        atmosphere.ambient_intensity *= gain;
+        atmosphere.key_intensity *= gain;
+    }
+    clamp_atmosphere_for_play(atmosphere);
+    // Extended Reinhard white point: the brightest surfaces (95th percentile,
+    // in full sun) should land just below white instead of clipping.
+    const float lit_bright =
+        std::max(surface.p95, surface.mean) * (atmosphere.ambient_intensity + atmosphere.key_intensity);
+    atmosphere.exposure = std::clamp(std::max(atmosphere.exposure, lit_bright * 1.15F), 1.0F, 3.0F);
+    const float white_squared = atmosphere.exposure * atmosphere.exposure;
+    const float tonemapped = lit_bright * (1.0F + lit_bright / white_squared) / (1.0F + lit_bright);
+    // Bloom only what is brighter than the map's own bright surfaces.
+    atmosphere.bloom_threshold = std::clamp(tonemapped + 0.05F, 0.72F, 0.95F);
+    atmosphere.source += "+surface";
 }
 
 bool derive_map_atmosphere(const std::filesystem::path& asset_root,
