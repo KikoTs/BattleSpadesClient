@@ -218,6 +218,7 @@ struct SteamApi final {
     uint64(S_CALLTYPE* lobby_owner)(ISteamMatchmaking*, uint64){};
     ISteamApps*(S_CALLTYPE* steam_apps)(){};
     int(S_CALLTYPE* launch_command_line)(ISteamApps*, char*, int){};
+    bool(S_CALLTYPE* get_achievement_time)(ISteamUserStats*, const char*, bool*, uint32*){};
 };
 
 [[nodiscard]] void* library_symbol(void* handle, const char* name) noexcept {
@@ -469,6 +470,8 @@ void announce_app_id(const std::string& app_id) noexcept {
         Binding{"SteamAPI_SteamApps_v009", reinterpret_cast<void**>(&api.steam_apps)},
         Binding{"SteamAPI_ISteamApps_GetLaunchCommandLine",
                 reinterpret_cast<void**>(&api.launch_command_line)},
+        Binding{"SteamAPI_ISteamUserStats_GetAchievementAndUnlockTime",
+                reinterpret_cast<void**>(&api.get_achievement_time)},
     };
     for (const auto& binding : optional_bindings) {
         // Later entries of one target are newer interface versions; keep the
@@ -1260,17 +1263,38 @@ bool SteamNetworkingRuntime::unlock_achievement(const std::string& name) {
     auto* const stats = impl_->api.user_stats();
     if (stats == nullptr) return false;
     // An achievement must exist in the attached application's schema, which
-    // belongs to whoever owns that id. Steam refuses a name it does not know,
-    // so a refusal here says the schema lacks it, not that the call is wrong.
+    // belongs to whoever owns that id, and that schema also says who may set
+    // it. Steam refuses a name it does not know and equally one reserved for
+    // game servers, which is every Ace of Spades achievement.
     // Steam keeps an unlock forever, so writing one twice only costs a store.
     if (bool earned{}; impl_->api.get_achievement(stats, name.c_str(), &earned) && earned) {
         return true;
     }
     if (!impl_->api.set_achievement(stats, name.c_str())) {
-        core::diagnostic("steam", "Steam does not know the achievement " + name);
+        core::diagnostic("steam", "Steam refused the achievement " + name);
         return false;
     }
     return store_statistics();
+}
+
+std::vector<std::pair<std::string, std::int64_t>>
+SteamNetworkingRuntime::unlocked_achievements() const {
+    std::vector<std::pair<std::string, std::int64_t>> unlocked;
+    if (!tracking_enabled() || impl_->api.get_achievement == nullptr) return unlocked;
+    auto* const stats = impl_->api.user_stats();
+    if (stats == nullptr) return unlocked;
+    for (const auto name : retail_achievements) {
+        const std::string text{name};
+        bool earned{};
+        uint32 when{};
+        // The dated call is newer than the plain one; an older library still
+        // says which are unlocked, only not when.
+        const bool known = impl_->api.get_achievement_time != nullptr
+                               ? impl_->api.get_achievement_time(stats, text.c_str(), &earned, &when)
+                               : impl_->api.get_achievement(stats, text.c_str(), &earned);
+        if (known && earned) unlocked.emplace_back(text, static_cast<std::int64_t>(when));
+    }
+    return unlocked;
 }
 
 bool SteamNetworkingRuntime::report_achievement_progress(const std::string& name,

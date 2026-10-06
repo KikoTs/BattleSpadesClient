@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace battlespades::platform {
@@ -237,6 +238,17 @@ public:
     [[nodiscard]] std::string lobby_data(std::uint64_t lobby, const std::string& key) const;
     void leave_lobby(std::uint64_t lobby) noexcept;
     [[nodiscard]] bool unlock_achievement(const std::string& name);
+    /**
+     * The retail achievements Steam holds as unlocked for this player, each
+     * with its unlock time in seconds since the Unix epoch (zero if unknown).
+     *
+     * This is a record of what was earned on the retail servers and nothing
+     * can add to it: Steam's schema reserves every Ace of Spades achievement
+     * for the publisher's game servers. A client write is refused outright and
+     * a community game server's store is answered with access denied (both
+     * measured against the live application). Empty unless tracking_enabled().
+     */
+    [[nodiscard]] std::vector<std::pair<std::string, std::int64_t>> unlocked_achievements() const;
     /** Shows Steam's progress toast; Steam ignores a completed target. */
     [[nodiscard]] bool report_achievement_progress(const std::string& name,
                                                    std::uint32_t progress,

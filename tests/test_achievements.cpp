@@ -7,6 +7,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -85,6 +86,43 @@ void the_ledger_remembers_unlocks() {
     std::filesystem::remove(file);
 }
 
+void the_list_puts_unlocks_first_and_keeps_retail_order() {
+    using battlespades::frontend::UnlockedAchievement;
+    using battlespades::frontend::achievement_date;
+    using battlespades::frontend::achievement_list;
+
+    const auto untouched = achievement_list({});
+    expect(untouched.size() == 77U, "every achievement is listed");
+    expect(std::ranges::none_of(untouched, [](const auto& row) { return row.unlocked; }),
+           "nothing is unlocked without a record");
+    // Retail's order is the token order: set 2 first, then within the set by number.
+    expect(untouched.front().definition->token == "NEW_ACHIEVEMENT_2_1" &&
+               untouched[1].definition->token == "NEW_ACHIEVEMENT_2_2",
+           "locked achievements keep retail's order");
+    expect(untouched[8].definition->token == "NEW_ACHIEVEMENT_2_9" &&
+               untouched[9].definition->token == "NEW_ACHIEVEMENT_2_10",
+           "the order is numeric, not alphabetical");
+
+    const std::vector<UnlockedAchievement> ledger{{"spade_kill", 1791000000}, {"zombie_mvp", 1791000500}};
+    // What Steam still holds from the retail servers.
+    const std::vector<UnlockedAchievement> steam{{"zombie_mvp", 1465058771}, {"zombie_fall", 1465242387},
+                                                 {"no_such_achievement", 5}};
+    const auto rows = achievement_list(ledger, steam);
+    expect(rows.size() == 77U, "merging never adds or drops a row");
+    expect(rows[0].definition->api_name == "spade_kill" && rows[0].unlocked_at == 1791000000,
+           "the newest unlock leads");
+    expect(rows[1].definition->api_name == "zombie_fall" && rows[1].unlocked,
+           "a retail-era unlock from Steam counts");
+    expect(rows[2].definition->api_name == "zombie_mvp" && rows[2].unlocked_at == 1465058771,
+           "an achievement in both keeps its earlier time");
+    expect(!rows[3].unlocked && rows[3].definition->token == "NEW_ACHIEVEMENT_2_1",
+           "the locked ones follow in retail's order");
+
+    expect(achievement_date(1465058771) == "2016-06-04" && achievement_date(0).empty() &&
+               achievement_date(-5).empty(),
+           "an unlock time prints as a date");
+}
+
 }  // namespace
 
 int main() {
@@ -92,7 +130,8 @@ int main() {
         the_table_is_the_retail_schema();
         lookups_find_what_the_server_announces();
         the_ledger_remembers_unlocks();
-        std::cout << "3/3 tests passed\n";
+        the_list_puts_unlocks_first_and_keeps_retail_order();
+        std::cout << "4/4 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

@@ -73,4 +73,28 @@ private:
     std::vector<UnlockedAchievement> entries_;
 };
 
+/** One row of the achievements list. */
+struct AchievementListRow final {
+    const AchievementDefinition* definition{};
+    bool unlocked{};
+    /** Seconds since the Unix epoch; zero when locked or unknown. */
+    std::int64_t unlocked_at{};
+};
+
+/**
+ * All 77 for the achievements list: the unlocked ones first, newest first,
+ * then the locked ones in retail's own order (their NEW_ACHIEVEMENT tokens).
+ *
+ * `earlier` are unlocks from outside the ledger: the ones Steam still holds
+ * from the retail servers. Steam lets the game read those but only the
+ * publisher's servers could ever write them, so they are merged in, never
+ * added to. An achievement in both keeps its earlier time.
+ */
+[[nodiscard]] std::vector<AchievementListRow>
+achievement_list(std::span<const UnlockedAchievement> ledger,
+                 std::span<const UnlockedAchievement> earlier = {});
+
+/** `2026-10-06` (UTC) for a list row; empty for zero. */
+[[nodiscard]] std::string achievement_date(std::int64_t unlocked_at);
+
 }  // namespace battlespades::frontend

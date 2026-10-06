@@ -1,9 +1,11 @@
 #pragma once
 
+#include "battlespades/frontend/achievements.hpp"
 #include "battlespades/frontend/player_profile_menu.hpp"
 #include "battlespades/ui/draw_list.hpp"
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 namespace battlespades::frontend {
@@ -19,6 +21,8 @@ struct PlayerProfilePresentationContext final {
     ControlState cancel_state{ControlState::normal};
     ControlState achievements_state{ControlState::normal};
     ControlState filter_button_state{ControlState::normal};
+    /** Drawn in place of the statistics while the model's achievements list is open. */
+    std::span<const AchievementListRow> achievements{};
 };
 
 struct PlayerProfileClassicLayout final {

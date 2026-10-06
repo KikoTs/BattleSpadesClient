@@ -140,8 +140,10 @@ bool PlayerProfileMenuModel::select_tab(PlayerProfileTab tab) {
         return false;
     }
     const auto changed = tab != selected_tab_ || selected_filters_[index(tab)] != 0U ||
-                         filter_open_ || first_visible_row_ != 0U;
+                         filter_open_ || first_visible_row_ != 0U || achievements_open_;
     selected_tab_ = tab;
+    // A tab leads back out of the achievements list.
+    achievements_open_ = false;
     // playerProfileMenu.set_tab() constructs a fresh DropBoxControl with index
     // zero and then clears current_filter. This reset is observable retail UI.
     selected_filters_[index(selected_tab_)] = 0U;
@@ -197,14 +199,30 @@ bool PlayerProfileMenuModel::scroll_rows(int delta) noexcept {
     return before != first_visible_row_;
 }
 
-void PlayerProfileMenuModel::activate_achievements() {
-    effects_.push_back({PlayerProfileEffectKind::show_achievements_overlay});
+bool PlayerProfileMenuModel::achievements_open() const noexcept {
+    return achievements_open_;
 }
 
-std::vector<PlayerProfileEffect> PlayerProfileMenuModel::take_effects() {
-    auto effects = std::move(effects_);
-    effects_.clear();
-    return effects;
+std::size_t PlayerProfileMenuModel::first_visible_achievement() const noexcept {
+    return first_visible_achievement_;
+}
+
+void PlayerProfileMenuModel::activate_achievements() noexcept {
+    achievements_open_ = !achievements_open_;
+    first_visible_achievement_ = 0U;
+    filter_open_ = false;
+}
+
+bool PlayerProfileMenuModel::scroll_achievements(int delta, std::size_t total) noexcept {
+    const auto maximum = total > achievement_visible_rows ? total - achievement_visible_rows : 0U;
+    const auto before = std::min(first_visible_achievement_, maximum);
+    if (delta < 0) {
+        const auto magnitude = static_cast<std::size_t>(-(static_cast<long long>(delta)));
+        first_visible_achievement_ = magnitude > before ? 0U : before - magnitude;
+    } else {
+        first_visible_achievement_ = std::min(maximum, before + static_cast<std::size_t>(delta));
+    }
+    return before != first_visible_achievement_;
 }
 
 bool PlayerProfileMenuModel::complete(PlayerProfileRequest request, PlayerProfileData data) {
@@ -248,6 +266,8 @@ void PlayerProfileMenuModel::reload(std::uint64_t account_id) noexcept {
     pending_request_ = PlayerProfileRequest{next_generation_++, account_id_};
     request_taken_ = false;
     filter_open_ = false;
+    achievements_open_ = false;
+    first_visible_achievement_ = 0U;
 }
 
 void PlayerProfileMenuModel::rebuild_display_rows() {

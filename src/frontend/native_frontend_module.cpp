@@ -2006,8 +2006,10 @@ struct NativeFrontendModule::Impl final {
     std::optional<std::chrono::steady_clock::time_point> steam_quick_play_query_started;
     /** Server identifier -> Steam relay host found by the last Quick Play search. */
     std::map<std::string, std::uint64_t> quick_play_relay_hosts;
-    /** This player's unlocked achievements; opened on the first unlock. */
+    /** This player's unlocked achievements; opened on first use. */
     std::optional<AchievementLedger> achievement_ledger;
+    /** The profile screen's achievements list, rebuilt when it opens. */
+    std::vector<AchievementListRow> profile_achievement_rows;
     /** Top-surface brightness of the loaded map, measured by the loader. */
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
@@ -9703,7 +9705,8 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] bool markup_inventory_active() const {
         return !boot_loading && screen()==FrontendScreen::player_profile &&
-            player_profile_menu.selected_tab()==PlayerProfileTab::inventory && inventory_view;
+            player_profile_menu.selected_tab()==PlayerProfileTab::inventory &&
+            !player_profile_menu.achievements_open() && inventory_view;
     }
 
     void consume_inventory_view() {
@@ -11535,6 +11538,25 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
+    [[nodiscard]] AchievementLedger& open_achievement_ledger() {
+        if (!achievement_ledger.has_value()) {
+            achievement_ledger.emplace(config.settings_path.parent_path() / "achievements.json");
+        }
+        return *achievement_ledger;
+    }
+
+    /**
+     * The profile screen's list: this player's own record, plus whatever
+     * Steam still holds from the retail servers (readable, never writable).
+     */
+    void rebuild_profile_achievements() {
+        std::vector<UnlockedAchievement> retail;
+        for (auto& [name, when] : steam_runtime.unlocked_achievements()) {
+            retail.push_back({std::move(name), when});
+        }
+        profile_achievement_rows = achievement_list(open_achievement_ledger().entries(), retail);
+    }
+
     /**
      * ACHIEVEMENT_GAINED: "{0} has unlocked the "{1}" achievement".
      *
@@ -11555,16 +11577,15 @@ struct NativeFrontendModule::Impl final {
         if (mine) {
             if (const auto* definition = find_achievement_by_display_name(display_name);
                 definition != nullptr) {
-                if (!achievement_ledger.has_value()) {
-                    achievement_ledger.emplace(config.settings_path.parent_path() / "achievements.json");
-                }
+                auto& ledger = open_achievement_ledger();
                 const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                                      std::chrono::system_clock::now().time_since_epoch())
                                      .count();
-                if (achievement_ledger->unlock(definition->api_name, now)) {
-                    static_cast<void>(achievement_ledger->save());
+                if (ledger.unlock(definition->api_name, now)) {
+                    static_cast<void>(ledger.save());
                     core::diagnostic("achievement", "unlocked " + std::string{definition->api_name} +
                                                         " (" + std::string{definition->display_name} + ")");
+                    if (player_profile_menu.achievements_open()) rebuild_profile_achievements();
                 }
             }
         }
@@ -17559,7 +17580,8 @@ struct NativeFrontendModule::Impl final {
                             static_cast<std::int32_t>(value.width),
                             static_cast<std::int32_t>(value.height)};
         };
-        if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory && point.y>=138) {
+        if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory &&
+            !player_profile_menu.achievements_open() && point.y>=138) {
             if (contains({60,500,170,48},point) && !inventory_menu.reveal) {
                 static_cast<void>(navigation.pop()); play_back(); return;
             }
@@ -17573,13 +17595,22 @@ struct NativeFrontendModule::Impl final {
         }
         if (contains(as_rect(layout.achievements_button), point)) {
             player_profile_menu.activate_achievements();
-            for (const auto& effect : player_profile_menu.take_effects()) {
-                if (effect.kind == PlayerProfileEffectKind::show_achievements_overlay &&
-                    !window.open_external_url("https://www.aosplay.net/account")) {
-                    last_error = "the achievements page could not be opened";
-                }
-            }
+            if (player_profile_menu.achievements_open()) rebuild_profile_achievements();
             play_confirm();
+            return;
+        }
+        if (player_profile_menu.achievements_open() &&
+            !contains(as_rect(layout.tab_strip), point)) {
+            // The list's own controls: the scroll bar's two arrows.
+            const auto bar = as_rect(layout.scrollbar);
+            constexpr std::int32_t arrow{22};
+            const auto step = contains({bar.x, bar.y, bar.width, arrow}, point)     ? -1
+                              : contains({bar.x, bar.y + bar.height - arrow, bar.width, arrow}, point) ? 1
+                                                                                                       : 0;
+            if (step != 0 &&
+                player_profile_menu.scroll_achievements(step, profile_achievement_rows.size())) {
+                play_scroll();
+            }
             return;
         }
         if (player_profile_menu.filter_open()) {
@@ -18175,7 +18206,10 @@ struct NativeFrontendModule::Impl final {
             break;
         case FrontendScreen::player_profile:
             if (markup_inventory_active()) { inventory_view->wheel(steps); break; }
-            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) inventory_menu.move_selection(-steps);
+            if (player_profile_menu.achievements_open()) {
+                static_cast<void>(player_profile_menu.scroll_achievements(
+                    -steps, profile_achievement_rows.size()));
+            } else if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) inventory_menu.move_selection(-steps);
             else static_cast<void>(player_profile_menu.scroll_rows(-steps));
             play_scroll();
             break;
@@ -19355,7 +19389,9 @@ struct NativeFrontendModule::Impl final {
                                                  1'000U,
                                                  profile_cancel_state,
                                                  profile_achievements_state,
-                                                 profile_filter_state});
+                                                 profile_filter_state,
+                                                 profile_achievement_rows});
+            if (player_profile_menu.achievements_open()) return list;
             if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) {
                 if (inventory_view) {
                     ui::DrawList background;

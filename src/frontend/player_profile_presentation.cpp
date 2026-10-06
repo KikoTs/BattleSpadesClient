@@ -41,6 +41,8 @@ constexpr ColorRgba8 scrollbar_track{73U, 63U, 7U, 255U};
 constexpr ColorRgba8 level_behind{86U, 100U, 21U, 255U};
 constexpr ColorRgba8 level_front{137U, 179U, 45U, 255U};
 constexpr ColorRgba8 black{0U, 0U, 0U, 255U};
+constexpr ColorRgba8 locked_name{150U, 145U, 118U, 255U};
+constexpr ColorRgba8 locked_detail{112U, 108U, 90U, 255U};
 
 constexpr double row_height{20.0};
 constexpr double scrollbar_button_size{22.0};
@@ -419,6 +421,73 @@ void append_filter(ui::DrawList& list,
         0U);
 }
 
+/**
+ * Name and unlock date on the first line, the retail description under it.
+ * An unlocked row is gold and dated; a locked one is dimmed. No words say
+ * which, so the list needs no strings the retail tables lack.
+ */
+void append_achievements(ui::DrawList& list,
+                         const PlayerProfileClassicLayout& layout,
+                         std::span<const AchievementListRow> rows,
+                         std::size_t first_visible) {
+    const auto unlocked = static_cast<std::size_t>(
+        std::ranges::count_if(rows, [](const AchievementListRow& row) { return row.unlocked; }));
+    list.push(text("ACHIEVEMENTS",
+                   layout.player_name,
+                   26.0,
+                   cream,
+                   HorizontalTextAlignment::left,
+                   player_profile_presentation_assets::title_font));
+    list.push(text(std::to_string(unlocked) + " / " + std::to_string(rows.size()),
+                   layout.kill_death_ratio,
+                   16.0,
+                   gold,
+                   HorizontalTextAlignment::right,
+                   player_profile_presentation_assets::tab_font));
+
+    // Two-line rows: six fill the list panel.
+    constexpr auto capacity = PlayerProfileMenuModel::achievement_visible_rows;
+    append_scrollbar(list, layout.scrollbar, rows.size(), capacity, first_visible);
+    const auto scrolls = rows.size() > capacity;
+    const auto row_width = scrolls ? 444.0 : layout.list_area.width;
+    const auto height = std::floor(layout.list_area.height / static_cast<double>(capacity));
+    const auto start = std::min(first_visible, scrolls ? rows.size() - capacity : std::size_t{0U});
+    const auto count = std::min(capacity, rows.size() - start);
+    for (std::size_t visible = 0U; visible < count; ++visible) {
+        const auto& value = rows[start + visible];
+        if (value.definition == nullptr) continue;
+        const DrawRect row{layout.list_area.x,
+                           layout.list_area.y + height * static_cast<double>(visible),
+                           row_width,
+                           height};
+        solid(list, row, (start + visible) % 2U == 0U ? row_light : row_dark);
+        constexpr double padding{8.0};
+        constexpr double date_width{84.0};
+        list.push(text(value.definition->display_name,
+                       {row.x + padding, row.y + 2.0, row.width - padding * 3.0 - date_width, 18.0},
+                       14.0,
+                       value.unlocked ? gold : locked_name,
+                       HorizontalTextAlignment::left,
+                       player_profile_presentation_assets::tab_font));
+        if (const auto date = achievement_date(value.unlocked_at); value.unlocked && !date.empty()) {
+            list.push(text(date,
+                           {row.x + row.width - padding - date_width, row.y + 2.0, date_width, 18.0},
+                           11.0,
+                           gold,
+                           HorizontalTextAlignment::right));
+        }
+        auto description = text(std::string{value.definition->token} + "_DESC",
+                                {row.x + padding, row.y + 20.0, row.width - padding * 2.0, height - 22.0},
+                                10.0,
+                                value.unlocked ? cream : locked_detail);
+        description.vertical_alignment = VerticalTextAlignment::top;
+        description.layout = ui::TextLayout::bounded_wrapped_lines;
+        description.maximum_lines = 2U;
+        description.fit = TextFit::none;
+        list.push(std::move(description));
+    }
+}
+
 } // namespace
 
 PlayerProfileClassicLayout player_profile_classic_layout() noexcept {
@@ -449,6 +518,9 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
         throw std::invalid_argument{"invalid player profile presentation context"};
     }
     const auto layout = player_profile_classic_layout();
+    // The achievements list uses the statistics frame whichever tab is behind it.
+    const auto achievements = model.achievements_open();
+    const auto inventory = model.selected_tab() == PlayerProfileTab::inventory && !achievements;
     ui::DrawList list;
     list.reserve(150U);
     list.push(sprite(player_profile_presentation_assets::background,
@@ -459,11 +531,11 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
                      color(white, context.background_opacity_per_mille),
                      SpriteSizing::cover));
     list.push(sprite(player_profile_presentation_assets::outer_frame,
-                     model.selected_tab() == PlayerProfileTab::inventory ? DrawRect{28.0,28.0,744.0,543.0} : layout.outer_frame,
+                     inventory ? DrawRect{28.0,28.0,744.0,543.0} : layout.outer_frame,
                      DrawSpace::design_pixels,
                      TextureAnchor::center));
     list.push(sprite(player_profile_presentation_assets::content_frame,
-                     model.selected_tab() == PlayerProfileTab::inventory ? DrawRect{50.0,137.0,700.0,343.0} : layout.content_frame,
+                     inventory ? DrawRect{50.0,137.0,700.0,343.0} : layout.content_frame,
                      DrawSpace::design_pixels,
                      TextureAnchor::center));
     list.push(text("PLAYER_PROFILE",
@@ -483,7 +555,9 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
         const auto x = tab_start + static_cast<double>(tab) * (tab_end - tab_start) /
                                        static_cast<double>(tabs.size() - 1U);
         const auto image_center = static_cast<double>(static_cast<int>(x + tab_width * 0.5));
-        const auto selected = static_cast<std::size_t>(model.selected_tab()) == tab;
+        // No tab is the current one while the achievements list covers them.
+        const auto selected =
+            !achievements && static_cast<std::size_t>(model.selected_tab()) == tab;
         list.push(sprite(selected ? player_profile_presentation_assets::tab_active
                                   : player_profile_presentation_assets::tab_inactive,
                          {image_center - 48.0, 102.0, 96.0, 33.0},
@@ -497,7 +571,14 @@ PlayerProfilePresentation::build(const PlayerProfileMenuModel& model,
                        player_profile_presentation_assets::tab_font));
     }
 
-    if (model.selected_tab() == PlayerProfileTab::inventory) return list;
+    if (achievements) {
+        append_achievements(list, layout, context.achievements, model.first_visible_achievement());
+        append_button(list, layout.cancel_button, "CANCEL", context.cancel_state);
+        // The same button leads back to the statistics.
+        append_button(list, layout.achievements_button, "PLAYER_STATS", context.achievements_state);
+        return list;
+    }
+    if (inventory) return list;
 
     const auto summary = model.selected_tab() == PlayerProfileTab::player_stats;
     const auto rows = model.displayed_rows();
