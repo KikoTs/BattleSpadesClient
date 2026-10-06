@@ -87,17 +87,31 @@ load_asset_manifest(const std::filesystem::path& manifest_path) noexcept;
     const AssetManifest& manifest,
     AssetVerificationDepth depth = AssetVerificationDepth::metadata) noexcept;
 
+/** Where a directory offered to find_asset_source() came from. */
+enum class AssetSourceOrigin : std::uint8_t {
+    /** A folder the player chose, or one found on their disk. */
+    player_folder,
+    /**
+     * Our own SHA-256 verified download, unpacked in the installer's cache.
+     * On macOS that cache is inside BattleSpadesClient.app, so the path it
+     * sits at says nothing about what the package holds.
+     */
+    verified_package,
+};
+
 /**
  * Resolves a folder selected by the player to the actual retail content root.
  * Selecting either the Windows content directory itself or a parent containing
  * it is supported. Legacy macOS `.app` resources are rejected because that old
- * build does not share the recovered Windows asset contract. Candidates are
- * accepted only when the complete manifest fits.
+ * build does not share the recovered Windows asset contract; the rule is about
+ * what a player picked, so it does not apply to a verified package. Candidates
+ * are accepted only when the complete manifest fits.
  */
 [[nodiscard]] std::optional<std::filesystem::path> find_asset_source(
     const std::filesystem::path& selected_directory,
     const AssetManifest& manifest,
-    std::string& error) noexcept;
+    std::string& error,
+    AssetSourceOrigin origin = AssetSourceOrigin::player_folder) noexcept;
 
 // ---------------------------------------------------------------------------
 // Finding the player's Ace of Spades installation.

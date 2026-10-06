@@ -580,7 +580,21 @@ void test_download_pipeline(const fs::path& root) {
            "the same importer validation rejects an incomplete package: " + rejected.error);
     expect(!fs::exists(request.destination, code), "a rejected package installs nothing");
 
-    // 7. Every mirror down: a clear, retryable error.
+    // 7. macOS: the game, and so the download cache, live inside the .app
+    //    bundle. The package must not be mistaken for the old retail Mac app.
+    FakeServer mac;
+    mac.package = server.package;
+    const auto bundle = root / "BattleSpadesClient.app" / "Contents" / "MacOS";
+    request.release = release_for(server.package);
+    request.destination = bundle / "assets" / "original";
+    request.cache_directory = bundle / "assets" / ".retail-download";
+    const auto in_bundle = assets::download_and_install_retail_assets(request, mac.transport());
+    expect(static_cast<bool>(in_bundle), "the download installs inside a macOS app bundle: " + in_bundle.error);
+    const auto bundle_check =
+        assets::verify_asset_tree(request.destination, manifest, assets::AssetVerificationDepth::full_hash);
+    expect(bundle_check.valid, "the files inside the bundle are complete: " + bundle_check.error);
+
+    // 8. Every mirror down: a clear, retryable error.
     assets::RetailTransport down;
     down.fetch_range = [](const std::string&, std::uint64_t, const auto&, const auto&) {
         assets::TransferResult failure;

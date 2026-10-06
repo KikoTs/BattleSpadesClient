@@ -105,11 +105,13 @@ void append_standard_layouts(std::vector<std::filesystem::path>& candidates,
     candidates.push_back(root / "client" / "src");
 }
 
+[[nodiscard]] bool names_macos_bundle(const std::filesystem::path& component) {
+    return lowercase_ascii(path_text(component.extension())) == ".app";
+}
+
 [[nodiscard]] bool contains_legacy_macos_bundle(
     const std::filesystem::path& path) {
-    return std::ranges::any_of(path, [](const std::filesystem::path& component) {
-        return lowercase_ascii(path_text(component.extension())) == ".app";
-    });
+    return std::ranges::any_of(path, names_macos_bundle);
 }
 
 [[nodiscard]] bool resembles_windows_install_name(std::string_view value) {
@@ -679,9 +681,13 @@ AssetTreeCheck verify_asset_tree(const std::filesystem::path& root,
 std::optional<std::filesystem::path> find_asset_source(
     const std::filesystem::path& selected_directory,
     const AssetManifest& manifest,
-    std::string& error) noexcept {
+    std::string& error,
+    AssetSourceOrigin origin) noexcept {
     try {
-        if (contains_legacy_macos_bundle(selected_directory)) {
+        // Our own download is unpacked inside BattleSpadesClient.app on macOS:
+        // only a folder the player picked can be the old retail Mac bundle.
+        if (origin == AssetSourceOrigin::player_folder &&
+            contains_legacy_macos_bundle(selected_directory)) {
             error = "legacy macOS .app assets are intentionally unsupported; select a "
                     "Windows Ace of Spades Battle Builder installation copied to this Mac";
             return std::nullopt;
@@ -715,7 +721,8 @@ std::optional<std::filesystem::path> find_asset_source(
                 !std::filesystem::is_directory(status)) {
                 continue;
             }
-            if (!contains_legacy_macos_bundle(entry.path()) &&
+            // The selected directory itself was judged above.
+            if (!names_macos_bundle(entry.path().filename()) &&
                 resembles_windows_install_name(path_text(entry.path().filename()))) {
                 append_standard_layouts(candidates, entry.path());
             }

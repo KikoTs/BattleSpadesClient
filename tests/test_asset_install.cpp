@@ -172,6 +172,28 @@ void source_discovery_rejects_a_legacy_macos_bundle() {
            "legacy bundle rejection should direct the player to Windows assets");
 }
 
+void a_verified_package_is_accepted_inside_our_own_bundle() {
+    TemporaryTree tree;
+    const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
+    expect(static_cast<bool>(loaded), "fixture manifest should load");
+    // Where the macOS installer unpacks its own download.
+    const auto package = tree.root() / "BattleSpadesClient.app" / "Contents" / "MacOS" / "assets" /
+                         ".retail-download" / "extracted" / "BattleSpades-retail-assets-1.0.0";
+    write_text(package / "sounds" / "alpha.ogg", "alpha");
+    write_text(package / "game.ico", "beta");
+
+    std::string error;
+    const auto resolved = battlespades::assets::find_asset_source(
+        package, *loaded.manifest, error, battlespades::assets::AssetSourceOrigin::verified_package);
+    expect(resolved.has_value() && *resolved == std::filesystem::weakly_canonical(package),
+           "the downloaded package must pass wherever the installer unpacked it: " + error);
+
+    // The same files picked by hand from inside an .app are still refused.
+    const auto picked = battlespades::assets::find_asset_source(package, *loaded.manifest, error);
+    expect(!picked.has_value() && error.find("legacy macOS") != std::string::npos,
+           "a folder the player picks inside an .app stays rejected");
+}
+
 void install_is_verified_and_atomic() {
     TemporaryTree tree;
     const auto loaded = battlespades::assets::load_asset_manifest(write_manifest(tree.root()));
@@ -254,6 +276,8 @@ int main() {
          source_discovery_accepts_a_copied_windows_install_parent},
         {"source_discovery_rejects_a_legacy_macos_bundle",
          source_discovery_rejects_a_legacy_macos_bundle},
+        {"a_verified_package_is_accepted_inside_our_own_bundle",
+         a_verified_package_is_accepted_inside_our_own_bundle},
         {"install_is_verified_and_atomic", install_is_verified_and_atomic},
         {"native_steam_runtime_import_is_optional_and_x86_only",
          native_steam_runtime_import_is_optional_and_x86_only},

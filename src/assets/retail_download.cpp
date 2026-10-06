@@ -502,7 +502,8 @@ RetailInstallResult download_and_install_retail_assets(const RetailInstallReques
             return {RetailInstallStatus::cancelled, "The import was stopped. Try again to continue."};
         }
         std::string discovery_error;
-        const auto source = find_asset_source(*root, *request.catalog, discovery_error);
+        const auto source =
+            find_asset_source(*root, *request.catalog, discovery_error, AssetSourceOrigin::verified_package);
         if (!source.has_value()) {
             // A package that does not match this client will not get better
             // by downloading it again.
