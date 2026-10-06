@@ -2003,6 +2003,8 @@ struct NativeFrontendModule::Impl final {
     std::optional<std::chrono::steady_clock::time_point> steam_browser_query_started;
     /** The same for Quick Play's search. */
     std::optional<std::chrono::steady_clock::time_point> steam_quick_play_query_started;
+    /** Server identifier -> Steam relay host found by the last Quick Play search. */
+    std::map<std::string, std::uint64_t> quick_play_relay_hosts;
     /** Top-surface brightness of the loaded map, measured by the loader. */
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
@@ -11498,7 +11500,11 @@ struct NativeFrontendModule::Impl final {
         if (!outcome.discovery) {
             static_cast<void>(quick_play_menu.fail_search(outcome.request));
         } else {
+            quick_play_relay_hosts.clear();
             for (const auto& source : outcome.discovery.servers) {
+                if (const auto relay = relay_host_for_this_player(source); relay != 0U) {
+                    quick_play_relay_hosts[source.game.identifier()] = relay;
+                }
                 const auto mode = resolve_server_mode(source.mode_code, source.classic);
                 QuickPlayServerResponse response;
                 response.name = source.name;
@@ -11524,6 +11530,25 @@ struct NativeFrontendModule::Impl final {
         if (pending_quick_play_refresh) {
             begin_quick_play_refresh(*pending_quick_play_refresh);
         }
+    }
+
+    /**
+     * The Steam id to dial for this listing, or zero for none.
+     *
+     * Steam P2P only connects players of the same application. A dedicated
+     * server runs one relay host for Ace of Spades owners and one for players
+     * attached as Spacewar, so pick the one this process can reach. A player's
+     * own hosted match has a single id and is tried as before.
+     */
+    [[nodiscard]] std::uint64_t relay_host_for_this_player(const network::DiscoveredServer& source) const {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        constexpr std::uint32_t spacewar_app_id{480U};
+        if (steam_runtime.app_id() == spacewar_app_id) {
+            if (source.steam_host_id_spacewar != 0U) return source.steam_host_id_spacewar;
+            return source.dedicated_relay_host ? 0U : source.steam_host_id;
+        }
+#endif
+        return source.steam_host_id;
     }
 
 #if defined(AOS_HAS_STEAM_NETWORKING)
@@ -11668,6 +11693,7 @@ struct NativeFrontendModule::Impl final {
             server_browser.refreshing()) {
             for (const auto& discovered : outcome.discovery.servers) {
                 auto entry = browser_entry(discovered, favourite_servers, history_servers);
+                entry.steam_host_id = relay_host_for_this_player(discovered);
                 // The Friends request has already selected the authoritative
                 // friend server IDs. Preserve that evidence through the menu's
                 // own source filter instead of filtering every row back out.
@@ -17273,11 +17299,18 @@ struct NativeFrontendModule::Impl final {
                     network::ServerEndpoint endpoint;
                     std::string error;
                     if (network::parse_server_endpoint(payload.identifier, endpoint, error)) {
-                        begin_match_loading(ServerConnectRequest{payload.identifier,
+                        ServerConnectRequest request{payload.identifier,
                             endpoint.host, endpoint.port, payload.expected_map,
                             payload.expected_mode, payload.expected_skin,
                             payload.expected_classic, payload.identity_server_id,
-                            payload.identity_ticket});
+                            payload.identity_ticket};
+                        // Steam first here too, when the search found the
+                        // server's relay host for this player.
+                        if (const auto relay = quick_play_relay_hosts.find(payload.identifier);
+                            relay != quick_play_relay_hosts.end()) {
+                            request.steam_host_id = relay->second;
+                        }
+                        begin_match_loading(std::move(request));
                     }
                 } else if constexpr (std::is_same_v<Payload, QuickPlayPlaylistStartIntent>) {
                     if (const auto search = quick_play_menu.begin_search()) {

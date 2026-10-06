@@ -162,8 +162,9 @@ void steam_rows_parse_like_master_rows_and_merge() {
         // the map prefix, playlist=8 and the category mode=0001 on everyone.
         {"15.235.106.95", 32887U, 32887U, "Revival Official | NA CCTF", "CCTF_Crossroads",
          "v168;playlist=8;region=america;mode=0001;classic", 10U, 24U, 4U, false, 90000000000001ULL, 40},
-        {"5.6.7.8", 32887U, 0U, "Relay host", "ZOM_Atlantis", "v168;playlist=8;mode=0001;sdr", 2U, 16U, 0U,
-         true, 90000000000002ULL, 0},
+        {"5.6.7.8", 32887U, 0U, "Relay host", "ZOM_Atlantis",
+         "v168;playlist=8;mode=0001;sdr=85568392936826697;sdr480=90294212260083732", 2U, 16U, 0U, true,
+         90000000000002ULL, 0},
     };
     const auto parsed = battlespades::network::parse_steam_server_list(steam);
     expect(parsed && parsed.servers.size() == 2U, "both Steam rows must parse");
@@ -173,8 +174,12 @@ void steam_rows_parse_like_master_rows_and_merge() {
                official.steam_host_id == 0U,
            "Steam rows decode mode from the map prefix, region aliases and humans");
     const auto& relay = parsed.servers[1];
-    expect(relay.mode_code == "zom" && relay.steam_host_id == 90000000000002ULL && relay.password_protected,
-           "an sdr-tagged row carries its Steam id as the P2P host");
+    expect(relay.mode_code == "zom" && relay.steam_host_id == 85568392936826697ULL &&
+               relay.steam_host_id_spacewar == 90294212260083732ULL && relay.dedicated_relay_host &&
+               relay.steam_server_id == 90000000000002ULL && relay.password_protected,
+           "sdr= and sdr480= tags carry the relay host ids for each Steam application");
+    expect(!official.dedicated_relay_host && official.steam_host_id_spacewar == 0U,
+           "a server without relay hosts advertises none");
 
     // AoSPlay lists the same server at its game port.
     battlespades::network::DiscoveryResult aosplay;
@@ -196,6 +201,16 @@ void steam_rows_parse_like_master_rows_and_merge() {
     const auto by_id = battlespades::network::merge_discovered_servers(registered, parsed);
     expect(by_id.servers.size() == 2U && by_id.servers[0].steam_listed,
            "the registered SteamID ties a Steam row to its AoSPlay row");
+    // The AoSPlay list carries the same ids as fields.
+    const auto listed = battlespades::network::parse_public_server_list(
+        R"json([{"ip":"9.9.9.9","port":27015,"name":"Listed","mode_tla":"tdm","tags":[],
+                 "steam_host_id":"85568392936826697","steam_host_id_480":"90294212260083732"}])json");
+    expect(listed && listed.servers.size() == 1U &&
+               listed.servers[0].steam_host_id == 85568392936826697ULL &&
+               listed.servers[0].steam_host_id_spacewar == 90294212260083732ULL &&
+               listed.servers[0].dedicated_relay_host,
+           "relay host ids arrive from the AoSPlay list as fields");
+
     battlespades::network::DiscoveryResult failed;
     failed.error = "public server list request failed";
     expect(battlespades::network::merge_discovered_servers(failed, parsed).error.empty(),

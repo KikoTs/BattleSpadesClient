@@ -219,6 +219,36 @@ template <typename Integer>
             result.steam_host_id = 0U;
         }
     }
+    // A dedicated server's Steam relay hosts: fields in the AoSPlay list,
+    // `sdr=` / `sdr480=` tags in Steam's own listing.
+    const auto steam_number = [](std::string_view text) -> std::uint64_t {
+        std::uint64_t number{};
+        if (text.empty() || text.size() > 20U) return 0U;
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), number);
+        return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() ? number : 0U;
+    };
+    if (const auto spacewar = steam_number(bounded_string(value, "steam_host_id_480")); spacewar != 0U) {
+        result.steam_host_id_spacewar = spacewar;
+        result.dedicated_relay_host = true;
+    }
+    if (const auto tags = value.find("tags"); tags != value.end() && tags->is_array()) {
+        for (const auto& candidate : *tags) {
+            if (!candidate.is_string()) continue;
+            const auto tag = lowercase(candidate.get<std::string>());
+            const std::string_view view{tag};
+            if (view.starts_with(steam_relay_spacewar_tag)) {
+                if (const auto id = steam_number(view.substr(steam_relay_spacewar_tag.size())); id != 0U) {
+                    result.steam_host_id_spacewar = id;
+                    result.dedicated_relay_host = true;
+                }
+            } else if (view.starts_with(steam_relay_tag)) {
+                if (const auto id = steam_number(view.substr(steam_relay_tag.size())); id != 0U) {
+                    result.steam_host_id = id;
+                    result.dedicated_relay_host = true;
+                }
+            }
+        }
+    }
     // Registered by the server's Steam sidecar (heartbeat steam_server_id),
     // or the id Steam's own list carries; either lets the two lists agree.
     if (const auto steam = bounded_string(value, "steam_server_id"); !steam.empty()) {
@@ -643,16 +673,13 @@ DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
         entry["human_players"] = row.players > row.bots ? row.players - row.bots : 0;
         entry["password"] = row.password;
         nlohmann::json tags = nlohmann::json::array();
-        bool relay{};
         std::stringstream split{row.tags};
         for (std::string tag; std::getline(split, tag, ';');) {
             if (tag.empty()) continue;
             if (tag.starts_with("region=")) entry["region"] = steam_region(tag.substr(7U));
-            if (tag == steam_relay_tag) relay = true;
             tags.push_back(tag);
         }
         entry["tags"] = std::move(tags);
-        if (relay && row.steam_id != 0U) entry["steam_host_id"] = std::to_string(row.steam_id);
         if (row.steam_id != 0U) entry["steam_server_id"] = std::to_string(row.steam_id);
         list.push_back(std::move(entry));
     }
@@ -695,6 +722,10 @@ DiscoveryResult merge_discovered_servers(DiscoveryResult primary, const Discover
         }
         if (existing != primary.servers.end()) {
             if (existing->steam_host_id == 0U) existing->steam_host_id = extra.steam_host_id;
+            if (existing->steam_host_id_spacewar == 0U) {
+                existing->steam_host_id_spacewar = extra.steam_host_id_spacewar;
+            }
+            existing->dedicated_relay_host = existing->dedicated_relay_host || extra.dedicated_relay_host;
             existing->steam_listed = existing->steam_listed || extra.steam_listed;
             continue;
         }

@@ -63,6 +63,14 @@ struct DiscoveredServer final {
     bool steam_listed{};
     /** The SteamID this server is registered under in Valve's server list. */
     std::uint64_t steam_server_id{};
+    /**
+     * A dedicated server's Steam relay host for players attached as Spacewar
+     * (480). `steam_host_id` is the one for Ace of Spades owners (224540);
+     * Steam P2P only connects players of the same application.
+     */
+    std::uint64_t steam_host_id_spacewar{};
+    /** The relay host ids come from a dedicated server, not a player's own match. */
+    bool dedicated_relay_host{};
 };
 
 struct DiscoveryResult final {
@@ -91,8 +99,13 @@ struct SteamListedServer final {
     int ping{};
 };
 
-/** Tag a server adds to its Steam listing when it accepts Steam P2P (SDR) joins. */
-inline constexpr std::string_view steam_relay_tag{"sdr"};
+/**
+ * Tags a dedicated server adds to its Steam listing (and A2S keywords) while
+ * its Steam relay hosts are logged on: `sdr=<SteamID>` for Ace of Spades
+ * owners and `sdr480=<SteamID>` for players attached as Spacewar.
+ */
+inline constexpr std::string_view steam_relay_tag{"sdr="};
+inline constexpr std::string_view steam_relay_spacewar_tag{"sdr480="};
 
 struct PublicDiscoveryConfig final {
     std::string url{"https://www.aosplay.net/serverlist/"};
@@ -139,8 +152,7 @@ struct LanDiscoveryConfig final {
 /**
  * Steam server list rows in the browser's listing form: the same tag rules as
  * the AoSPlay master (mode, region, classic, password), so a server shows
- * identically whichever list found it. A row tagged `sdr` carries its Steam
- * id as the P2P host.
+ * identically whichever list found it, including its `sdr=` relay host ids.
  */
 [[nodiscard]] DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
                                                       std::size_t maximum_servers = 512U);
