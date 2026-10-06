@@ -206,6 +206,10 @@ Bug reports, fixes and parity research are welcome. Read
 security problems privately as described in [SECURITY.md](SECURITY.md). Chat
 with the community on [Discord](https://discord.gg/aosbb).
 
+Thanks to the people who have contributed fixes:
+[@lucasoskorep](https://github.com/lucasoskorep) (Linux XWayland and native
+Wayland start-up, Classic CTF in the server browser, GCC 16 build warnings).
+
 ## License
 
 Copyright (c) 2026 Kiril Tsanov and contributors.
