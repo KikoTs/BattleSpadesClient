@@ -147,6 +147,20 @@ def main():
             assert ranges and ranges[0] is None and any(value for value in ranges[1:]), ranges
             assert not (destination.parent / ".retail-download").exists(), "cache removed after success"
 
+            # 1b. macOS keeps the game, and so this download, inside
+            #     BattleSpadesClient.app. The package must pass the asset check
+            #     there too; it is not the old retail Mac bundle.
+            bundled = work / "BattleSpadesClient.app" / "Contents" / "MacOS" / "assets" / "original"
+            report_bundle = work / "report-bundle.txt"
+            result = run(installer, "--download", "--manifest-url", f"{base}/stable.json",
+                         "--manifest", str(catalog_file), "--destination", str(bundled),
+                         "--report", str(report_bundle))
+            assert result.returncode == 0, (result.returncode, result.stdout, result.stderr,
+                                            report_bundle.read_text(encoding="utf-8")
+                                            if report_bundle.exists() else "")
+            for name, data in FILES.items():
+                assert (bundled / name).read_bytes() == data, name
+
             # 2. No retail_assets: a clear message, no phantom button.
             report2 = work / "report2.txt"
             result = run(installer, "--download", "--manifest-url", f"{base}/empty.json",
