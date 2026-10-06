@@ -175,6 +175,8 @@ add_library(
         frontend/class_selection_presentation.cpp
         frontend/change_team_menu.cpp
         frontend/kick_vote_menu.cpp
+        frontend/achievements.cpp
+        frontend/achievements.generated.cpp
         frontend/death_camera.cpp
         frontend/favorite_server_store.cpp
         frontend/frontend_controller.cpp

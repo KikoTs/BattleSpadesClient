@@ -23,6 +23,7 @@
 #include "battlespades/frontend/create_match_presentation.hpp"
 #include "battlespades/frontend/custom_match_menu.hpp"
 #include "battlespades/frontend/custom_match_presentation.hpp"
+#include "battlespades/frontend/achievements.hpp"
 #include "battlespades/frontend/death_camera.hpp"
 #include "battlespades/frontend/class_loadout_store.hpp"
 #include "battlespades/frontend/favorite_server_store.hpp"
@@ -2005,6 +2006,8 @@ struct NativeFrontendModule::Impl final {
     std::optional<std::chrono::steady_clock::time_point> steam_quick_play_query_started;
     /** Server identifier -> Steam relay host found by the last Quick Play search. */
     std::map<std::string, std::uint64_t> quick_play_relay_hosts;
+    /** This player's unlocked achievements; opened on the first unlock. */
+    std::optional<AchievementLedger> achievement_ledger;
     /** Top-surface brightness of the loaded map, measured by the loader. */
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
@@ -11533,6 +11536,45 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
+     * ACHIEVEMENT_GAINED: "{0} has unlocked the "{1}" achievement".
+     *
+     * The server owns the rules (Steam only lets game servers set these, and
+     * the retail server did). The client plays retail's two unlock sounds and
+     * keeps its own record of what this player has earned, so an unlock from
+     * an offline Create Match is remembered too.
+     */
+    void note_achievement_announcement(std::string_view player, std::string_view display_name) {
+        std::string_view local_name = active_join_wire_name.empty() ? std::string_view{config.player_name}
+                                                                     : std::string_view{active_join_wire_name};
+        if (local_player_id.has_value()) {
+            if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr) {
+                local_name = local->name;
+            }
+        }
+        const bool mine = !player.empty() && player == local_name;
+        if (mine) {
+            if (const auto* definition = find_achievement_by_display_name(display_name);
+                definition != nullptr) {
+                if (!achievement_ledger.has_value()) {
+                    achievement_ledger.emplace(config.settings_path.parent_path() / "achievements.json");
+                }
+                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+                if (achievement_ledger->unlock(definition->api_name, now)) {
+                    static_cast<void>(achievement_ledger->save());
+                    core::diagnostic("achievement", "unlocked " + std::string{definition->api_name} +
+                                                        " (" + std::string{definition->display_name} + ")");
+                }
+            }
+        }
+        if (audio_started) {
+            static_cast<void>(audio->play_named_one_shot(
+                mine ? "achievement_unlock" : "achievement_unlock_notyou", {}, 1.0F, true));
+        }
+    }
+
+    /**
      * The Steam id to dial for this listing, or zero for none.
      *
      * Steam P2P only connects players of the same application. A dedicated
@@ -15320,6 +15362,13 @@ struct NativeFrontendModule::Impl final {
                         finish_ugc_save(localized_message->string_id ==
                                         "UGC_MAP_SAVE_SUCCESSFULLY");
                         if (!quick) continue;
+                    }
+                    // The server announces every achievement unlock this way
+                    // (retail string, so retail clients show it too).
+                    if (localized_message->string_id == "ACHIEVEMENT_GAINED" &&
+                        localized_message->parameters.size() >= 2U) {
+                        note_achievement_announcement(localized_message->parameters[0U],
+                                                      localized_message->parameters[1U]);
                     }
                     // KickVotePlayerSelect.packet_received: a KICK_DENIED_*
                     // answer schedules close_menu() after 0.5 s.

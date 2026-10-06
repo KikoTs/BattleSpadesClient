@@ -86,6 +86,12 @@ target_link_libraries(aos_death_camera_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_death_camera_tests)
 add_test(NAME aos_death_camera_tests COMMAND aos_death_camera_tests)
 
+# The retail achievement table and this player's unlock ledger.
+add_executable(aos_achievements_tests test_achievements.cpp)
+target_link_libraries(aos_achievements_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_achievements_tests)
+add_test(NAME aos_achievements_tests COMMAND aos_achievements_tests)
+
 # Render-rate interpolation between fixed ticks and even frame pacing. The
 # interpolation is header-only, so the frontend library is not linked.
 add_executable(aos_world_draw_interpolation_tests test_world_draw_interpolation.cpp)
