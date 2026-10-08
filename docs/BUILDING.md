@@ -9,6 +9,10 @@ runners.
 For local builds see the README ("Building from source") and
 [RUNBOOK.md](RUNBOOK.md).
 
+Experimental native Haiku x86_64 builds have a separate
+[Haiku workflow and build guide](HAIKU.md). They run inside a real Haiku VM
+on an Ubuntu worker and can also be built directly on a Haiku machine.
+
 ## Running it
 
 Actions tab -> **Build client** -> **Run workflow**, or from a terminal:

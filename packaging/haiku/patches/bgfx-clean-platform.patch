@@ -1,0 +1,122 @@
+diff --git a/bgfx/src/renderer_gl.cpp b/bgfx/src/renderer_gl.cpp
+index 398300b..523b1ce 100644
+--- a/bgfx/src/renderer_gl.cpp
++++ b/bgfx/src/renderer_gl.cpp
+@@ -8497,51 +8497,6 @@ namespace bgfx { namespace gl
+ 									numPrimsRendered  = numPrimsSubmitted*draw.m_numInstances;
+ 
+ 
+-#if BX_PLATFORM_HAIKU
+-                                                                   {
+-                                                                           GLint haikuProgram = 0;
+-                                                                           glGetIntegerv(
+-                                                                                 GL_CURRENT_PROGRAM
+-                                                                               , &haikuProgram
+-                                                                               );
+-
+-                                                                           if (0 != haikuProgram)
+-                                                                           {
+-                                                                                   const GLint retailAo =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_retailAo");
+-
+-                                                                                   const GLint shadowMap =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_shadowMap");
+-
+-                                                                                   const GLint skylight =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_skylight");
+-
+-                                                                                   const GLint emissiveVolume =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_emissiveVolume");
+-
+-                                                                                   if (retailAo >= 0)
+-                                                                                       glUniform1i(retailAo, 0);
+-
+-                                                                                   if (shadowMap >= 0)
+-                                                                                       glUniform1i(shadowMap, 1);
+-
+-                                                                                   if (skylight >= 0)
+-                                                                                       glUniform1i(skylight, 2);
+-
+-                                                                                   if (emissiveVolume >= 0)
+-                                                                                       glUniform1i(emissiveVolume, 3);
+-                                                                           }
+-                                                                   }
+-#endif // BX_PLATFORM_HAIKU
+-
+ 									GL_CHECK(glDrawElementsInstanced(prim.m_type
+ 										, numIndices
+ 										, indexFormat
+@@ -8557,51 +8512,6 @@ namespace bgfx { namespace gl
+ 									numPrimsRendered  = numPrimsSubmitted*draw.m_numInstances;
+ 
+ 
+-#if BX_PLATFORM_HAIKU
+-                                                                   {
+-                                                                           GLint haikuProgram = 0;
+-                                                                           glGetIntegerv(
+-                                                                                 GL_CURRENT_PROGRAM
+-                                                                               , &haikuProgram
+-                                                                               );
+-
+-                                                                           if (0 != haikuProgram)
+-                                                                           {
+-                                                                                   const GLint retailAo =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_retailAo");
+-
+-                                                                                   const GLint shadowMap =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_shadowMap");
+-
+-                                                                                   const GLint skylight =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_skylight");
+-
+-                                                                                   const GLint emissiveVolume =
+-                                                                                       glGetUniformLocation(
+-                                                                                           GLuint(haikuProgram),
+-                                                                                           "s_emissiveVolume");
+-
+-                                                                                   if (retailAo >= 0)
+-                                                                                       glUniform1i(retailAo, 0);
+-
+-                                                                                   if (shadowMap >= 0)
+-                                                                                       glUniform1i(shadowMap, 1);
+-
+-                                                                                   if (skylight >= 0)
+-                                                                                       glUniform1i(skylight, 2);
+-
+-                                                                                   if (emissiveVolume >= 0)
+-                                                                                       glUniform1i(emissiveVolume, 3);
+-                                                                           }
+-                                                                   }
+-#endif // BX_PLATFORM_HAIKU
+-
+ 									GL_CHECK(glDrawElementsInstanced(prim.m_type
+ 										, numIndices
+ 										, indexFormat
+diff --git a/cmake/bx/bx.cmake b/cmake/bx/bx.cmake
+index d1a73c6..ce6383f 100644
+--- a/cmake/bx/bx.cmake
++++ b/cmake/bx/bx.cmake
+@@ -109,6 +109,9 @@ elseif(APPLE)
+ 	find_library(FOUNDATION_LIBRARY Foundation)
+ 	mark_as_advanced(FOUNDATION_LIBRARY)
+ 	target_link_libraries(bx PUBLIC ${FOUNDATION_LIBRARY})
++elseif(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
++	# Haiku provides threading, dlopen and clocks in libroot.
++	target_link_libraries(bx root)
+ elseif(UNIX)
+ 	# Threads
+ 	find_package(Threads)

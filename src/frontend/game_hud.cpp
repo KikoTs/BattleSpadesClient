@@ -271,7 +271,9 @@ std::string_view score_reason_label_impl(std::uint8_t reason) noexcept {
 }
 
 [[nodiscard]] std::string format_score_delta(std::int32_t delta) {
-    return (delta > 0 ? "+" : "") + std::to_string(delta);
+    auto text = std::to_string(delta);
+    if (delta > 0) text.insert(text.begin(), '+');
+    return text;
 }
 
 // Recovered HelpPanel layout in live window pixels: max width 30% of the

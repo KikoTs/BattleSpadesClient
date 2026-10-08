@@ -151,7 +151,9 @@ bool CustomMatchMenuModel::complete_refresh(std::vector<CustomMatchLobbyRecord> 
         return true;
     }
 
-    const auto preferred = selected_lobby_id_;
+    // Explicit construction avoids GCC 13's optional-copy uninitialized warning.
+    std::optional<std::string> preferred;
+    if (selected_lobby_id_.has_value()) preferred.emplace(*selected_lobby_id_);
     std::vector<CustomMatchLobbyRecord> accepted;
     accepted.reserve(std::min(maximum_lobbies, lobbies.size()));
     std::unordered_set<std::string> identifiers;

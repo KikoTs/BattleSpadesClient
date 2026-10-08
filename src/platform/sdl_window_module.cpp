@@ -319,6 +319,7 @@ struct SdlWindowModule::Impl final {
 
     SdlWindowConfig config;
     SDL_Window* window{};
+    SDL_GLContext graphics_context{};
     SDL_Cursor* image_cursor{};
     SDL_WindowID window_id{};
     WindowExtent logical_extent{};
@@ -406,6 +407,11 @@ bool SdlWindowModule::start() {
     impl_->video_initialized = true;
 
     SDL_WindowFlags flags{};
+#if defined(__HAIKU__)
+    // Keep the dummy event-test driver usable without an OpenGL device.
+    const bool haiku_gl = std::string_view{SDL_GetCurrentVideoDriver()} == "haiku";
+    if (haiku_gl) flags |= SDL_WINDOW_OPENGL;
+#endif
     if (impl_->config.resizable) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
@@ -426,6 +432,24 @@ bool SdlWindowModule::start() {
         return false;
     }
 
+#if defined(__HAIKU__)
+    if (haiku_gl) {
+        impl_->graphics_context = SDL_GL_CreateContext(impl_->window);
+        if (impl_->graphics_context == nullptr) {
+            impl_->last_error = sdl_error_or("SDL OpenGL context creation failed");
+            stop();
+            return false;
+        }
+        // CreateContext makes BGLView current and locks it. Hand the lock to
+        // bgfx; retaining SDL's lock prevents its wrapper from releasing GL.
+        if (!SDL_GL_MakeCurrent(impl_->window, nullptr)) {
+            impl_->last_error = sdl_error_or("SDL OpenGL context handoff failed");
+            stop();
+            return false;
+        }
+    }
+#endif
+
     if (!SDL_SetWindowMinimumSize(impl_->window,
                                   static_cast<int>(impl_->config.minimum_extent.width),
                                   static_cast<int>(impl_->config.minimum_extent.height))) {
@@ -443,6 +467,14 @@ bool SdlWindowModule::start() {
     }
 
     impl_->native_handle = extract_native_handle(impl_->window);
+#if defined(__HAIKU__)
+    if (impl_->graphics_context != nullptr) {
+        impl_->native_handle = {
+            .system = NativeWindowSystem::haiku,
+            .graphics_context = impl_->graphics_context,
+        };
+    }
+#endif
     if (impl_->config.require_native_handle && !impl_->native_handle.valid()) {
         impl_->last_error = "SDL did not expose a renderer-compatible native window handle";
         stop();
@@ -709,6 +741,11 @@ void SdlWindowModule::stop() noexcept {
     impl_->window_id = 0U;
     impl_->close_requested = false;
 
+    if (impl_->graphics_context != nullptr) {
+        static_cast<void>(SDL_GL_MakeCurrent(impl_->window, nullptr));
+        static_cast<void>(SDL_GL_DestroyContext(impl_->graphics_context));
+        impl_->graphics_context = nullptr;
+    }
     if (impl_->window != nullptr) {
         SDL_DestroyWindow(impl_->window);
         impl_->window = nullptr;

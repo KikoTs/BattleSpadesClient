@@ -164,7 +164,7 @@ target_link_libraries(aos_player_movement_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_player_movement_tests)
 add_test(NAME aos_player_movement_tests COMMAND aos_player_movement_tests)
 
-find_package(nlohmann_json CONFIG REQUIRED)
+# JSON is resolved at the root, including Haiku's header-only package.
 add_executable(aos_retail_movement_core_tests test_retail_movement_core.cpp)
 target_link_libraries(aos_retail_movement_core_tests PRIVATE
     BattleSpades::World nlohmann_json::nlohmann_json)
@@ -811,6 +811,16 @@ aos_enable_strict_warnings(aos_ugc_editor_menu_tests)
 add_test(NAME aos_ugc_editor_menu_tests COMMAND aos_ugc_editor_menu_tests)
 
 if(AOS_ENABLE_NATIVE_BACKENDS)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        add_executable(aos_haiku_graphics_tests test_haiku_graphics.cpp)
+        target_link_libraries(aos_haiku_graphics_tests PRIVATE
+            BattleSpades::PlatformSdl BattleSpades::RenderBgfx)
+        target_compile_definitions(aos_haiku_graphics_tests PRIVATE
+            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        aos_enable_strict_warnings(aos_haiku_graphics_tests)
+        add_test(NAME aos_haiku_graphics_tests COMMAND aos_haiku_graphics_tests)
+        set_tests_properties(aos_haiku_graphics_tests PROPERTIES TIMEOUT 60 RESOURCE_LOCK gpu)
+    endif()
     # Imported package targets are directory-scoped unless promoted globally;
     # the platform adapter intentionally keeps SDL private, while this black-
     # box event test needs SDL_PushEvent for deterministic input injection.
@@ -877,7 +887,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_text_tests
         test_text_rasterizer.cpp
     )
-    find_package(nlohmann_json CONFIG REQUIRED)
     target_link_libraries(
         aos_text_tests
         PRIVATE
@@ -905,7 +914,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_protocol168_session_tests)
     add_test(NAME aos_protocol168_session_tests COMMAND aos_protocol168_session_tests)
 
-    find_package(unofficial-enet CONFIG REQUIRED)
+    if(NOT TARGET unofficial::enet::enet)
+        find_package(unofficial-enet CONFIG REQUIRED)
+    endif()
     add_executable(aos_connection_recovery_tests test_connection_recovery.cpp)
     target_link_libraries(aos_connection_recovery_tests
         PRIVATE BattleSpades::NetworkEnet unofficial::enet::enet)
@@ -989,7 +1000,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             PRIVATE AOS_FAKE_STEAM_BRIDGE="$<TARGET_FILE:aos_fake_steam_bridge>")
     endif()
 
-    find_package(unofficial-sodium CONFIG REQUIRED)
+    if(NOT TARGET unofficial-sodium::sodium)
+        find_package(unofficial-sodium CONFIG REQUIRED)
+    endif()
     add_executable(aos_relay_host_tunnel_tests test_relay_host_tunnel.cpp)
     target_link_libraries(aos_relay_host_tunnel_tests PRIVATE
         BattleSpades::LocalHost unofficial-sodium::sodium)
@@ -1018,6 +1031,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     aos_enable_strict_warnings(aos_world_vertex_layout_tests)
     add_test(NAME aos_world_vertex_layout_tests COMMAND aos_world_vertex_layout_tests)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        target_link_libraries(aos_world_vertex_layout_tests PRIVATE BattleSpades::PlatformSdl)
+        set_tests_properties(aos_world_vertex_layout_tests PROPERTIES TIMEOUT 60 RESOURCE_LOCK gpu)
+    endif()
 
     # Pins the skydome scroll direction against retail's V-flipping .aos
     # loader, using the real bimg decoder and the shipped dome textures.

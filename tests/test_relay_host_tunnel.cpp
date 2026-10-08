@@ -1,4 +1,5 @@
 #include "battlespades/platform/relay_host_tunnel.hpp"
+#include "battlespades/platform/socket_select.hpp"
 
 #include <sodium.h>
 
@@ -173,7 +174,7 @@ struct LoopbackSocket final {
 bool readable(Socket socket, std::chrono::milliseconds duration) {
     fd_set sockets;
     FD_ZERO(&sockets);
-    FD_SET(socket, &sockets);
+    battlespades::platform::select_add_socket(socket, sockets);
     const auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
     // The field types differ by platform (long on Windows and Linux, int microseconds on macOS).
     timeval timeout{};

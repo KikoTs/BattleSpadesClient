@@ -786,8 +786,8 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     if (impl_->initialized) {
         return impl_->fail("bgfx UI renderer is already initialized");
     }
-    if (config.native_window.window == nullptr) {
-        return impl_->fail("a native window handle is required for UI rendering");
+    if (config.native_window.window == nullptr && config.native_window.graphics_context == nullptr) {
+        return impl_->fail("a native window or graphics context is required for UI rendering");
     }
     if (!config.drawable_extent.is_valid() || !config.design_extent.is_valid()) {
         return impl_->fail("drawable and design extents must be non-zero");
@@ -811,6 +811,12 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
 
     bgfx::Init init{};
     init.type = backend_type(config.backend);
+#if defined(__HAIKU__)
+    if (config.backend != GraphicsBackend::automatic && config.backend != GraphicsBackend::opengl) {
+        return impl_->fail("Haiku requires the OpenGL backend");
+    }
+    init.type = bgfx::RendererType::OpenGL;
+#endif
     init.vendorId = BGFX_PCI_ID_NONE;
     init.debug = config.debug_device;
     init.profile = false;
@@ -840,6 +846,10 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     // semaphore deadlock before the first frame. Calling renderFrame before
     // init is bgfx's documented opt-in to single-threaded rendering, keeping
     // Metal swap-chain creation and all later submissions on the AppKit thread.
+    static_cast<void>(bgfx::renderFrame());
+#endif
+#if defined(__HAIKU__)
+    // BGLView and its borrowed SDL context stay on the window owner thread.
     static_cast<void>(bgfx::renderFrame());
 #endif
     if (!bgfx::init(init)) {

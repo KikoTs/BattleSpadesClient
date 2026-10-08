@@ -187,6 +187,27 @@
       "cacheVariables": {
         "AOS_BUILD_PROFILE": "release"
       }
+    },
+    {
+      "name": "native-haiku-release",
+      "displayName": "Native Haiku x86_64",
+      "description": "Haiku system packages and pinned bgfx BGLView backend",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "condition": {
+        "lhs": "${hostSystemName}",
+        "rhs": "Haiku",
+        "type": "equals"
+      },
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "${sourceDir}/out/haiku-deps",
+        "AOS_ENABLE_STEAM_NETWORKING": "OFF",
+        "AOS_ENABLE_NATIVE_BACKENDS": "ON",
+        "AOS_BUILD_PROFILE": "release",
+        "AOS_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_BUILD_TYPE": "Release",
+        "AOS_BUILD_TESTS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -249,6 +270,10 @@
       "name": "native-macos-release",
       "configurePreset": "native-macos-release",
       "configuration": "Release"
+    },
+    {
+      "name": "native-haiku-release",
+      "configurePreset": "native-haiku-release"
     }
   ],
   "testPresets": [
@@ -346,6 +371,18 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "native-haiku-release",
+      "configurePreset": "native-haiku-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^aos_(core|resource_paths|protocol168_session|protocol168_players|connection_recovery|server_password|server_discovery|relay_host_tunnel|local_server_process|asset_install|haiku_graphics|world_vertex_layout|utf8|player_movement|localization_catalog|localization_runtime)_tests$"
+        }
       }
     }
   ]

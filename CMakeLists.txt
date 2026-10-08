@@ -158,6 +158,11 @@ endif()
 option(AOS_BUILD_TESTS "Build the native core test suite" ON)
 option(AOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(AOS_ENABLE_STEAM_NETWORKING "Build peer-to-peer transport over Valve's relay network" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+    # Valve supplies no Haiku Steam runtime. Direct ENet play remains available.
+    set(AOS_ENABLE_STEAM_NETWORKING OFF CACHE BOOL
+        "Build peer-to-peer transport over Valve's relay network" FORCE)
+endif()
 option(
     AOS_ENABLE_NATIVE_BACKENDS
     "Build the SDL3/bgfx/OpenAL graphical client backends"
@@ -215,6 +220,7 @@ target_compile_definitions(
         $<$<CONFIG:RelWithDebInfo>:AOS_ENABLE_ASSERTIONS=1>
 )
 
+include(AosDependencies)
 add_subdirectory(src)
 
 if(AOS_BUNDLED_SERVER_ROOT)
@@ -276,6 +282,7 @@ endif()
 install(
     TARGETS BattleSpadesClient
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    COMPONENT Runtime
 )
 
 if(AOS_ENABLE_NATIVE_BACKENDS)

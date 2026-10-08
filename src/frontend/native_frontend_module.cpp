@@ -2,8 +2,8 @@
 #include "battlespades/network/cosmetic_appearance.hpp"
 
 #include "battlespades/core/diagnostics.hpp"
-#if defined(AOS_HAS_STEAM_NETWORKING)
 #include "battlespades/platform/steam_networking.hpp"
+#if defined(AOS_HAS_STEAM_NETWORKING)
 #include "battlespades/platform/steam_workshop.hpp"
 #endif
 #include "battlespades/audio/openal_frontend_audio.hpp"
@@ -11551,9 +11551,11 @@ struct NativeFrontendModule::Impl final {
      */
     void rebuild_profile_achievements() {
         std::vector<UnlockedAchievement> retail;
+#if defined(AOS_HAS_STEAM_NETWORKING)
         for (auto& [name, when] : steam_runtime.unlocked_achievements()) {
             retail.push_back({std::move(name), when});
         }
+#endif
         profile_achievement_rows = achievement_list(open_achievement_ledger().entries(), retail);
     }
 
@@ -11813,8 +11815,13 @@ struct NativeFrontendModule::Impl final {
 
     /** Does this request dial the Steam tunnel this client opened? */
     [[nodiscard]] bool request_uses_steam_tunnel(const ServerConnectRequest& request) const {
+#if defined(AOS_HAS_STEAM_NETWORKING)
         return steam_client.running() && request.host == "127.0.0.1" &&
                request.port == steam_client.local_port();
+#else
+        static_cast<void>(request);
+        return false;
+#endif
     }
 
     void retire_match_connection(bool keep_steam_tunnel = false) {
@@ -12121,7 +12128,11 @@ struct NativeFrontendModule::Impl final {
 
     void schedule_map_transition_retry(std::string error) {
         // A map change on a Steam-hosted match reconnects through the same tunnel.
+#if defined(AOS_HAS_STEAM_NETWORKING)
         retire_match_connection(steam_client.running());
+#else
+        retire_match_connection();
+#endif
         const auto now = std::chrono::steady_clock::now();
         if (map_transition_attempts >= map_transition_retry_delays.size() ||
             now >= map_transition_deadline) {
@@ -13134,7 +13145,11 @@ struct NativeFrontendModule::Impl final {
         // Portable diagnostics for reports whose UI only says connection failed.
         // Never include account names, access tokens, join codes or Steam tickets.
         try {
+#if defined(__HAIKU__)
+            const auto path = config.settings_path.parent_path() / "connection-diagnostics.log";
+#else
             const auto path = config.executable_directory / "connection-diagnostics.log";
+#endif
             std::error_code error;
             const auto size = std::filesystem::file_size(path, error);
             std::ofstream output{path, !error && size >= 256U * 1024U ? std::ios::trunc : std::ios::app};
@@ -28695,7 +28710,7 @@ bool NativeFrontendModule::start() {
             render::NativeWindow{
                 native.display,
                 native.window,
-                nullptr,
+                native.graphics_context,
                 nullptr,
                 nullptr,
                 native.system == platform::NativeWindowSystem::wayland,

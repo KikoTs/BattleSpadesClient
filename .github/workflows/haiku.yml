@@ -1,0 +1,61 @@
+name: Haiku native build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/haiku.yml'
+      - 'packaging/haiku/**'
+      - 'scripts/*haiku*'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: haiku-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test inside Haiku x86_64
+        uses: vmactions/haiku-vm@4d49d1f4d8c265fe5b27c41aa98b7153255d9d4c # v1.1.6
+        with:
+          release: r1beta6
+          mem: 6144
+          cpu: 2
+          sync-time: true
+          run: |
+            set -eu
+            workspace="$PWD"
+            mkdir -p /boot/home/battlespades-ci
+            tar --exclude=.git --exclude=out -cf - . | tar -xf - -C /boot/home/battlespades-ci
+            cd /boot/home/battlespades-ci
+            trap 'cp /boot/home/haiku-build.log "$workspace/haiku-build.log"; cp out/build/native-haiku-release/Testing/Temporary/LastTest.log "$workspace/haiku-tests.log" 2>/dev/null || true' EXIT
+            export CMAKE_BUILD_PARALLEL_LEVEL=2
+            {
+              uname -a
+              sh scripts/haiku-dependencies.sh
+              sh scripts/build-haiku.sh
+            } > /boot/home/haiku-build.log 2>&1 || { cat /boot/home/haiku-build.log; exit 1; }
+            tar -czf "$workspace/BattleSpadesClient-haiku-x86_64.tar.gz" -C out/haiku-package .
+      - name: Upload package and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: haiku-x86_64
+          path: |
+            BattleSpadesClient-haiku-x86_64.tar.gz
+            haiku-build.log
+            haiku-tests.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -17,10 +17,15 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <vector>
 
 #if defined(__APPLE__) && defined(AOS_HAS_NATIVE_BACKENDS)
 #include <SDL3/SDL.h>
+#endif
+#if defined(__HAIKU__) && defined(AOS_HAS_NATIVE_BACKENDS)
+#include <FindDirectory.h>
+#include <StorageDefs.h>
 #endif
 
 #if defined(_WIN32) && defined(AOS_WINDOWS_GUI_SUBSYSTEM)
@@ -236,6 +241,16 @@ int run_client(int argc, char* argv[]) {
         frontend_config.enable_audio = true;
         frontend_config.renderer_debug = false;
         frontend_config.settings_path = executable_path->parent_path() / "settings.toml";
+#if defined(__HAIKU__)
+        char settings_directory[B_PATH_NAME_LENGTH]{};
+        if (find_directory(B_USER_SETTINGS_DIRECTORY, -1, true, settings_directory,
+                           B_PATH_NAME_LENGTH) != B_OK) {
+            throw std::runtime_error{"cannot locate the Haiku user settings directory"};
+        }
+        frontend_config.settings_path =
+            std::filesystem::path{settings_directory} / "BattleSpades" / "settings.toml";
+        std::filesystem::create_directories(frontend_config.settings_path.parent_path());
+#endif
         frontend_config.tutorial_map_path =
             std::filesystem::path{"../BattleSpades/maps/Training.vxl"};
         frontend_config.tutorial_debug_tool = options.tutorial_debug_tool;

@@ -266,7 +266,8 @@ void lobby_refresh_preserves_manual_scroll_and_focus() {
                          CreateMatchPage::game_rules}) {
         CreateMatchMenuModel menu;
         if(page!=CreateMatchPage::match_settings)expect(menu.open_page(page),"scroll refresh page must open");
-        const auto focus=menu.presentation().focused_key;
+        const auto before_refresh = menu.presentation();
+        const auto& focus = before_refresh.focused_key;
         expect(menu.mouse_wheel(-2),"wheel must move down before lobby refresh");
         const auto scrolled=menu.presentation().first_visible_row;
         const auto snapshot=menu.configuration();

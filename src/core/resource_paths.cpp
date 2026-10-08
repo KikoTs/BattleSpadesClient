@@ -12,6 +12,9 @@
 #include <mach-o/dyld.h>
 #elif defined(__linux__)
 #include <unistd.h>
+#elif defined(__HAIKU__)
+#include <OS.h>
+#include <image.h>
 #endif
 
 namespace battlespades::core {
@@ -113,6 +116,17 @@ std::optional<std::filesystem::path> current_executable_path(std::string& error)
             buffer.resize(buffer.size() * 2U);
         }
         error = "current executable path exceeds the Linux safety limit";
+        return std::nullopt;
+#elif defined(__HAIKU__)
+        int32 cookie{};
+        image_info info{};
+        while (get_next_image_info(B_CURRENT_TEAM, &cookie, &info) == B_OK) {
+            if (info.type == B_APP_IMAGE) {
+                error.clear();
+                return std::filesystem::path{info.name};
+            }
+        }
+        error = "get_next_image_info did not find the Haiku application image";
         return std::nullopt;
 #else
         error = "current executable path discovery is unsupported on this platform";

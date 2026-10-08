@@ -4,6 +4,7 @@
 #endif
 
 #include "battlespades/network/server_discovery.hpp"
+#include "battlespades/platform/socket_select.hpp"
 #include "battlespades/core/build_info.hpp"
 
 #include <algorithm>
@@ -415,7 +416,7 @@ private:
             remaining_microseconds % 1'000'000);
         fd_set readable;
         FD_ZERO(&readable);
-        FD_SET(socket.get(), &readable);
+        platform::select_add_socket(socket.get(), readable);
         const auto selected = select(static_cast<int>(socket.get() + 1), &readable, nullptr,
                                      nullptr, &wait);
         if (selected <= 0) break;

@@ -47,6 +47,7 @@ enum class NativeWindowSystem : std::uint8_t {
     cocoa,
     x11,
     wayland,
+    haiku,
 };
 
 /**
@@ -59,8 +60,11 @@ struct NativeWindowHandle final {
     NativeWindowSystem system{NativeWindowSystem::unavailable};
     void* window{};
     void* display{};
+    /** Borrowed SDL-owned BGLView on Haiku; destroyed after renderer shutdown. */
+    void* graphics_context{};
 
     [[nodiscard]] constexpr bool valid() const noexcept {
+        if (system == NativeWindowSystem::haiku) return graphics_context != nullptr;
         if (window == nullptr) {
             return false;
         }
@@ -72,6 +76,7 @@ struct NativeWindowHandle final {
         case NativeWindowSystem::wayland:
             return display != nullptr;
         case NativeWindowSystem::unavailable:
+        case NativeWindowSystem::haiku:
             return false;
         }
         return false;

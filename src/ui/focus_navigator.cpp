@@ -174,7 +174,8 @@ std::optional<WidgetId> FocusNavigator::advance(bool backwards) noexcept {
         return focused_;
     }
 
-    const auto current = focused_.has_value() ? index_of(*focused_) : std::nullopt;
+    std::optional<std::size_t> current;
+    if (focused_.has_value()) current = index_of(*focused_);
     for (std::size_t offset = 1U; offset <= widgets_.size(); ++offset) {
         std::size_t index{};
         if (backwards) {
