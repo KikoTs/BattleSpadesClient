@@ -18,11 +18,11 @@
 namespace battlespades::platform {
 namespace {
 
-#if defined(_WIN32)
 [[nodiscard]] std::string megabytes(std::uint64_t bytes) {
     return std::to_string((bytes + 512U * 1024U) / (1024U * 1024U)) + " MB";
 }
 
+#if defined(_WIN32)
 /// The launcher holds this mutex while it downloads or updates anything.
 [[nodiscard]] bool launcher_busy() noexcept {
     HANDLE mutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\BattleSpadesLauncherUpdate");

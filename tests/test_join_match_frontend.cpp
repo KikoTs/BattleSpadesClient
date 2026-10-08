@@ -2,9 +2,9 @@
 #include "battlespades/frontend/frontend_shell.hpp"
 #include "battlespades/frontend/join_match_menu.hpp"
 #include "battlespades/frontend/join_match_presentation.hpp"
+#include <algorithm>
 #include "battlespades/frontend/loading_screen.hpp"
 
-#include <algorithm>
 #include <array>
 #include <exception>
 #include <filesystem>

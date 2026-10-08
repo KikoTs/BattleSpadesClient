@@ -47,7 +47,7 @@ namespace {
     }
     const auto maximum = std::max({color->red, color->green, color->blue});
     const auto minimum = std::min({color->red, color->green, color->blue});
-    return maximum <= 0x42U && maximum - minimum <= 4;
+    return maximum <= 0x42U && maximum - minimum <= 4U;
 }
 
 [[nodiscard]] bool neutral_metal_at(const VxlMap& map, std::int64_t x,
@@ -70,7 +70,7 @@ namespace {
     const auto minimum = std::min({color->red, color->green, color->blue});
     // London lamp housings/posts use #4A4C4D and #606264 ramps.
     return minimum >= 0x20U && maximum <= 0x70U &&
-           maximum - minimum <= 8;
+           maximum - minimum <= 8U;
 }
 
 [[nodiscard]] bool chicago_streetlamp_glass(const EmissivePalette& palette,
@@ -105,7 +105,7 @@ namespace {
         const auto minimum = std::min({post->red, post->green, post->blue});
         // The authored post ramp is #212222..#393A3B. Keeping both a value
         // ceiling and a neutral-colour band rejects dark brick and foliage.
-        return maximum <= 0x42U && maximum - minimum <= 4;
+        return maximum <= 0x42U && maximum - minimum <= 4U;
     };
 
     // A glass voxel can sit three blocks from the shared centre post. Search a
@@ -456,7 +456,7 @@ namespace {
     const bool cool_grey =
         color.blue >= static_cast<std::uint16_t>(color.red) + 3U &&
         color.blue >= static_cast<std::uint16_t>(color.green) + 2U;
-    const bool charcoal = maximum <= 0x38U && maximum - minimum <= 0x0C;
+    const bool charcoal = maximum <= 0x38U && maximum - minimum <= 0x0CU;
     if (south_shallow_pane && maximum <= 0x70U &&
         (cool_grey || charcoal)) {
         return true;

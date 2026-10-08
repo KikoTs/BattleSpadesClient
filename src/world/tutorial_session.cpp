@@ -422,7 +422,6 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
       movement_class_{
           movement_config_for_class(config.initial_class_id, config.movement_speed_scale,
                                     config.fall_on_water_damage)} {
-    apply_flight_profile(movement_class_, config_.flight_profile);
     const auto& pistol = tool_definition(retail_pistol_tool_id);
     pistol_clip_ = static_cast<int>(pistol.clip_size);
     pistol_stock_ = static_cast<int>(pistol.reserve_ammo);
@@ -567,12 +566,6 @@ void TutorialWorldSession::set_look_preferences(double mouse_sensitivity,
                                                 bool invert_mouse) noexcept {
     config_.mouse_sensitivity = std::clamp(mouse_sensitivity, 0.0, 1.0);
     config_.invert_mouse = invert_mouse;
-}
-
-void TutorialWorldSession::set_field_of_view(double degrees) noexcept {
-    if (std::isfinite(degrees)) {
-        config_.field_of_view = std::clamp(degrees, 30.0, 150.0);
-    }
 }
 
 void TutorialWorldSession::apply_look_delta(double delta_x, double delta_y) noexcept {
@@ -2856,7 +2849,6 @@ void TutorialWorldSession::debug_cycle_class(int direction) noexcept {
     movement_class_ = movement_config_for_class(classes[index].class_id,
                                                config_.movement_speed_scale,
                                                config_.fall_on_water_damage);
-    apply_flight_profile(movement_class_, config_.flight_profile);
     // The developer arsenal contains handheld tools only. Movement equipment
     // still comes from the selected class's original default equipment slot.
     std::vector<std::uint8_t> equipment;
@@ -2922,7 +2914,7 @@ double TutorialWorldSession::weapon_crosshair_radius_pixels(double viewport_heig
         return 6.0;
     }
     return sandbox_inventory_.weapons().crosshair_radius_pixels(
-        viewport_height, zoom_fov_y_degrees(zoom_level_, config_.field_of_view), zoomed_);
+        viewport_height, zoom_fov_y_degrees(zoom_level_), zoomed_);
 }
 
 double TutorialWorldSession::weapon_spin_fraction() const noexcept {
@@ -4718,7 +4710,6 @@ void TutorialWorldSession::apply_server_class(std::uint8_t class_id,
     }
     movement_class_ = movement_config_for_class(class_id, config_.movement_speed_scale,
                                                 config_.fall_on_water_damage);
-    apply_flight_profile(movement_class_, config_.flight_profile);
 }
 
 } // namespace battlespades::world

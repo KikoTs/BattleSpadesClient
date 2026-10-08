@@ -12,10 +12,6 @@
 #include <chrono>
 #include <cctype>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <sstream>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -102,18 +98,12 @@ template <typename Integer>
 }
 
 /**
- * The gameplay mode from a listing's `gamemode=<code>` or `mode=NNNN` tags.
+ * The gameplay ordinal from a listing's `mode=NNNN` tags.
  *
- * The official Revival master tags each server with its explicit mode code
- * (`gamemode=cctf`). That wins whenever it names a known code, and it is the
- * only way to tell Classic CTF from CTF, which share a MODE_* ordinal. An
- * unknown code is ignored.
- *
- * Otherwise the ordinal comes from the `mode=NNNN` tags. Revival servers
- * advertise their MODE_* id there, while the Steam A2S path appends
- * `mode=0001`, the SERVERMODE_PUBLIC browser category. The live master
- * (2026-09-29) derived `mode_tla` from that last tag and labelled every
- * CTF/TDM/TC/VIP/Zombie server "dem". When the tags disagree, the
+ * Revival servers advertise their MODE_* id there, while the Steam A2S path
+ * appends `mode=0001`, the SERVERMODE_PUBLIC browser category. The live
+ * master (2026-09-29) derived `mode_tla` from that last tag and labelled
+ * every CTF/TDM/TC/VIP/Zombie server "dem". When the tags disagree, the
  * non-category ordinal is the gameplay mode; a real Demolition server
  * advertises only 0001 and keeps its label.
  */
@@ -127,11 +117,6 @@ template <typename Integer>
     for (const auto& candidate : *iterator) {
         if (!candidate.is_string()) continue;
         const auto tag = lowercase(candidate.get<std::string>());
-        if (tag.starts_with("gamemode=")) {
-            const auto mode = std::string_view{tag}.substr(9U);
-            if (std::ranges::find(codes, mode) != codes.end()) return std::string{mode};
-            continue;
-        }
         if (!tag.starts_with("mode=") || tag.size() > 9U) continue;
         std::size_t ordinal{};
         bool digits = tag.size() > 5U;
@@ -146,26 +131,6 @@ template <typename Integer>
     }
     if (tags_seen < 2U || !gameplay.has_value()) return std::nullopt;
     return std::string{codes[*gameplay]};
-}
-
-/** Steam region tags (fra, ewr, america, ...) as the browser's region names. */
-[[nodiscard]] std::string steam_region(std::string value) {
-    std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 14U> aliases{{
-        {"eu", "europe"}, {"fra", "europe"}, {"ams", "europe"}, {"lon", "europe"}, {"par", "europe"},
-        {"america", "us_east"}, {"na", "us_east"}, {"us", "us_east"}, {"ewr", "us_east"},
-        {"nyc", "us_east"}, {"lax", "us_west"}, {"sea", "us_west"}, {"sgp", "asia"}, {"syd", "australia"},
-    }};
-    for (const auto& [alias, region] : aliases) {
-        if (value == alias) return std::string{region};
-    }
-    return value;
-}
-
-[[nodiscard]] bool known_mode_code(std::string_view code) {
-    static constexpr std::array<std::string_view, 12U> codes{
-        "tdm", "ctf", "cctf", "zom", "vip", "tc", "dia", "dem", "mh", "oc", "ugc", "tut"};
-    return std::ranges::find(codes, code) != codes.end();
 }
 
 [[nodiscard]] std::optional<DiscoveredServer> parse_public_entry(const nlohmann::json& value) {
@@ -217,45 +182,6 @@ template <typename Integer>
             result.steam_host_id = std::stoull(steam);
         } catch (const std::exception&) {
             result.steam_host_id = 0U;
-        }
-    }
-    // A dedicated server's Steam relay hosts: fields in the AoSPlay list,
-    // `sdr=` / `sdr480=` tags in Steam's own listing.
-    const auto steam_number = [](std::string_view text) -> std::uint64_t {
-        std::uint64_t number{};
-        if (text.empty() || text.size() > 20U) return 0U;
-        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), number);
-        return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() ? number : 0U;
-    };
-    if (const auto spacewar = steam_number(bounded_string(value, "steam_host_id_480")); spacewar != 0U) {
-        result.steam_host_id_spacewar = spacewar;
-        result.dedicated_relay_host = true;
-    }
-    if (const auto tags = value.find("tags"); tags != value.end() && tags->is_array()) {
-        for (const auto& candidate : *tags) {
-            if (!candidate.is_string()) continue;
-            const auto tag = lowercase(candidate.get<std::string>());
-            const std::string_view view{tag};
-            if (view.starts_with(steam_relay_spacewar_tag)) {
-                if (const auto id = steam_number(view.substr(steam_relay_spacewar_tag.size())); id != 0U) {
-                    result.steam_host_id_spacewar = id;
-                    result.dedicated_relay_host = true;
-                }
-            } else if (view.starts_with(steam_relay_tag)) {
-                if (const auto id = steam_number(view.substr(steam_relay_tag.size())); id != 0U) {
-                    result.steam_host_id = id;
-                    result.dedicated_relay_host = true;
-                }
-            }
-        }
-    }
-    // Registered by the server's Steam sidecar (heartbeat steam_server_id),
-    // or the id Steam's own list carries; either lets the two lists agree.
-    if (const auto steam = bounded_string(value, "steam_server_id"); !steam.empty()) {
-        try {
-            result.steam_server_id = std::stoull(steam);
-        } catch (const std::exception&) {
-            result.steam_server_id = 0U;
         }
     }
     // `players` counts bots, so a bot-filled server reads as full. Keep the
@@ -609,137 +535,8 @@ DiscoveryResult select_discovered_servers(
     return source;
 }
 
-namespace {
-
-DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, std::stop_token stop,
-                                         std::string& body);
-
-}
-
 DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config,
                                         std::stop_token stop) {
-    std::string body;
-    auto fetched = fetch_public_server_list(config, stop, body);
-    if (config.cache_file.empty() || stop.stop_requested()) return fetched;
-    std::error_code code;
-    if (fetched && !fetched.servers.empty()) {
-        // Atomic replace: a crash mid-write must not leave a broken copy.
-        auto temporary = config.cache_file;
-        temporary += ".tmp";
-        std::filesystem::create_directories(config.cache_file.parent_path(), code);
-        {
-            std::ofstream out{temporary, std::ios::binary | std::ios::trunc};
-            out.write(body.data(), static_cast<std::streamsize>(body.size()));
-        }
-        std::filesystem::rename(temporary, config.cache_file, code);
-        if (code) std::filesystem::remove(temporary, code);
-        return fetched;
-    }
-    if (fetched) return fetched;
-    std::ifstream in{config.cache_file, std::ios::binary};
-    if (!in) return fetched;
-    std::string saved{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
-    auto cached = parse_public_server_list(saved, config.maximum_servers);
-    if (!cached || cached.servers.empty()) return fetched;
-    cached.from_cache = true;
-    return cached;
-}
-
-DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
-                                        std::size_t maximum_servers) {
-    nlohmann::json list = nlohmann::json::array();
-    for (const auto& row : rows) {
-        if (row.host.empty() || row.port == 0U) continue;
-        nlohmann::json entry;
-        entry["ip"] = row.host;
-        entry["port"] = row.port;
-        if (row.query_port != 0U) entry["queryPort"] = row.query_port;
-        if (row.ping > 0) entry["ping"] = std::min(row.ping, 65'000);
-        entry["name"] = row.name;
-        // Steam listings name the map with its mode prefix (TDM_Alcatraz,
-        // CCTF_Hiesville); every server carries playlist=8 and the category
-        // mode=0001, so the prefix is where the gameplay mode lives.
-        std::string map = row.map.empty() ? std::string{"Unknown"} : row.map;
-        if (const auto underscore = map.find('_'); underscore != std::string::npos && underscore <= 4U) {
-            const auto prefix = lowercase(map.substr(0U, underscore));
-            if (known_mode_code(prefix)) {
-                entry["mode_tla"] = prefix;
-                map = map.substr(underscore + 1U);
-            }
-        }
-        entry["map"] = map;
-        entry["players"] = row.players;
-        entry["max_players"] = row.maximum_players;
-        entry["human_players"] = row.players > row.bots ? row.players - row.bots : 0;
-        entry["password"] = row.password;
-        nlohmann::json tags = nlohmann::json::array();
-        std::stringstream split{row.tags};
-        for (std::string tag; std::getline(split, tag, ';');) {
-            if (tag.empty()) continue;
-            if (tag.starts_with("region=")) entry["region"] = steam_region(tag.substr(7U));
-            tags.push_back(tag);
-        }
-        entry["tags"] = std::move(tags);
-        if (row.steam_id != 0U) entry["steam_server_id"] = std::to_string(row.steam_id);
-        list.push_back(std::move(entry));
-    }
-    auto parsed = parse_public_server_list(list.dump(), maximum_servers);
-    if (list.empty()) parsed.error.clear();
-    for (auto& server : parsed.servers) {
-        server.steam_listed = true;
-        if (server.classic && server.mode_code == "ctf") server.mode_code = "cctf";
-    }
-    return parsed;
-}
-
-DiscoveryResult merge_discovered_servers(DiscoveryResult primary, const DiscoveryResult& secondary) {
-    const auto lower = [](std::string value) {
-        std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return value;
-    };
-    for (const auto& extra : secondary.servers) {
-        const auto identifier = extra.game.identifier();
-        // The SteamID the server registered with AoSPlay is the surest match.
-        auto existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
-            return extra.steam_server_id != 0U && server.steam_server_id == extra.steam_server_id;
-        });
-        if (existing == primary.servers.end()) {
-            existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
-                return server.game.identifier() == identifier;
-            });
-        }
-        // Steam lists a server at its retail port (32887) while AoSPlay lists
-        // the game port; the same host with the same name, or the only row
-        // at that host, is the same server.
-        if (existing == primary.servers.end()) {
-            const auto same_host = [&](const DiscoveredServer& server) {
-                return server.game.host == extra.game.host;
-            };
-            const auto at_host = std::ranges::count_if(primary.servers, same_host);
-            existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
-                return same_host(server) && (at_host == 1 || lower(server.name) == lower(extra.name));
-            });
-        }
-        if (existing != primary.servers.end()) {
-            if (existing->steam_host_id == 0U) existing->steam_host_id = extra.steam_host_id;
-            if (existing->steam_host_id_spacewar == 0U) {
-                existing->steam_host_id_spacewar = extra.steam_host_id_spacewar;
-            }
-            existing->dedicated_relay_host = existing->dedicated_relay_host || extra.dedicated_relay_host;
-            existing->steam_listed = existing->steam_listed || extra.steam_listed;
-            continue;
-        }
-        primary.servers.push_back(extra);
-    }
-    // Rows from either source make the list usable even if the other failed.
-    if (!primary.servers.empty()) primary.error.clear();
-    return primary;
-}
-
-namespace {
-
-DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, std::stop_token stop,
-                                         std::string& body) {
     DiscoveryResult output;
     if (config.url.empty() || config.timeout.count() <= 0 ||
         config.maximum_payload_bytes == 0U || config.maximum_servers == 0U) {
@@ -798,11 +595,8 @@ DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, st
         output.error = "public server list returned HTTP " + std::to_string(status);
         return output;
     }
-    body = buffer.bytes;
     return parse_public_server_list(buffer.bytes, config.maximum_servers);
 }
-
-}  // namespace
 
 DiscoveryResult discover_lan_servers(const LanDiscoveryConfig& config) {
     std::vector<ServerEndpoint> endpoints;

@@ -46,7 +46,7 @@ bool ScriptedWeaponImages::load(render::BgfxUiRenderer& renderer,
     return error.empty();
 }
 void ScriptedWeaponImages::clear(render::BgfxUiRenderer& renderer){
-    if(scope_mask_){static_cast<void>(renderer.release_texture(scope_mask_->texture));}scope_mask_.reset();
+    if(scope_mask_)static_cast<void>(renderer.release_texture(scope_mask_->texture));scope_mask_.reset();
     for(const auto& [id,image]:images_){static_cast<void>(id);static_cast<void>(renderer.release_texture(image.texture));}
     if(dot_)static_cast<void>(renderer.release_texture(dot_->texture));
     images_.clear();visible_images_.clear();aim_images_.clear();hip_crosshairs_.clear();muzzle_images_.clear();dot_.reset();

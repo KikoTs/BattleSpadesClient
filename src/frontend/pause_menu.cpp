@@ -98,7 +98,7 @@ PauseMenuEnvironment pause_menu_environment_for(
     }
     result.allow_class_change = result.show_class_change && has_playing_team &&
                                 !state.active_team_locks_class &&
-                                (state.available_class_count > 1U || state.class_has_choices);
+                                state.available_class_count > 1U;
     // EscapeMenu and GameScene.team_selection_has_choices allow an admitted
     // spectator to open the selector. Team locks belong to its actual choices.
     result.allow_team_change = result.show_team_change && has_player_team;

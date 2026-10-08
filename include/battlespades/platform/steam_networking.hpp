@@ -6,7 +6,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace battlespades::platform {
@@ -42,28 +41,6 @@ struct SteamFriendMatch final {
     std::string status;
     /** The address to dial, `steam:<id>`. */
     std::string connect;
-};
-
-/**
- * One game server from Steam's own server list (ISteamMatchmakingServers),
- * the list the original game browsed. Steam answers it even where our web
- * services are blocked, so the browser merges it with the AoSPlay list.
- */
-struct SteamListedGameServer final {
-    /** IPv4 in host byte order. */
-    std::uint32_t ip{};
-    std::uint16_t port{};
-    std::uint16_t query_port{};
-    std::string name;
-    std::string map;
-    /** Semicolon-separated server tags (v168;region=europe;mode=0001;...). */
-    std::string tags;
-    std::uint16_t players{};
-    std::uint16_t maximum_players{};
-    std::uint16_t bots{};
-    bool password{};
-    std::uint64_t steam_id{};
-    int ping{};
 };
 
 /** One friends-only lobby Steam offers, as the browser would show it. */
@@ -212,17 +189,6 @@ public:
      */
     [[nodiscard]] std::vector<SteamFriendMatch> friend_matches() const;
     /**
-     * Starts a Steam internet server list query for `app_id` (Ace of Spades
-     * is 224540), replacing any query in flight. Works while attached as
-     * Spacewar too: the list is per queried app, not per attached app.
-     */
-    bool begin_internet_server_query(std::uint32_t app_id);
-    /** Servers that have answered so far. */
-    [[nodiscard]] std::vector<SteamListedGameServer> internet_servers() const;
-    /** True once Steam finished the query (or there is none). */
-    [[nodiscard]] bool internet_server_query_done() const;
-    void cancel_internet_server_query();
-    /**
      * The friends-only lobbies this account can see, newest offer first.
      *
      * Note that Steam's lobby search only returns public lobbies, so a
@@ -238,17 +204,6 @@ public:
     [[nodiscard]] std::string lobby_data(std::uint64_t lobby, const std::string& key) const;
     void leave_lobby(std::uint64_t lobby) noexcept;
     [[nodiscard]] bool unlock_achievement(const std::string& name);
-    /**
-     * The retail achievements Steam holds as unlocked for this player, each
-     * with its unlock time in seconds since the Unix epoch (zero if unknown).
-     *
-     * This is a record of what was earned on the retail servers and nothing
-     * can add to it: Steam's schema reserves every Ace of Spades achievement
-     * for the publisher's game servers. A client write is refused outright and
-     * a community game server's store is answered with access denied (both
-     * measured against the live application). Empty unless tracking_enabled().
-     */
-    [[nodiscard]] std::vector<std::pair<std::string, std::int64_t>> unlocked_achievements() const;
     /** Shows Steam's progress toast; Steam ignores a completed target. */
     [[nodiscard]] bool report_achievement_progress(const std::string& name,
                                                    std::uint32_t progress,

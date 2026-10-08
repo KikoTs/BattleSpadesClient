@@ -2,7 +2,7 @@
 # Steam files are only ever fixture copies inside a temp folder.
 set(_aos_updater_static_crt "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-foreach(_aos_updater_test IN ITEMS core steam apply manifest unicode launch)
+foreach(_aos_updater_test IN ITEMS core steam apply manifest unicode)
     set(_aos_target aos_updater_${_aos_updater_test}_tests)
     add_executable(${_aos_target} test_updater_${_aos_updater_test}.cpp)
     target_link_libraries(${_aos_target} PRIVATE BattleSpades::UpdaterCore)

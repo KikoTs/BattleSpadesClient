@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <filesystem>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -59,18 +58,6 @@ struct DiscoveredServer final {
     std::uint16_t human_players{};
     /** The listing says the server asks for a password (tag `password`). */
     bool password_protected{};
-    /** Found through Steam's own server list rather than (only) AoSPlay. */
-    bool steam_listed{};
-    /** The SteamID this server is registered under in Valve's server list. */
-    std::uint64_t steam_server_id{};
-    /**
-     * A dedicated server's Steam relay host for players attached as Spacewar
-     * (480). `steam_host_id` is the one for Ace of Spades owners (224540);
-     * Steam P2P only connects players of the same application.
-     */
-    std::uint64_t steam_host_id_spacewar{};
-    /** The relay host ids come from a dedicated server, not a player's own match. */
-    bool dedicated_relay_host{};
 };
 
 struct DiscoveryResult final {
@@ -78,43 +65,10 @@ struct DiscoveryResult final {
     std::string error;
 
     [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
-    /** The AoSPlay list was unreachable and these rows come from the saved copy. */
-    bool from_cache{};
 };
-
-/** One row of Steam's server list, as the network layer sees it. */
-struct SteamListedServer final {
-    std::string host;
-    std::uint16_t port{};
-    std::uint16_t query_port{};
-    std::string name;
-    std::string map;
-    /** Semicolon-separated Steam game tags. */
-    std::string tags;
-    std::uint16_t players{};
-    std::uint16_t maximum_players{};
-    std::uint16_t bots{};
-    bool password{};
-    std::uint64_t steam_id{};
-    int ping{};
-};
-
-/**
- * Tags a dedicated server adds to its Steam listing (and A2S keywords) while
- * its Steam relay hosts are logged on: `sdr=<SteamID>` for Ace of Spades
- * owners and `sdr480=<SteamID>` for players attached as Spacewar.
- */
-inline constexpr std::string_view steam_relay_tag{"sdr="};
-inline constexpr std::string_view steam_relay_spacewar_tag{"sdr480="};
 
 struct PublicDiscoveryConfig final {
     std::string url{"https://www.aosplay.net/serverlist/"};
-    /**
-     * Saved copy of the last good list. A successful fetch replaces it; when
-     * the list cannot be fetched (outage, or aosplay.net blocked by the
-     * player's provider) the saved rows are returned with from_cache set.
-     */
-    std::filesystem::path cache_file{};
     std::chrono::milliseconds timeout{5'000};
     std::size_t maximum_payload_bytes{1U << 20U};
     std::size_t maximum_servers{512U};
@@ -149,21 +103,6 @@ struct LanDiscoveryConfig final {
     std::span<const std::string> identifiers);
 
 /** Blocking adapters. Call them only from a bounded discovery worker. */
-/**
- * Steam server list rows in the browser's listing form: the same tag rules as
- * the AoSPlay master (mode, region, classic, password), so a server shows
- * identically whichever list found it, including its `sdr=` relay host ids.
- */
-[[nodiscard]] DiscoveryResult parse_steam_server_list(std::span<const SteamListedServer> rows,
-                                                      std::size_t maximum_servers = 512U);
-
-/**
- * AoSPlay rows first, then any Steam row at an address AoSPlay did not list.
- * A Steam P2P host id found only on Steam is copied onto the AoSPlay row.
- */
-[[nodiscard]] DiscoveryResult merge_discovered_servers(DiscoveryResult primary,
-                                                       const DiscoveryResult& secondary);
-
 [[nodiscard]] DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config = {},
                                                        std::stop_token stop = {});
 [[nodiscard]] DiscoveryResult discover_lan_servers(const LanDiscoveryConfig& config = {});

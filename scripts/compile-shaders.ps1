@@ -1,9 +1,7 @@
 ﻿param(
     # bgfx shaderc built from the same source revision as the vcpkg bgfx.
     [string]$ShaderC = "$PSScriptRoot\..\out\shaderc-build\cmake\bgfx\shaderc.exe",
-    [string]$BgfxInclude = "$PSScriptRoot\..\out\vcpkg\packages\bgfx_x64-windows\include\bgfx",
-    # Optional source-name filter (for example "*post*") to rebuild only some shaders.
-    [string]$Only = "*"
+    [string]$BgfxInclude = "$PSScriptRoot\..\out\vcpkg\packages\bgfx_x64-windows\include\bgfx"
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,15 +26,7 @@ $shaders = @(
     @{ Source = "vs_particle.sc"; Type = "vertex"; Output = "vs_particle.bin"; Varying = "varying_particle.def.sc" },
     @{ Source = "fs_particle.sc"; Type = "fragment"; Output = "fs_particle.bin"; Varying = "varying_particle.def.sc" },
     @{ Source = "vs_shadow.sc"; Type = "vertex";   Output = "vs_shadow.bin"; Varying = "varying_shadow.def.sc" },
-    @{ Source = "fs_shadow.sc"; Type = "fragment"; Output = "fs_shadow.bin"; Varying = "varying_shadow.def.sc" },
-    @{ Source = "vs_post.sc"; Type = "vertex";   Output = "vs_post.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_ssao.sc"; Type = "fragment"; Output = "fs_post_ssao.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_world.sc"; Type = "fragment"; Output = "fs_post_world.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_bright.sc"; Type = "fragment"; Output = "fs_post_bright.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_down.sc"; Type = "fragment"; Output = "fs_post_down.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_up.sc"; Type = "fragment"; Output = "fs_post_up.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_composite.sc"; Type = "fragment"; Output = "fs_post_composite.bin"; Varying = "varying_post.def.sc" },
-    @{ Source = "fs_post_rcas.sc"; Type = "fragment"; Output = "fs_post_rcas.bin"; Varying = "varying_post.def.sc" }
+    @{ Source = "fs_shadow.sc"; Type = "fragment"; Output = "fs_shadow.bin"; Varying = "varying_shadow.def.sc" }
 )
 
 $shaderSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\src\render\shaders"))
@@ -54,9 +44,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $BgfxInclude "bgfx_shader.sh"))) {
 
 foreach ($backend in $backends) {
     foreach ($shader in $shaders) {
-        if ($shader.Source -notlike $Only) {
-            continue
-        }
         $profile = if ($shader.Type -eq "vertex") { $backend.VsProfile } else { $backend.FsProfile }
         $primary = Join-Path (Join-Path $outputRoots[0] $backend.Name) $shader.Output
         New-Item -ItemType Directory -Force (Split-Path $primary) | Out-Null
@@ -66,7 +53,7 @@ foreach ($backend in $backends) {
             "--type", $shader.Type,
             "--platform", $backend.Platform,
             "-p", $profile,
-            "-i", "$BgfxInclude;$shaderSource",
+            "-i", $BgfxInclude,
             "--varyingdef", (Join-Path $shaderSource $shader.Varying)
         ) + $backend.Extra
         & $ShaderC @arguments

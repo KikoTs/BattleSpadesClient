@@ -142,33 +142,14 @@ void request_filter_reset_dropdown_and_effects_match_retail() {
     expect(model.displayed_rows().size() == fixture().rows[1].size(),
            "returning to Game Modes must restore the unfiltered list");
 
-    // Steam's overlay cannot show what a player earns now, so the button
-    // opens the menu's own list and leads back out of it.
-    expect(model.toggle_filter() && model.filter_open(), "the drop-down opens on Game Modes");
     model.activate_achievements();
-    expect(model.achievements_open() && !model.filter_open() &&
-               model.first_visible_achievement() == 0U,
-           "Achievements opens the list at its top and closes the drop-down");
-    constexpr std::size_t total{77U};
-    expect(!model.scroll_achievements(-1, total), "the list does not scroll above its first row");
-    expect(model.scroll_achievements(3, total) && model.first_visible_achievement() == 3U,
-           "the list scrolls by rows");
-    expect(model.scroll_achievements(500, total) &&
-               model.first_visible_achievement() ==
-                   total - PlayerProfileMenuModel::achievement_visible_rows &&
-               !model.scroll_achievements(1, total),
-           "the list stops with its last row at the bottom");
-    expect(!model.scroll_achievements(1, 4U) && model.first_visible_achievement() == 0U,
-           "a list shorter than the panel does not scroll");
-    model.activate_achievements();
-    expect(!model.achievements_open(), "the same button returns to the statistics");
-    model.activate_achievements();
-    expect(model.select_tab(PlayerProfileTab::game_modes) && !model.achievements_open(),
-           "a tab leads out of the list, even the tab that was behind it");
-    model.activate_achievements();
+    const auto effects = model.take_effects();
+    expect(effects.size() == 1U &&
+               effects.front().kind == PlayerProfileEffectKind::show_achievements_overlay,
+           "Achievements must request the platform overlay instead of inventing a profile page");
+    expect(model.take_effects().empty(), "profile effects must be consumed exactly once");
 
     model.reload(99U);
-    expect(!model.achievements_open(), "reopening the screen starts on the statistics");
     expect(model.selected_tab() == PlayerProfileTab::player_stats && !model.filter_open(),
            "opening/reloading the screen must restore its initial retail state");
     expect(!model.complete(*request, fixture()), "old-account callback must be rejected");
@@ -222,64 +203,6 @@ void presentation_uses_recovered_coordinates_fonts_and_rows() {
     expect(find_sprite(draw, player_profile_presentation_assets::arrow_up) != nullptr &&
                find_sprite(draw, player_profile_presentation_assets::scrollbar_mid) != nullptr,
            "retail list panel must retain its textured vertical scrollbar");
-}
-
-void achievements_list_replaces_the_statistics() {
-    using battlespades::frontend::AchievementListRow;
-    using battlespades::frontend::UnlockedAchievement;
-    using battlespades::frontend::achievement_list;
-
-    PlayerProfileMenuModel model{7U};
-    const auto request = model.take_request();
-    expect(request.has_value() && model.complete(*request, fixture()), "the profile loads");
-    const std::vector<UnlockedAchievement> ledger{{"spade_kill", 1791244800}};
-    const auto rows = achievement_list(ledger);
-    PlayerProfilePresentationContext context;
-    context.achievements = rows;
-
-    auto closed = PlayerProfilePresentation{}.build(model, context);
-    expect(find_text(closed, "Dig Deep") == nullptr && find_text(closed, "ACHIEVEMENTS") != nullptr,
-           "rows are not drawn until the list is opened");
-
-    model.activate_achievements();
-    auto draw = PlayerProfilePresentation{}.build(model, context);
-    const auto* name = find_text(draw, "Dig Deep");
-    const auto* description = find_text(draw, "NEW_ACHIEVEMENT_2_30_DESC");
-    expect(name != nullptr && description != nullptr,
-           "an unlocked achievement leads the list with its name and retail description key");
-    expect(name->destination.y == 187.0 && description->destination.y == 205.0 &&
-               description->maximum_lines == 2U &&
-               description->layout == battlespades::ui::TextLayout::bounded_wrapped_lines,
-           "a row is a name line over a wrapped two-line description");
-    expect(find_text(draw, "2026-10-06") != nullptr && find_text(draw, "1 / 77") != nullptr,
-           "an unlock shows its date and the header counts them");
-    expect(find_text(draw, "Apocalypse Later") != nullptr &&
-               name->modulation.color != find_text(draw, "Apocalypse Later")->modulation.color,
-           "locked achievements follow in retail's order, dimmed");
-    expect(find_text(draw, "PLAYER_STATS") != nullptr && find_text(draw, "ACHIEVEMENTS") != nullptr &&
-               find_text(draw, "CANCEL") != nullptr,
-           "the button leads back to the statistics and the heading names the list");
-    expect(find_text(draw, fixture().player_name) == nullptr &&
-               find_sprite(draw, player_profile_presentation_assets::tab_active) == nullptr,
-           "the statistics and the current-tab highlight give way to the list");
-    std::size_t names{};
-    for (const auto& row : rows) names += count_text(draw, row.definition->display_name);
-    expect(names == PlayerProfileMenuModel::achievement_visible_rows, "six rows fill the panel");
-
-    expect(model.scroll_achievements(500, rows.size()), "the list scrolls to its end");
-    draw = PlayerProfilePresentation{}.build(model, context);
-    expect(find_text(draw, "Dig Deep") == nullptr &&
-               find_text(draw, rows.back().definition->display_name) != nullptr,
-           "scrolling moves the window over the rows");
-
-    // The list must not depend on the profile service being reachable.
-    PlayerProfileMenuModel offline{7U};
-    const auto failed = offline.take_request();
-    expect(failed.has_value() && offline.fail(*failed), "the profile service is unreachable");
-    offline.activate_achievements();
-    draw = PlayerProfilePresentation{}.build(offline, context);
-    expect(find_text(draw, "Dig Deep") != nullptr && find_text(draw, "PROFILE_NOT_FOUND") == nullptr,
-           "achievements show without a profile");
 }
 
 void dropdown_and_progress_states_are_explicit() {
@@ -437,7 +360,6 @@ int main() {
         {"presentation_uses_recovered_coordinates_fonts_and_rows",
          presentation_uses_recovered_coordinates_fonts_and_rows},
         {"dropdown_and_progress_states_are_explicit", dropdown_and_progress_states_are_explicit},
-        {"achievements_list_replaces_the_statistics", achievements_list_replaces_the_statistics},
     };
     std::size_t failures{};
     for (const auto& test : tests) {

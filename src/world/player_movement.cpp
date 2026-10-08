@@ -1,7 +1,5 @@
 #include "battlespades/world/player_movement.hpp"
 
-#include "battlespades/world/flight_profile.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -584,9 +582,8 @@ int parachute_landing_damage(double pre_move_vz, bool canopy_physics, double dt,
     const double gravity = std::isfinite(world_gravity) ? world_gravity : default_world_gravity;
     if (!(dt > 0.0) || !std::isfinite(dt)) dt = 1.0 / 60.0;
     if (gravity <= 0.0) return 0;
-    const double landing_speed = canopy_physics
-        ? canopy_vertical_step(pre_move_vz, dt, gravity, movement_class)
-        : (pre_move_vz + dt * gravity) / (1.0 + dt);
+    const double factor = canopy_physics ? 0.05000000074505806 : 1.0;
+    const double landing_speed = (pre_move_vz + dt * gravity * factor) / (1.0 + dt);
     if (!(landing_speed > 0.0)) return 0;
     double velocity{};
     double distance{};
@@ -606,22 +603,6 @@ int parachute_landing_damage(double pre_move_vz, bool canopy_physics, double dt,
         damage = static_cast<int>(damage * movement_class.fall_on_water_damage_multiplier);
     }
     return damage;
-}
-
-void apply_flight_profile(MovementClassConfig& config, const FlightProfile& profile) noexcept {
-    config.engineer_flight_accel = profile.engineer_flight_accel;
-    config.parachute_gravity_scale = profile.canopy_gravity_scale;
-    config.parachute_free_fall_floor = profile.canopy_free_fall_floor;
-}
-
-double canopy_vertical_step(double vz, double dt, double gravity,
-                            const MovementClassConfig& config) noexcept {
-    const double scale = static_cast<double>(config.parachute_gravity_scale);
-    double stepped = (vz + dt * gravity * scale) / (1.0 + dt);
-    if (config.parachute_free_fall_floor) {
-        stepped = std::max(stepped, std::min((vz + dt * gravity) / (1.0 + dt), scale * gravity));
-    }
-    return stepped;
 }
 
 MovementClassConfig movement_config_for_class(
@@ -727,10 +708,7 @@ MovementStepResult step_player(PlayerMovementState& state, const PlayerInputStat
         : (input.sprint && !state.burdened ? movement_class.sprint_multiplier : movement_class.accel_multiplier));
     accel = f32(accel * dt);
     if (state.airborne) {
-        if (state.jetpack_active && !hover && state.jetpack == 3U)
-            // Stock 0.1F; a negotiated BSFP v2 profile raises it (server mirrors).
-            accel = f32(accel * static_cast<double>(movement_class.engineer_flight_accel));
-        else if (state.jetpack_active && !hover && state.jetpack == 4U)
+        if (state.jetpack_active && !hover && (state.jetpack == 3U || state.jetpack == 4U))
             accel = f32(accel * static_cast<double>(0.1F));
         else if (!state.jetpack_active || hover || state.jetpack == 1U || state.jetpack == 2U)
             accel = f32(accel * 0.5);
@@ -772,24 +750,11 @@ MovementStepResult step_player(PlayerMovementState& state, const PlayerInputStat
     }
     const double divisor = f32(dt + 1.0);
     double gravity_step = dt * gravity;
-    const double pre_gravity_vz = state.velocity.z;
-    const bool canopy_gravity = !state.jetpack_passive && state.parachute_active;
     if (state.jetpack_passive) gravity_step *= 0.75;
-    else if (state.parachute_active)
-        gravity_step *= static_cast<double>(movement_class.parachute_gravity_scale);
+    else if (state.parachute_active) gravity_step *= static_cast<double>(0.05F);
     if (!hover && (!state.jetpack_passive || valid_pack))
         state.velocity.z = f32(f32(state.velocity.z) + gravity_step);
     state.velocity.z = f32(f32(state.velocity.z) / divisor);
-    if (canopy_gravity && movement_class.parachute_free_fall_floor && !hover) {
-        // BattleSpades canopy (BS aoslib/world.pyx): a chute only brakes. A
-        // body slower than the canopy terminal falls with ordinary gravity up
-        // to that terminal; faster bodies keep the stock canopy step above.
-        const double free_fall = f32(f32(f32(pre_gravity_vz) + dt * gravity) / divisor);
-        const double terminal =
-            f32(static_cast<double>(movement_class.parachute_gravity_scale) * gravity);
-        const double floor_vz = std::min(free_fall, terminal);
-        if (floor_vz > state.velocity.z) state.velocity.z = floor_vz;
-    }
     if (state.parachute_active) state.fall_distance = 0.0;
     const double horizontal_divisor = state.airborne && (state.jetpack_active || state.jetpack_passive)
         ? divisor : f32(dt * (state.wade ? f32(movement_class.water_friction)

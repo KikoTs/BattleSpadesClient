@@ -6,7 +6,6 @@
 #include "battlespades/world/local_entity.hpp"
 #include "battlespades/world/vxl_map.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -107,8 +106,8 @@ int main() {
             expect(centred(project(pose, death_eye)),
                    "our own body is framed dead centre before a grave exists");
             expect(std::abs(pose.yaw_degrees - 90.0) < 1.0e-9 &&
-                       std::abs(pose.pitch_degrees - 20.0) < 1.0e-9,
-                   "the grave camera keeps the look yaw and starts 20 degrees above the body");
+                       std::abs(pose.pitch_degrees) < 1.0e-9,
+                   "the scene camera starts with retail r_x/r_y zero, looking along -y");
         }
 
         // One retail Camera: the first-person look is the death camera's
@@ -124,10 +123,10 @@ int main() {
                    "streak 1 still goes straight to the chase camera");
             const auto pose = camera.pose();
             expect(std::abs(pose.yaw_degrees + 90.0) < 1.0e-9 &&
-                       std::abs(pose.pitch_degrees - 20.0) < 1.0e-9,
-                   "the death camera inherits the look yaw and looks down on the body");
-            expect(centred(project(pose, death_eye)) && pose.eye.z < death_eye.z,
-                   "our body stays centred with the eye above it");
+                       std::abs(pose.pitch_degrees) < 1.0e-9,
+                   "the death camera inherits the look angles");
+            expect(centred(project(pose, killer)) && centred(project(pose, death_eye)),
+                   "the killer we were facing stays centred, behind our body");
             camera.on_mouse_move(120.0, 40.0);
             camera.end_life();
             camera.set_view_angles(30.0, 95.0);
@@ -361,18 +360,10 @@ int main() {
             const auto open = chase_camera_eye(nullptr, focus, 0.0, 0.0);
             expect(std::abs(open.x - 105.5) < 1.0e-9, "without terrain the eye is 5 behind");
             const auto walled = chase_camera_eye(map.get(), focus, 0.0, 0.0);
-            // The wall face at x = 103 is 2.5 away; the eye keeps 0.35 clear.
-            expect(std::abs(walled.x - (103.0 - 0.35)) < 1.0e-5,
-                   "the chase eye must stop just in front of the wall face");
-            // Sweeping the orbit across wall cells moves the eye continuously.
-            double previous = chase_camera_eye(map.get(), focus, 0.0, 0.0).x;
-            double largest_step = 0.0;
-            for (int tenth{1}; tenth <= 300; ++tenth) {
-                const auto eye = chase_camera_eye(map.get(), focus, tenth * 0.1, 0.0);
-                largest_step = std::max(largest_step, std::abs(eye.x - previous));
-                previous = eye.x;
-            }
-            expect(largest_step < 0.05, "orbiting along a wall must not zoom in block steps");
+            // Cell centre 103.5 is 3 away: 3 - sqrt(3)/2 - 0.5 = 1.634.
+            expect(std::abs(walled.x - (100.5 + 3.0 - std::sqrt(3.0) * 0.5 - 0.5)) < 1.0e-6 &&
+                       walled.x < 103.0,
+                   "the chase eye must stop in front of the wall");
             const auto edge = chase_camera_eye(nullptr, {511.0, 100.0, 200.0}, 180.0, 0.0);
             expect(edge.x <= 512.0 + 1.0e-9, "the eye is scaled back inside the map box");
 

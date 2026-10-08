@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
-#include <utility>
 #include <vector>
 
 namespace {
@@ -324,103 +323,6 @@ int main() {
             expect(std::fabs(state.velocity.z - expected) < 1e-7 &&
                        state.fall_distance < 0.01,
                    "parachute must apply 5% gravity and reset prior fall distance");
-        }
-
-        // Engineer flight speed (2026-10-01): stock world.pyd scales an active
-        // Engineer pack's air acceleration by 0.1 (2.8 blocks/s with the
-        // InitialInfo 1.25 class scale); the negotiated BSFP v2 profile uses
-        // 0.25, the Engineer's own walking speed (7 blocks/s). Server:
-        // tests/test_flight_balance.py::test_engineer_flies_at_ground_walking_speed...
-        {
-            const auto cruise = [](const battlespades::world::MovementClassConfig& config) {
-                PlayerMovementState state;
-                state.position = {100.5, 100.5, 100.0};
-                state.airborne = true;
-                state.jetpack = 3U;
-                state.jetpack_active = true;
-                state.orientation = {1.0, 0.0, 0.0};
-                PlayerInputState input;
-                input.forward = true;
-                for (int frame{}; frame < 600; ++frame) {
-                    state.position = {100.5, 100.5, 100.0};
-                    state.velocity.z = 0.0;
-                    static_cast<void>(step_player(state, input, nullptr, fixed_dt, config));
-                }
-                return state.velocity.x * 32.0;  // blocks per second
-            };
-            auto engineer = battlespades::world::movement_config_for_class(12U, 1.25);
-            const double retail = cruise(engineer);
-            expect(std::fabs(retail - 0.7 * 1.25 * 0.1 * 32.0) < 0.01,
-                   "stock Engineer flight must stay at 0.1 x class acceleration");
-            battlespades::world::apply_flight_profile(
-                engineer, battlespades::world::balanced_flight_profile());
-            const double tuned = cruise(engineer);
-            expect(std::fabs(tuned - 0.7 * 1.25 * 0.25 * 32.0) < 0.01 &&
-                       std::fabs(tuned - 0.7 * 1.25 / 4.0 * 32.0) < 0.01,
-                   "v2 Engineer must fly at its ground walking speed");
-            // UGC Builder hover flight keeps the stock 0.1 in either profile.
-            PlayerMovementState ugc;
-            ugc.airborne = true;
-            ugc.jetpack = 4U;
-            ugc.jetpack_active = true;
-            ugc.orientation = {1.0, 0.0, 0.0};
-            PlayerInputState forward;
-            forward.forward = true;
-            auto ugc_stock = ugc;
-            static_cast<void>(step_player(ugc, forward, nullptr, fixed_dt, engineer));
-            static_cast<void>(step_player(ugc_stock, forward, nullptr, fixed_dt,
-                                          battlespades::world::movement_config_for_class(12U, 1.25)));
-            expect(ugc.velocity.x == ugc_stock.velocity.x,
-                   "the Engineer tuning must not touch the UGC Builder pack");
-        }
-
-        // Parachute descent (2026-10-01). Stock canopy: from a slow deploy the
-        // fall creeps up to 1.6 blocks/s. v2: a slow body free-falls to the
-        // 5 blocks/s terminal within ~10 frames; a fast body brakes with the
-        // stock canopy recurrence in both profiles.
-        {
-            const auto descend = [](const battlespades::world::MovementClassConfig& config,
-                                    double initial_vz, int frames) {
-                PlayerMovementState state;
-                state.airborne = true;
-                state.parachute = true;
-                state.parachute_active = true;
-                state.velocity.z = initial_vz;
-                double fallen{};
-                for (int frame{}; frame < frames; ++frame) {
-                    state.position = {100.5, 100.5, 100.0};
-                    static_cast<void>(step_player(state, {}, nullptr, fixed_dt, config));
-                    fallen += state.velocity.z * fixed_dt * 32.0;
-                }
-                return std::pair{state.velocity.z, fallen};
-            };
-            const auto stock = battlespades::world::movement_config_for_class(0U);
-            auto tuned = stock;
-            battlespades::world::apply_flight_profile(
-                tuned, battlespades::world::balanced_flight_profile());
-
-            const auto [stock_slow_vz, stock_slow_fallen] = descend(stock, 0.0, 60);
-            expect(stock_slow_vz < 0.05 && stock_slow_fallen < 1.0,
-                   "stock canopy opened at rest stays below 1.6 blocks/s for a second");
-            const auto [tuned_slow_vz, tuned_slow_fallen] = descend(tuned, 0.0, 60);
-            expect(std::fabs(tuned_slow_vz * 32.0 - 5.0) < 0.01 &&
-                       tuned_slow_fallen > 4.0 && tuned_slow_fallen < 5.0,
-                   "v2 canopy opened at rest must reach 5 blocks/s almost at once");
-            const auto [tuned_ten_vz, ignored] = descend(tuned, 0.0, 12);
-            static_cast<void>(ignored);
-            expect(std::fabs(tuned_ten_vz - 0.15625) < 1e-6,
-                   "the free-fall floor reaches the canopy terminal within twelve frames");
-
-            for (const auto* config : std::array<const MovementClassConfig*, 2U>{&stock, &tuned}) {
-                const auto [fast_vz, fast_fallen] = descend(*config, 0.6, 60);
-                static_cast<void>(fast_fallen);
-                double expected = 0.6;
-                for (int frame{}; frame < 60; ++frame)
-                    expected = battlespades::world::canopy_vertical_step(expected, fixed_dt, 1.0, *config);
-                expect(std::fabs(fast_vz - expected) < 1e-4 && fast_vz < 0.6 &&
-                           fast_vz > static_cast<double>(config->parachute_gravity_scale),
-                       "a fast deploy must brake with the stock canopy recurrence");
-            }
         }
 
         // The original core normalizes horizontal look before acceleration;

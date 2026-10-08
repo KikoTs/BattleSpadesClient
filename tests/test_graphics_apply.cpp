@@ -60,11 +60,12 @@ void kiril_crash_change_is_deferred_on_direct3d() {
 void live_rows_classify_by_mechanism() {
     expect(plan([](ClientSettings& s) { s.graphics.resolution = {1'280U, 720U}; }).display,
            "resolution is a display change");
-    for (const auto mode : {battlespades::settings::WindowMode::windowed,
-                            battlespades::settings::WindowMode::exclusive}) {
-        expect(plan([mode](ClientSettings& s) { s.graphics.window_mode = mode; }).display,
-               "every window mode change is a display change");
-    }
+    expect(plan([](ClientSettings& s) { s.main.fullscreen = !s.main.fullscreen; }).display,
+           "fullscreen is a display change");
+    expect(plan([](ClientSettings& s) {
+               s.graphics.borderless_fullscreen = !s.graphics.borderless_fullscreen;
+           }).display,
+           "fullscreen kind is a display change");
     expect(plan([](ClientSettings& s) { s.graphics.vsync = !s.graphics.vsync; }).vertical_sync,
            "VSync is a presentation reset");
     const auto tier = plan([](ClientSettings& s) { s.graphics.shader_quality = ShaderQuality::ultra; });

@@ -108,11 +108,10 @@ void check_constants(const Json& fixture) {
 
 void compare_loadout(std::string_view label, const Json& expected, TutorialLessonStage stage) {
     const auto actual = TutorialLessons::loadout(stage);
-    const std::string name{label};
-    expect(actual.size() == expected.size(), name + " loadout size drifted");
+    expect(actual.size() == expected.size(), std::string{label} + " loadout size drifted");
     for (std::size_t index{}; index < actual.size(); ++index) {
         expect(actual[index] == tool_id(expected.at(index).get<std::string>()),
-               name + " loadout order drifted");
+               std::string{label} + " loadout order drifted");
     }
 }
 

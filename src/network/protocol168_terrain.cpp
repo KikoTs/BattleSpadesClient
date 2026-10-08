@@ -36,9 +36,9 @@ public:
         }
         Unsigned value{};
         for (std::size_t byte{}; byte < sizeof(Integer); ++byte) {
-            value = static_cast<Unsigned>(
-                value | (static_cast<Unsigned>(std::to_integer<std::uint8_t>(bytes_[at_ + byte]))
-                         << (byte * 8U)));
+            value |= static_cast<Unsigned>(
+                         std::to_integer<std::uint8_t>(bytes_[at_ + byte]))
+                     << (byte * 8U);
         }
         at_ += sizeof(Integer);
         return static_cast<Integer>(value);

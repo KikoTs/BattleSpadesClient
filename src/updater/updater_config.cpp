@@ -82,12 +82,6 @@ std::string manifest_endpoint(const UpdaterConfig& config) {
     return "https://www.aosplay.net/updates/" + config.channel + ".json";
 }
 
-std::vector<std::string> manifest_locations(const std::string& primary) {
-    std::vector<std::string> locations{primary};
-    if (primary == default_manifest_url) locations.emplace_back(default_manifest_mirror_url);
-    return locations;
-}
-
 std::string release_endpoint(const UpdaterConfig& config) {
     if (!config.api_url.empty()) return config.api_url;
     const std::string base = "https://api.github.com/repos/" + config.repository + "/releases";

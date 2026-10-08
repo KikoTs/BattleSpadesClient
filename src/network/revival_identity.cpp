@@ -918,7 +918,7 @@ public:
                 // A cold result transaction can outlive the short social-action
                 // deadline. This runs off the UI thread and remains cancellable;
                 // only an acknowledgement removes its durable retry file.
-                const auto response = request("/api/master/stats", "POST", std::optional<Json>{std::in_place, std::move(payload)}, token, std::chrono::seconds{15}, stop);
+                const auto response = request("/api/master/stats", "POST", std::move(payload), token, std::chrono::seconds{15}, stop);
                 const auto acknowledgement = response ? parse_json(response) : std::nullopt;
                 if (!acknowledgement || !acknowledgement->value("accepted", false)) {
                     result.error = response.error.empty() ? "Hosted results are queued for retry." : response.error;
@@ -1106,7 +1106,7 @@ public:
                 {"size", file.bytes.size()}, {"sha256", file.sha256}});
             const auto call = [&](Json payload) {
                 if (stop.stop_requested()) throw std::runtime_error{"Publication cancelled."};
-                const auto response = request("/api/workshop/native", "POST", std::optional<Json>{std::in_place, std::move(payload)},
+                const auto response = request("/api/workshop/native", "POST", std::move(payload),
                     token, std::chrono::seconds{60}, stop);
                 if (!response) throw std::runtime_error{response.error};
                 const auto parsed = parse_json(response);
@@ -1315,7 +1315,7 @@ private:
         try {
             auto value = Json::parse(response.body);
             if (!value.is_object()) return std::nullopt;
-            return std::optional<Json>{std::in_place, std::move(value)};
+            return value;
         } catch (...) {
             return std::nullopt;
         }

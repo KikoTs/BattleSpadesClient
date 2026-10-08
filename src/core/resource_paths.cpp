@@ -1,3 +1,8 @@
+#if defined(__HAIKU__)
+#include <OS.h>
+#include <kernel/image.h>
+#endif
+
 #include "battlespades/core/resource_paths.hpp"
 
 #include <sstream>
@@ -114,6 +119,21 @@ std::optional<std::filesystem::path> current_executable_path(std::string& error)
         }
         error = "current executable path exceeds the Linux safety limit";
         return std::nullopt;
+#elif defined(__HAIKU__)
+    int32 cookie = 0;
+    image_info info{};
+
+    while (get_next_image_info(
+               B_CURRENT_TEAM,
+               &cookie,
+               &info) == B_OK) {
+        if (info.type == B_APP_IMAGE) {
+            return info.name;
+        }
+    }
+
+    throw std::runtime_error(
+        "failed to discover current executable path on Haiku");
 #else
         error = "current executable path discovery is unsupported on this platform";
         return std::nullopt;

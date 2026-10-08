@@ -74,16 +74,24 @@ struct PlayerProfileTabDefinition final {
     std::span<const std::string_view> filter_keys;
 };
 
+enum class PlayerProfileEffectKind : std::uint8_t {
+    show_achievements_overlay,
+};
+
+/** Platform action emitted by a profile control, never performed by the model. */
+struct PlayerProfileEffect final {
+    PlayerProfileEffectKind kind{PlayerProfileEffectKind::show_achievements_overlay};
+
+    [[nodiscard]] friend constexpr bool operator==(const PlayerProfileEffect&,
+                                                   const PlayerProfileEffect&) = default;
+};
+
 /**
  * Renderer-neutral PlayerProfileMenu state and stale-callback boundary.
  *
  * Filter index zero means All; subsequent values address the exact recovered
  * per-tab filter list. Retail reconstructs the drop-down on every tab change,
  * so returning to a tab resets its filter to All rather than remembering it.
- *
- * Retail's ACHIEVEMENTS button opened Steam's overlay page. Steam only ever
- * let the publisher's servers write those achievements, so the overlay cannot
- * show what a player earns now; the button opens a list in this menu instead.
  */
 class PlayerProfileMenuModel final {
 public:
@@ -92,7 +100,6 @@ public:
     static constexpr std::size_t statistic_visible_rows{13U};
     // Compatibility alias for callers that only need the largest row count.
     static constexpr std::size_t visible_rows{statistic_visible_rows};
-    static constexpr std::size_t achievement_visible_rows{6U};
 
     explicit PlayerProfileMenuModel(std::uint64_t account_id = 0U);
 
@@ -113,13 +120,8 @@ public:
     [[nodiscard]] bool close_filter() noexcept;
     [[nodiscard]] bool select_filter(std::size_t index);
     [[nodiscard]] bool scroll_rows(int delta) noexcept;
-    /** The achievements list is showing in place of the statistics. */
-    [[nodiscard]] bool achievements_open() const noexcept;
-    [[nodiscard]] std::size_t first_visible_achievement() const noexcept;
-    /** The ACHIEVEMENTS button: shows the list, or returns to the statistics. */
-    void activate_achievements() noexcept;
-    /** Scrolls a list of `total` achievements; false at either end. */
-    [[nodiscard]] bool scroll_achievements(int delta, std::size_t total) noexcept;
+    void activate_achievements();
+    [[nodiscard]] std::vector<PlayerProfileEffect> take_effects();
     [[nodiscard]] bool complete(PlayerProfileRequest request, PlayerProfileData data);
     [[nodiscard]] bool fail(PlayerProfileRequest request) noexcept;
     void reload(std::uint64_t account_id) noexcept;
@@ -138,8 +140,7 @@ private:
     bool request_taken_{};
     std::size_t first_visible_row_{};
     bool filter_open_{};
-    bool achievements_open_{};
-    std::size_t first_visible_achievement_{};
+    std::vector<PlayerProfileEffect> effects_;
 };
 
 [[nodiscard]] std::span<const PlayerProfileTabDefinition> player_profile_tab_definitions() noexcept;

@@ -129,9 +129,7 @@ int main() {
         constexpr std::array<FlightSample, 3U> balanced_samples{{
             {66U, 68.5, 104.657447815, 95.357139587, 0.0, 148.026870728, 5.272015095},
             {67U, 83.55, 104.657447815, 105.753852844, 38.55, 161.107452393, 110.102577209},
-            // BSFP v2 Engineer (air accel 0.25, BALANCED_FLIGHT_V2): same fuel
-            // and climb as v1, farther along x (v1 was 103.110809326/117.272407532).
-            {68U, 84.625, 103.913543701, 104.530723572, 47.125, 136.957565308, 80.106422424},
+            {68U, 84.625, 103.110809326, 104.530723572, 47.125, 117.272407532, 80.106422424},
         }};
         for (const auto& sample : balanced_samples) {
             TutorialSessionConfig live;
@@ -285,22 +283,6 @@ int main() {
             }
             expect(ticks > 1200 && ticks < 1800,
                    "forty-block retail canopy descent must take roughly 25 seconds");
-            // The negotiated v2 canopy (5 blocks/s, free-fall floor) lands the
-            // same drop in about 8 s, still without damage; the server pins the
-            // same window (test_v2_soldier_chute_lands_a_40_block_drop_safely...).
-            TutorialSessionConfig tuned = live;
-            tuned.flight_profile = battlespades::world::balanced_flight_profile();
-            TutorialWorldSession fast{map, tuned};
-            fast.set_action_held(TutorialAction::hover, true);
-            int fast_ticks{};
-            for (; fast_ticks < 2400; ++fast_ticks) {
-                fast.tick();
-                expect(fast.take_movement_events().landing_damage <= 0,
-                       "the v2 canopy must still land a forty-block drop without damage");
-                if (!fast.player().airborne) break;
-            }
-            expect(fast_ticks > 440 && fast_ticks < 560,
-                   "forty-block v2 canopy descent must take roughly 8 seconds");
             expect(!session.player().parachute_active,
                    "landing must close the canopy immediately");
             session.set_action_held(TutorialAction::jump, true);

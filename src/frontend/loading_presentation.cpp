@@ -329,14 +329,14 @@ ui::DrawList BootLoadingPresentation::build(const BootLoadingSnapshot& snapshot,
     constexpr double height{40.0};
     for (std::size_t bullet = 0U; bullet < BootLoadingSnapshot::bullet_count; ++bullet) {
         list.push(sprite(loading_screen_assets::boot_bullet_dark,
-                         {x + width * static_cast<double>(bullet), y, width, height},
+                         {x + width * bullet, y, width, height},
                          DrawSpace::design_pixels,
                          TextureAnchor::top_left,
                          1.0));
     }
     for (std::size_t bullet = 0U; bullet < snapshot.filled_bullets; ++bullet) {
         list.push(sprite(loading_screen_assets::boot_bullet,
-                         {x + width * static_cast<double>(bullet), y, width, height},
+                         {x + width * bullet, y, width, height},
                          DrawSpace::design_pixels,
                          TextureAnchor::top_left,
                          1.0));

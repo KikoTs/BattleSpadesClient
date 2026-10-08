@@ -44,8 +44,8 @@ constexpr std::array classic_maps{
 constexpr std::array classic_rules{
     QuickPlayRule{"RULE_CTF_ENABLE_SHOOT_WITH_INTEL", "ON"},
     QuickPlayRule{"RULE_CTF_ENABLE_INTEL_AUTO_RETURN", "OFF"},
-    QuickPlayRule{"RULE_ENABLE_WEAPON_CLASSIC_SMG", "ON"},
-    QuickPlayRule{"RULE_ENABLE_WEAPON_CLASSIC_SHOTGUN", "ON"},
+    QuickPlayRule{"RULE_ENABLE_WEAPON_CLASSIC_SMG", "OFF"},
+    QuickPlayRule{"RULE_ENABLE_WEAPON_CLASSIC_SHOTGUN", "OFF"},
 };
 
 constexpr std::array demolition_modes{std::string_view{"dem"}};

@@ -156,8 +156,6 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
     int navigation{-1}, sound{};
     std::string failure, content_key, hero_key, receipt_id, opening_version, pool_version{"weapons-v4"};
     std::string viewport_key;
-    /** Preview state the reveal panel was last built with (none/loading/ready). */
-    std::string reveal_hero_state;
     std::vector<render::UiGeometry> draws;
     std::vector<render::UiTexture> retired_textures;
     std::optional<render::UiRect> scissor;
@@ -209,8 +207,8 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
                 }
                 else if(id.starts_with("crate:")) {
                     std::string error;
-                    const auto crate=world::Kv6Model::load_file(assets.parent_path()/"client/ui/models"/(id.substr(6)+"-crate.kv6"),&error);
-                    if(crate)pixels=world::cosmetic_preview(*crate,std::nullopt,false,0.65,1.0);
+                    const auto model=world::Kv6Model::load_file(assets.parent_path()/"client/ui/models"/(id.substr(6)+"-crate.kv6"),&error);
+                    if(model)pixels=world::cosmetic_preview(*model,std::nullopt,false,0.65,1.0);
                 }
                 std::lock_guard lock{queue->mutex};
                 queue->completed.emplace(std::move(id),std::move(pixels));
@@ -658,10 +656,6 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
             "Your awarded item is already saved to your inventory."}+"</p><div class=\"reveal-buttons\">"+
             button("skip","SKIP ANIMATION",true,"skip")+button("continue","CONTINUE",true,"continue primary")+"</div></div>";
         document->GetElementById("reveal")->SetInnerRML(html);
-        reveal_hero_state=hero_state();
-    }
-    [[nodiscard]] std::string hero_state() const {
-        return hero.texture.is_valid() ? "ready" : hero_worker.valid() ? "loading" : "none";
     }
     void update_hero(const InventoryCosmetic* item) {
         const auto key=item && item->kind!="profile_badge"
@@ -734,15 +728,6 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         if (auto_rotate && !dragging && !spinning) yaw+=elapsed*0.12F;
         update_hero(model->reveal?award():model->selected_item());
         if (model->reveal && receipt_id!=model->reveal->id) begin_reveal();
-        // The won item's model is built in the background while the reel
-        // spins; refresh the reward panel when it lands (or fails), instead of
-        // leaving the "Loading model preview..." it was opened with.
-        if (model->reveal && hero_state()!=reveal_hero_state) {
-            reveal_hero_state=hero_state();
-            if (const auto* winner=award())
-                if (auto* details=document->GetElementById("reward-details"))
-                    details->SetInnerRML(inspector(*winner,true));
-        }
         auto* overlay=document->GetElementById("reveal");
         overlay->SetProperty("display",model->reveal?"block":"none");
         if (model->reveal) {

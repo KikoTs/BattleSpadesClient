@@ -6,7 +6,6 @@
 #include "battlespades/render/render_views.hpp"
 #include "battlespades/render/shadow_projection.hpp"
 #include "chunk_vertex_layout.hpp"
-#include "post_process.hpp"
 
 #include <bgfx/bgfx.h>
 #include <bimg/decode.h>
@@ -573,25 +572,6 @@ struct WorldRenderer::Impl final {
     // to `enhanced`, and the gameplay-lab path never calls the setter, so a
     // default-constructed all-off profile would silently downgrade it to Legacy.
     QualityProfile profile{default_quality_profile()};
-    // Optional world post chain and world-texture sampling (post_settings.hpp).
-    PostProcessor post;
-    PostSettings post_settings{};
-    TextureFiltering texture_filtering{};
-
-    /**
-     * Sampler override for a world-space texture created with `base` address
-     * flags: UINT32_MAX (the texture's own flags) at the default smooth,
-     * non-anisotropic setting, so that path stays byte-identical.
-     */
-    [[nodiscard]] std::uint32_t world_sampler(std::uint32_t base) const noexcept {
-        if (texture_filtering == TextureFiltering{}) {
-            return UINT32_MAX;
-        }
-        if (!texture_filtering.smooth) {
-            return base | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
-        }
-        return base | BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC;
-    }
     bgfx::VertexLayout skydome_layout{};
     bgfx::ProgramHandle skydome_program = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle skydome_sampler = BGFX_INVALID_HANDLE;
@@ -966,7 +946,6 @@ bool WorldRenderer::initialize(const std::filesystem::path& shader_root,
         return impl_->fail("the selected bgfx backend has no world shader variant");
     }
     const auto backend_root = shader_root / directory;
-    impl_->post.set_shader_root(backend_root);
     const auto vertex = impl_->load_shader(backend_root / "vs_world.bin");
     if (!bgfx::isValid(vertex)) {
         return false;
@@ -1301,7 +1280,6 @@ void WorldRenderer::shutdown() noexcept {
     impl_->release_skydome();
     impl_->release_particles();
     impl_->release_lasers();
-    impl_->post.shutdown();
     impl_->release_shadow_target();
     impl_->release_skylight();
     if (bgfx::isValid(impl_->retail_ao_texture)) {
@@ -1612,33 +1590,6 @@ void WorldRenderer::set_quality_profile(const QualityProfile& profile) noexcept 
     impl_->profile = profile;
 }
 
-void WorldRenderer::set_post_settings(const PostSettings& settings) noexcept {
-    impl_->post_settings = settings;
-}
-
-const PostSettings& WorldRenderer::post_settings() const noexcept {
-    return impl_->post_settings;
-}
-
-PostCapabilities WorldRenderer::post_capabilities() const noexcept {
-    if (impl_ == nullptr || !impl_->initialized) {
-        return {};
-    }
-    try {
-        return impl_->post.capabilities();
-    } catch (...) {
-        return {};
-    }
-}
-
-bool WorldRenderer::post_chain_supported() const noexcept {
-    return post_capabilities().chain;
-}
-
-void WorldRenderer::set_texture_filtering(const TextureFiltering& filtering) noexcept {
-    impl_->texture_filtering = filtering;
-}
-
 void WorldRenderer::set_atmosphere(const world::MapAtmosphere& atmosphere) noexcept {
     impl_->atmosphere = atmosphere;
 }
@@ -1938,18 +1889,11 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 bgfx::getCaps()->homogeneousDepth,
                 bx::Handedness::Right);
 
-    // With the post chain active the world and first-person views draw into
-    // its offscreen scene (render scale applied); otherwise straight into the
-    // backbuffer exactly as before.
-    const auto post_frame =
-        impl_->post.begin(impl_->post_settings, PostExtent{drawable.width, drawable.height});
-    const auto target_width =
-        static_cast<std::uint16_t>(post_frame.active ? post_frame.scene.width : drawable.width);
-    const auto target_height =
-        static_cast<std::uint16_t>(post_frame.active ? post_frame.scene.height : drawable.height);
-    const std::uint16_t first_person_view =
-        post_frame.active ? post_frame.view_model_view : view_model_view_id;
-    bgfx::setViewRect(world_view_id, 0U, 0U, target_width, target_height);
+    bgfx::setViewRect(world_view_id,
+                      0U,
+                      0U,
+                      static_cast<std::uint16_t>(drawable.width),
+                      static_cast<std::uint16_t>(drawable.height));
     const auto& active_fog = impl_->profile.enhanced_lighting
         ? impl_->fog_bytes : impl_->retail_fog_bytes;
     const auto sky_clear_rgba = (static_cast<std::uint32_t>(active_fog[0U]) << 24U) |
@@ -1989,8 +1933,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 slot.uv_speed[0U], slot.uv_speed[1U], retail_time, 0.0F};
             bgfx::setTransform(sky_transform.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
-            bgfx::setTexture(0U, impl_->skydome_sampler, slot.texture,
-                             impl_->world_sampler(BGFX_SAMPLER_NONE));
+            bgfx::setTexture(0U, impl_->skydome_sampler, slot.texture);
             bgfx::setUniform(impl_->skydome_uv_time, uv_time.data());
             // The exporter deliberately uses negative scale so the camera
             // sees the triangle stream from inside. No culling matches the
@@ -2127,11 +2070,8 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     bx::mtxIdentity(identity_shadow.data());
     float shadow_bias = 0.0F;
     if (shadows_ready) {
-        // QualityProfile::shadow_distance picks the half-extent; zero keeps
-        // the fog-relative default.
-        const float extent = impl_->profile.shadow_distance > 0.0F
-            ? std::clamp(impl_->profile.shadow_distance, 16.0F, 256.0F)
-            : std::clamp(static_cast<float>(camera.fog_distance) * 0.55F, 32.0F, 160.0F);
+        const float extent =
+            std::clamp(static_cast<float>(camera.fog_distance) * 0.55F, 32.0F, 160.0F);
         const auto* caps = bgfx::getCaps();
         const auto shadow = sun_shadow_projection(
             camera.eye, atmosphere.sun_direction,
@@ -2434,8 +2374,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         uniforms.set(impl_->retail_ambient_uniform, retail_ambient.data());
         uniforms.set(impl_->retail_view_direction_uniform,
                          retail_view_direction.data());
-        bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture,
-                         impl_->world_sampler(BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP));
+        bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture);
         if (volume_ready) {
             bgfx::setTexture(3U, impl_->emissive_volume_sampler, impl_->emissive_volume_texture);
         }
@@ -2545,9 +2484,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         push_atmosphere();
         // draw_sea binds the atlas with GL_REPEAT (the map pass uses CLAMP).
         bgfx::setTexture(0U, impl_->retail_ao_sampler, impl_->retail_ao_texture,
-                         impl_->texture_filtering == TextureFiltering{}
-                             ? BGFX_SAMPLER_NONE
-                             : impl_->world_sampler(BGFX_SAMPLER_NONE));
+                         BGFX_SAMPLER_NONE);
         bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
                        BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA);
         bgfx::submit(world_view_id, impl_->program);
@@ -2595,8 +2532,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setTransform(identity.data());
             bgfx::setVertexBuffer(0U, &vertices);
             bgfx::setIndexBuffer(&index_buffer);
-            bgfx::setTexture(0U, impl_->skydome_sampler, impl_->spot_shadow_texture,
-                             impl_->world_sampler(BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP));
+            bgfx::setTexture(0U, impl_->skydome_sampler, impl_->spot_shadow_texture);
             bgfx::setUniform(impl_->skydome_uv_time, static_uv.data());
             bgfx::setState(state);
             bgfx::submit(world_view_id, impl_->skydome_program);
@@ -2614,7 +2550,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         for (const auto& draw : world_models) {
             const bool translucent = draw.opacity < 0.999F;
             if (translucent != translucent_pass || draw.slot >= world_model_slot_count ||
-                !(draw.opacity > 0.0F) || draw.shadow_only) {
+                !(draw.opacity > 0.0F)) {
                 continue;
             }
             const auto& slot = impl_->world_model_slots[draw.slot];
@@ -2736,8 +2672,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setIndexBuffer(&index_buffer);
             bgfx::setTexture(0U, impl_->skydome_sampler,
                              zone.solid ? impl_->solid_zone_texture
-                                        : impl_->zone_texture,
-                             impl_->world_sampler(BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP));
+                                        : impl_->zone_texture);
             bgfx::setUniform(impl_->skydome_uv_time, static_uv.data());
             bgfx::setState(state);
             bgfx::submit(world_view_id, impl_->skydome_program);
@@ -2867,8 +2802,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 bgfx::setVertexBuffer(0U, &vertices);
                 bgfx::setIndexBuffer(&indices);
                 bgfx::setTexture(
-                    0U, impl_->skydome_sampler, impl_->laser_beam_textures[texture_index],
-                    impl_->world_sampler(BGFX_SAMPLER_V_CLAMP));
+                    0U, impl_->skydome_sampler, impl_->laser_beam_textures[texture_index]);
                 bgfx::setUniform(impl_->skydome_uv_time, uv_time.data());
                 bgfx::setState(laser_state);
                 bgfx::submit(world_view_id, impl_->skydome_program);
@@ -2930,8 +2864,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 bgfx::setVertexBuffer(0U, &vertices);
                 bgfx::setIndexBuffer(&indices);
                 bgfx::setTexture(
-                    0U, impl_->skydome_sampler, impl_->laser_spot_textures[texture_index],
-                    impl_->world_sampler(BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP));
+                    0U, impl_->skydome_sampler, impl_->laser_spot_textures[texture_index]);
                 bgfx::setUniform(impl_->skydome_uv_time, static_uv.data());
                 bgfx::setState(laser_state);
                 bgfx::submit(world_view_id, impl_->skydome_program);
@@ -3005,8 +2938,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             bgfx::setVertexBuffer(0U, impl_->particle_quad);
             bgfx::setIndexBuffer(impl_->particle_quad_indices);
             bgfx::setInstanceDataBuffer(&instance_buffer);
-            bgfx::setTexture(0U, impl_->particle_sampler, impl_->particle_textures[atlas_index],
-                             impl_->world_sampler(BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP));
+            bgfx::setTexture(0U, impl_->particle_sampler, impl_->particle_textures[atlas_index]);
             bgfx::setTexture(1U, impl_->particle_lut_sampler, lut_texture);
             uniforms.set(impl_->camera_uniform, camera_uniform.data());
             uniforms.set(impl_->fog_uniform, fog_uniform.data());
@@ -3038,16 +2970,20 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     if (!view_model.empty()) {
         std::array<float, 16U> tool_projection{};
         bx::mtxProj(tool_projection.data(),
-                    static_cast<float>(camera.view_model_fov_y_degrees.value_or(camera.fov_y_degrees)),
+                    static_cast<float>(camera.fov_y_degrees),
                     aspect,
                     0.01F,
                     8.0F,
                     bgfx::getCaps()->homogeneousDepth,
                     bx::Handedness::Right);
-        bgfx::setViewRect(first_person_view, 0U, 0U, target_width, target_height);
-        bgfx::setViewClear(first_person_view, BGFX_CLEAR_DEPTH, 0U, 1.0F, 0U);
-        bgfx::setViewMode(first_person_view, bgfx::ViewMode::Sequential);
-        bgfx::setViewTransform(first_person_view, identity.data(), tool_projection.data());
+        bgfx::setViewRect(view_model_view_id,
+                          0U,
+                          0U,
+                          static_cast<std::uint16_t>(drawable.width),
+                          static_cast<std::uint16_t>(drawable.height));
+        bgfx::setViewClear(view_model_view_id, BGFX_CLEAR_DEPTH, 0U, 1.0F, 0U);
+        bgfx::setViewMode(view_model_view_id, bgfx::ViewMode::Sequential);
+        bgfx::setViewTransform(view_model_view_id, identity.data(), tool_projection.data());
 
         for (const auto& draw : view_model) {
             if (draw.slot >= view_model_slot_count) {
@@ -3093,41 +3029,12 @@ bool WorldRenderer::submit(const WorldCamera& camera,
             // face. Unculled, that one aimed shot painted the whole scope.
             // KV6 winding matches the terrain's CW-culled chunks, so outside
             // views are byte-identical with and without the cull.
-            //
-            // Lit parts are culled too. Unculled, a high-detail scripted skin
-            // (a million vertices) shaded every back face through the full
-            // world shader as well and halved the frame rate while held. A
-            // mirroring transform (negative determinant) reverses the winding,
-            // so it culls the opposite side and still shows its outside.
-            const auto& m = draw.transform;
-            const float determinant = m[0U] * (m[5U] * m[10U] - m[6U] * m[9U]) -
-                                      m[4U] * (m[1U] * m[10U] - m[2U] * m[9U]) +
-                                      m[8U] * (m[1U] * m[6U] - m[2U] * m[5U]);
             bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
                            BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
-                           (determinant < 0.0F ? BGFX_STATE_CULL_CCW : BGFX_STATE_CULL_CW));
-            bgfx::submit(first_person_view, impl_->program);
+                           (draw.unlit ? BGFX_STATE_CULL_CW : 0U));
+            bgfx::submit(view_model_view_id, impl_->program);
         }
     }
-
-    const auto tan_half_fov_y =
-        std::tan(static_cast<float>(camera.fov_y_degrees) * bx::kPi / 360.0F);
-    PostProcessor::Camera post_camera{};
-    post_camera.view_projection = view_projection;
-    post_camera.tan_half_fov_y = tan_half_fov_y;
-    post_camera.tan_half_fov_x = tan_half_fov_y * aspect;
-    post_camera.near_plane = static_cast<float>(camera.near_plane);
-    post_camera.far_plane = far_plane;
-    post_camera.eye = camera.eye;
-    post_camera.forward = basis.forward;
-    auto post_settings = impl_->post_settings;
-    post_settings.bloom_threshold = impl_->atmosphere.bloom_threshold;
-    impl_->post.finish(post_frame, post_settings,
-                       PostExtent{drawable.width, drawable.height}, post_camera);
-    impl_->post.note_camera(post_camera);
-    impl_->stats.post_passes = impl_->post.last_pass_count();
-    impl_->stats.post_scene_width = post_frame.active ? post_frame.scene.width : 0U;
-    impl_->stats.post_scene_height = post_frame.active ? post_frame.scene.height : 0U;
     return true;
 }
 

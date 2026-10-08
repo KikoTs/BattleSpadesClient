@@ -384,49 +384,8 @@ void authored_sun_directions_are_normalised() {
 
 } // namespace
 
-// Workshop maps: a bright sand map under a bright desert sky blew out to
-// white, a dark city map under a sunless sky stayed murky.
-void surface_brightness_fits_ugc_lighting() {
-    using battlespades::world::MapAtmosphere;
-    using battlespades::world::MapSurfaceBrightness;
-    using battlespades::world::normalize_atmosphere_for_map;
-    MapAtmosphere desert;
-    desert.ambient_intensity = 0.86F;
-    desert.key_intensity = 0.68F;
-    desert.exposure = 1.13F;
-    const auto desert_before = desert;
-    normalize_atmosphere_for_map(desert, MapSurfaceBrightness{0.85F, 0.95F});
-    expect(desert.ambient_intensity < desert_before.ambient_intensity &&
-               desert.key_intensity < desert_before.key_intensity,
-           "a bright map lowers its light");
-    // Brightest sand in full sun, through the extended-Reinhard curve.
-    const float bright = 0.95F * (desert.ambient_intensity + desert.key_intensity);
-    const float white = desert.exposure * desert.exposure;
-    expect(desert.exposure >= desert_before.exposure && bright * (1.0F + bright / white) / (1.0F + bright) < 0.9F,
-           "the brightest surfaces of a bright map stay below white");
-    expect(desert.bloom_threshold > 0.72F, "a bright map only blooms real highlights");
-
-    MapAtmosphere city;
-    city.ambient_intensity = 0.67F;
-    city.key_intensity = 0.34F;
-    city.exposure = 1.40F;
-    const auto city_before = city;
-    normalize_atmosphere_for_map(city, MapSurfaceBrightness{0.20F, 0.40F});
-    expect(city.ambient_intensity > city_before.ambient_intensity &&
-               city.key_intensity > city_before.key_intensity,
-           "a dark map is lifted");
-    expect(std::abs(city.bloom_threshold - 0.72F) < 1.0e-6F, "a dark map keeps the normal bloom");
-
-    MapAtmosphere untouched;
-    const auto copy = untouched;
-    normalize_atmosphere_for_map(untouched, MapSurfaceBrightness{});
-    expect(untouched.ambient_intensity == copy.ambient_intensity && untouched.source == copy.source,
-           "no measurement, no change");
-}
-
 int main() {
     try {
-        surface_brightness_fits_ugc_lighting();
         skydome_time_matches_retail_draw_counter();
         every_shipped_dome_derives();
         no_map_is_too_dark_to_play();

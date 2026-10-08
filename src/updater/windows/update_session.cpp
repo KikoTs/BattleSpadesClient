@@ -3,7 +3,6 @@
 #include "win_util.hpp"
 
 #include "battlespades/updater/file_util.hpp"
-#include "battlespades/updater/launcher_args.hpp"
 #include "battlespades/updater/release_manifest.hpp"
 #include "battlespades/updater/semver.hpp"
 #include "battlespades/updater/sha256.hpp"
@@ -12,14 +11,6 @@
 
 #include <algorithm>
 #include <ctime>
-
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
 
 namespace battlespades::updater::win {
 namespace {
@@ -145,8 +136,17 @@ MirrorOutcome fetch_from_mirror(const std::string& url, const fs::path& archive,
         error = response.status == 0U ? response.error : "HTTP " + std::to_string(response.status);
         return MirrorOutcome::failed;
     }
-    if (!verify_package_file(partial, release.size, release.sha256, error)) {
+    const auto size = fs::file_size(partial, code);
+    if (code || size != release.size) {
         fs::remove(partial, code);
+        error = "size " + std::to_string(size) + " instead of " + std::to_string(release.size);
+        return MirrorOutcome::failed;
+    }
+    std::string hash_error;
+    const auto digest = sha256_hex_file(partial, hash_error);
+    if (!digest.has_value() || !same_sha256(*digest, release.sha256)) {
+        fs::remove(partial, code);
+        error = digest.has_value() ? "SHA-256 mismatch (" + *digest + ")" : hash_error;
         return MirrorOutcome::failed;
     }
     fs::rename(partial, archive, code);
@@ -158,8 +158,11 @@ MirrorOutcome fetch_from_mirror(const std::string& url, const fs::path& archive,
 }
 
 [[nodiscard]] bool verified_archive(const fs::path& archive, const ComponentRelease& release) {
+    std::error_code code;
+    if (!fs::is_regular_file(archive, code) || fs::file_size(archive, code) != release.size) return false;
     std::string ignored;
-    return verify_package_file(archive, release.size, release.sha256, ignored);
+    const auto digest = sha256_hex_file(archive, ignored);
+    return digest.has_value() && same_sha256(*digest, release.sha256);
 }
 
 /// Stage one verified archive as update/staging/<component>-<version>.
@@ -239,29 +242,21 @@ void prune_stages(const UpdateLayout& layout, const std::vector<PlannedUpdate>& 
 
 Discovery discover_updates(const UpdaterConfig& config, const SessionCallbacks& callbacks) {
     Discovery discovery;
-    for (const auto& endpoint : manifest_locations(manifest_endpoint(config))) {
-        log(callbacks, "checking " + endpoint);
-        const auto response = http_get(endpoint, small_options(config, false), maximum_manifest_body);
-        if (response.status == 200U) {
-            std::string parse_error;
-            auto manifest = parse_update_manifest(response.body, parse_error);
-            if (manifest.has_value()) {
-                discovery.source = DiscoverySource::manifest;
-                discovery.manifest = std::move(manifest);
-                discovery.error.clear();
-                discovery.body = response.body;
-                return discovery;
-            }
-            // A broken manifest is a publishing error, not an outage: no fallback.
-            discovery.error = "invalid update manifest: " + parse_error;
+    const auto endpoint = manifest_endpoint(config);
+    log(callbacks, "checking " + endpoint);
+    const auto response = http_get(endpoint, small_options(config, false), maximum_manifest_body);
+    if (response.status == 200U) {
+        auto manifest = parse_update_manifest(response.body, discovery.error);
+        if (manifest.has_value()) {
+            discovery.source = DiscoverySource::manifest;
+            discovery.manifest = std::move(manifest);
             return discovery;
         }
-        const auto problem = response.status == 0U
-                                 ? endpoint + ": " + response.error
-                                 : endpoint + " answered HTTP " + std::to_string(response.status);
-        log(callbacks, "unreachable: " + problem);
-        discovery.error += (discovery.error.empty() ? "" : "; ") + problem;
+        // A broken manifest is a publishing error, not an outage: no fallback.
+        discovery.error = "invalid update manifest: " + discovery.error;
+        return discovery;
     }
+    discovery.error = response.status == 0U ? response.error : endpoint + " answered HTTP " + std::to_string(response.status);
     if (!config.github_fallback) return discovery;
     log(callbacks, "manifest unreachable (" + discovery.error + ")");
     std::string error;
@@ -281,72 +276,23 @@ namespace {
 /// files against asset-manifest.json and installs them atomically into
 /// assets\original, exactly like "Use my Ace of Spades folder".
 bool import_retail_assets(const UpdateLayout& layout, const fs::path& root, std::string& error) {
-    const auto imported = run_asset_import(layout, root);
-    if (!imported.ok()) {
-        error = "the downloaded game files did not pass the asset check: " + imported.message;
+    const auto importer = layout.install / L"BattleSpadesAssetInstaller.exe";
+    std::error_code code;
+    if (!fs::is_regular_file(importer, code)) {
+        error = "BattleSpadesAssetInstaller.exe is missing";
+        return false;
+    }
+    const auto line = L"\"" + importer.wstring() + L"\" --source \"" + root.wstring() + L"\"";
+    const auto exit = run_hidden(importer.wstring(), line, 30U * 60U * 1000U);
+    if (!exit.has_value() || *exit != 0U) {
+        error = "the downloaded game files did not pass the asset check (importer exit " +
+                (exit.has_value() ? std::to_string(*exit) : std::string{"timeout"}) + ")";
         return false;
     }
     return true;
 }
 
 } // namespace
-
-AssetImportResult run_asset_import(const UpdateLayout& layout, const std::optional<fs::path>& source) {
-    AssetImportResult result;
-    const auto importer = layout.install / L"BattleSpadesAssetInstaller.exe";
-    std::error_code code;
-    if (!fs::is_regular_file(importer, code)) {
-        result.message = "BattleSpadesAssetInstaller.exe is missing from " + path_to_utf8(layout.install) +
-                         ". Reinstall BattleSpades.";
-        return result;
-    }
-    const auto report_file = layout.root() / "import-report.txt";
-    fs::create_directories(layout.root(), code);
-    fs::remove(report_file, code);
-    std::vector<std::string> arguments;
-    if (source.has_value()) {
-        arguments.insert(arguments.end(), {"--source", path_to_utf8(*source)});
-    } else {
-        // The launcher's first-run screen already offers every choice
-        // (including the download): the importer only shows its folder picker.
-        arguments.emplace_back("--choose-folder");
-    }
-    arguments.insert(arguments.end(), {"--destination", path_to_utf8(layout.install / "assets" / "original"),
-                                       "--report", path_to_utf8(report_file)});
-    const auto line = widen(build_windows_command_line(path_to_utf8(importer), arguments));
-    if (source.has_value()) {
-        result.exit = run_hidden(importer.wstring(), line, 30U * 60U * 1000U);
-    } else {
-        // Interactive: the importer's own window and folder picker.
-        STARTUPINFOW startup{};
-        startup.cb = sizeof(startup);
-        PROCESS_INFORMATION process{};
-        std::wstring mutable_line = line;
-        if (CreateProcessW(importer.c_str(), mutable_line.data(), nullptr, nullptr, FALSE, 0U, nullptr,
-                           layout.install.c_str(), &startup, &process)) {
-            CloseHandle(process.hThread);
-            WaitForSingleObject(process.hProcess, INFINITE);
-            DWORD exit_code{1U};
-            if (GetExitCodeProcess(process.hProcess, &exit_code)) result.exit = exit_code;
-            CloseHandle(process.hProcess);
-        }
-    }
-    std::string ignored;
-    auto report = read_text_file(report_file, ignored).value_or(std::string{});
-    fs::remove(report_file, code);
-    if (result.ok()) return result;
-    if (report == "ok") report.clear();
-    if (!report.empty()) {
-        result.message = std::move(report);
-    } else if (!result.exit.has_value()) {
-        result.message = "the asset importer could not be started or did not finish in time";
-    } else if (result.cancelled()) {
-        result.message = "the import was cancelled";
-    } else {
-        result.message = "the asset importer failed with exit code " + std::to_string(*result.exit);
-    }
-    return result;
-}
 
 SessionResult run_update_session(const UpdateLayout& layout, const UpdateManifest& manifest,
                                  const std::vector<PlannedUpdate>& updates, const UpdaterConfig& config,

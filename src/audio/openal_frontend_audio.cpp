@@ -25,7 +25,6 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wold-style-cast"
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
 
 #define STB_VORBIS_NO_STDIO
@@ -95,10 +94,8 @@ using audio::sound_group_stems;
 #endif
 
 /** AL_REVERB_DECAY_TIME's legal range (efx.h). */
-#if !defined(__APPLE__)
 constexpr float minimum_reverb_decay{0.1F};
 constexpr float maximum_reverb_decay{20.0F};
-#endif
 
 struct VorbisCloser final {
     void operator()(stb_vorbis* decoder) const noexcept {
@@ -741,8 +738,8 @@ struct OpenAlFrontendAudio::Impl final {
             AsyncDecodedAudio result;
             try {
                 result.succeeded = read_ogg(path, result.audio, result.error);
-            } catch (const std::exception& exception) {
-                result.error = std::string{"audio decode worker failed: "} + exception.what();
+            } catch (const std::exception& error) {
+                result.error = std::string{"audio decode worker failed: "} + error.what();
             } catch (...) {
                 result.error = "audio decode worker failed with an unknown exception";
             }

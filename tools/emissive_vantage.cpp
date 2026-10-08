@@ -390,9 +390,9 @@ int main(int argc, char** argv) {
                         const auto minimum =
                             std::min({color->red, color->green, color->blue});
                         if ((!dark_only &&
-                             (maximum < 100U || maximum - minimum > 35)) ||
+                             (maximum < 100U || maximum - minimum > 35U)) ||
                             (dark_only &&
-                             (maximum > 100U || maximum - minimum > 16 ||
+                             (maximum > 100U || maximum - minimum > 16U ||
                               z >= VxlMap::height - 2U))) {
                             continue;
                         }

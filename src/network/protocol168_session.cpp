@@ -38,9 +38,9 @@ public:
         using Unsigned = std::make_unsigned_t<Integer>;
         Unsigned value{};
         for (std::size_t index{}; index < sizeof(Integer); ++index) {
-            value = static_cast<Unsigned>(
-                value | (static_cast<Unsigned>(std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
-                         << (index * 8U)));
+            value |= static_cast<Unsigned>(
+                         std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
+                     << (index * 8U);
         }
         offset_ += sizeof(Integer);
         return static_cast<Integer>(value);
@@ -335,27 +335,20 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
     }
     if (!reader.done()) {
         // Only our explicitly negotiated extension may follow retail fields.
-        for (const auto expected : {'B', 'S', 'F', 'P'}) {
+        for (const auto expected : {'B', 'S', 'F', 'P', '\x01'}) {
             if (reader.u8() != static_cast<std::uint8_t>(expected)) {
                 error = "unknown InitialInfo flight profile";
                 return std::nullopt;
             }
         }
-        const auto version = reader.u8();
-        if (!version || (*version != 1U && *version != 2U)) {
-            error = "unknown InitialInfo flight profile";
-            return std::nullopt;
-        }
         const auto flags = reader.u8();
         const auto idle = reader.integer<std::uint16_t>();
-        const std::uint8_t maximum_flags = *version == 1U ? 3U : 7U;
-        if (!flags || *flags > maximum_flags || !idle || *idle > 640U) {
+        if (!flags || *flags > 3U || !idle || *idle > 640U) {
             error = "invalid InitialInfo flight refill policy";
             return std::nullopt;
         }
         info.flight_profile.grounded_refill_only = (*flags & 1U) != 0U;
         info.flight_profile.descending_parachute_only = (*flags & 2U) != 0U;
-        info.flight_profile.canopy_free_fall_floor = (*flags & 4U) != 0U;
         info.flight_profile.refill_idle_seconds = *idle / 64.0;
         for (auto* values : {&info.flight_profile.drain, &info.flight_profile.refill}) {
             for (std::size_t pack{1U}; pack <= 3U; ++pack) {
@@ -365,18 +358,6 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
                     return std::nullopt;
                 }
                 (*values)[pack] = *raw / 64.0;
-            }
-        }
-        if (*version == 2U) {
-            // Mover tunings in exact 1/1024 units, each in (0, 1].
-            for (auto* value : {&info.flight_profile.engineer_flight_accel,
-                                &info.flight_profile.canopy_gravity_scale}) {
-                const auto raw = reader.integer<std::uint16_t>();
-                if (!raw || *raw == 0U || *raw > 1024U) {
-                    error = "invalid InitialInfo flight mover tuning";
-                    return std::nullopt;
-                }
-                *value = static_cast<float>(*raw) / 1024.0F;
             }
         }
         if (!reader.done()) {
@@ -736,9 +717,7 @@ steam_ticket_packet(std::span<const std::byte> ticket, bool flight_profile) {
         writer.u8(std::to_integer<std::uint8_t>(value));
     }
     if (flight_profile) {
-        // BSCF v2: also accept the Engineer/canopy mover tuning (BSFP v2).
-        // A v1-only server ignores the unknown trailer and stays stock.
-        for (const auto value : {'B', 'S', 'C', 'F', '\x02'})
+        for (const auto value : {'B', 'S', 'C', 'F', '\x01'})
             writer.u8(static_cast<std::uint8_t>(value));
     }
     return std::move(writer).take();

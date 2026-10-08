@@ -1,6 +1,5 @@
 #pragma once
 
-#include "battlespades/world/map_atmosphere.hpp"
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/emissive_volume.hpp"
 #include "battlespades/world/skylight_map.hpp"
@@ -45,8 +44,6 @@ struct BootstrapDerivedWorld final {
     SkylightMap skylight;
     EmissiveVolume emissive;
     std::vector<std::uint8_t> minimap_rgba;
-    /** Top-surface brightness, for fitting UGC lighting to the map. */
-    MapSurfaceBrightness surface_brightness;
     std::uint64_t map_revision{};
 };
 

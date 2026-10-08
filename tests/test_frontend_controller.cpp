@@ -96,16 +96,6 @@ void open_settings(FrontendController& controller) {
 row(const SettingsMenuPresentation& presentation, SettingsRowId id);
 
 void select_resolution_option(FrontendController& controller, std::size_t option_index) {
-    // Borderless (the default) covers the desktop and greys Resolution out;
-    // step Window Mode left to Windowed first.
-    if (!row(controller.settings_menu().presentation(), SettingsRowId::resolution).enabled) {
-        const auto mode =
-            row(controller.settings_menu().presentation(), SettingsRowId::window_mode).control_bounds;
-        click(controller, Point{mode.x + 2, mode.y + mode.height / 2});
-        expect(controller.settings_session().draft().graphics.window_mode ==
-                   battlespades::settings::WindowMode::windowed,
-               "Window Mode must step left to Windowed");
-    }
     auto resolution = row(controller.settings_menu().presentation(), SettingsRowId::resolution);
     click(controller, center(resolution.control_bounds));
     resolution = row(controller.settings_menu().presentation(), SettingsRowId::resolution);
@@ -394,17 +384,18 @@ void persistence_failure_keeps_settings_open_and_restores_runtime() {
     open_settings(controller);
     static_cast<void>(controller.take_effects());
 
-    const auto volume =
-        row(controller.settings_menu().presentation(), SettingsRowId::master_volume).control_bounds;
-    // A live preview: the runtime volume changes before Done.
-    click(controller, Point{volume.x + volume.width / 4, volume.y + volume.height / 2});
+    const auto fullscreen =
+        row(controller.settings_menu().presentation(), SettingsRowId::fullscreen);
+    // ToggleOptionControl sets the half that was clicked: the OFF half.
+    click(controller, Point{fullscreen.control_bounds.x + 5,
+                            fullscreen.control_bounds.y + fullscreen.control_bounds.height / 2});
     static_cast<void>(controller.take_effects());
     click(
         controller,
         center(button(controller.settings_menu().presentation(), SettingsTargetKind::done_button)));
     expect(controller.route() == FrontendRoute::settings,
            "failed save must keep Settings open for recovery");
-    expect(controller.settings_session().draft().main.master_volume == 1.0,
+    expect(controller.settings_session().draft().main.fullscreen,
            "failed save must restore the last persisted/default session snapshot");
     const auto effects = controller.take_effects();
     expect(has_effect<RuntimeSettingsNoticeEffect>(
@@ -413,13 +404,12 @@ void persistence_failure_keeps_settings_open_and_restores_runtime() {
                    return effect.kind == RuntimeSettingsNoticeKind::persistence_failed;
                }),
            "failed save must surface a typed non-fatal persistence notice");
-    expect(has_effect<RuntimeAudioEffect>(
+    expect(has_effect<RuntimeDisplayEffect>(
                effects,
-               [](const RuntimeAudioEffect& effect) {
-                   return effect.kind == RuntimeAudioEffectKind::set_master_volume &&
-                          effect.value == 1.0;
+               [](const RuntimeDisplayEffect& effect) {
+                   return effect.kind == RuntimeDisplayEffectKind::set_fullscreen && effect.enabled;
                }),
-           "failed save must reverse any already-applied live preview");
+           "failed save must reverse any already-applied fullscreen preview");
 }
 
 void resolution_keep_persistence_failure_reverts_safely() {

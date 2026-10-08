@@ -207,11 +207,7 @@ static_assert(sizeof(UiVertex) == 24U);
 }
 
 [[nodiscard]] std::uint32_t reset_flags(const BgfxUiRendererConfig& config) noexcept {
-    // Always on, at init and at every reset alike: it only sets the device
-    // maximum that BGFX_SAMPLER_*_ANISOTROPIC samplers use, so the Texture
-    // Filtering setting switches per draw and never changes these flags (a
-    // flag change can recreate the D3D swap chain the Steam overlay holds).
-    std::uint32_t flags = BGFX_RESET_MAXANISOTROPY;
+    std::uint32_t flags = BGFX_RESET_NONE;
     if (config.vertical_sync) {
         flags |= BGFX_RESET_VSYNC;
     }
@@ -786,8 +782,10 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     if (impl_->initialized) {
         return impl_->fail("bgfx UI renderer is already initialized");
     }
-    if (config.native_window.window == nullptr) {
-        return impl_->fail("a native window handle is required for UI rendering");
+    if (config.native_window.window == nullptr &&
+        config.native_window.graphics_context == nullptr) {
+        return impl_->fail(
+            "a native window handle or graphics context is required for UI rendering");
     }
     if (!config.drawable_extent.is_valid() || !config.design_extent.is_valid()) {
         return impl_->fail("drawable and design extents must be non-zero");
@@ -829,11 +827,10 @@ bool BgfxUiRenderer::initialize(const BgfxUiRendererConfig& config) {
     // queue fill 2-3 frames ahead under VSync because 60.000 Hz ticks never
     // match a 59.94 Hz panel: +30-50 ms of input latency. One queued frame
     // (plus bgfx's own render thread) keeps VSync latency near retail.
-    init.resolution.maxFrameLatency =
-        static_cast<std::uint8_t>(std::clamp<int>(config.max_frame_latency, 1, 3));
+    init.resolution.maxFrameLatency = bgfx_max_frame_latency;
 
     impl_->owner_thread = std::this_thread::get_id();
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__HAIKU__)
     // Metal creates and attaches its CAMetalLayer through AppKit. In bgfx's
     // default multithreaded mode the main thread waits for renderer startup,
     // while SwapChainMtl dispatches back to that blocked main thread: a hard
