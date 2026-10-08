@@ -9,7 +9,7 @@ and exactly how a release is published.
 
 | Piece | Source | Role |
 | --- | --- | --- |
-| `BattleSpadesLauncher.exe` | `src/updater/windows/launcher_main.cpp` | Entry point for Steam, the Start menu and the desktop icon. Steam Play chooser (BattleSpades or the original game), first-run screen (game files / hosting), per-launch updates of every installed component from mirrors, opt-in `--install-component`, `update/hosting.json`; then starts `BattleSpadesClient.exe` and waits for it. |
+| `BattleSpadesLauncher.exe` | `src/updater/windows/launcher_main.cpp` | Entry point for Steam, the Start menu and the desktop icon. First-run screen (game files / hosting), per-launch updates of every installed component from mirrors, opt-in `--install-component`, `update/hosting.json`; then starts `BattleSpadesClient.exe` and waits for it. |
 | `BattleSpadesSetupHelper.exe` | `src/updater/windows/setup_helper_main.cpp` | Console tool the installer runs: `detect` (Steam root, the library holding app 224540, the Steam account), `register` / `unregister` (launch options and non-Steam shortcut). |
 | `aos_updater_core` | `src/updater/*.cpp`, `include/battlespades/updater/` | Portable, unit-tested logic: update manifest, planner and mirror fallback; staged per-component apply and rollback; text/binary VDF; Steam library detection; registration state; semver; SHA-256; legacy GitHub parsing. |
 | Hosting gate | `src/platform/hosting_gate.cpp` | Create Match / Map Creator: reads `hosting.json`, asks the launcher to download a missing or incompatible server, never blocks playing. |
@@ -17,7 +17,6 @@ and exactly how a release is published.
 | Installer script | `installer/windows/BattleSpades.iss` | Inno Setup 6 wizard. |
 | Build script | `installer/build-installer.ps1` | Stages the CMake install tree plus the server, runs ISCC, writes the three component packages. |
 | Manifest generator | `installer/make-update-manifest.ps1` | Writes `stable.json` from the packages and mirror base URLs; `-Verify` checks every uploaded URL. |
-| Retail pack builder | `installer/make-retail-assets-pack.ps1` | Builds the `retail_assets` ZIP from Kiril's own Ace of Spades folder (never uploads; see "Packaging `retail_assets`"). |
 
 Both executables link the **static CRT and system DLLs only** (`winhttp`,
 `comctl32`, `shell32`, `user32`, `gdi32`, `kernel32`, `advapi32`, `ole32`).
@@ -29,25 +28,15 @@ is no HTTP code in the game itself; the launcher uses WinHTTP.
 
 ## What the installer does
 
-The wizard is near one-click. Its only pages are **Ready to install** (one
-**Install** click; it shows the folder) and **Finished** (with **Play
-BattleSpades** ticked). There is no welcome, license, folder, Start-menu or
-tasks page and no UAC prompt; everything below is decided automatically.
-`/DIR="<folder>"` on the command line still picks another folder, and
-`/SILENT` or `/VERYSILENT` install without any page.
-
 1. Runs `BattleSpadesSetupHelper detect`: reads `HKCU\Software\Valve\Steam\SteamPath`
    (fallback `HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath`), parses
    `steamapps\libraryfolders.vdf` (current and pre-2021 formats) and returns the
    library whose `steamapps\appmanifest_224540.acf` exists, with
    `steamapps\common\<installdir>` from that manifest.
-2. Folder: `<library>\steamapps\common\aceofspades\BattleSpades`. No
-   retail file is overwritten; the wizard refuses the game folder itself (a
-   folder containing the retail `aos.pkg`; BattleSpades ships its own
-   `aos.exe`, so that is not a marker). Without Ace of Spades installed, or
-   when its folder is not writable for the user, it uses
-   `%LOCALAPPDATA%\Programs\BattleSpades`. An upgrade keeps the previous
-   folder.
+2. Default folder: `<library>\steamapps\common\aceofspades\BattleSpades`. No
+   retail file is overwritten; the wizard refuses the game folder itself (any
+   folder containing `aos.exe`). Without Ace of Spades installed it defaults to
+   `%LOCALAPPDATA%\Programs\BattleSpades` and the player may choose any folder.
    Installation is per user (`PrivilegesRequired=lowest`): Steam's folder is
    user-writable by default, and the updater must write the folder later
    without elevation.
@@ -63,30 +52,18 @@ tasks page and no UAC prompt; everything below is decided automatically.
    - `build-installer.ps1 -IncludeServerInInstaller` still bundles it for
      offline handouts.
 4. **Retail assets are never redistributed or referenced by our scripts.**
-   When Ace of Spades was found (and `assets\original` is not already there
-   from an earlier install) it runs
-   `BattleSpadesAssetInstaller.exe --source "<aceofspades>" --destination "<install>\assets\original" --report <file>`.
-   The importer verifies the files, copies them into `assets\original`, and
-   imports `steam_api.dll`. A failure shows no message box: the launcher's
-   first-run screen explains it and offers the download.
+   The task "Import the original game files" runs
+   `BattleSpadesAssetInstaller.exe --source "<aceofspades>"`. The importer
+   verifies the files, copies them into `assets\original`, and imports
+   `steam_api.dll`.
    - If the installer did not import them, the launcher's first-run screen
      offers two ways (see Auto-update):
      - **Download game assets**: the `retail_assets` component Kiril hosts;
      - **Use my Ace of Spades folder**: the same importer.
-5. Steam registration (below): the Ace of Spades launch options when the
-   game is installed, otherwise a non-Steam shortcut when Steam is installed.
-   If Steam is running, the installer asks ONE question, **"Restart Steam
-   now?"**. Yes closes Steam (`steam.exe -shutdown`, waits up to 60 s),
-   registers and starts Steam again. No (or a silent install, or Steam not
-   closing in time) writes `update\steam-register.pending`; the launcher
-   finishes the registration silently the next time it starts while Steam is
-   closed. No retry loop.
-6. Shortcuts: desktop **BattleSpades**, and in the Start menu
-   **BattleSpades**, **BattleSpades - restore previous version**
-   (`--rollback`) and, when Ace of Spades is installed, **BattleSpades -
-   choose what Steam Play starts** (`--reset-launch-choice`).
+5. Steam registration (below), then Start-menu entries: **BattleSpades** and
+   **BattleSpades - restore previous version** (`--rollback`).
 
-Uninstall restores Steam's settings first (offering one "Restart Steam now?" while Steam runs), then
+Uninstall restores Steam's settings first (retrying while Steam runs), then
 removes installed files and `update\`. It asks before deleting player data
 (settings, logs, hosted maps, `assets\original`, `steam\`) and deletes only
 those named items, never the whole folder. `AoS_Screenshots` is always kept.
@@ -104,31 +81,9 @@ in `<Steam>\userdata\<account>\config\localconfig.vdf` to
 
 Steam then runs our launcher whenever the player presses Play on Ace of Spades.
 `%command%` expands to the retail `...\aceofspades\aos.exe` plus Steam's own
-arguments (`+connect_lobby`, `+connect`).
-
-**Steam Play chooser.** Started with `%command%`, the launcher first asks
-"What do you want to play?" (Windows task dialog, keyboard-friendly: Enter,
-arrows/Tab, Alt+B / Alt+A, Esc closes without starting anything):
-
-- **Play BattleSpades** (default): the retail exe argument is dropped and the
-  rest is forwarded to `BattleSpadesClient.exe` (invites keep working).
-- **Play Ace of Spades (original)**: runs Steam's `%command%` unchanged (the
-  retail `aos.exe` and every argument after it, working folder = the game
-  folder), so the retail game and its community patches keep working. The
-  launch options the player had *before* BattleSpades (recorded in
-  `steam-registration.json`) are applied the way Steam would: a value with
-  `%command%` is a template, any other value is appended.
-- **Remember my choice** stores `update\launch-choice.json` and skips the
-  dialog. To choose again: hold **Shift** while pressing Play, start
-  `BattleSpadesLauncher.exe --choose`, or use the Start-menu entry
-  **BattleSpades - choose what Steam Play starts**
-  (`--reset-launch-choice`, which forgets the choice).
-
-Either way the launcher waits for the game it started, so Steam keeps the
-session, playtime and overlay. Started without `%command%` (Start menu,
-desktop, non-Steam shortcut) there is no chooser: BattleSpades starts.
-`BattleSpadesClient.exe` also ignores a leading retail exe
-(`src/core/command_line.cpp`), so launch options pointing straight at the
+arguments (`+connect_lobby`, `+connect`). The launcher drops that first bare
+`*.exe` argument and forwards the rest. `BattleSpadesClient.exe` also ignores
+it now (`src/core/command_line.cpp`), so launch options pointing straight at the
 client work too.
 
 Benefits: Steam treats the session as Ace of Spades (app 224540). That gives
@@ -141,15 +96,15 @@ Costs and risks:
 - **Steam must be closed** while the file is written. Steam keeps it in memory
   and rewrites it on exit, so an edit made while it runs would be lost. The
   helper refuses (exit code 2) whenever `steam.exe` is running and the file is
-  under the live Steam folder. The installer then offers to restart Steam
-  once, or leaves the registration to the launcher (see above).
+  under the live Steam folder. The installer asks the player to exit Steam and
+  retry, or skip.
 - Per account: it is written for the Steam account `loginusers.vdf` marks
   `MostRecent`, otherwise the newest `Timestamp`, otherwise the account whose
   `localconfig.vdf` was written last. `--all-accounts` covers every account on
   the PC. Other accounts see the retail game.
-- The retail client stays one click away: the chooser's "Play Ace of Spades
-  (original)". Clearing the option in Steam > Ace of Spades > Properties
-  removes BattleSpades from Play entirely.
+- The retail client can no longer be started from Steam while the option is
+  set (its servers are gone anyway). The player can clear it in Steam >
+  Ace of Spades > Properties.
 - `localconfig.vdf` is an undocumented Valve format. The editor is
   format-preserving: it splices one line and leaves every other byte
   identical, which the tests check against a fixture that has the structure of
@@ -224,39 +179,28 @@ There are at most two simple screens. Both use standard Windows Task
 Dialog / progress-window styling. The game's own UI is not running yet, and
 the game cannot start without its files.
 
-1. **First launch, game files missing** (`assets\original` empty). ONE
-   dialog, "Get the original game files", with the best choice preselected
-   (Enter does it). `plan_first_run` decides what is shown:
-
-   | Steam copy found | Last import failed | `retail_assets` published | Choices (in order; first = preselected unless noted) |
-   | --- | --- | --- | --- |
-   | yes | no | yes | **Use my Ace of Spades folder** (Found: path), Download game assets, Select my folder |
-   | yes | yes | yes | **Download game assets**, Select my folder, Try my folder again |
-   | no | - | yes | **Download game assets**, Select my folder |
-   | yes | no | no | **Use my Ace of Spades folder**, Select my folder, Get the game files from aosplay.net |
-   | yes | yes | no | **Select my folder**, Try my folder again, Get the game files from aosplay.net |
-   | no | - | no | **Select my folder**, Get the game files from aosplay.net |
-
-   - A failed or interrupted download comes back as **Retry download**
-     ("continues where it stopped"), preselected. Partial downloads resume
-     with HTTP Range.
-   - Without `retail_assets` the text says "Automatic download of the game
-     files is not available yet" and links https://www.aosplay.net/download
-     (the link opens the browser and the dialog stays). Offline it says the
-     download servers could not be reached.
-   - "Use my folder" runs the importer hidden behind a progress window.
-     "Select my folder" opens the importer's folder picker.
-   - After a failure the dialog shows **why and what to do**, from the
-     importer's `--report` (for example "...maps/Alcatraz.vxl is missing
-     (350 of 3689 required files matched). Some original game files are
-     missing or changed... Verify integrity of game files..."). The importer
-     run by the launcher's "Select my folder" gets `--choose-folder` and never
-     suggests "Download game assets" itself; the launcher's own screen does.
+1. **First launch, game files missing** (`assets\original` empty). The dialog
+   is titled "BattleSpades", with the heading **"Get the original game
+   files"** and the text "BattleSpades does not include the original Ace of
+   Spades files. Choose how to get them; both ways end with the same verified
+   files." It offers:
+   - Command link **"Download game assets"** with the size underneath
+     (for example "412 MB from the BattleSpades download servers"). Shown only
+     when the manifest publishes `retail_assets`.
+   - Command link **"Use my Ace of Spades folder"** with "Found: C:\…\aceofspades"
+     underneath. The launcher finds that folder through the Steam registry and
+     `libraryfolders.vdf`, and preselects this link when it is found.
+     Otherwise the link reads **"Select my Ace of Spades folder"**, and the
+     importer's own folder picker opens.
    - Check box **"Also enable hosting (Create Match, Map Creator): download
-     the server, 64 MB"** when the manifest has a server and none is
-     installed. **Cancel** quits.
-   - The downloaded pack goes through the same importer validation as a
-     folder import.
+     the server, 64 MB"**. Shown only when the manifest has a server and none
+     is installed.
+   - **Cancel** quits.
+   - When offline, only the folder option is shown, with a note that
+     downloading needs a connection.
+   - A failed import, or a download that is still missing, shows "The game
+     files are not installed yet. An interrupted download continues where it
+     stopped next time." and returns to the same dialog.
 2. **Progress window** (460×130 px). It shows the current step ("Downloading
    server 0.1.0 (1 of 2)...", "Unpacking…", "Installing…"), a progress bar,
    "Downloading: 37 MB of 64 MB", and one button:
@@ -286,12 +230,8 @@ Playing and joining remote servers are never affected.
 
 ### Flow (every launch)
 
-0. Started by Steam with `%command%`: the Steam Play chooser (above). "Play
-   Ace of Spades (original)" starts the retail game right away, with no
-   update check.
 1. Empty `update\trash`. Roll back any component whose last apply was
-   interrupted (journal state `applying`). Finish a pending Steam
-   registration (`update\steam-register.pending`) if Steam is closed.
+   interrupted (journal state `applying`).
 2. Fetch `https://www.aosplay.net/updates/stable.json` (or the configured
    channel/URL), with a 6 s timeout. If it is offline or unreachable, the game
    starts silently with what is installed. An invalid manifest is logged and
@@ -319,7 +259,7 @@ Playing and joining remote servers are never affected.
    - A failing component restores itself and **never rolls back or blocks
      another**.
    - `retail_assets` is extracted, then handed to
-     `BattleSpadesAssetInstaller.exe --source <stage> --destination <install>\assets\original --report <file>`, which validates the
+     `BattleSpadesAssetInstaller.exe --source <stage>`, which validates the
      files against `asset-manifest.json` and installs them atomically.
 7. If a required **client/assets/retail_assets** update failed, the launcher
    says so and quits. A failed server update never stops the game; only
@@ -333,8 +273,6 @@ launchers from updating at once. It also tells the client a server download
 is already running.
 
 Launcher switches:
-- `--choose` (show the Steam Play chooser even if a choice is remembered)
-- `--reset-launch-choice` (forget "Remember my choice", then exit)
 - `--no-update`
 - `--update-only` (does not start the game)
 - `--rollback`
@@ -476,87 +414,19 @@ optional.
 
 Unknown keys, such as a `_comment`, are ignored.
 
-### BattleSpadesAssetInstaller on its own (macOS, Linux, Windows without the launcher)
-
-The client starts `BattleSpadesAssetInstaller` when no verified game files
-exist. Its flow mirrors the launcher's first-run screen (`plan_first_run`):
-
-1. It looks for Ace of Spades in every Steam installation it knows
-   (Windows: registry + Program Files; Linux: `~/.local/share/Steam`,
-   `~/.steam/steam`, Flatpak and Snap Steam, Steam Play/Proton libraries,
-   `~/.wine`, Bottles; macOS: native Steam, CrossOver and Whisky bottles,
-   `~/.wine`). Each Steam root is resolved through `libraryfolders.vdf` and
-   `appmanifest_224540.acf` `installdir` (Windows `C:\...` paths inside a
-   Wine prefix are mapped into its `drive_c`/`dosdevices`). Only folders that
-   really contain the game are proposed.
-2. It reads the release manifest (`updater.json` beside it, else
-   `https://www.aosplay.net/updates/stable.json`).
-3. One dialog, "Get the original game files": **Use the found folder**,
-   **Download game assets (N MB)** when the manifest has `retail_assets`,
-   **Choose folder...**, or, without `retail_assets`, the note "Automatic
-   download isn't available yet - choose your Ace of Spades folder" with
-   **Open aosplay.net/download**. Nothing found is not an error: the dialog
-   comes first.
-4. The download (libcurl, HTTPS) resumes `<assets>/.retail-download/*.partial`
-   with HTTP Range, checks size and SHA-256 (`verify_package_file`, shared
-   with the launcher), extracts with the updater's ZIP reader and imports the
-   result through the same `find_asset_source` + `install_asset_tree_atomic`
-   as a folder. Errors keep the partial file and offer **Retry download**.
-5. A picked folder may be the game folder, Steam's `common`, `steamapps`, a
-   library root, a Steam root, a Wine prefix / bottle, its `drive_c`, or a
-   `Bottles` folder.
-
-Destination: `<executable>/assets/original` when that folder is writable,
-otherwise the user data folder (`%LOCALAPPDATA%\BattleSpades`,
-`~/Library/Application Support/BattleSpades`,
-`$XDG_DATA_HOME/BattleSpades`) as `<data>/assets/original`, with
-`<data>/assets/client` linked to the packaged `assets/client` (re-linked on
-every start, so a moved or translocated `.app` keeps working). The client
-checks the packaged root, then the user data root.
-
-Automation: `--source <folder>` imports a folder, `--download
-[--manifest-url <url>]` runs the download path without a window; both write
-`--report <file>`.
-
 ### Packaging `retail_assets` (Kiril)
 
-Build the pack from your own installation with
-`installer/make-retail-assets-pack.ps1`. It never uploads anything and
-refuses to write inside the repository except under `out\`:
+Zip the **contents of an Ace of Spades installation**: the folder that holds
+the files `asset-manifest.json` lists (`png/`, `maps/`, `kv6/`, and
+`steam_api.dll` with `steam_appid.txt`). Then set `root` to that folder's path
+inside the ZIP.
 
-```powershell
-./installer/make-retail-assets-pack.ps1 -Version 1.0.0 -TestImport
-# or: -GameDir 'D:\SteamLibrary\steamapps\common\aceofspades' -OutputDir 'D:\packs'
-```
+The launcher passes the extracted folder to the same importer a player uses
+for "Use my Ace of Spades folder". Files that do not match
+`asset-manifest.json` are rejected, and nothing is installed.
 
-- Finds Ace of Spades through Steam (or `-GameDir`), checks every file in
-  `assets/catalog/original-assets.json` for its exact size and SHA-256 (a
-  modded or missing file stops it, with the list), and writes
-  `<OutputDir>\BattleSpades-retail-assets-<version>.zip` (default
-  `out\retail-assets\`) plus a `.sha256` file.
-- Layout: one top folder (the `root`, `BattleSpades-retail-assets-<version>`)
-  holding exactly the catalogued files at their relative paths, the optional
-  Japanese fonts when your copy has the exact retail ones, and
-  `steam_api.dll` / `steam_appid.txt`. No executables, configs, logs, mods or
-  the BattleSpades subfolder.
-- `-TestImport` extracts the ZIP and runs `BattleSpadesAssetInstaller.exe` on
-  it (the newest one under `out\build`, an installed BattleSpades, or
-  `-Importer`), the same validation the launcher runs after a download.
-- Runs on a gaming PC without this repository: copy the script anywhere and
-  run `powershell -ExecutionPolicy Bypass -File .\make-retail-assets-pack.ps1
-  -Version 1.0.0 -PublicUrl <where you will host it> -TestImport`. The catalog
-  then comes from an installed BattleSpades (`asset-manifest.json`) or the
-  public repository, and the pack goes to `.\retail-assets\`.
-- It prints the size, SHA-256, root and version, and the matching
-  `make-update-manifest.ps1` arguments (`-RetailAssetsVersion`,
-  `-RetailAssetsSize`, `-RetailAssetsSha256`, `-RetailAssetsRoot`,
-  `-RetailAssetsUrls`).
-
-The launcher downloads the ZIP (resumable, size + SHA-256 checked), extracts
-it, finds `root` and passes it to the same importer a player uses for "Use my
-Ace of Spades folder". Files that do not match `asset-manifest.json` are
-rejected, and nothing is installed. Only the metadata goes into
-`stable.json`; you host the ZIP yourself.
+None of our scripts read, package or upload these files. Pass only the
+metadata to `make-update-manifest.ps1` (below).
 
 ### Dedicated servers
 
@@ -713,25 +583,9 @@ protect the site repository and its Vercel project.
   - Steam library detection in a Cyrillic library;
   - the launch-options round trip;
   - shortcut Exe UTF-8; command lines.
-- `aos_updater_launch_tests`:
-  - Steam Play chooser arguments: with `%command%` (kept verbatim, Steam's
-    arguments still forwarded), without it (no chooser), `--choose`,
-    `--reset-launch-choice`;
-  - the decision: no `%command%` means BattleSpades whatever is remembered;
-    first launch asks; remembered choice; Shift and `--choose` ask again;
-  - remembering, resetting (twice), damaged choice files;
-  - the original command line: unchanged, previous launch options appended,
-    a `%command%` template substituted, our own launcher line never reused;
-  - the first-run decision table: Steam copy found or not, import failed,
-    `retail_assets` published or not, offline, download retry.
 - `aos_client_unicode_tests`:
   - importer source detection, installation and verification with a Cyrillic
     Steam library;
-  - regression for 0.2.1-beta.2: importing into
-    `<aceofspades>\BattleSpades\assets\original`, i.e. a destination inside
-    the source folder (the default install layout), re-import, refusal of a
-    destination that contains the source and of a catalogued file inside the
-    destination, and actionable error text;
   - server bundle discovery, custom-map validation, and UTF-8 `maps_path` in
     the child server's TOML;
   - the hosting gate decision table and reading `hosting.json` from a

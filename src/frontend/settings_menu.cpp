@@ -1,18 +1,14 @@
 #include "battlespades/frontend/settings_menu.hpp"
 
-#include "battlespades/render/graphics_options.hpp"
 #include "battlespades/render/quality_profile.hpp"
 #include "battlespades/settings/graphics_apply.hpp"
-#include "battlespades/settings/graphics_presets.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
-#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace battlespades::frontend {
 namespace {
@@ -38,10 +34,11 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 9U> main_inventory{{
+constexpr std::array<SettingsRowId, 10U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
+    SettingsRowId::fullscreen,
     SettingsRowId::invert_mouse,
     SettingsRowId::favorite_server,
     SettingsRowId::show_skins,
@@ -129,29 +126,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
 
 [[nodiscard]] constexpr bool is_category(SettingsRowId row) noexcept {
     return row == SettingsRowId::main_controls_category ||
-           row == SettingsRowId::ugc_controls_category ||
-           row == SettingsRowId::graphics_display_category ||
-           row == SettingsRowId::graphics_quality_category ||
-           row == SettingsRowId::graphics_effects_category ||
-           row == SettingsRowId::graphics_color_category;
-}
-
-/** Index of a category header in SettingsMenuModel::categories_expanded_. */
-[[nodiscard]] constexpr std::size_t category_slot(SettingsRowId row) noexcept {
-    switch (row) {
-    case SettingsRowId::main_controls_category:
-        return 0U;
-    case SettingsRowId::ugc_controls_category:
-        return 1U;
-    case SettingsRowId::graphics_display_category:
-        return 2U;
-    case SettingsRowId::graphics_quality_category:
-        return 3U;
-    case SettingsRowId::graphics_effects_category:
-        return 4U;
-    default:
-        return 5U;
-    }
+           row == SettingsRowId::ugc_controls_category;
 }
 
 [[nodiscard]] constexpr bool is_fixed_binding(SettingsRowId row) noexcept {
@@ -180,25 +155,16 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     }
     if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::favorite_server ||
-        row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader ||
-        row == SettingsRowId::low_latency || row == SettingsRowId::show_fps ||
-        row == SettingsRowId::anisotropic_filtering) {
+        row == SettingsRowId::fullscreen || row == SettingsRowId::favorite_server ||
+        row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader) {
         return SettingsRowKind::toggle;
     }
     if (row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
-        row == SettingsRowId::window_mode || row == SettingsRowId::resolution ||
+        row == SettingsRowId::resolution ||
         row == SettingsRowId::graphics_api || row == SettingsRowId::antialiasing ||
         row == SettingsRowId::effect_quality || row == SettingsRowId::draw_distance ||
         row == SettingsRowId::shader_quality || row == SettingsRowId::texture_quality ||
-        row == SettingsRowId::model_quality || row == SettingsRowId::graphics_preset ||
-        row == SettingsRowId::frame_limit || row == SettingsRowId::field_of_view ||
-        row == SettingsRowId::render_scale || row == SettingsRowId::upscale ||
-        row == SettingsRowId::sharpness || row == SettingsRowId::shadow_quality ||
-        row == SettingsRowId::shadow_distance || row == SettingsRowId::ambient_occlusion ||
-        row == SettingsRowId::texture_filtering || row == SettingsRowId::bloom ||
-        row == SettingsRowId::motion_blur || row == SettingsRowId::brightness ||
-        row == SettingsRowId::gamma || row == SettingsRowId::color_vision) {
+        row == SettingsRowId::model_quality) {
         return SettingsRowKind::choice;
     }
     if (is_fixed_binding(row)) {
@@ -215,8 +181,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "MASTER_VOLUME";
     case SettingsRowId::music_volume:
         return "MUSIC_VOLUME";
-    case SettingsRowId::window_mode:
-        return "WINDOW_MODE";
+    case SettingsRowId::fullscreen:
+        return "FULLSCREEN";
     case SettingsRowId::invert_mouse:
         return "INVERT_MOUSE";
     case SettingsRowId::favorite_server:
@@ -250,50 +216,6 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     case SettingsRowId::compatibility_shader:
         // Keep the shipped localization identifier's historical misspelling.
         return "COMPATIBILTY_SHADER";
-    case SettingsRowId::graphics_display_category:
-        return "GRAPHICS_DISPLAY";
-    case SettingsRowId::graphics_quality_category:
-        return "GRAPHICS_QUALITY_GROUP";
-    case SettingsRowId::graphics_effects_category:
-        return "GRAPHICS_EFFECTS";
-    case SettingsRowId::graphics_color_category:
-        return "GRAPHICS_COLOR";
-    case SettingsRowId::graphics_preset:
-        return "GRAPHICS_PRESET";
-    case SettingsRowId::frame_limit:
-        return "FRAME_LIMIT";
-    case SettingsRowId::field_of_view:
-        return "FIELD_OF_VIEW";
-    case SettingsRowId::render_scale:
-        return "RENDER_SCALE";
-    case SettingsRowId::upscale:
-        return "UPSCALING";
-    case SettingsRowId::sharpness:
-        return "SHARPENING";
-    case SettingsRowId::low_latency:
-        return "LOW_LATENCY";
-    case SettingsRowId::show_fps:
-        return "SHOW_FPS";
-    case SettingsRowId::shadow_quality:
-        return "SHADOW_QUALITY";
-    case SettingsRowId::shadow_distance:
-        return "SHADOW_DISTANCE";
-    case SettingsRowId::ambient_occlusion:
-        return "AMBIENT_OCCLUSION";
-    case SettingsRowId::anisotropic_filtering:
-        return "ANISOTROPIC_FILTERING";
-    case SettingsRowId::texture_filtering:
-        return "TEXTURE_FILTERING";
-    case SettingsRowId::bloom:
-        return "BLOOM";
-    case SettingsRowId::motion_blur:
-        return "MOTION_BLUR";
-    case SettingsRowId::brightness:
-        return "BRIGHTNESS";
-    case SettingsRowId::gamma:
-        return "GAMMA";
-    case SettingsRowId::color_vision:
-        return "COLOR_VISION";
     case SettingsRowId::main_controls_category:
         return "MAIN_GAME_CONTROLS";
     case SettingsRowId::mouse_sensitivity:
@@ -385,342 +307,6 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
             bounds.y + 4,
             bounds.width - name_width - 42,
             bounds.height - 8};
-}
-
-constexpr std::array<settings::WindowMode, 3U> window_modes{
-    settings::WindowMode::windowed,
-    settings::WindowMode::borderless,
-    settings::WindowMode::exclusive,
-};
-
-[[nodiscard]] constexpr std::size_t window_mode_index(settings::WindowMode mode) noexcept {
-    for (std::size_t index{}; index < window_modes.size(); ++index) {
-        if (window_modes[index] == mode) {
-            return index;
-        }
-    }
-    return 1U;
-}
-
-/** Localization ids; the player-facing name of `exclusive` is plain "Fullscreen". */
-[[nodiscard]] constexpr std::string_view window_mode_text(settings::WindowMode mode) noexcept {
-    switch (mode) {
-    case settings::WindowMode::windowed:
-        return "WINDOW_MODE_WINDOWED";
-    case settings::WindowMode::borderless:
-        return "WINDOW_MODE_BORDERLESS";
-    case settings::WindowMode::exclusive:
-        return "WINDOW_MODE_EXCLUSIVE";
-    }
-    return "WINDOW_MODE_BORDERLESS";
-}
-
-// Native Graphics rows. Each is a list of choices over one or two settings
-// fields; graphics_choice() reads the current one and set_graphics_choice()
-// writes one, so presentation, arrows and activation share one table.
-
-constexpr std::array<std::uint16_t, 7U> frame_cap_choices{60U, 120U, 180U, 240U, 300U, 360U, 480U};
-constexpr std::array<double, 11U> field_of_view_choices{60.0, 65.0, 70.0, 75.0,  80.0, 85.0,
-                                                        90.0, 95.0, 100.0, 105.0, 110.0};
-constexpr std::array<double, 9U> render_scale_choices{0.5, 0.6, 0.67, 0.75, 0.85,
-                                                      1.0, 1.25, 1.5, 2.0};
-constexpr std::array<double, 11U> sharpness_choices{0.0, 0.1, 0.2, 0.3, 0.4, 0.5,
-                                                    0.6, 0.7, 0.8, 0.9, 1.0};
-constexpr std::array<double, 11U> brightness_choices{-0.25, -0.2, -0.15, -0.1, -0.05, 0.0,
-                                                     0.05,  0.1,  0.15,  0.2,  0.25};
-constexpr std::array<double, 10U> gamma_choices{0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6};
-constexpr std::array<std::string_view, 4U> effect_level_texts{"OFF", "LOW", "MEDIUM", "HIGH"};
-
-/** Index of the listed value nearest `value`; settings.toml may hold any value in range. */
-template <typename Value, std::size_t Count>
-[[nodiscard]] std::size_t nearest_index(const std::array<Value, Count>& values,
-                                        double value) noexcept {
-    std::size_t best{};
-    for (std::size_t index{1U}; index < Count; ++index) {
-        if (std::fabs(static_cast<double>(values[index]) - value) <
-            std::fabs(static_cast<double>(values[best]) - value)) {
-            best = index;
-        }
-    }
-    return best;
-}
-
-[[nodiscard]] std::string percent_text(double fraction, bool sign) {
-    const auto percent = static_cast<int>(std::lround(fraction * 100.0));
-    return std::string{sign && percent > 0 ? "+" : ""} + std::to_string(percent) + "%";
-}
-
-[[nodiscard]] std::string tenths_text(double value) {
-    const auto tenths = static_cast<int>(std::lround(value * 10.0));
-    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10);
-}
-
-struct GraphicsChoice final {
-    std::vector<std::string> choices;
-    std::size_t index{};
-};
-
-template <typename Enum, std::size_t Count>
-[[nodiscard]] GraphicsChoice enum_choice(const std::array<std::string_view, Count>& texts,
-                                         Enum value) {
-    GraphicsChoice result;
-    for (const auto text : texts) {
-        result.choices.emplace_back(text);
-    }
-    result.index = std::min(static_cast<std::size_t>(value), Count - 1U);
-    return result;
-}
-
-[[nodiscard]] std::string_view preset_text(settings::GraphicsPreset preset) noexcept {
-    switch (preset) {
-    case settings::GraphicsPreset::retail:
-        return "PRESET_RETAIL";
-    case settings::GraphicsPreset::low:
-        return "LOW";
-    case settings::GraphicsPreset::medium:
-        return "MEDIUM";
-    case settings::GraphicsPreset::high:
-        return "HIGH";
-    case settings::GraphicsPreset::ultra:
-        return "ULTRA";
-    case settings::GraphicsPreset::custom:
-        return "PRESET_CUSTOM";
-    }
-    return "PRESET_CUSTOM";
-}
-
-/** The choices of a native Graphics row; nothing for any other row. */
-[[nodiscard]] std::optional<GraphicsChoice> graphics_choice(SettingsRowId row,
-                                                            const settings::GraphicsSettings& g) {
-    GraphicsChoice result;
-    switch (row) {
-    case SettingsRowId::graphics_preset: {
-        // Custom is shown but never chosen: the arrows step through the presets.
-        for (const auto preset : settings::graphics_presets) {
-            result.choices.emplace_back(preset_text(preset));
-        }
-        const auto current = settings::matching_graphics_preset(g);
-        if (current == settings::GraphicsPreset::custom) {
-            result.choices.emplace_back(preset_text(current));
-            result.index = result.choices.size() - 1U;
-        } else {
-            result.index = static_cast<std::size_t>(current);
-        }
-        return result;
-    }
-    case SettingsRowId::frame_limit:
-        result.choices.emplace_back("FRAME_LIMIT_DISPLAY");
-        for (const auto cap : frame_cap_choices) {
-            result.choices.push_back(std::to_string(cap));
-        }
-        result.choices.emplace_back("FRAME_LIMIT_UNLIMITED");
-        result.index = g.frame_limit == settings::FrameLimit::display ? 0U
-                       : g.frame_limit == settings::FrameLimit::unlimited
-                           ? result.choices.size() - 1U
-                           : 1U + nearest_index(frame_cap_choices, g.frame_rate_cap);
-        return result;
-    case SettingsRowId::field_of_view:
-        for (const auto value : field_of_view_choices) {
-            result.choices.push_back(std::to_string(static_cast<int>(value)));
-        }
-        result.index = nearest_index(field_of_view_choices, g.field_of_view);
-        return result;
-    case SettingsRowId::render_scale:
-        for (const auto value : render_scale_choices) {
-            result.choices.push_back(percent_text(value, false));
-        }
-        result.index = nearest_index(render_scale_choices, g.render_scale);
-        return result;
-    case SettingsRowId::upscale:
-        return enum_choice(
-            std::array<std::string_view, 2U>{"UPSCALE_BILINEAR", "UPSCALE_EDGE_ADAPTIVE"},
-            g.upscale);
-    case SettingsRowId::sharpness:
-        for (const auto value : sharpness_choices) {
-            result.choices.push_back(value == 0.0 ? std::string{"OFF"}
-                                                  : percent_text(value, false));
-        }
-        result.index = nearest_index(sharpness_choices, g.sharpness);
-        return result;
-    case SettingsRowId::shadow_quality:
-        return enum_choice(
-            std::array<std::string_view, 6U>{"AUTO", "OFF", "LOW", "MEDIUM", "HIGH", "ULTRA"},
-            g.shadow_quality);
-    case SettingsRowId::shadow_distance:
-        return enum_choice(
-            std::array<std::string_view, 4U>{"AUTO", "SHADOW_NEAR", "MEDIUM", "SHADOW_FAR"},
-            g.shadow_distance);
-    case SettingsRowId::ambient_occlusion:
-        return enum_choice(effect_level_texts, g.ambient_occlusion);
-    case SettingsRowId::bloom:
-        return enum_choice(effect_level_texts, g.bloom);
-    case SettingsRowId::motion_blur:
-        return enum_choice(effect_level_texts, g.motion_blur);
-    case SettingsRowId::texture_filtering:
-        result.choices = {"TEXTURE_CRISP", "TEXTURE_SMOOTH"};
-        result.index = g.smooth_textures ? 1U : 0U;
-        return result;
-    case SettingsRowId::brightness:
-        for (const auto value : brightness_choices) {
-            result.choices.push_back(percent_text(value, true));
-        }
-        result.index = nearest_index(brightness_choices, g.brightness);
-        return result;
-    case SettingsRowId::gamma:
-        for (const auto value : gamma_choices) {
-            result.choices.push_back(tenths_text(value));
-        }
-        result.index = nearest_index(gamma_choices, g.gamma);
-        return result;
-    case SettingsRowId::color_vision:
-        return enum_choice(std::array<std::string_view, 4U>{"OFF", "PROTANOPIA", "DEUTERANOPIA",
-                                                            "TRITANOPIA"},
-                           g.color_vision);
-    default:
-        return std::nullopt;
-    }
-}
-
-/** Writes choice `index` of a native Graphics row; false for any other row. */
-bool set_graphics_choice(SettingsRowId row, settings::GraphicsSettings& g, std::size_t index) {
-    const auto pick = [index](const auto& values) {
-        return values[std::min(index, values.size() - 1U)];
-    };
-    const auto level = [index] {
-        return static_cast<settings::EffectLevel>(std::min<std::size_t>(index, 3U));
-    };
-    switch (row) {
-    case SettingsRowId::graphics_preset:
-        if (index < settings::graphics_presets.size()) {
-            settings::apply_graphics_preset(g, settings::graphics_presets[index]);
-        }
-        return true;
-    case SettingsRowId::frame_limit:
-        if (index == 0U) {
-            g.frame_limit = settings::FrameLimit::display;
-        } else if (index > frame_cap_choices.size()) {
-            g.frame_limit = settings::FrameLimit::unlimited;
-        } else {
-            g.frame_limit = settings::FrameLimit::custom;
-            g.frame_rate_cap = frame_cap_choices[index - 1U];
-        }
-        return true;
-    case SettingsRowId::field_of_view:
-        g.field_of_view = pick(field_of_view_choices);
-        return true;
-    case SettingsRowId::render_scale:
-        g.render_scale = pick(render_scale_choices);
-        return true;
-    case SettingsRowId::upscale:
-        g.upscale = index == 0U ? settings::UpscaleFilter::bilinear
-                                : settings::UpscaleFilter::edge_adaptive;
-        return true;
-    case SettingsRowId::sharpness:
-        g.sharpness = pick(sharpness_choices);
-        return true;
-    case SettingsRowId::shadow_quality:
-        g.shadow_quality = static_cast<settings::ShadowQuality>(std::min<std::size_t>(index, 5U));
-        return true;
-    case SettingsRowId::shadow_distance:
-        g.shadow_distance =
-            static_cast<settings::ShadowDistance>(std::min<std::size_t>(index, 3U));
-        return true;
-    case SettingsRowId::ambient_occlusion:
-        g.ambient_occlusion = level();
-        return true;
-    case SettingsRowId::bloom:
-        g.bloom = level();
-        return true;
-    case SettingsRowId::motion_blur:
-        g.motion_blur = level();
-        return true;
-    case SettingsRowId::texture_filtering:
-        g.smooth_textures = index != 0U;
-        return true;
-    case SettingsRowId::brightness:
-        g.brightness = pick(brightness_choices);
-        return true;
-    case SettingsRowId::gamma:
-        g.gamma = pick(gamma_choices);
-        return true;
-    case SettingsRowId::color_vision:
-        g.color_vision = static_cast<settings::ColorVision>(std::min<std::size_t>(index, 3U));
-        return true;
-    default:
-        return false;
-    }
-}
-
-/**
- * Why a native Graphics row cannot be changed right now, or nothing when it
- * can. The reason is shown as the row's description.
- */
-[[nodiscard]] std::optional<std::string_view> graphics_row_unavailable(
-    SettingsRowId row, const settings::GraphicsSettings& g,
-    const SettingsMenuEnvironment& environment) noexcept {
-    constexpr std::string_view unsupported{"NOT_SUPPORTED_BACKEND"};
-    constexpr std::string_view enhanced_only{"ENHANCED_ONLY"};
-    switch (row) {
-    case SettingsRowId::render_scale:
-    case SettingsRowId::sharpness:
-    case SettingsRowId::brightness:
-    case SettingsRowId::gamma:
-    case SettingsRowId::color_vision:
-        if (!environment.post_chain_supported) {
-            return unsupported;
-        }
-        return std::nullopt;
-    case SettingsRowId::upscale:
-        if (!environment.post_chain_supported || !environment.edge_adaptive_upscale_supported) {
-            return unsupported;
-        }
-        if (g.render_scale >= 1.0) {
-            // Nothing to upscale at or above the window resolution.
-            return "UPSCALE_FULL_RESOLUTION";
-        }
-        return std::nullopt;
-    case SettingsRowId::shadow_quality:
-        return g.compatibility_shader() ? std::optional{enhanced_only} : std::nullopt;
-    case SettingsRowId::shadow_distance:
-        if (g.compatibility_shader()) {
-            return enhanced_only;
-        }
-        if (g.shadow_quality == settings::ShadowQuality::off) {
-            return "SHADOWS_OFF";
-        }
-        return std::nullopt;
-    case SettingsRowId::ambient_occlusion:
-        if (!environment.post_chain_supported || !environment.ambient_occlusion_supported) {
-            return unsupported;
-        }
-        return g.compatibility_shader() ? std::optional{enhanced_only} : std::nullopt;
-    case SettingsRowId::bloom:
-        if (!environment.post_chain_supported || !environment.bloom_supported) {
-            return unsupported;
-        }
-        return g.compatibility_shader() ? std::optional{enhanced_only} : std::nullopt;
-    case SettingsRowId::motion_blur:
-        if (!environment.post_chain_supported || !environment.motion_blur_supported) {
-            return unsupported;
-        }
-        return g.compatibility_shader() ? std::optional{enhanced_only} : std::nullopt;
-    default:
-        return std::nullopt;
-    }
-}
-
-/** Native Graphics toggles; nothing for any other row. */
-[[nodiscard]] bool* graphics_toggle(SettingsRowId row, settings::GraphicsSettings& g) noexcept {
-    switch (row) {
-    case SettingsRowId::low_latency:
-        return &g.low_latency;
-    case SettingsRowId::show_fps:
-        return &g.show_fps;
-    case SettingsRowId::anisotropic_filtering:
-        return &g.anisotropic_filtering;
-    default:
-        return nullptr;
-    }
 }
 
 [[nodiscard]] constexpr std::string_view quality_text(std::size_t index) noexcept {
@@ -1094,7 +680,7 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(language);
         AOS_SETTINGS_ROW_NAME(master_volume);
         AOS_SETTINGS_ROW_NAME(music_volume);
-        AOS_SETTINGS_ROW_NAME(window_mode);
+        AOS_SETTINGS_ROW_NAME(fullscreen);
         AOS_SETTINGS_ROW_NAME(invert_mouse);
         AOS_SETTINGS_ROW_NAME(show_skins);
         AOS_SETTINGS_ROW_NAME(show_other_skins);
@@ -1111,28 +697,6 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(model_quality);
         AOS_SETTINGS_ROW_NAME(vsync);
         AOS_SETTINGS_ROW_NAME(compatibility_shader);
-        AOS_SETTINGS_ROW_NAME(graphics_display_category);
-        AOS_SETTINGS_ROW_NAME(graphics_quality_category);
-        AOS_SETTINGS_ROW_NAME(graphics_effects_category);
-        AOS_SETTINGS_ROW_NAME(graphics_color_category);
-        AOS_SETTINGS_ROW_NAME(graphics_preset);
-        AOS_SETTINGS_ROW_NAME(frame_limit);
-        AOS_SETTINGS_ROW_NAME(field_of_view);
-        AOS_SETTINGS_ROW_NAME(render_scale);
-        AOS_SETTINGS_ROW_NAME(upscale);
-        AOS_SETTINGS_ROW_NAME(sharpness);
-        AOS_SETTINGS_ROW_NAME(low_latency);
-        AOS_SETTINGS_ROW_NAME(show_fps);
-        AOS_SETTINGS_ROW_NAME(shadow_quality);
-        AOS_SETTINGS_ROW_NAME(shadow_distance);
-        AOS_SETTINGS_ROW_NAME(ambient_occlusion);
-        AOS_SETTINGS_ROW_NAME(anisotropic_filtering);
-        AOS_SETTINGS_ROW_NAME(texture_filtering);
-        AOS_SETTINGS_ROW_NAME(bloom);
-        AOS_SETTINGS_ROW_NAME(motion_blur);
-        AOS_SETTINGS_ROW_NAME(brightness);
-        AOS_SETTINGS_ROW_NAME(gamma);
-        AOS_SETTINGS_ROW_NAME(color_vision);
         AOS_SETTINGS_ROW_NAME(main_controls_category);
         AOS_SETTINGS_ROW_NAME(mouse_sensitivity);
         AOS_SETTINGS_ROW_NAME(forward);
@@ -1281,48 +845,22 @@ std::vector<SettingsRowId> SettingsMenuModel::inventory(settings::SettingsTab ta
         return {main_inventory.begin(), main_inventory.end()};
     }
     if (tab == settings::SettingsTab::graphics) {
-        // Retail's ten rows plus the native ones, grouped under collapsible
-        // headers so the list stays navigable. Rows a build cannot offer at
-        // all (no MSAA, no GLSL tier choice) are omitted as before.
         std::vector<SettingsRowId> result;
-        result.reserve(36U);
-        result.push_back(SettingsRowId::graphics_display_category);
-        result.push_back(SettingsRowId::window_mode);
+        result.reserve(10U);
         result.push_back(SettingsRowId::resolution);
-        result.push_back(SettingsRowId::vsync);
-        result.push_back(SettingsRowId::frame_limit);
-        result.push_back(SettingsRowId::field_of_view);
-        result.push_back(SettingsRowId::render_scale);
-        result.push_back(SettingsRowId::upscale);
-        result.push_back(SettingsRowId::sharpness);
-        result.push_back(SettingsRowId::low_latency);
-        result.push_back(SettingsRowId::show_fps);
         result.push_back(SettingsRowId::graphics_api);
-        result.push_back(SettingsRowId::graphics_quality_category);
-        result.push_back(SettingsRowId::graphics_preset);
-        if (environment_.glsl_shader_quality_supported) {
-            result.push_back(SettingsRowId::shader_quality);
-        }
-        result.push_back(SettingsRowId::compatibility_shader);
-        result.push_back(SettingsRowId::effect_quality);
-        result.push_back(SettingsRowId::draw_distance);
-        result.push_back(SettingsRowId::shadow_quality);
-        result.push_back(SettingsRowId::shadow_distance);
-        result.push_back(SettingsRowId::ambient_occlusion);
         if (environment_.multisampling_supported) {
             result.push_back(SettingsRowId::antialiasing);
         }
-        result.push_back(SettingsRowId::anisotropic_filtering);
-        result.push_back(SettingsRowId::texture_filtering);
+        result.push_back(SettingsRowId::effect_quality);
+        result.push_back(SettingsRowId::draw_distance);
+        if (environment_.glsl_shader_quality_supported) {
+            result.push_back(SettingsRowId::shader_quality);
+        }
         result.push_back(SettingsRowId::texture_quality);
         result.push_back(SettingsRowId::model_quality);
-        result.push_back(SettingsRowId::graphics_effects_category);
-        result.push_back(SettingsRowId::bloom);
-        result.push_back(SettingsRowId::motion_blur);
-        result.push_back(SettingsRowId::graphics_color_category);
-        result.push_back(SettingsRowId::brightness);
-        result.push_back(SettingsRowId::gamma);
-        result.push_back(SettingsRowId::color_vision);
+        result.push_back(SettingsRowId::vsync);
+        result.push_back(SettingsRowId::compatibility_shader);
         return result;
     }
     if (tab == settings::SettingsTab::controls) {
@@ -1333,12 +871,21 @@ std::vector<SettingsRowId> SettingsMenuModel::inventory(settings::SettingsTab ta
 
 std::vector<SettingsRowId> SettingsMenuModel::expanded_rows(settings::SettingsTab tab) const {
     auto rows = inventory(tab);
+    if (tab != settings::SettingsTab::controls) {
+        return rows;
+    }
+
     std::vector<SettingsRowId> result;
     result.reserve(rows.size());
-    bool include_children{true};
+    bool include_children{};
     for (const auto row : rows) {
-        if (is_category(row)) {
-            include_children = category_expanded(row);
+        if (row == SettingsRowId::main_controls_category) {
+            include_children = main_controls_expanded_;
+            result.push_back(row);
+            continue;
+        }
+        if (row == SettingsRowId::ugc_controls_category) {
+            include_children = ugc_controls_expanded_;
             result.push_back(row);
             continue;
         }
@@ -1538,7 +1085,13 @@ void SettingsMenuModel::scroll_from_track_pointer(ui::Point point, bool play_sou
 }
 
 bool SettingsMenuModel::category_expanded(SettingsRowId category) const noexcept {
-    return is_category(category) && categories_expanded_[category_slot(category)];
+    if (category == SettingsRowId::main_controls_category) {
+        return main_controls_expanded_;
+    }
+    if (category == SettingsRowId::ugc_controls_category) {
+        return ugc_controls_expanded_;
+    }
+    return false;
 }
 
 bool SettingsMenuModel::target_enabled(SettingsMenuTarget target) const {
@@ -1570,16 +1123,6 @@ bool SettingsMenuModel::target_enabled(SettingsMenuTarget target) const {
     // Retail disabled the whole Graphics tab in a match
     // (SETTINGS_GRAPHICS_DISABLED_MESSAGE). Every row now either applies live
     // without touching the network session or is marked RESTART_REQUIRED.
-    if (graphics_row_unavailable(target.row, session_->draft().graphics, environment_)
-            .has_value()) {
-        return false;
-    }
-    if (target.row == SettingsRowId::resolution &&
-        session_->draft().graphics.window_mode == settings::WindowMode::borderless) {
-        // Borderless covers the desktop at the display's own mode; the
-        // resolution applies to Windowed and Fullscreen only.
-        return false;
-    }
     if (target.row == SettingsRowId::shader_quality &&
         session_->draft().graphics.compatibility_shader()) {
         // The recovered Compatibility Shader toggle owns
@@ -1662,6 +1205,12 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                 std::to_string(static_cast<int>(std::lround(current.main.music_volume * 100.0))) +
                 "%";
             break;
+        case SettingsRowId::fullscreen:
+            item.choice_index = current.main.fullscreen ? 1U : 0U;
+            item.choice_count = 2U;
+            item.choices = {"OFF", "ON"};
+            item.value_text = current.main.fullscreen ? "ON" : "OFF";
+            break;
         case SettingsRowId::show_skins:
         case SettingsRowId::show_other_skins:
         case SettingsRowId::weapon_motion:
@@ -1712,22 +1261,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             for (const auto resolution : environment_.display_modes) {
                 item.choices.push_back(resolution_text(resolution));
             }
-            item.description = std::string{window_mode_text(current.graphics.window_mode)};
-            if (current.graphics.window_mode == settings::WindowMode::borderless) {
-                // Borderless always covers the desktop at its own resolution;
-                // the stored size waits for Windowed or Fullscreen.
-                item.value_text = "WINDOW_MODE_DESKTOP";
-            }
-            break;
-        }
-        case SettingsRowId::window_mode: {
-            item.choice_index = window_mode_index(current.graphics.window_mode);
-            item.choice_count = window_modes.size();
-            for (const auto mode : window_modes) {
-                item.choices.emplace_back(window_mode_text(mode));
-            }
-            item.value_text = std::string{window_mode_text(current.graphics.window_mode)};
-            item.description = "WINDOW_MODE_HINT";
+            item.description = current.main.fullscreen ? "FULLSCREEN" : "WINDOWED";
             break;
         }
         case SettingsRowId::graphics_api: {
@@ -1756,10 +1290,6 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                 item.choice_index == 0U ? "OFF" : std::to_string(item.choice_index * 2U);
             if (!environment_.multisampling_live) {
                 item.description = "RESTART_REQUIRED";
-            }
-            if (render::post_settings_for(current.graphics).active()) {
-                // The post chain draws the world into a single-sample target.
-                item.description = "ANTIALIAS_POST_CHAIN";
             }
             break;
         case SettingsRowId::effect_quality:
@@ -1832,26 +1362,6 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             item.value_text = "1-9";
             break;
         default:
-            if (const auto choice = graphics_choice(row, current.graphics); choice.has_value()) {
-                item.choices = choice->choices;
-                item.choice_count = item.choices.size();
-                item.choice_index = choice->index;
-                item.value_text = item.choices[item.choice_index];
-            } else if (auto graphics = current.graphics;
-                       const bool* toggle = graphics_toggle(row, graphics)) {
-                item.choice_index = *toggle ? 1U : 0U;
-                item.choice_count = 2U;
-                item.choices = {"OFF", "ON"};
-                item.value_text = *toggle ? "ON" : "OFF";
-                if (row == SettingsRowId::low_latency) {
-                    item.description = "RESTART_REQUIRED";
-                }
-            }
-            if (const auto reason =
-                    graphics_row_unavailable(row, current.graphics, environment_);
-                reason.has_value()) {
-                item.description = std::string{*reason};
-            }
             if (item.control_action.has_value()) {
                 item.value_text = settings_binding_text(
                     current.controls.binding(*item.control_action), key_name_lookup_);
@@ -2251,31 +1761,36 @@ bool SettingsMenuModel::mouse_wheel(ui::Point point, std::int32_t vertical_steps
 }
 
 bool SettingsMenuModel::set_category_expanded(SettingsRowId category, bool expanded) {
-    if (!is_category(category)) {
+    bool* state{};
+    if (category == SettingsRowId::main_controls_category) {
+        state = &main_controls_expanded_;
+    } else if (category == SettingsRowId::ugc_controls_category) {
+        state = &ugc_controls_expanded_;
+    } else {
         return false;
     }
-    auto& state = categories_expanded_[category_slot(category)];
-    if (state == expanded) {
+    if (*state == expanded) {
         return true;
     }
-    state = expanded;
-    const auto tab = active_tab_;
+    *state = expanded;
     if (!expanded && focused_.has_value() && focused_->kind == SettingsTargetKind::row) {
-        // Focus inside the collapsed group moves to its header.
-        const auto rows = inventory(tab);
-        const auto category_position = std::find(rows.begin(), rows.end(), category);
-        if (category_position != rows.end()) {
-            const auto next_category =
-                std::find_if(category_position + 1, rows.end(),
-                             [](SettingsRowId row) { return is_category(row); });
-            const auto focused_position =
-                std::find(category_position + 1, next_category, focused_->row);
-            if (focused_position != next_category) {
-                focused_ = SettingsMenuTarget::for_row(category);
-            }
+        const auto focused_row = focused_->row;
+        const auto focused_position =
+            std::find(controls_inventory.begin(), controls_inventory.end(), focused_row);
+        const auto category_position =
+            std::find(controls_inventory.begin(), controls_inventory.end(), category);
+        const auto next_category_position = category == SettingsRowId::main_controls_category
+                                                ? std::find(controls_inventory.begin(),
+                                                            controls_inventory.end(),
+                                                            SettingsRowId::ugc_controls_category)
+                                                : controls_inventory.end();
+        if (focused_position != controls_inventory.end() &&
+            category_position != controls_inventory.end() && focused_position > category_position &&
+            focused_position < next_category_position) {
+            focused_ = SettingsMenuTarget::for_row(category);
         }
     }
-    clamp_scroll(tab);
+    clamp_scroll(settings::SettingsTab::controls);
     repair_focus();
     effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::scroll});
     hovered_ = pointer_.has_value() ? hit_test(*pointer_) : std::nullopt;
@@ -2326,6 +1841,8 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
 
     const auto& draft = session_->draft();
     switch (target.row) {
+    case SettingsRowId::fullscreen:
+        return adjust_row(target.row, draft.main.fullscreen ? -1 : 1);
     case SettingsRowId::invert_mouse:
         return adjust_row(target.row, draft.main.invert_mouse ? -1 : 1);
     case SettingsRowId::show_skins:
@@ -2338,19 +1855,6 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.ability_hints ? -1 : 1);
     case SettingsRowId::favorite_server:
         return adjust_row(target.row, favorite_server_ ? -1 : 1);
-    case SettingsRowId::window_mode: {
-        // Activating the row cycles Windowed -> Borderless -> Fullscreen.
-        if (!target_enabled(target)) {
-            return false;
-        }
-        auto graphics = draft.graphics;
-        graphics.window_mode =
-            window_modes[(window_mode_index(graphics.window_mode) + 1U) % window_modes.size()];
-        session_->set_graphics(graphics);
-        effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::scroll});
-        emit_preview(target.row);
-        return true;
-    }
     case SettingsRowId::vsync:
         return adjust_row(target.row, draft.graphics.vsync ? -1 : 1);
     case SettingsRowId::compatibility_shader:
@@ -2362,13 +1866,8 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
             open_resolution_dropdown();
         }
         return true;
-    default: {
-        auto graphics = draft.graphics;
-        if (const bool* toggle = graphics_toggle(target.row, graphics)) {
-            return adjust_row(target.row, *toggle ? -1 : 1);
-        }
+    default:
         return adjust_row(target.row, 1);
-    }
     }
 }
 
@@ -2496,7 +1995,7 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
 
     if (row == SettingsRowId::language || row == SettingsRowId::master_volume ||
         row == SettingsRowId::music_volume ||
-        row == SettingsRowId::invert_mouse ||
+        row == SettingsRowId::fullscreen || row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints) {
         auto main = before.main;
@@ -2523,6 +2022,9 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         case SettingsRowId::music_volume:
             main.music_volume =
                 snapped_volume(main.music_volume + (direction < 0 ? -0.2 : 0.2));
+            break;
+        case SettingsRowId::fullscreen:
+            main.fullscreen = direction > 0;
             break;
         case SettingsRowId::invert_mouse:
             main.invert_mouse = direction > 0;
@@ -2610,10 +2112,6 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             graphics.model_quality = quality_at(shifted_index(current, 3U, direction));
             break;
         }
-        case SettingsRowId::window_mode:
-            graphics.window_mode = window_modes[shifted_index(
-                window_mode_index(graphics.window_mode), window_modes.size(), direction)];
-            break;
         case SettingsRowId::vsync:
             graphics.vsync = direction > 0;
             break;
@@ -2631,25 +2129,8 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
                 graphics.shader_quality = restore_shader_quality_;
             }
             break;
-        default: {
-            if (bool* toggle = graphics_toggle(row, graphics)) {
-                *toggle = direction > 0;
-                break;
-            }
-            const auto choice = graphics_choice(row, graphics);
-            if (!choice.has_value()) {
-                return false;
-            }
-            auto count = choice->choices.size();
-            auto next = shifted_index(choice->index, count, direction);
-            if (row == SettingsRowId::graphics_preset) {
-                // Custom is never chosen; leaving it lands on Medium.
-                count = settings::graphics_presets.size();
-                next = choice->index >= count ? 2U : shifted_index(choice->index, count, direction);
-            }
-            static_cast<void>(set_graphics_choice(row, graphics, next));
-            break;
-        }
+        default:
+            return false;
         }
         session_->set_graphics(graphics);
     }
@@ -2896,8 +2377,7 @@ void SettingsMenuModel::activate_done() {
     commit_text_edit();
     const auto previous = session_->committed();
     const auto draft = session_->draft();
-    // A window mode or resolution change goes through the keep/revert prompt.
-    const auto display_changed = settings::plan_graphics_apply(previous, draft, true).display;
+    const auto resolution_changed = previous.graphics.resolution != draft.graphics.resolution;
     // Startup-only resources. A deferred MSAA change is reported by the
     // frontend from the renderer itself: only it knows whether the requested
     // count differs from the one the swap chain was created with.
@@ -2907,7 +2387,7 @@ void SettingsMenuModel::activate_done() {
 
     effects_.emplace_back(SettingsSoundEffect{SettingsMenuSound::confirm});
     effects_.emplace_back(SettingsCommitCommand{
-        session_->committed(), changed, display_changed, restart_required});
+        session_->committed(), changed, resolution_changed, restart_required});
     if (environment_.context == SettingsMenuContext::in_game &&
         environment_.favorite_server_available && favorite_server_ != initial_favorite_server_) {
         effects_.emplace_back(SettingsFavoriteServerCommand{favorite_server_});

@@ -5,7 +5,6 @@
 #include <SDL3/SDL_main.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -319,6 +318,7 @@ struct SdlWindowModule::Impl final {
 
     SdlWindowConfig config;
     SDL_Window* window{};
+    SDL_GLContext graphics_context{};
     SDL_Cursor* image_cursor{};
     SDL_WindowID window_id{};
     WindowExtent logical_extent{};
@@ -326,8 +326,6 @@ struct SdlWindowModule::Impl final {
     NativeWindowHandle native_handle{};
     MouseState mouse_state{};
     std::vector<WindowEvent> events;
-    // Pointer motion taken between ticks (take_leading_mouse_motion).
-    std::vector<WindowEvent> early_motion;
     std::vector<DisplayMode> display_modes;
     std::string last_error;
     std::thread::id owner_thread{};
@@ -386,13 +384,6 @@ bool SdlWindowModule::start() {
 
     // This executable owns main(), so SDL must not install an SDL_main shim.
     SDL_SetMainReady();
-#if defined(__linux__)
-    // Prefer XWayland, falling back to native Wayland when no X server is
-    // available. A normal-priority hint never overrides SDL_VIDEO_DRIVER (or
-    // the legacy SDL_VIDEODRIVER) from the environment, so users and CI keep
-    // their explicit choice.
-    static_cast<void>(SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11,wayland"));
-#endif
     impl_->owns_sdl_runtime = SDL_WasInit(0) == 0U;
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         impl_->last_error = sdl_error_or("SDL video initialization failed");
@@ -406,6 +397,12 @@ bool SdlWindowModule::start() {
     impl_->video_initialized = true;
 
     SDL_WindowFlags flags{};
+#if defined(__HAIKU__)
+    // Haiku does not expose a public native BWindow/BGLView handle through
+    // SDL window properties. Create an SDL OpenGL window and pass the
+    // SDL_GLContext (BGLView*) to bgfx instead.
+    flags |= SDL_WINDOW_OPENGL;
+#endif
     if (impl_->config.resizable) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
@@ -426,6 +423,21 @@ bool SdlWindowModule::start() {
         return false;
     }
 
+#if defined(__HAIKU__)
+    impl_->graphics_context = SDL_GL_CreateContext(impl_->window);
+    if (impl_->graphics_context == nullptr) {
+        impl_->last_error = sdl_error_or("SDL OpenGL context creation failed");
+        stop();
+        return false;
+    }
+
+    if (!SDL_GL_MakeCurrent(impl_->window, impl_->graphics_context)) {
+        impl_->last_error = sdl_error_or("SDL could not make the OpenGL context current");
+        stop();
+        return false;
+    }
+#endif
+
     if (!SDL_SetWindowMinimumSize(impl_->window,
                                   static_cast<int>(impl_->config.minimum_extent.width),
                                   static_cast<int>(impl_->config.minimum_extent.height))) {
@@ -442,7 +454,16 @@ bool SdlWindowModule::start() {
         return false;
     }
 
+#if defined(__HAIKU__)
+    impl_->native_handle = {
+        .system = NativeWindowSystem::haiku,
+        .window = nullptr,
+        .display = nullptr,
+        .graphics_context = impl_->graphics_context,
+    };
+#else
     impl_->native_handle = extract_native_handle(impl_->window);
+#endif
     if (impl_->config.require_native_handle && !impl_->native_handle.valid()) {
         impl_->last_error = "SDL did not expose a renderer-compatible native window handle";
         stop();
@@ -474,7 +495,6 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
         return core::TickDecision::stop;
     }
 
-    impl_->early_motion.clear();
     impl_->events.clear();
     impl_->close_requested = false;
 
@@ -530,11 +550,6 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
                 // logical resize. Notify the renderer explicitly even on
                 // platforms that omit a separate pixel-size event.
                 impl_->push_window_event(WindowEventType::drawable_resized, source.window);
-                if (source.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) {
-                    // Resolution choices and exclusive modes follow the display
-                    // the window is on.
-                    impl_->refresh_display_modes();
-                }
             }
             break;
         case SDL_EVENT_WINDOW_MINIMIZED:
@@ -699,7 +714,6 @@ void SdlWindowModule::stop() noexcept {
         impl_->image_cursor = nullptr;
     }
 
-    impl_->early_motion.clear();
     impl_->events.clear();
     impl_->display_modes.clear();
     impl_->mouse_state = {};
@@ -708,6 +722,16 @@ void SdlWindowModule::stop() noexcept {
     impl_->drawable_extent = {};
     impl_->window_id = 0U;
     impl_->close_requested = false;
+
+#if defined(__HAIKU__)
+    if (impl_->graphics_context != nullptr) {
+        if (impl_->window != nullptr) {
+            static_cast<void>(SDL_GL_MakeCurrent(impl_->window, nullptr));
+        }
+        static_cast<void>(SDL_GL_DestroyContext(impl_->graphics_context));
+        impl_->graphics_context = nullptr;
+    }
+#endif
 
     if (impl_->window != nullptr) {
         SDL_DestroyWindow(impl_->window);
@@ -747,56 +771,6 @@ MouseState SdlWindowModule::mouse_state() const noexcept {
 
 std::span<const WindowEvent> SdlWindowModule::events() const noexcept {
     return impl_->events;
-}
-
-std::span<const WindowEvent> SdlWindowModule::take_leading_mouse_motion() {
-    impl_->early_motion.clear();
-    if (impl_->window == nullptr || impl_->owner_thread != std::this_thread::get_id()) {
-        return {};
-    }
-    SDL_PumpEvents();
-    constexpr int batch{64};
-    std::array<SDL_Event, static_cast<std::size_t>(batch)> queued{};
-    // Bounded like tick(): a mouse polling at 8 kHz queues ~60 events in the
-    // longest gap between two render-only frames.
-    for (std::size_t round{}; round < 8U; ++round) {
-        const int peeked =
-            SDL_PeepEvents(queued.data(), batch, SDL_PEEKEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
-        int leading{};
-        while (leading < peeked && queued[static_cast<std::size_t>(leading)].type ==
-                                       SDL_EVENT_MOUSE_MOTION &&
-               impl_->belongs_to_window(
-                   queued[static_cast<std::size_t>(leading)].motion.windowID)) {
-            ++leading;
-        }
-        if (leading <= 0) {
-            break;
-        }
-        // Events are only ever appended behind the peeked ones, so the first
-        // `leading` motion events in the queue are exactly the run above.
-        const int taken = SDL_PeepEvents(queued.data(), leading, SDL_GETEVENT,
-                                         SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_MOTION);
-        for (int index{}; index < taken; ++index) {
-            const auto& motion = queued[static_cast<std::size_t>(index)].motion;
-            impl_->mouse_state = {
-                .x = motion.x,
-                .y = motion.y,
-                .pressed_buttons = translate_mouse_buttons(motion.state),
-            };
-            impl_->early_motion.push_back(WindowEvent{
-                .type = WindowEventType::mouse_moved,
-                .timestamp_ns = motion.timestamp,
-                .mouse_x = motion.x,
-                .mouse_y = motion.y,
-                .mouse_delta_x = motion.xrel,
-                .mouse_delta_y = motion.yrel,
-            });
-        }
-        if (taken < batch || leading < peeked) {
-            break;
-        }
-    }
-    return impl_->early_motion;
 }
 
 std::span<const DisplayMode> SdlWindowModule::display_modes() const noexcept {

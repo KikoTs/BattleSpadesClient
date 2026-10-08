@@ -2,10 +2,7 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <exception>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -88,20 +85,16 @@ void gameplay_mode_tag_beats_the_category_mode_tla() {
       {"ip":"204.168.157.43","port":27019,"name":"Real Demolition","game_mode":"DEM",
        "mode_tla":"dem","tags":["mode=0001","mode=0001"]},
       {"ip":"204.168.157.43","port":27020,"name":"Plain TDM","mode_tla":"tdm",
-       "tags":["mode=0001"]},
-      {"ip":"204.168.157.43","port":27021,"name":"Official Classic CTF","game_mode":"DEM",
-       "mode_tla":"dem","tags":["mode=0008","gamemode=CCTF","mode=0001"]},
-      {"ip":"204.168.157.43","port":27022,"name":"Unknown Gamemode","game_mode":"DEM",
-       "mode_tla":"dem","tags":["gamemode=foo","mode=0009","mode=0001"]}
+       "tags":["mode=0001"]}
     ])json";
     const auto parsed = battlespades::network::parse_public_server_list(json);
-    expect(parsed && parsed.servers.size() == 6U, "all six rows must parse");
+    expect(parsed && parsed.servers.size() == 4U, "all four rows must parse");
     std::vector<std::string> codes;
     for (const auto& server : parsed.servers) codes.push_back(server.mode_code);
     std::ranges::sort(codes);
-    const std::vector<std::string> expected{"cctf", "ctf", "dem", "tc", "tdm", "zom"};
+    const std::vector<std::string> expected{"ctf", "dem", "tdm", "zom"};
     expect(codes == expected,
-           "a known gamemode tag must beat the ordinal, and an unknown one must fall back to it");
+           "the gameplay mode tag must replace a category-derived dem label");
 }
 
 void lan_response_uses_datagram_source_as_authority() {
@@ -155,87 +148,6 @@ void friend_server_selection_matches_authoritative_social_ids() {
 
 } // namespace
 
-void steam_rows_parse_like_master_rows_and_merge() {
-    using battlespades::network::SteamListedServer;
-    std::vector<SteamListedServer> steam{
-        // Real rows as Steam returns them (2026-10-05): retail port, mode in
-        // the map prefix, playlist=8 and the category mode=0001 on everyone.
-        {"15.235.106.95", 32887U, 32887U, "Revival Official | NA CCTF", "CCTF_Crossroads",
-         "v168;playlist=8;region=america;mode=0001;classic", 10U, 24U, 4U, false, 90000000000001ULL, 40},
-        {"5.6.7.8", 32887U, 0U, "Relay host", "ZOM_Atlantis",
-         "v168;playlist=8;mode=0001;sdr=85568392936826697;sdr480=90294212260083732", 2U, 16U, 0U, true,
-         90000000000002ULL, 0},
-    };
-    const auto parsed = battlespades::network::parse_steam_server_list(steam);
-    expect(parsed && parsed.servers.size() == 2U, "both Steam rows must parse");
-    const auto& official = parsed.servers[0];
-    expect(official.mode_code == "cctf" && official.map == "Crossroads" && official.classic &&
-               official.region == "us_east" && official.human_players == 6U && official.steam_listed &&
-               official.steam_host_id == 0U,
-           "Steam rows decode mode from the map prefix, region aliases and humans");
-    const auto& relay = parsed.servers[1];
-    expect(relay.mode_code == "zom" && relay.steam_host_id == 85568392936826697ULL &&
-               relay.steam_host_id_spacewar == 90294212260083732ULL && relay.dedicated_relay_host &&
-               relay.steam_server_id == 90000000000002ULL && relay.password_protected,
-           "sdr= and sdr480= tags carry the relay host ids for each Steam application");
-    expect(!official.dedicated_relay_host && official.steam_host_id_spacewar == 0U,
-           "a server without relay hosts advertises none");
-
-    // AoSPlay lists the same server at its game port.
-    battlespades::network::DiscoveryResult aosplay;
-    aosplay.servers.push_back(official);
-    aosplay.servers.back().steam_listed = false;
-    aosplay.servers.back().game.port = 27015U;
-    aosplay.servers.back().name = "AoSPlay name";
-    const auto merged = battlespades::network::merge_discovered_servers(aosplay, parsed);
-    expect(merged.servers.size() == 2U && merged.servers[0].name == "AoSPlay name" &&
-               merged.servers[0].steam_listed,
-           "an address both lists know keeps the AoSPlay row; Steam adds the rest");
-    // A registered SteamID matches even across hosts that differ (NAT/IP).
-    battlespades::network::DiscoveryResult registered;
-    registered.servers.push_back(official);
-    registered.servers.back().game.host = "10.0.0.1";
-    registered.servers.back().name = "Renamed";
-    registered.servers.back().steam_listed = false;
-    registered.servers.back().steam_server_id = 90000000000001ULL;
-    const auto by_id = battlespades::network::merge_discovered_servers(registered, parsed);
-    expect(by_id.servers.size() == 2U && by_id.servers[0].steam_listed,
-           "the registered SteamID ties a Steam row to its AoSPlay row");
-    // The AoSPlay list carries the same ids as fields.
-    const auto listed = battlespades::network::parse_public_server_list(
-        R"json([{"ip":"9.9.9.9","port":27015,"name":"Listed","mode_tla":"tdm","tags":[],
-                 "steam_host_id":"85568392936826697","steam_host_id_480":"90294212260083732"}])json");
-    expect(listed && listed.servers.size() == 1U &&
-               listed.servers[0].steam_host_id == 85568392936826697ULL &&
-               listed.servers[0].steam_host_id_spacewar == 90294212260083732ULL &&
-               listed.servers[0].dedicated_relay_host,
-           "relay host ids arrive from the AoSPlay list as fields");
-
-    battlespades::network::DiscoveryResult failed;
-    failed.error = "public server list request failed";
-    expect(battlespades::network::merge_discovered_servers(failed, parsed).error.empty(),
-           "Steam rows make the browser usable when AoSPlay failed");
-}
-
-void saved_list_answers_when_the_master_is_unreachable() {
-    const auto cache = std::filesystem::temp_directory_path() / "aos_serverlist_cache_test.json";
-    {
-        std::ofstream out{cache, std::ios::binary | std::ios::trunc};
-        out << R"json([{"ip":"1.2.3.4","port":27015,"name":"Saved","mode_tla":"tdm","tags":[]}])json";
-    }
-    battlespades::network::PublicDiscoveryConfig config;
-    config.url = "https://127.0.0.1:9/serverlist/";
-    config.timeout = std::chrono::milliseconds{800};
-    config.cache_file = cache;
-    const auto result = battlespades::network::discover_public_servers(config);
-    expect(result && result.from_cache && result.servers.size() == 1U &&
-               result.servers[0].name == "Saved",
-           "an unreachable master falls back to the saved list");
-    std::filesystem::remove(cache);
-    const auto none = battlespades::network::discover_public_servers(config);
-    expect(!none && none.servers.empty(), "no saved list: the failure is reported");
-}
-
 int main() {
     try {
         endpoints_are_strict_and_retail_local_is_supported();
@@ -244,9 +156,7 @@ int main() {
         lan_response_uses_datagram_source_as_authority();
         opaque_lobby_ids_resolve_to_current_endpoints();
         friend_server_selection_matches_authoritative_social_ids();
-        steam_rows_parse_like_master_rows_and_merge();
-        saved_list_answers_when_the_master_is_unreachable();
-        std::cout << "8/8 tests passed\n";
+        std::cout << "6/6 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

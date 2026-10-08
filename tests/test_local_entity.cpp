@@ -353,7 +353,7 @@ void the_default_face_points_up() {
 
     // Opposing faces must be exact negations, or a wall-stuck charge would sit
     // proud on one side and sunk on the other.
-    for (const auto& pair : {std::pair{0U, 1U}, std::pair{2U, 3U}, std::pair{4U, 5U}}) {
+    for (const auto pair : {std::pair{0U, 1U}, std::pair{2U, 3U}, std::pair{4U, 5U}}) {
         const auto a = entity_face_normal(static_cast<std::uint8_t>(pair.first));
         const auto b = entity_face_normal(static_cast<std::uint8_t>(pair.second));
         expect(a.x == -b.x && a.y == -b.y && a.z == -b.z,

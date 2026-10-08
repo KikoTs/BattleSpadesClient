@@ -26,8 +26,6 @@ struct Discovery {
     DiscoverySource source{DiscoverySource::none};
     std::optional<UpdateManifest> manifest;
     std::string error;
-    /** The stable.json text behind `manifest` (empty for the GitHub release fallback). */
-    std::string body;
 };
 
 /**
@@ -56,24 +54,6 @@ struct SessionResult {
 [[nodiscard]] SessionResult run_update_session(const UpdateLayout& layout, const UpdateManifest& manifest,
                                                const std::vector<PlannedUpdate>& updates, const UpdaterConfig& config,
                                                const SessionCallbacks& callbacks);
-
-/// One run of BattleSpadesAssetInstaller.exe.
-struct AssetImportResult {
-    std::optional<unsigned long> exit;   ///< nullopt: could not start, or timed out
-    std::string message;                 ///< why it failed and what to do (from --report); empty on success
-    [[nodiscard]] bool ok() const noexcept { return exit.has_value() && *exit == 0U; }
-    [[nodiscard]] bool cancelled() const noexcept { return exit.has_value() && *exit == 2U; }
-};
-
-/**
- * Imports the original game files into <install>\assets\original with the
- * packaged importer. With `source` it runs hidden (`--source`), otherwise the
- * importer's own folder picker is shown. The destination is always passed
- * explicitly and the importer's --report text is returned, because a GUI
- * process has no stderr to capture.
- */
-[[nodiscard]] AssetImportResult run_asset_import(const UpdateLayout& layout,
-                                                 const std::optional<std::filesystem::path>& source);
 
 /// Rolls back every component changed by the most recent update session.
 [[nodiscard]] SessionResult rollback_last_session(const UpdateLayout& layout);

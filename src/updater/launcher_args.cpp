@@ -22,10 +22,6 @@ LauncherArguments parse_launcher_arguments(const std::vector<std::string>& argum
             parsed.rollback = true;
         } else if (argument == "--update-only") {
             parsed.update_only = true;
-        } else if (argument == "--choose") {
-            parsed.choose = true;
-        } else if (argument == "--reset-launch-choice") {
-            parsed.reset_launch_choice = true;
         } else if (argument == "--install-component") {
             if (index + 1U >= arguments.size() || arguments[index + 1U].empty()) {
                 parsed.error = "--install-component requires a component name";
@@ -40,7 +36,6 @@ LauncherArguments parse_launcher_arguments(const std::vector<std::string>& argum
             (argument == "--update-api" ? parsed.api_url : parsed.manifest_url) = arguments[++index];
         } else if (parsed.dropped_command.empty() && looks_like_steam_command(argument)) {
             parsed.dropped_command = argument;
-            parsed.original_command.assign(arguments.begin() + static_cast<std::ptrdiff_t>(index), arguments.end());
         } else {
             parsed.forwarded.push_back(argument);
         }

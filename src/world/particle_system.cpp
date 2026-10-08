@@ -473,7 +473,7 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                     const float size =
                         particle.size_begin +
                         (particle.size_end - particle.size_begin) * life01;
-                    const float opacity =
+                    const float alpha =
                         (particle.alpha_begin +
                          (particle.alpha_end - particle.alpha_begin) * life01);
                     ParticleInstance instance;
@@ -494,7 +494,7 @@ void ParticleSystem::build_draw_list(std::array<float, 3U> eye, float fog_distan
                     instance.size = std::max(0.0F, size);
                     instance.rgba = {particle.color[0U], particle.color[1U],
                                      particle.color[2U],
-                                     std::clamp(opacity, 0.0F, 1.0F)};
+                                     std::clamp(alpha, 0.0F, 1.0F)};
                     if (particle.blend == ParticleBlend::premultiplied) {
                         for (std::size_t axis{}; axis < 3U; ++axis) {
                             instance.rgba[axis] *= instance.rgba[3U];

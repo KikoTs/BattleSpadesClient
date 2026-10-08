@@ -3,23 +3,16 @@
 ; plus the bundled server and runs ISCC with:
 ;   /DAppVersion=0.2.0-beta.1 /DNumericVersion=0.2.0.0 /DStageDir=<stage>\bin
 ;
-; Near one-click: the only pages are "Ready to install" (one Install click)
-; and "Finished" (Play BattleSpades is ticked). Everything else is decided
-; automatically:
-;   * Per user (no UAC) into <Steam library>\steamapps\common\aceofspades\BattleSpades,
+; What it does
+;   * Installs per user (no UAC) into <Steam library>\steamapps\common\aceofspades\BattleSpades,
 ;     a subfolder of the retail game, so no original file is touched. Without
-;     Ace of Spades, or when that folder is not writable, it uses
-;     %LOCALAPPDATA%\Programs\BattleSpades. /DIR="..." still overrides it.
-;   * Ace of Spades found: imports its original files (they are never
-;     redistributed) with BattleSpadesAssetInstaller.exe, and points Steam's
-;     Ace of Spades launch options at BattleSpadesLauncher.exe (Play then
-;     offers BattleSpades or the original game). Steam without Ace of Spades:
-;     adds a non-Steam shortcut instead. Both go through
-;     BattleSpadesSetupHelper.exe, which backs up every Steam file first.
-;   * Steam running: ONE question, "Restart Steam now?". No (or a silent
-;     install) leaves update\steam-register.pending and the launcher finishes
-;     the registration the next time it starts while Steam is closed.
-;   * Start menu + desktop shortcuts. Uninstall restores Steam's settings.
+;     Ace of Spades installed it defaults to %LOCALAPPDATA%\Programs\BattleSpades.
+;   * Imports the retail assets from the Ace of Spades folder (they are never
+;     redistributed) with BattleSpadesAssetInstaller.exe.
+;   * Optionally points Steam's Ace of Spades launch options at
+;     BattleSpadesLauncher.exe and/or adds a non-Steam shortcut, both through
+;     BattleSpadesSetupHelper.exe, which backs up every Steam file first and
+;     refuses to write while Steam is running. Uninstall restores them.
 ; See docs/INSTALLER_AND_UPDATER.md.
 
 #ifndef AppVersion
@@ -51,10 +44,6 @@ VersionInfoProductTextVersion={#AppVersion}
 DefaultDirName={code:DefaultInstallDir}
 UsePreviousAppDir=yes
 DirExistsWarning=no
-; One-click: no welcome, license, folder, Start-menu or tasks pages. The
-; license ships in the install folder (LICENSE, THIRD_PARTY_NOTICES.md).
-DisableWelcomePage=yes
-DisableDirPage=yes
 DisableProgramGroupPage=yes
 ; Per-user: Steam's folder is user-writable by default, and the auto-updater
 ; must be able to write the install folder without elevation later on.
@@ -66,16 +55,18 @@ WizardStyle=modern
 SetupIconFile=..\..\src\platform\windows\game.ico
 UninstallDisplayIcon={app}\{#LauncherExe}
 UninstallDisplayName={#AppName}
+LicenseFile={#StageDir}\LICENSE
 Compression=lzma2/max
 SolidCompression=yes
 OutputBaseFilename=BattleSpades-Setup-{#AppVersion}
-; Close a running BattleSpades without asking (it holds files we replace).
-CloseApplications=force
+CloseApplications=yes
 RestartApplications=no
 
-[Messages]
-ReadyLabel1=BattleSpades is ready to install.
-ReadyLabel2a=Click Install to continue.
+[Tasks]
+Name: "steamlaunch"; Description: "Start BattleSpades when I press Play on Ace of Spades in Steam (Steam overlay, friends and playtime show Ace of Spades)"; GroupDescription: "Steam:"; Check: GameDetected
+Name: "steamshortcut"; Description: "Also add BattleSpades to my Steam library as a non-Steam game"; GroupDescription: "Steam:"; Flags: unchecked; Check: SteamDetected
+Name: "importassets"; Description: "Import the original game files from my Ace of Spades installation now"; GroupDescription: "Game files:"; Check: GameDetected
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Excludes: "\ui-layout.json"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -87,11 +78,10 @@ Source: "{#StageDir}\{#HelperExe}"; Flags: dontcopy
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
 Name: "{autoprograms}\{#AppName} - restore previous version"; Filename: "{app}\{#LauncherExe}"; Parameters: "--rollback"; WorkingDir: "{app}"
-Name: "{autoprograms}\{#AppName} - choose what Steam Play starts"; Filename: "{app}\{#LauncherExe}"; Parameters: "--reset-launch-choice"; WorkingDir: "{app}"; Check: GameDetected
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#LauncherExe}"; Description: "Play {#AppName}"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#LauncherExe}"; Description: "Play {#AppName}"; Flags: postinstall nowait skipifsilent unchecked
 
 [InstallDelete]
 ; A (re)install sets every component to the installer's versions again;
@@ -105,6 +95,7 @@ Type: filesandordirs; Name: "{app}\update"
 var
   SteamRoot: String;
   GameDir: String;
+  TasksPageSeen: Boolean;
 
 function DetectedValue(const Lines: TArrayOfString; const Key: String): String;
 var
@@ -159,174 +150,94 @@ begin
   Result := GameDir <> '';
 end;
 
-{ True when a file can be created in the existing folder Dir. }
-function CanWriteTo(const Dir: String): Boolean;
-var
-  Probe: String;
-begin
-  Result := False;
-  if not DirExists(Dir) then Exit;
-  Probe := AddBackslash(Dir) + '.battlespades-write-test';
-  Result := SaveStringToFile(Probe, 'x', False);
-  if Result then DeleteFile(Probe);
-end;
-
 function DefaultInstallDir(Param: String): String;
-var
-  Candidate: String;
 begin
-  Result := ExpandConstant('{localappdata}\Programs\{#AppName}');
-  if GameDir = '' then Exit;
-  Candidate := AddBackslash(GameDir) + '{#AppName}';
-  { Steam grants users write access to its libraries; a locked-down one would need UAC. }
-  if CanWriteTo(Candidate) or (not DirExists(Candidate) and CanWriteTo(GameDir)) then
-    Result := Candidate
+  if GameDir <> '' then
+    Result := AddBackslash(GameDir) + '{#AppName}'
   else
-    Log('Ace of Spades folder is not writable; installing into ' + Result);
+    Result := ExpandConstant('{localappdata}\Programs\{#AppName}');
 end;
 
-function IsGameFolder(const Dir: String): Boolean;
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  { aos.pkg, not aos.exe: BattleSpades installs its own aos.exe, so an upgrade must not look like the game. }
-  Result := FileExists(AddBackslash(Dir) + 'aos.pkg') or
-            ((GameDir <> '') and (CompareText(RemoveBackslash(Dir), RemoveBackslash(GameDir)) = 0));
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
-begin
-  Result := True;
-  { /DIR= pointing at the game folder itself (the folder page is hidden). }
-  if (CurPageID = wpReady) and IsGameFolder(WizardDirValue()) then
+  { Without Ace of Spades there are no launch options to set: offer the shortcut instead. }
+  if (CurPageID = wpSelectTasks) and not TasksPageSeen then
   begin
-    MsgBox('This is the Ace of Spades folder itself. Install into a subfolder such as' + #13#10 +
-           AddBackslash(RemoveBackslash(WizardDirValue())) + '{#AppName}' + #13#10 +
-           'so that no original game file is replaced.', mbError, MB_OK);
-    Result := False;
+    TasksPageSeen := True;
+    if SteamDetected() and not GameDetected() then
+      WizardSelectTasks('steamshortcut');
   end;
 end;
 
-function ImportAssets(): Boolean;
+function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  Code: Integer;
-  App: String;
+  Dir: String;
 begin
-  App := ExpandConstant('{app}');
-  WizardForm.StatusLabel.Caption := 'Copying the original Ace of Spades files (about 450 MB)...';
-  Result := Exec(App + '\BattleSpadesAssetInstaller.exe',
-                 '--source "' + GameDir + '" --destination "' + App + '\assets\original" --report "' +
-                 App + '\update\import-report.txt"', App, SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
-  { No message box: if this fails the launcher's first-run screen explains why and offers the download. }
-  Log('Asset import exit ' + IntToStr(Code));
-end;
-
-function SteamExe(): String;
-begin
-  Result := '';
-  if RegQueryStringValue(HKCU, 'Software\Valve\Steam', 'SteamExe', Result) and FileExists(Result) then Exit;
-  Result := AddBackslash(SteamRoot) + 'steam.exe';
-  if (SteamRoot = '') or not FileExists(Result) then Result := '';
-end;
-
-function SteamRunning(const Helper: String): Boolean;
-var
-  Lines: TArrayOfString;
-begin
-  RunHelper(Helper, 'detect', Lines);
-  Result := DetectedValue(Lines, 'steam_running') = '1';
-end;
-
-{ Asks Steam to exit and waits up to 60 s. }
-function ShutdownSteam(const Helper: String): Boolean;
-var
-  Exe: String;
-  Code, I: Integer;
-begin
-  Result := False;
-  Exe := SteamExe();
-  if Exe = '' then Exit;
-  Exec(Exe, '-shutdown', '', SW_HIDE, ewNoWait, Code);
-  for I := 1 to 60 do
+  Result := True;
+  if CurPageID = wpSelectDir then
   begin
-    Sleep(1000);
-    if not SteamRunning(Helper) then
+    Dir := RemoveBackslash(WizardDirValue());
+    if FileExists(AddBackslash(Dir) + 'aos.exe') or
+       ((GameDir <> '') and (CompareText(Dir, RemoveBackslash(GameDir)) = 0)) then
     begin
-      Sleep(1500);  { let it finish writing its config files }
-      Result := True;
-      Exit;
+      MsgBox('This is the Ace of Spades folder itself. Choose a subfolder such as' + #13#10 +
+             AddBackslash(Dir) + '{#AppName}' + #13#10 +
+             'so that no original game file is replaced.', mbError, MB_OK);
+      Result := False;
     end;
   end;
 end;
 
-procedure StartSteam();
+procedure ImportAssets();
 var
-  Exe: String;
   Code: Integer;
 begin
-  Exe := SteamExe();
-  if Exe <> '' then ExecAsOriginalUser(Exe, '', '', SW_SHOWNORMAL, ewNoWait, Code);
+  WizardForm.StatusLabel.Caption := 'Importing the original Ace of Spades files...';
+  if not Exec(ExpandConstant('{app}\BattleSpadesAssetInstaller.exe'), '--source "' + GameDir + '"', ExpandConstant('{app}'),
+              SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    SuppressibleMsgBox('The original game files could not be imported automatically (code ' + IntToStr(Code) + ').' + #13#10 +
+                       'BattleSpades will ask for your Ace of Spades folder the first time it starts.',
+                       mbInformation, MB_OK, IDOK);
 end;
 
-procedure LeavePendingRegistration(const Flags: String);
-begin
-  ForceDirectories(ExpandConstant('{app}\update'));
-  SaveStringToFile(ExpandConstant('{app}\update\steam-register.pending'), Flags, False);
-  Log('Steam registration left for the launcher: ' + Flags);
-end;
-
-procedure RegisterWithSteam(const Flags: String);
+procedure RegisterWithSteam();
 var
-  Helper, Params: String;
+  Params: String;
   Lines: TArrayOfString;
   Code: Integer;
-  Restart: Boolean;
 begin
-  Helper := ExpandConstant('{app}\{#HelperExe}');
-  Params := 'register --launcher "' + ExpandConstant('{app}\{#LauncherExe}') + '"' + Flags;
-  WizardForm.StatusLabel.Caption := 'Setting up Steam...';
-  Code := RunHelper(Helper, Params, Lines);
-  Log('Steam registration exit ' + IntToStr(Code));
-  if Code <> 2 then
-  begin
-    if Code <> 0 then Log('Steam registration failed: ' + DetectedValue(Lines, 'error'));
-    Exit;
-  end;
-  { Steam is running and would overwrite the change on exit: one clear choice. }
-  Restart := False;
-  if not WizardSilent() then
-    Restart := MsgBox('Steam is open. To make Play on Ace of Spades in Steam start BattleSpades, Steam has to ' +
-                      'restart once.' + #13#10#13#10 + 'Restart Steam now?' + #13#10#13#10 +
-                      'If you choose No, BattleSpades finishes this by itself the next time you start it ' +
-                      'while Steam is closed.', mbConfirmation, MB_YESNO) = IDYES;
-  if not Restart then
-  begin
-    LeavePendingRegistration(Flags);
-    Exit;
-  end;
-  WizardForm.StatusLabel.Caption := 'Waiting for Steam to close...';
-  if not ShutdownSteam(Helper) then
-  begin
-    LeavePendingRegistration(Flags);
-    Exit;
-  end;
-  WizardForm.StatusLabel.Caption := 'Setting up Steam...';
-  Code := RunHelper(Helper, Params, Lines);
-  Log('Steam registration (after restart) exit ' + IntToStr(Code));
-  if Code = 2 then LeavePendingRegistration(Flags);
-  StartSteam();
+  Params := 'register --launcher "' + ExpandConstant('{app}\{#LauncherExe}') + '"';
+  if WizardIsTaskSelected('steamlaunch') then Params := Params + ' --launch-options';
+  if WizardIsTaskSelected('steamshortcut') then Params := Params + ' --shortcut';
+  WizardForm.StatusLabel.Caption := 'Registering BattleSpades with Steam...';
+  repeat
+    Code := RunHelper(ExpandConstant('{app}\{#HelperExe}'), Params, Lines);
+    Log('Steam registration exit ' + IntToStr(Code));
+    if Code = 2 then
+    begin
+      if WizardSilent() or
+         (MsgBox('Steam is running. It rewrites its settings when it exits, so it must be closed first.' + #13#10#13#10 +
+                 'Exit Steam completely (Steam menu > Exit, and wait for its tray icon to disappear), then click Retry.' + #13#10 +
+                 'Cancel skips this step; see the BattleSpades documentation to register later.',
+                 mbError, MB_RETRYCANCEL) <> IDRETRY) then
+        Exit;
+    end
+    else if Code <> 0 then
+    begin
+      SuppressibleMsgBox('BattleSpades could not be registered with Steam:' + #13#10 +
+                         DetectedValue(Lines, 'error') + DetectedValue(Lines, 'account.' + DetectedValue(Lines, 'account') + '.launch_options_error'),
+                         mbError, MB_OK, IDOK);
+      Exit;
+    end;
+  until Code <> 2;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var
-  Flags: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    { An upgrade keeps its verified import; the launcher repairs a missing one. }
-    if GameDetected() and not DirExists(ExpandConstant('{app}\assets\original\png')) then ImportAssets();
-    Flags := '';
-    if GameDetected() then Flags := ' --launch-options'
-    else if SteamDetected() then Flags := ' --shortcut';
-    if Flags <> '' then RegisterWithSteam(Flags);
+    if WizardIsTaskSelected('importassets') then ImportAssets();
+    if WizardIsTaskSelected('steamlaunch') or WizardIsTaskSelected('steamshortcut') then RegisterWithSteam();
   end;
 end;
 
@@ -334,25 +245,21 @@ end;
 
 procedure UnregisterFromSteam();
 var
-  Helper: String;
   Lines: TArrayOfString;
   Code: Integer;
 begin
-  Helper := ExpandConstant('{app}\{#HelperExe}');
-  Code := RunHelper(Helper, 'unregister', Lines);
-  Log('Steam unregistration exit ' + IntToStr(Code));
-  if Code <> 2 then Exit;
-  if UninstallSilent() or
-     (MsgBox('Steam is open. Restart Steam now so the Ace of Spades launch options can be restored?' + #13#10#13#10 +
-             'If you choose No, clear them yourself: Steam > Ace of Spades > Properties > Launch options.',
-             mbConfirmation, MB_YESNO) <> IDYES) then
-    Exit;
-  if ShutdownSteam(Helper) then
-  begin
-    Code := RunHelper(Helper, 'unregister', Lines);
-    Log('Steam unregistration (after restart) exit ' + IntToStr(Code));
-    StartSteam();
-  end;
+  repeat
+    Code := RunHelper(ExpandConstant('{app}\{#HelperExe}'), 'unregister', Lines);
+    Log('Steam unregistration exit ' + IntToStr(Code));
+    if Code = 2 then
+    begin
+      if UninstallSilent() or
+         (MsgBox('Steam is running. Exit Steam completely, then click Retry so its Ace of Spades launch options can be restored.' + #13#10 +
+                 'If you cancel, clear them yourself: Steam > Ace of Spades > Properties > Launch options.',
+                 mbError, MB_RETRYCANCEL) <> IDRETRY) then
+        Exit;
+    end;
+  until Code <> 2;
 end;
 
 procedure DeletePlayerData(const App: String);

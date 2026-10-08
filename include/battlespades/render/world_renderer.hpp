@@ -2,7 +2,6 @@
 
 #include "battlespades/render/texture_quality.hpp"
 
-#include "battlespades/render/post_settings.hpp"
 #include "battlespades/render/quality_profile.hpp"
 #include "battlespades/render/render_tuning.hpp"
 #include "battlespades/world/chunk_mesh.hpp"
@@ -38,13 +37,6 @@ struct WorldCamera final {
     double pitch_degrees{};
     /** Recovered retail hip perspective: vertical 75 degrees, near 0.1. */
     double fov_y_degrees{75.0};
-    /**
-     * First-person tool projection; nullopt = fov_y_degrees. The frontend keeps
-     * it at the retail 75-degree-based zoom FOV when the player widens the
-     * world FOV, so the weapon never stretches and ADS sight images stay
-     * aligned.
-     */
-    std::optional<double> view_model_fov_y_degrees{};
     double near_plane{0.1};
     /** Radial fog end; the retail Draw Distance setting in blocks. */
     double fog_distance{192.0};
@@ -66,11 +58,6 @@ struct WorldFrameStats final {
     std::size_t chunks_submitted{};
     std::size_t shadow_chunks_submitted{};
     std::size_t shadow_chunks_culled{};
-    /** Fullscreen post passes submitted; zero when the world drew straight to the backbuffer. */
-    std::uint32_t post_passes{};
-    /** Offscreen scene size while the post chain is active. */
-    std::uint32_t post_scene_width{};
-    std::uint32_t post_scene_height{};
 };
 
 /**
@@ -134,11 +121,6 @@ struct WorldModelDraw final {
      * drawn from one tick's state.
      */
     std::uint32_t motion_key{};
-    /**
-     * Casts a sun shadow but is never drawn in the visible passes: the local
-     * player's own body in first person, which the camera sits inside.
-     */
-    bool shadow_only{};
 };
 
 /** One retail sniper LaserAttachment already clipped against the live world. */
@@ -237,31 +219,6 @@ public:
      */
     void set_model_culling(bool enabled) noexcept;
     [[nodiscard]] const QualityProfile& quality_profile() const noexcept;
-
-    /**
-     * Optional world post-processing for the next submit() (post_settings.hpp).
-     * At the defaults the world draws straight into the backbuffer as it
-     * always has; otherwise it goes through an offscreen scene and fullscreen
-     * passes resolved at composite_view_id, before every UI view. Features the
-     * backend cannot run (post_capabilities()) are ignored.
-     */
-    void set_post_settings(const PostSettings& settings) noexcept;
-    [[nodiscard]] const PostSettings& post_settings() const noexcept;
-    /**
-     * What this backend supports. Loads the post shaders on first call (never
-     * at initialize(), so a missing post shader cannot break startup); a
-     * failure only reports the chain unsupported. Main thread only.
-     */
-    [[nodiscard]] PostCapabilities post_capabilities() const noexcept;
-    [[nodiscard]] bool post_chain_supported() const noexcept;
-
-    /**
-     * Sampling of world-space textures (skydome, particles, the terrain AO
-     * atlas, laser and zone sprites): point (crisp) or linear, optionally
-     * anisotropic at the device maximum. Applied live through per-draw sampler
-     * flags; the bgfx reset flags never change for it.
-     */
-    void set_texture_filtering(const TextureFiltering& filtering) noexcept;
 
     /**
      * Selects the submission path (see RenderTuning); never the image.

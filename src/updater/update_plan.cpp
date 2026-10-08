@@ -1,7 +1,6 @@
 #include "battlespades/updater/update_plan.hpp"
 
 #include "battlespades/updater/semver.hpp"
-#include "battlespades/updater/sha256.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -179,32 +178,6 @@ MirrorResult try_mirrors(const std::vector<std::string>& urls,
     }
     result.outcome = MirrorOutcome::failed;
     return result;
-}
-
-bool verify_package_file(const std::filesystem::path& file, std::uint64_t expected_size,
-                         std::string_view expected_sha256, std::string& error) {
-    std::error_code code;
-    if (!std::filesystem::is_regular_file(file, code) || code) {
-        error = "the downloaded file is missing";
-        return false;
-    }
-    const auto size = std::filesystem::file_size(file, code);
-    if (code || size != expected_size) {
-        error = "size " + std::to_string(code ? 0U : size) + " instead of " + std::to_string(expected_size);
-        return false;
-    }
-    std::string hash_error;
-    const auto digest = sha256_hex_file(file, hash_error);
-    if (!digest.has_value()) {
-        error = hash_error;
-        return false;
-    }
-    if (!same_sha256(*digest, expected_sha256)) {
-        error = "SHA-256 mismatch (" + *digest + ")";
-        return false;
-    }
-    error.clear();
-    return true;
 }
 
 } // namespace battlespades::updater

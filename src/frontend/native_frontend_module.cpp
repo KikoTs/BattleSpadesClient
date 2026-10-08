@@ -23,7 +23,6 @@
 #include "battlespades/frontend/create_match_presentation.hpp"
 #include "battlespades/frontend/custom_match_menu.hpp"
 #include "battlespades/frontend/custom_match_presentation.hpp"
-#include "battlespades/frontend/achievements.hpp"
 #include "battlespades/frontend/death_camera.hpp"
 #include "battlespades/frontend/class_loadout_store.hpp"
 #include "battlespades/frontend/favorite_server_store.hpp"
@@ -40,7 +39,6 @@
 #include "battlespades/frontend/leaderboard_menu.hpp"
 #include "battlespades/frontend/leaderboard_presentation.hpp"
 #include "battlespades/frontend/live_client_policy.hpp"
-#include "battlespades/frontend/frame_rate_meter.hpp"
 #include "battlespades/frontend/render_interpolation.hpp"
 #include "battlespades/frontend/world_draw_interpolation.hpp"
 #include "battlespades/frontend/loading_presentation.hpp"
@@ -106,7 +104,6 @@
 #include "battlespades/platform/window_port.hpp"
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/camera_basis.hpp"
-#include "battlespades/render/graphics_options.hpp"
 #include "battlespades/render/world_renderer.hpp"
 #include "battlespades/shared/retail_constants.hpp"
 #include "battlespades/settings/settings_session.hpp"
@@ -255,7 +252,6 @@ constexpr std::uint32_t scancode_up{82U};
 constexpr std::uint32_t scancode_keypad_enter{88U};
 constexpr std::uint16_t shift_modifier_mask{0x0003U};
 constexpr std::uint16_t control_modifier_mask{0x00C0U};
-constexpr std::uint16_t alt_modifier_mask{0x0300U};
 constexpr std::uint8_t chat_big_type{3U};
 constexpr std::string_view settings_edo_font{"fonts/Edo.ttf"};
 constexpr std::string_view settings_standard_font{"fonts/A750-Sans-Medium.ttf"};
@@ -373,9 +369,6 @@ leaderboard_rows(LeaderboardRequest request, const network::AosPlayLeaderboardRe
  * variable is absent, while giving live-smoke runs evidence about which
  * gameplay-thread boundary actually stalled.
  */
-/** Ace of Spades: Battle Builder's Steam app id, for Steam's game server list. */
-constexpr std::uint32_t ace_of_spades_steam_app_id{224540U};
-
 class PerformanceScope final {
 public:
     explicit PerformanceScope(std::string_view label, std::chrono::microseconds threshold) noexcept
@@ -855,56 +848,6 @@ settings_api(render::GraphicsBackend backend) noexcept {
         {"COMPATIBILITY_SHADER", "Compatibility Shader"},
         // Retail shipped this localization identifier without the second I.
         {"COMPATIBILTY_SHADER", "Compatibility Shader"},
-        // Native Graphics rows (window mode and the display/quality additions).
-        {"WINDOW_MODE", "Window Mode"},
-        {"WINDOW_MODE_WINDOWED", "Windowed"},
-        {"WINDOW_MODE_BORDERLESS", "Borderless"},
-        {"WINDOW_MODE_EXCLUSIVE", "Fullscreen"},
-        {"WINDOW_MODE_HINT", "Alt+Enter switches fullscreen and windowed"},
-        {"WINDOW_MODE_DESKTOP", "Desktop"},
-        {"GRAPHICS_DISPLAY", "Display"},
-        {"GRAPHICS_QUALITY_GROUP", "Quality"},
-        {"GRAPHICS_EFFECTS", "Effects"},
-        {"GRAPHICS_COLOR", "Colour and Brightness"},
-        {"GRAPHICS_PRESET", "Quality Preset"},
-        {"PRESET_RETAIL", "Retail"},
-        {"PRESET_CUSTOM", "Custom"},
-        {"ULTRA", "Ultra"},
-        {"AUTO", "Auto"},
-        {"FRAME_LIMIT", "Frame Rate Limit"},
-        {"FRAME_LIMIT_DISPLAY", "Match Display"},
-        {"FRAME_LIMIT_UNLIMITED", "Unlimited"},
-        {"FIELD_OF_VIEW", "Field of View"},
-        {"RENDER_SCALE", "Render Scale"},
-        {"UPSCALING", "Upscaling"},
-        {"UPSCALE_BILINEAR", "Bilinear"},
-        {"UPSCALE_EDGE_ADAPTIVE", "Edge-adaptive"},
-        {"UPSCALE_FULL_RESOLUTION", "Only below 100% render scale"},
-        {"SHARPENING", "Sharpening"},
-        {"LOW_LATENCY", "Reduce Input Latency"},
-        {"SHOW_FPS", "Show FPS"},
-        {"SHADOW_QUALITY", "Shadow Quality"},
-        {"SHADOW_DISTANCE", "Shadow Distance"},
-        {"SHADOW_NEAR", "Near"},
-        {"SHADOW_FAR", "Far"},
-        {"SHADOWS_OFF", "Shadows are off"},
-        {"AMBIENT_OCCLUSION", "Ambient Occlusion"},
-        {"ANISOTROPIC_FILTERING", "Anisotropic Filtering"},
-        {"TEXTURE_FILTERING", "Texture Filtering"},
-        {"TEXTURE_CRISP", "Crisp"},
-        {"TEXTURE_SMOOTH", "Smooth"},
-        {"BLOOM", "Bloom"},
-        {"MOTION_BLUR", "Motion Blur"},
-        {"BRIGHTNESS", "Brightness"},
-        {"GAMMA", "Gamma"},
-        {"COLOR_VISION", "Colour Vision"},
-        {"PROTANOPIA", "Protanopia"},
-        {"DEUTERANOPIA", "Deuteranopia"},
-        {"TRITANOPIA", "Tritanopia"},
-        {"NOT_SUPPORTED_BACKEND", "Not supported by this graphics API"},
-        {"ENHANCED_ONLY", "Enhanced shader tiers only"},
-        {"RESTART_REQUIRED", "Restart required"},
-        {"ANTIALIAS_POST_CHAIN", "Off while render scale or post effects are on"},
         {"MAIN_GAME_CONTROLS", "Main Game Controls"},
         {"MOUSE_SENSITIVITY", "Mouse Sensitivity"},
         {"FORWARD", "Forward"},
@@ -1344,10 +1287,13 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
     result.rows.reserve(menu.rows.size());
     bool controls_section_expanded{true};
     for (const auto& row : menu.rows) {
-        if (row.kind == SettingsRowKind::category) {
-            controls_section_expanded = row.expanded;
-        } else if (!controls_section_expanded) {
-            continue;
+        if (menu.active_tab == settings::SettingsTab::controls) {
+            if (row.id == SettingsRowId::main_controls_category ||
+                row.id == SettingsRowId::ugc_controls_category) {
+                controls_section_expanded = row.expanded;
+            } else if (!controls_section_expanded) {
+                continue;
+            }
         }
         SettingsPresentationRow visual;
         visual.kind = presentation_kind(row);
@@ -1379,9 +1325,7 @@ presentation_snapshot(const SettingsMenuPresentation& menu) {
                 std::remove(visual.value_key.begin(), visual.value_key.end(), ' '),
                 visual.value_key.end());
             visual.supplementary_value_key =
-                row.description == "WINDOW_MODE_EXCLUSIVE"    ? "(fullscreen)"
-                : row.description == "WINDOW_MODE_BORDERLESS" ? "(borderless)"
-                                                              : "(windowed)";
+                row.description == "FULLSCREEN" ? "(fullscreen)" : "(windowed)";
             const auto first = std::min(row.dropdown_first_index, row.choices.size());
             const auto count = std::min(row.dropdown_visible_count, row.choices.size() - first);
             visual.dropdown_options.assign(row.choices.begin() + static_cast<std::ptrdiff_t>(first),
@@ -1503,39 +1447,6 @@ struct NativeFrontendModule::Impl final {
      */
     [[nodiscard]] settings::ShaderQuality effective_shader_quality() const noexcept {
         return config.shader_quality_override.value_or(applied_settings.graphics.shader_quality);
-    }
-
-    /** Applied graphics with the command-line tier override folded in. */
-    [[nodiscard]] settings::GraphicsSettings effective_graphics() const noexcept {
-        auto graphics = applied_settings.graphics;
-        graphics.shader_quality = effective_shader_quality();
-        return graphics;
-    }
-
-    /** The tier profile with the Graphics tab's shadow rows applied. */
-    [[nodiscard]] render::QualityProfile active_quality_profile() const noexcept {
-        const auto graphics = effective_graphics();
-        return render::with_shadow_options(
-            render::profile_for(graphics.shader_quality, graphics.effect_quality), graphics);
-    }
-
-    /**
-     * Hands the renderer everything the Graphics tab decides per frame: the
-     * tier profile with the shadow rows, the world post chain and the
-     * world-texture sampling. All three are cheap to re-apply every frame,
-     * which keeps every settings path (preview, Done, Cancel, Alt+Enter) in
-     * sync without tracking each assignment.
-     */
-    void apply_world_presentation() {
-        const auto graphics = effective_graphics();
-        world_renderer.set_quality_profile(active_quality_profile());
-        world_renderer.set_post_settings(render::post_settings_for(graphics));
-        world_renderer.set_texture_filtering(render::texture_filtering_for(graphics));
-    }
-
-    /** World vertical field of view for a zoom ramp, from the Graphics tab. */
-    [[nodiscard]] double world_fov(double zoom_level) const noexcept {
-        return world::zoom_fov_y_degrees(zoom_level, applied_settings.graphics.field_of_view);
     }
 
     /**
@@ -1701,7 +1612,9 @@ struct NativeFrontendModule::Impl final {
     /** Map and mode of the match in progress, for the friends list. */
     std::string steam_presence_match;
     /** Friends' Steam matches gathered for the refresh now in flight. */
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
     std::vector<platform::SteamFriendMatch> pending_friend_matches;
+#endif
     /**
      * The friends-only lobby carrying this match, and the worker that opens it.
      *
@@ -1843,16 +1756,6 @@ struct NativeFrontendModule::Impl final {
     core::DeferredCleanupQueue::Reservation owned_host_cleanup;
     std::string owned_social_lobby_id;
     std::string owned_social_start_id;
-    /**
-     * Secrets generated for the room this client hosts. The admin password
-     * is the room's own (never the bundle default); the creator token is
-     * redeemed once with /claimhost so the creator is admin without typing.
-     */
-    std::string owned_room_admin_password;
-    std::string owned_room_creator_token;
-    bool owned_room_token_spent{};
-    /** client_loop_count at which the next room admin claim goes out. */
-    std::optional<std::int32_t> pending_room_admin_claim_loop;
     std::shared_ptr<std::stop_source> local_host_cancel;
     std::uint64_t next_local_host_generation{1U};
     std::uint64_t active_local_host_generation{};
@@ -2000,18 +1903,6 @@ struct NativeFrontendModule::Impl final {
      * prevents an unknown custom map from inheriting unrelated local lighting.
      */
     std::optional<world::OfficialMapEnvironment> live_official_environment;
-    /** When the browser's Steam server list query started, while it runs. */
-    std::optional<std::chrono::steady_clock::time_point> steam_browser_query_started;
-    /** The same for Quick Play's search. */
-    std::optional<std::chrono::steady_clock::time_point> steam_quick_play_query_started;
-    /** Server identifier -> Steam relay host found by the last Quick Play search. */
-    std::map<std::string, std::uint64_t> quick_play_relay_hosts;
-    /** This player's unlocked achievements; opened on first use. */
-    std::optional<AchievementLedger> achievement_ledger;
-    /** The profile screen's achievements list, rebuilt when it opens. */
-    std::vector<AchievementListRow> profile_achievement_rows;
-    /** Top-surface brightness of the loaded map, measured by the loader. */
-    world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
     std::string live_skydome_name{"Classic_B.txt"};
     std::optional<world::ClassSelection> pending_class_selection;
@@ -2150,16 +2041,9 @@ struct NativeFrontendModule::Impl final {
         std::vector<render::ZoneVolumeDraw> zones;
         ui::DrawList ui;
         bool scripted_images{false};
-        /** Whether render-only frames turn the camera with the live look angles. */
-        LiveLookFollow look{};
     };
     InterpolationScene interpolation_scene;
     CameraEyeInterpolator camera_interpolator;
-    FrameRateMeter frame_rate_meter;
-    /** Fullscreen mode Alt+Enter returns to from windowed. */
-    settings::WindowMode last_fullscreen_mode{settings::WindowMode::borderless};
-    /** {yaw, pitch} the render-only frame being drawn turned past its tick frame. */
-    std::array<double, 2U> frame_look_offset{};
     /**
      * Everything else that moves, blended between the last two ticks for each
      * presented frame. Presentation only: simulation, prediction and hit
@@ -2611,21 +2495,6 @@ struct NativeFrontendModule::Impl final {
     };
     std::map<std::uint8_t, RemotePlayerRenderRig> remote_player_rigs;
     /**
-     * The local player's own body, uploaded into its (otherwise unused) rig
-     * slot range so it can cast a moving sun shadow in first person. Kept out
-     * of remote_player_rigs: everything iterating that map treats entries as
-     * other players (hit feedback, audio, motion ticks).
-     */
-    struct LocalBodyShadowRig final {
-        std::uint32_t base{};
-        std::uint8_t class_id{};
-        std::uint8_t team{};
-        std::string appearance;
-        world::VxlColor color{};
-        bool combined_arms{};
-    };
-    std::optional<LocalBodyShadowRig> local_body_shadow_rig;
-    /**
      * Shared character accessory meshes (render::WorldRenderer's
      * character_accessory band): key -> slot and last frame drawn.
      */
@@ -2897,23 +2766,6 @@ struct NativeFrontendModule::Impl final {
     std::optional<std::uint8_t> uploaded_sandbox_tool;
     std::uint32_t sandbox_tool_part_count{};
     std::unique_ptr<world::ScriptedWeapon> scripted_weapon;
-    using ScriptedSkinMeshes = std::vector<std::pair<std::size_t, world::ChunkMesh>>;
-    /** A scripted skin compiled, and its viewmodel parts meshed, off the game thread. */
-    struct PreparedScriptedSkin final {
-        std::unique_ptr<world::ScriptedWeapon> skin;
-        std::shared_ptr<const ScriptedSkinMeshes> meshes;
-        std::string error;
-    };
-    /**
-     * Skins being prepared for the loadout, keyed by scripted_skin_key. Meshing
-     * a high-detail skin takes up to ~200 ms (the AWP has a million vertices),
-     * which used to freeze the game every time the weapon was pulled out.
-     */
-    std::map<std::string, std::future<PreparedScriptedSkin>> scripted_skin_jobs;
-    /** Meshes already built per key: pulling a skin out again never re-meshes it. */
-    std::map<std::string, std::shared_ptr<const ScriptedSkinMeshes>> scripted_skin_meshes;
-    /** Loadout, team and class the skin preparation last ran for. */
-    std::string scripted_skin_prewarm_signature;
     std::string scripted_cosmetic_id;
     std::vector<std::string> failed_scripted_skins;
     std::map<std::size_t,std::uint32_t> scripted_model_slots;
@@ -3165,7 +3017,7 @@ struct NativeFrontendModule::Impl final {
         inventory_autoload=true;
         uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
         remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
-        remote_player_rigs.clear(); local_body_shadow_rig.reset(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
+        remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
         if (social_client == nullptr ||
             social_client->status(std::chrono::steady_clock::now()).closing) {
             initialize_social_client();
@@ -4572,10 +4424,6 @@ struct NativeFrontendModule::Impl final {
         social_publish_generation.reset();
         social_pending_owner_connect.reset();
         social_publish_attempts = 0U;
-        owned_room_admin_password.clear();
-        owned_room_creator_token.clear();
-        owned_room_token_spent = false;
-        pending_room_admin_claim_loop.reset();
         LocalHostOutcome retired;
         retired.process = std::move(owned_local_server);
         retired.tunnel = std::move(owned_relay_tunnel);
@@ -8748,15 +8596,6 @@ struct NativeFrontendModule::Impl final {
         environment.multisampling_live =
             render::multisample_change_is_live(renderer.active_backend());
         environment.glsl_shader_quality_supported = true;
-        if (world_renderer.is_initialized()) {
-            // Rows the running backend cannot draw stay visible but disabled.
-            const auto post = world_renderer.post_capabilities();
-            environment.post_chain_supported = post.chain;
-            environment.ambient_occlusion_supported = post.ambient_occlusion;
-            environment.motion_blur_supported = post.motion_blur;
-            environment.bloom_supported = post.bloom;
-            environment.edge_adaptive_upscale_supported = post.edge_adaptive_upscale;
-        }
         environment.graphics_apis.clear();
         for (const auto backend : render::supported_graphics_backends()) {
             environment.graphics_apis.push_back(settings_api(backend));
@@ -8822,7 +8661,7 @@ struct NativeFrontendModule::Impl final {
         // retail semantics on every subsequent launch.
         if (!loaded || !loaded.file_found) {
             const auto current_extent = window.logical_extent();
-            initial.graphics.window_mode = current_window_mode();
+            initial.main.fullscreen = window.is_fullscreen();
             initial.graphics.resolution = {
                 current_extent.width,
                 current_extent.height,
@@ -8857,11 +8696,10 @@ struct NativeFrontendModule::Impl final {
         if (loaded && loaded.file_found &&
             !window.apply_display_mode(
                 {initial.graphics.resolution.width, initial.graphics.resolution.height},
-                settings::is_fullscreen(initial.graphics.window_mode),
-                fullscreen_kind_for(initial.graphics.window_mode))) {
+                initial.main.fullscreen, fullscreen_kind_for(initial.graphics))) {
             settings_warning = "saved display mode could not be applied";
             const auto actual_extent = window.logical_extent();
-            applied_settings.graphics.window_mode = current_window_mode();
+            applied_settings.main.fullscreen = window.is_fullscreen();
             applied_settings.graphics.resolution = {actual_extent.width, actual_extent.height};
         }
 
@@ -8869,61 +8707,24 @@ struct NativeFrontendModule::Impl final {
     }
 
     [[nodiscard]] static platform::FullscreenKind fullscreen_kind_for(
-        settings::WindowMode mode) noexcept {
-        return mode == settings::WindowMode::exclusive ? platform::FullscreenKind::exclusive
-                                                       : platform::FullscreenKind::borderless;
-    }
-
-    /**
-     * Alt+Enter: the current fullscreen mode <-> windowed, applied and saved
-     * at once. Pressing it again is the undo, so there is no keep/revert
-     * prompt; it is ignored while the Settings menu or that prompt owns the
-     * display settings.
-     */
-    void toggle_fullscreen_hotkey() {
-        if (screen() == FrontendScreen::settings ||
-            screen() == FrontendScreen::resolution_confirmation ||
-            resolution_rollback.has_value()) {
-            return;
-        }
-        const auto previous = confirmed_settings;
-        auto next = previous;
-        next.graphics.window_mode = settings::alt_enter_window_mode(
-            previous.graphics.window_mode, last_fullscreen_mode);
-        if (!apply_runtime_settings(next, true)) {
-            static_cast<void>(apply_runtime_settings(previous, true));
-            return;
-        }
-        settings_session = settings::SettingsSession{next};
-        confirmed_settings = next;
-        static_cast<void>(save_settings(next));
-    }
-
-    /** The mode the native window is actually in. */
-    [[nodiscard]] settings::WindowMode current_window_mode() const noexcept {
-        if (!window.is_fullscreen()) {
-            return settings::WindowMode::windowed;
-        }
-        return window.fullscreen_kind() == platform::FullscreenKind::exclusive
-                   ? settings::WindowMode::exclusive
-                   : settings::WindowMode::borderless;
+        const settings::GraphicsSettings& graphics) noexcept {
+        return graphics.borderless_fullscreen ? platform::FullscreenKind::borderless
+                                              : platform::FullscreenKind::exclusive;
     }
 
     [[nodiscard]] bool apply_display(const settings::ClientSettings& value) {
         const platform::WindowExtent requested{value.graphics.resolution.width,
                                                value.graphics.resolution.height};
-        const auto mode = value.graphics.window_mode;
-        if (current_window_mode() == mode &&
+        const auto kind = fullscreen_kind_for(value.graphics);
+        if (window.is_fullscreen() == value.main.fullscreen &&
+            (!value.main.fullscreen || window.fullscreen_kind() == kind) &&
             // Borderless always covers the desktop; its extent is not the
             // requested resolution, so only the mode itself is compared.
-            (mode == settings::WindowMode::borderless || window.logical_extent() == requested)) {
+            ((value.main.fullscreen && kind == platform::FullscreenKind::borderless) ||
+             window.logical_extent() == requested)) {
             return true;
         }
-        if (const auto leaving = current_window_mode(); settings::is_fullscreen(leaving)) {
-            last_fullscreen_mode = leaving;
-        }
-        if (!window.apply_display_mode(requested, settings::is_fullscreen(mode),
-                                       fullscreen_kind_for(mode))) {
+        if (!window.apply_display_mode(requested, value.main.fullscreen, kind)) {
             settings_warning = "display mode change was rejected by SDL";
             return false;
         }
@@ -8975,64 +8776,9 @@ struct NativeFrontendModule::Impl final {
             if (tutorial_session != nullptr) {
                 tutorial_session->set_look_preferences(
                     value.controls.mouse_sensitivity, value.main.invert_mouse);
-                tutorial_session->set_field_of_view(value.graphics.field_of_view);
             }
         }
         return success;
-    }
-
-    /**
-     * Native Graphics rows that the renderer reads every frame preview live,
-     * like VSync: the player sees the change behind the menu, Cancel restores
-     * the confirmed settings and Done keeps them. Rows with a restart, a
-     * display change or a terrain re-mesh still wait for Done.
-     */
-    [[nodiscard]] static constexpr bool native_graphics_preview_row(SettingsRowId row) noexcept {
-        switch (row) {
-        case SettingsRowId::frame_limit:
-        case SettingsRowId::field_of_view:
-        case SettingsRowId::render_scale:
-        case SettingsRowId::upscale:
-        case SettingsRowId::sharpness:
-        case SettingsRowId::show_fps:
-        case SettingsRowId::shadow_quality:
-        case SettingsRowId::shadow_distance:
-        case SettingsRowId::ambient_occlusion:
-        case SettingsRowId::anisotropic_filtering:
-        case SettingsRowId::texture_filtering:
-        case SettingsRowId::bloom:
-        case SettingsRowId::motion_blur:
-        case SettingsRowId::brightness:
-        case SettingsRowId::gamma:
-        case SettingsRowId::color_vision:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    void preview_native_graphics(const settings::GraphicsSettings& draft) {
-        auto& applied = applied_settings.graphics;
-        applied.field_of_view = draft.field_of_view;
-        applied.frame_limit = draft.frame_limit;
-        applied.frame_rate_cap = draft.frame_rate_cap;
-        applied.show_fps = draft.show_fps;
-        applied.render_scale = draft.render_scale;
-        applied.upscale = draft.upscale;
-        applied.sharpness = draft.sharpness;
-        applied.anisotropic_filtering = draft.anisotropic_filtering;
-        applied.smooth_textures = draft.smooth_textures;
-        applied.shadow_quality = draft.shadow_quality;
-        applied.shadow_distance = draft.shadow_distance;
-        applied.ambient_occlusion = draft.ambient_occlusion;
-        applied.bloom = draft.bloom;
-        applied.motion_blur = draft.motion_blur;
-        applied.brightness = draft.brightness;
-        applied.gamma = draft.gamma;
-        applied.color_vision = draft.color_vision;
-        if (tutorial_session != nullptr) {
-            tutorial_session->set_field_of_view(applied.field_of_view);
-        }
     }
 
     [[nodiscard]] bool apply_live_preview(SettingsRowId source,
@@ -9068,6 +8814,18 @@ struct NativeFrontendModule::Impl final {
                 return false;
             }
             applied_settings.main.music_volume = draft.main.music_volume;
+            return true;
+        case SettingsRowId::fullscreen:
+            if (!apply_display(draft)) {
+                // A failed live display mutation must not leave the draft
+                // claiming a mode the active SDL window never entered.
+                auto main = settings_session.draft().main;
+                main.fullscreen = applied_settings.main.fullscreen;
+                settings_session.set_main(main);
+                return false;
+            }
+            applied_settings.main.fullscreen = draft.main.fullscreen;
+            applied_settings.graphics.resolution = draft.graphics.resolution;
             return true;
         case SettingsRowId::vsync:
             if (renderer.is_initialized() &&
@@ -9124,11 +8882,14 @@ struct NativeFrontendModule::Impl final {
             resolution_rollback.reset();
             const bool restart_notice = resolution_restart_required;
             resolution_restart_required = false;
-            // Keep returns to the settings screen the change was made on,
-            // in the frontend and in a match alike.
-            return_to_settings();
-            // After navigation, so the notice lands in the settings warning
-            // line the player is now looking at.
+            if (settings_opened_from_gameplay) {
+                static_cast<void>(navigation.pop_instant());
+                close_settings();
+            } else {
+                return_to_select();
+            }
+            // After navigation, so a match shows it on the HUD rather than in
+            // a settings warning nobody will see.
             if (restart_notice) {
                 show_restart_notice();
             }
@@ -9185,13 +8946,11 @@ struct NativeFrontendModule::Impl final {
                         case SettingsRowId::language:
                         case SettingsRowId::master_volume:
                         case SettingsRowId::music_volume:
+                        case SettingsRowId::fullscreen:
                         case SettingsRowId::vsync:
                             static_cast<void>(apply_live_preview(payload.source, payload.draft));
                             break;
                         default:
-                            if (native_graphics_preview_row(payload.source)) {
-                                preview_native_graphics(payload.draft.graphics);
-                            }
                             break;
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsDefaultsCommand>) {
@@ -9203,10 +8962,11 @@ struct NativeFrontendModule::Impl final {
                                 apply_live_preview(SettingsRowId::master_volume, payload.draft));
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::music_volume, payload.draft));
+                            static_cast<void>(
+                                apply_live_preview(SettingsRowId::fullscreen, payload.draft));
                         } else if (payload.tab == settings::SettingsTab::graphics) {
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::vsync, payload.draft));
-                            preview_native_graphics(payload.draft.graphics);
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsCommitCommand>) {
                         // settingsMenu.save_pressed: Done in a match returns to
@@ -9216,7 +8976,7 @@ struct NativeFrontendModule::Impl final {
                             close_settings(done_to_game);
                             return;
                         }
-                        if (payload.display_changed) {
+                        if (payload.resolution_changed) {
                             resolution_rollback = confirmed_settings;
                             if (!apply_runtime_settings(payload.settings, true)) {
                                 const auto rollback = *resolution_rollback;
@@ -9705,8 +9465,7 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] bool markup_inventory_active() const {
         return !boot_loading && screen()==FrontendScreen::player_profile &&
-            player_profile_menu.selected_tab()==PlayerProfileTab::inventory &&
-            !player_profile_menu.achievements_open() && inventory_view;
+            player_profile_menu.selected_tab()==PlayerProfileTab::inventory && inventory_view;
     }
 
     void consume_inventory_view() {
@@ -9726,7 +9485,7 @@ struct NativeFrontendModule::Impl final {
         using namespace std::chrono_literals;
         if(skin_variant_preferences&&applied_skin_variant_revision!=skin_variant_preferences->revision()){
             applied_skin_variant_revision=skin_variant_preferences->revision();
-            uploaded_sandbox_tool.reset();failed_scripted_skins.clear();scripted_skin_prewarm_signature.clear();
+            uploaded_sandbox_tool.reset();failed_scripted_skins.clear();
         }
         const auto before=inventory_menu.data.equipped;
         if (inventory_session) inventory_session->pump(inventory_menu);
@@ -9736,9 +9495,9 @@ struct NativeFrontendModule::Impl final {
         }
         if (before!=inventory_menu.data.equipped) {
             uploaded_sandbox_tool.reset(); loaded_tutorial_arm_class.reset();
-            uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();scripted_skin_prewarm_signature.clear();
+            uploaded_tool.reset();view_model_meshes_uploaded=false;failed_scripted_skins.clear();
             remote_class_model_cache.clear(); remote_weapon_model_cache.clear();
-            remote_player_rigs.clear(); local_body_shadow_rig.reset(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
+            remote_player_rigs.clear(); entity_model_cache.clear(); entity_part_slots.clear(); entity_part_appearances.clear();
             inventory_preload_pending.clear();
             for (const auto& item : inventory_menu.data.items) {
                 if (item.owned && item.enabled && std::ranges::any_of(inventory_menu.data.equipped,
@@ -10127,15 +9886,6 @@ struct NativeFrontendModule::Impl final {
                 owned_social_start_id = snapshot.lobby->start_id;
             }
         }
-        // Every room gets fresh secrets in its private session config: its own
-        // admin password (shown to the creator on claim, /roompassword) and a
-        // one-time creator token this client redeems after joining.
-        launch.admin_password = platform::generate_local_room_admin_password();
-        launch.creator_token = platform::generate_local_room_creator_token();
-        owned_room_admin_password = launch.admin_password;
-        owned_room_creator_token = launch.creator_token;
-        owned_room_token_spent = false;
-        pending_room_admin_claim_loop.reset();
         match_ui_skin = supported_ui_skin(skin);
         match_loading.begin(launch.map_name, mode_key, classic, match_ui_skin);
         if (screen() != FrontendScreen::game_loading) {
@@ -11460,21 +11210,14 @@ struct NativeFrontendModule::Impl final {
         }
         pending_quick_play_refresh.reset();
         quick_play_refresh_stop = std::stop_source{};
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        steam_quick_play_query_started.reset();
-        if (steam_runtime.ready() && steam_runtime.begin_internet_server_query(ace_of_spades_steam_app_id)) {
-            steam_quick_play_query_started = std::chrono::steady_clock::now();
-        }
-#endif
         quick_play_refresh_worker = std::async(
             std::launch::async,
-            [request, url = config.public_server_list_url, cache_file = server_list_cache_file(),
+            [request, url = config.public_server_list_url,
              stop = quick_play_refresh_stop.get_token()] {
                 network::DiscoveryResult discovery;
                 try {
                     network::PublicDiscoveryConfig web;
                     web.url = url;
-                    web.cache_file = cache_file;
                     discovery = network::discover_public_servers(web, stop);
                 } catch (const std::exception& error) {
                     discovery.error = error.what();
@@ -11489,28 +11232,11 @@ struct NativeFrontendModule::Impl final {
             quick_play_refresh_worker.wait_for(0ms) != std::future_status::ready) {
             return;
         }
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        if (steam_quick_play_query_started.has_value() && !steam_runtime.internet_server_query_done() &&
-            std::chrono::steady_clock::now() - *steam_quick_play_query_started < 4s) {
-            return;
-        }
-#endif
         auto outcome = quick_play_refresh_worker.get();
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        if (steam_quick_play_query_started.has_value()) {
-            steam_quick_play_query_started.reset();
-            outcome.discovery =
-                network::merge_discovered_servers(std::move(outcome.discovery), steam_listed_discovery());
-        }
-#endif
         if (!outcome.discovery) {
             static_cast<void>(quick_play_menu.fail_search(outcome.request));
         } else {
-            quick_play_relay_hosts.clear();
             for (const auto& source : outcome.discovery.servers) {
-                if (const auto relay = relay_host_for_this_player(source); relay != 0U) {
-                    quick_play_relay_hosts[source.game.identifier()] = relay;
-                }
                 const auto mode = resolve_server_mode(source.mode_code, source.classic);
                 QuickPlayServerResponse response;
                 response.name = source.name;
@@ -11538,119 +11264,9 @@ struct NativeFrontendModule::Impl final {
         }
     }
 
-    [[nodiscard]] AchievementLedger& open_achievement_ledger() {
-        if (!achievement_ledger.has_value()) {
-            achievement_ledger.emplace(config.settings_path.parent_path() / "achievements.json");
-        }
-        return *achievement_ledger;
-    }
-
-    /**
-     * The profile screen's list: this player's own record, plus whatever
-     * Steam still holds from the retail servers (readable, never writable).
-     */
-    void rebuild_profile_achievements() {
-        std::vector<UnlockedAchievement> retail;
-        for (auto& [name, when] : steam_runtime.unlocked_achievements()) {
-            retail.push_back({std::move(name), when});
-        }
-        profile_achievement_rows = achievement_list(open_achievement_ledger().entries(), retail);
-    }
-
-    /**
-     * ACHIEVEMENT_GAINED: "{0} has unlocked the "{1}" achievement".
-     *
-     * The server owns the rules (Steam only lets game servers set these, and
-     * the retail server did). The client plays retail's two unlock sounds and
-     * keeps its own record of what this player has earned, so an unlock from
-     * an offline Create Match is remembered too.
-     */
-    void note_achievement_announcement(std::string_view player, std::string_view display_name) {
-        std::string_view local_name = active_join_wire_name.empty() ? std::string_view{config.player_name}
-                                                                     : std::string_view{active_join_wire_name};
-        if (local_player_id.has_value()) {
-            if (const auto* local = tutorial_roster.player(*local_player_id); local != nullptr) {
-                local_name = local->name;
-            }
-        }
-        const bool mine = !player.empty() && player == local_name;
-        if (mine) {
-            if (const auto* definition = find_achievement_by_display_name(display_name);
-                definition != nullptr) {
-                auto& ledger = open_achievement_ledger();
-                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-                                     std::chrono::system_clock::now().time_since_epoch())
-                                     .count();
-                if (ledger.unlock(definition->api_name, now)) {
-                    static_cast<void>(ledger.save());
-                    core::diagnostic("achievement", "unlocked " + std::string{definition->api_name} +
-                                                        " (" + std::string{definition->display_name} + ")");
-                    if (player_profile_menu.achievements_open()) rebuild_profile_achievements();
-                }
-            }
-        }
-        if (audio_started) {
-            static_cast<void>(audio->play_named_one_shot(
-                mine ? "achievement_unlock" : "achievement_unlock_notyou", {}, 1.0F, true));
-        }
-    }
-
-    /**
-     * The Steam id to dial for this listing, or zero for none.
-     *
-     * Steam P2P only connects players of the same application. A dedicated
-     * server runs one relay host for Ace of Spades owners and one for players
-     * attached as Spacewar, so pick the one this process can reach. A player's
-     * own hosted match has a single id and is tried as before.
-     */
-    [[nodiscard]] std::uint64_t relay_host_for_this_player(const network::DiscoveredServer& source) const {
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        constexpr std::uint32_t spacewar_app_id{480U};
-        if (steam_runtime.app_id() == spacewar_app_id) {
-            if (source.steam_host_id_spacewar != 0U) return source.steam_host_id_spacewar;
-            return source.dedicated_relay_host ? 0U : source.steam_host_id;
-        }
-#endif
-        return source.steam_host_id;
-    }
-
-#if defined(AOS_HAS_STEAM_NETWORKING)
-    /** Steam's server list answers so far, in the browser's listing form. */
-    [[nodiscard]] network::DiscoveryResult steam_listed_discovery() {
-        std::vector<network::SteamListedServer> steam_rows;
-        for (const auto& row : steam_runtime.internet_servers()) {
-            network::SteamListedServer converted;
-            converted.host = std::to_string((row.ip >> 24U) & 0xFFU) + "." +
-                             std::to_string((row.ip >> 16U) & 0xFFU) + "." +
-                             std::to_string((row.ip >> 8U) & 0xFFU) + "." +
-                             std::to_string(row.ip & 0xFFU);
-            converted.port = row.port;
-            converted.query_port = row.query_port;
-            converted.name = row.name;
-            converted.map = row.map;
-            converted.tags = row.tags;
-            converted.players = row.players;
-            converted.maximum_players = row.maximum_players;
-            converted.bots = row.bots;
-            converted.password = row.password;
-            converted.steam_id = row.steam_id;
-            converted.ping = row.ping;
-            steam_rows.push_back(std::move(converted));
-        }
-        steam_runtime.cancel_internet_server_query();
-        return network::parse_steam_server_list(steam_rows);
-    }
-#endif
-
-    /** Last good AoSPlay server list, used when the master cannot be reached. */
-    [[nodiscard]] std::filesystem::path server_list_cache_file() const {
-        return config.settings_path.parent_path() / "serverlist-cache.json";
-    }
-
     void launch_browser_refresh(ServerBrowserRefreshRequest request) {
         pending_browser_refresh.reset();
         const auto public_url = config.public_server_list_url;
-        const auto cache_file = server_list_cache_file();
         const auto local_ports = config.local_server_ports;
         std::vector<std::string> friend_server_ids;
         if (request.source == ServerBrowserSource::friends && social_client) {
@@ -11669,24 +11285,17 @@ struct NativeFrontendModule::Impl final {
         // Steam's own answer for the same question, read here rather than on
         // the worker because the runtime belongs to this thread. A friend
         // hosting over Steam is invisible to AoSPlay, which never saw a lobby.
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
         pending_friend_matches.clear();
+#endif
 #if defined(AOS_HAS_STEAM_NETWORKING)
         if (request.source == ServerBrowserSource::friends && steam_runtime.ready()) {
             pending_friend_matches = steam_runtime.friend_matches();
         }
-        // Steam's own game server list (what the original game browsed),
-        // queried beside AoSPlay: it answers where our web services are
-        // blocked, and lists servers registered only with Steam.
-        steam_browser_query_started.reset();
-        if (request.source != ServerBrowserSource::local &&
-            request.source != ServerBrowserSource::friends && steam_runtime.ready() &&
-            steam_runtime.begin_internet_server_query(ace_of_spades_steam_app_id)) {
-            steam_browser_query_started = std::chrono::steady_clock::now();
-        }
 #endif
         browser_refresh_worker =
             std::async(std::launch::async,
-                       [request, public_url, local_ports, cache_file,
+                       [request, public_url, local_ports,
                         friend_server_ids = std::move(friend_server_ids)]() mutable {
                 network::DiscoveryResult discovery;
                 if (request.source == ServerBrowserSource::local) {
@@ -11696,13 +11305,11 @@ struct NativeFrontendModule::Impl final {
                 } else if (request.source == ServerBrowserSource::friends) {
                     network::PublicDiscoveryConfig web;
                     web.url = public_url;
-                    web.cache_file = cache_file;
                     discovery = network::select_discovered_servers(
                         network::discover_public_servers(web), friend_server_ids);
                 } else {
                     network::PublicDiscoveryConfig web;
                     web.url = public_url;
-                    web.cache_file = cache_file;
                     discovery = network::discover_public_servers(web);
                 }
                 return BrowserRefreshOutcome{request, std::move(discovery)};
@@ -11727,36 +11334,11 @@ struct NativeFrontendModule::Impl final {
             browser_refresh_worker.wait_for(0ms) != std::future_status::ready) {
             return;
         }
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        // Give Steam's list a few seconds past AoSPlay's answer.
-        if (steam_browser_query_started.has_value() && !steam_runtime.internet_server_query_done() &&
-            std::chrono::steady_clock::now() - *steam_browser_query_started < 4s) {
-            return;
-        }
-#endif
         auto outcome = browser_refresh_worker.get();
-#if defined(AOS_HAS_STEAM_NETWORKING)
-        if (steam_browser_query_started.has_value()) {
-            steam_browser_query_started.reset();
-            auto steam_discovery = steam_listed_discovery();
-            if (outcome.request.source != ServerBrowserSource::friends &&
-                outcome.request.source != ServerBrowserSource::local) {
-                core::diagnostic("browser", "Steam server list: " +
-                                                std::to_string(steam_discovery.servers.size()) +
-                                                " server(s); AoSPlay " +
-                                                (outcome.discovery.from_cache ? "saved copy"
-                                                 : outcome.discovery ? "live"
-                                                                     : "unreachable"));
-                outcome.discovery =
-                    network::merge_discovered_servers(std::move(outcome.discovery), steam_discovery);
-            }
-        }
-#endif
         if (outcome.request.generation == server_browser.refresh_generation() &&
             server_browser.refreshing()) {
             for (const auto& discovered : outcome.discovery.servers) {
                 auto entry = browser_entry(discovered, favourite_servers, history_servers);
-                entry.steam_host_id = relay_host_for_this_player(discovered);
                 // The Friends request has already selected the authoritative
                 // friend server IDs. Preserve that evidence through the menu's
                 // own source filter instead of filtering every row back out.
@@ -11765,6 +11347,7 @@ struct NativeFrontendModule::Impl final {
                     outcome.request.generation,
                     std::move(entry)));
             }
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
             for (const auto& match : pending_friend_matches) {
                 // What the host published is the address to dial; the friend's
                 // own id stands in if that value is not one we understand.
@@ -11787,7 +11370,10 @@ struct NativeFrontendModule::Impl final {
                 static_cast<void>(server_browser.accept_response(
                     outcome.request.generation, std::move(entry)));
             }
+#endif
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
             pending_friend_matches.clear();
+#endif
             static_cast<void>(server_browser.finish_refresh(outcome.request.generation));
             if (!outcome.discovery.error.empty() && outcome.discovery.servers.empty()) {
                 // serverMenu.on_server_error names SERVER_LIST_ERROR, an id
@@ -11813,8 +11399,15 @@ struct NativeFrontendModule::Impl final {
 
     /** Does this request dial the Steam tunnel this client opened? */
     [[nodiscard]] bool request_uses_steam_tunnel(const ServerConnectRequest& request) const {
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
+
         return steam_client.running() && request.host == "127.0.0.1" &&
                request.port == steam_client.local_port();
+    
+#else
+        (void)request;
+        return false;
+#endif
     }
 
     void retire_match_connection(bool keep_steam_tunnel = false) {
@@ -11935,18 +11528,9 @@ struct NativeFrontendModule::Impl final {
         if (!request.identity_ticket) {
             return start_match_transport(request, timeout_ms, config.player_name);
         }
-        if (request.identity_server_id.empty()) {
+        if (request.identity_server_id.empty() || !identity_service->has_online_session()) {
             settings_warning = "This server requires an online AoSPlay identity.";
             return false;
-        }
-        if (!identity_service->has_online_session()) {
-            // No AoSPlay session, usually because aosplay.net cannot be
-            // reached (blocked in some countries). Servers admit unticketed
-            // players unless they require identity, so try without a ticket
-            // rather than refusing outright.
-            core::diagnostic("identity", "no online AoSPlay session; joining " + request.identifier +
-                                             " without a join ticket");
-            return start_match_transport(request, timeout_ms, config.player_name);
         }
         if (pending_match_identity.has_value()) {
             queued_match_identity = MatchIdentityRequest{request, timeout_ms, map_transition};
@@ -12020,22 +11604,7 @@ struct NativeFrontendModule::Impl final {
             }
             return;
         }
-        std::string join_name;
-        const bool ticketed = static_cast<bool>(outcome.ticket);
-        if (ticketed) {
-            join_name = std::move(outcome.ticket.join_code);
-        } else if (outcome.ticket.error_code == "network_error" ||
-                   outcome.ticket.error_code == "service_unavailable" ||
-                   outcome.ticket.error_code == "invalid_response") {
-            // aosplay.net did not answer (outage, or blocked by the player's
-            // provider). The game server itself may still be reachable and
-            // admits unticketed players unless it requires identity.
-            core::diagnostic("identity", "AoSPlay unreachable (" + outcome.ticket.error_code +
-                                             "); joining " + outcome.request.identifier +
-                                             " without a join ticket");
-            join_name = config.player_name;
-        }
-        if (join_name.empty()) {
+        if (!outcome.ticket) {
             if (outcome.map_transition) {
                 schedule_map_transition_retry(outcome.ticket.error);
             } else {
@@ -12046,10 +11615,10 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         settings_warning.clear();
-        core::diagnostic("identity", "connecting to " + outcome.request.host + ":" +
-                                         std::to_string(outcome.request.port) +
-                                         (ticketed ? " with the join ticket" : " without a ticket"));
-        if (!start_match_transport(outcome.request, outcome.timeout_ms, std::move(join_name))) {
+        core::diagnostic("identity", "connecting with the join ticket to " + outcome.request.host +
+                                         ":" + std::to_string(outcome.request.port));
+        if (!start_match_transport(
+                outcome.request, outcome.timeout_ms, std::move(outcome.ticket.join_code))) {
             const auto error = match_connection ? match_connection->status().error : settings_warning;
             if (outcome.map_transition) {
                 schedule_map_transition_retry(error);
@@ -12121,7 +11690,11 @@ struct NativeFrontendModule::Impl final {
 
     void schedule_map_transition_retry(std::string error) {
         // A map change on a Steam-hosted match reconnects through the same tunnel.
+#if defined(AOS_ENABLE_STEAM_NETWORKING)
         retire_match_connection(steam_client.running());
+#else
+        retire_match_connection(false);
+#endif
         const auto now = std::chrono::steady_clock::now();
         if (map_transition_attempts >= map_transition_retry_delays.size() ||
             now >= map_transition_deadline) {
@@ -12285,26 +11858,8 @@ struct NativeFrontendModule::Impl final {
             world_renderer.set_atmosphere(atmosphere);
             world_renderer.set_fog_color(match_state_info.fog_color);
             world_renderer.set_retail_fog_color(match_state_info.fog_color);
-        } else {
-            fit_ugc_atmosphere_to_map();
         }
         return true;
-    }
-
-    /**
-     * Workshop/UGC maps have no hand-tuned lighting: fit the sky-derived
-     * atmosphere to the map's own brightness (dark city maps lift, bright
-     * sand maps stop blowing out). Runs once the dome and the map are both
-     * known, whichever arrives last; set_skydome restores the sky-only base.
-     */
-    void fit_ugc_atmosphere_to_map() {
-        if (!network_match || live_official_environment.has_value() || !map_surface_brightness.valid() ||
-            !world_renderer.is_initialized())
-            return;
-        auto atmosphere = world_renderer.atmosphere();
-        if (atmosphere.source.ends_with("+surface")) return;
-        world::normalize_atmosphere_for_map(atmosphere, map_surface_brightness);
-        world_renderer.set_atmosphere(atmosphere);
     }
 
     void clear_live_chunk_remeshes() noexcept {
@@ -13325,15 +12880,6 @@ struct NativeFrontendModule::Impl final {
         // Interactive bootstrap has not emitted ClientData yet. Diagnostic
         // auto-join sessions still report their exact next loop here.
         client_loop_count = static_cast<std::int32_t>(bootstrap->next_client_loop_count);
-        // Joining the room this client launched: claim admin once the server
-        // has admitted us to gameplay (first ClientData) and can answer.
-        pending_room_admin_claim_loop.reset();
-        if (owned_local_server != nullptr && owned_local_server->running() &&
-            !owned_room_admin_password.empty() &&
-            active_match_request->host == "127.0.0.1" &&
-            active_match_request->port == owned_local_server->port()) {
-            pending_room_admin_claim_loop = client_loop_count + room_admin_claim_delay_loops;
-        }
         latest_world_loop = 0;
         clock_sync_elapsed = 1.0;
         clock_sync_token = 0;
@@ -15301,7 +14847,6 @@ struct NativeFrontendModule::Impl final {
                                            victim_position,
                                            false);
                     static_cast<void>(tutorial_roster.update_health(kill->player_id, 0));
-                    freeze_dead_player_motion(kill->player_id);
                     const auto feed_color = [this](const network::RemotePlayerReplica& player) {
                         if (local_player_id == player.player_id) {
                             return ui::ColorRgba8{255U, 255U, 255U, 255U};
@@ -15383,13 +14928,6 @@ struct NativeFrontendModule::Impl final {
                         finish_ugc_save(localized_message->string_id ==
                                         "UGC_MAP_SAVE_SUCCESSFULLY");
                         if (!quick) continue;
-                    }
-                    // The server announces every achievement unlock this way
-                    // (retail string, so retail clients show it too).
-                    if (localized_message->string_id == "ACHIEVEMENT_GAINED" &&
-                        localized_message->parameters.size() >= 2U) {
-                        note_achievement_announcement(localized_message->parameters[0U],
-                                                      localized_message->parameters[1U]);
                     }
                     // KickVotePlayerSelect.packet_received: a KICK_DENIED_*
                     // answer schedules close_menu() after 0.5 s.
@@ -15968,39 +15506,12 @@ struct NativeFrontendModule::Impl final {
         death_camera.tick(dt);
     }
 
-    /** Fixed loops (~2 s) between joining an owned room and claiming its admin. */
-    static constexpr std::int32_t room_admin_claim_delay_loops{120};
-
-    /** Send `/claimhost` (first join) or `/admin` (rejoin) to our own room. */
-    void send_pending_room_admin_claim() {
-        if (!pending_room_admin_claim_loop.has_value() ||
-            client_loop_count < *pending_room_admin_claim_loop) {
-            return;
-        }
-        pending_room_admin_claim_loop.reset();
-        auto command = platform::local_room_admin_command(
-            owned_room_creator_token, owned_room_admin_password, owned_room_token_spent);
-        if (command.empty()) return;
-        network::ChatMessagePacket packet;
-        packet.player_id = *local_player_id;
-        packet.chat_type = static_cast<std::uint8_t>(ChatChannel::global);
-        packet.value = std::move(command);
-        const auto encoded = network::encode_packet(packet);
-        if (encoded.empty() || !match_connection->send(encoded)) {
-            settings_warning = "failed to queue the room admin claim";
-            return;
-        }
-        // The server spends the token on first use; later joins use /admin.
-        owned_room_token_spent = true;
-    }
-
     /** Publish one retail ClientData sample for each fixed simulation tick. */
     void send_live_client_data() {
         if (!network_match || match_connection == nullptr || tutorial_session == nullptr ||
             !local_player_id.has_value()) {
             return;
         }
-        send_pending_room_admin_claim();
         const auto* local = tutorial_roster.player(*local_player_id);
         const bool spectator = local != nullptr && local_player_is_spectator(
             local->team, match_initial_info.enable_spectator);
@@ -17369,18 +16880,11 @@ struct NativeFrontendModule::Impl final {
                     network::ServerEndpoint endpoint;
                     std::string error;
                     if (network::parse_server_endpoint(payload.identifier, endpoint, error)) {
-                        ServerConnectRequest request{payload.identifier,
+                        begin_match_loading(ServerConnectRequest{payload.identifier,
                             endpoint.host, endpoint.port, payload.expected_map,
                             payload.expected_mode, payload.expected_skin,
                             payload.expected_classic, payload.identity_server_id,
-                            payload.identity_ticket};
-                        // Steam first here too, when the search found the
-                        // server's relay host for this player.
-                        if (const auto relay = quick_play_relay_hosts.find(payload.identifier);
-                            relay != quick_play_relay_hosts.end()) {
-                            request.steam_host_id = relay->second;
-                        }
-                        begin_match_loading(std::move(request));
+                            payload.identity_ticket});
                     }
                 } else if constexpr (std::is_same_v<Payload, QuickPlayPlaylistStartIntent>) {
                     if (const auto search = quick_play_menu.begin_search()) {
@@ -17580,8 +17084,7 @@ struct NativeFrontendModule::Impl final {
                             static_cast<std::int32_t>(value.width),
                             static_cast<std::int32_t>(value.height)};
         };
-        if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory &&
-            !player_profile_menu.achievements_open() && point.y>=138) {
+        if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory && point.y>=138) {
             if (contains({60,500,170,48},point) && !inventory_menu.reveal) {
                 static_cast<void>(navigation.pop()); play_back(); return;
             }
@@ -17595,22 +17098,13 @@ struct NativeFrontendModule::Impl final {
         }
         if (contains(as_rect(layout.achievements_button), point)) {
             player_profile_menu.activate_achievements();
-            if (player_profile_menu.achievements_open()) rebuild_profile_achievements();
-            play_confirm();
-            return;
-        }
-        if (player_profile_menu.achievements_open() &&
-            !contains(as_rect(layout.tab_strip), point)) {
-            // The list's own controls: the scroll bar's two arrows.
-            const auto bar = as_rect(layout.scrollbar);
-            constexpr std::int32_t arrow{22};
-            const auto step = contains({bar.x, bar.y, bar.width, arrow}, point)     ? -1
-                              : contains({bar.x, bar.y + bar.height - arrow, bar.width, arrow}, point) ? 1
-                                                                                                       : 0;
-            if (step != 0 &&
-                player_profile_menu.scroll_achievements(step, profile_achievement_rows.size())) {
-                play_scroll();
+            for (const auto& effect : player_profile_menu.take_effects()) {
+                if (effect.kind == PlayerProfileEffectKind::show_achievements_overlay &&
+                    !window.open_external_url("https://www.aosplay.net/account")) {
+                    last_error = "the achievements page could not be opened";
+                }
             }
+            play_confirm();
             return;
         }
         if (player_profile_menu.filter_open()) {
@@ -18206,10 +17700,7 @@ struct NativeFrontendModule::Impl final {
             break;
         case FrontendScreen::player_profile:
             if (markup_inventory_active()) { inventory_view->wheel(steps); break; }
-            if (player_profile_menu.achievements_open()) {
-                static_cast<void>(player_profile_menu.scroll_achievements(
-                    -steps, profile_achievement_rows.size()));
-            } else if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) inventory_menu.move_selection(-steps);
+            if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) inventory_menu.move_selection(-steps);
             else static_cast<void>(player_profile_menu.scroll_rows(-steps));
             play_scroll();
             break;
@@ -18561,28 +18052,7 @@ struct NativeFrontendModule::Impl final {
 
     [[nodiscard]] text::TextRasterResult rasterized(const ui::TextDrawCommand& command,
                                                     std::uint32_t pixel_height) {
-        return rasterized_text(command, single_line_text(localized_text(command.localization_key)),
-                               pixel_height);
-    }
-
-    /**
-     * Single-line slots draw a line break as a space. The rasterizer rejects
-     * line breaks outright, and a multi-line localized string (CHANGE_MSAA_SETTINGS
-     * in the settings warning line) used to stop the whole frontend.
-     */
-    [[nodiscard]] static std::string single_line_text(std::string text) {
-        std::string flat;
-        flat.reserve(text.size());
-        for (const char ch : text) {
-            if (ch == '\r' || ch == '\n') {
-                if (!flat.empty() && flat.back() != ' ') {
-                    flat.push_back(' ');
-                }
-            } else {
-                flat.push_back(ch);
-            }
-        }
-        return flat;
+        return rasterized_text(command, localized_text(command.localization_key), pixel_height);
     }
 
     struct FittedText final {
@@ -19389,9 +18859,7 @@ struct NativeFrontendModule::Impl final {
                                                  1'000U,
                                                  profile_cancel_state,
                                                  profile_achievements_state,
-                                                 profile_filter_state,
-                                                 profile_achievement_rows});
-            if (player_profile_menu.achievements_open()) return list;
+                                                 profile_filter_state});
             if (player_profile_menu.selected_tab()==PlayerProfileTab::inventory) {
                 if (inventory_view) {
                     ui::DrawList background;
@@ -20269,7 +19737,6 @@ struct NativeFrontendModule::Impl final {
             match_state_info.has_map_ended,
             match_state_info.mode_type == 12U,
             is_ugc_host(),
-            class_selection_has_choices(local->team),
         })};
         if (open_message.has_value() && pause_menu.environment().ugc_host) {
             pause_menu.show_message(*open_message);
@@ -20857,7 +20324,6 @@ struct NativeFrontendModule::Impl final {
         world_anchors.reset();
         interpolation_scene = {};
         live_official_environment.reset();
-        map_surface_brightness = {};
         live_skydome_name = "Classic_B.txt";
         server_minimap_billboards.clear();
         server_minimap_zones.clear();
@@ -20972,7 +20438,6 @@ struct NativeFrontendModule::Impl final {
         death_camera = DeathCameraController{};
         remote_cosmetics.clear();
         remote_player_rigs.clear();
-        local_body_shadow_rig.reset();
         character_accessory_slots.clear();
         spawn_blinks.clear();
         exploded_corpse_generations.fill(std::nullopt);
@@ -21149,8 +20614,6 @@ struct NativeFrontendModule::Impl final {
         minimap_pixels = std::move(derived_world->minimap_rgba);
         minimap_map_revision = derived_world->map_revision;
         minimap_texture_upload_pending = true;
-        map_surface_brightness = derived_world->surface_brightness;
-        fit_ugc_atmosphere_to_map();
         if (world_renderer.is_initialized()) {
             const auto emissive_palette = world::emissive_palette_for(tutorial_map_name);
             world_renderer.set_emissive_cast_gain(emissive_palette.cast_gain);
@@ -21277,7 +20740,6 @@ struct NativeFrontendModule::Impl final {
         session_config.fall_on_water_damage =
             !network_match || match_initial_info.enable_fall_on_water_damage;
         session_config.mouse_sensitivity = applied_settings.controls.mouse_sensitivity;
-        session_config.field_of_view = applied_settings.graphics.field_of_view;
         session_config.invert_mouse = applied_settings.main.invert_mouse;
         if (network_match) {
             // StateData, not InitialInfo, owns the map's native world gravity.
@@ -23331,20 +22793,11 @@ struct NativeFrontendModule::Impl final {
                                  static_cast<float>(shadow->fade)});
             }
         };
-        // With real sun shadows the characters cast their own shadow, and the
-        // retail disc under them read as a second, fake one. Remote bodies
-        // are always in the shadow pass; the local body only at High/Ultra.
-        const auto quality = active_quality_profile();
-        const bool sun_shadows = quality.enhanced_lighting && quality.shadow_cascades > 0U &&
-                                 quality.shadow_resolution > 0U &&
-                                 world_renderer.atmosphere().key_intensity > 0.0F;
-        const bool own_body_casts =
-            sun_shadows && local_body_shadow_enabled() && local_body_shadow_rig.has_value();
-        if (tutorial_session->alive() && !own_body_casts) {
+        if (tutorial_session->alive()) {
             add_character(tutorial_session->player().position);
         }
         for (const auto& replica : tutorial_roster.present_players()) {
-            if (sun_shadows || replica.dead || (replica.team != 2U && replica.team != 3U) ||
+            if (replica.dead || (replica.team != 2U && replica.team != 3U) ||
                 (local_player_id.has_value() && replica.player_id == *local_player_id)) {
                 continue;
             }
@@ -24313,147 +23766,7 @@ struct NativeFrontendModule::Impl final {
             if (!sync_remote_player_rig(replica))
                 return false;
         }
-        sync_local_body_shadow_rig();
         return true;
-    }
-
-    /**
-     * KillAction: stop a pack-less victim where it fell. The server sends no
-     * more rows for the dead, so the interpolator would otherwise keep
-     * stepping the last buttons (forward, sprint) and the corpse walked off.
-     */
-    void freeze_dead_player_motion(std::uint8_t player_id) {
-        const auto* replica = tutorial_roster.player(player_id);
-        const auto rig = remote_player_rigs.find(player_id);
-        if (replica == nullptr || rig == remote_player_rigs.end() ||
-            world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value())
-            return;
-        auto still = rig->second.motion.sample();
-        still.dead = true;
-        still.velocity = {};
-        still.input_flags = 0U;
-        still.jetpack_active = false;
-        rig->second.motion.reset(still);
-    }
-
-    /** True when the sun shadow is detailed enough for the own-body shadow (High/Ultra). */
-    [[nodiscard]] bool local_body_shadow_enabled() const {
-        return network_match && local_player_id.has_value() &&
-               active_quality_profile().shadow_resolution >= 2048U;
-    }
-
-    /** Uploads the local player's body meshes when class, team or skin change. */
-    void sync_local_body_shadow_rig() {
-        if (!local_body_shadow_enabled()) return;
-        const auto* local = tutorial_roster.player(*local_player_id);
-        if (local == nullptr || local->dead) return;
-        const auto color = world::retail_character_color(remote_team_color(local->team));
-        const auto* body_cosmetic = equipped_cosmetic(
-            local->player_id, cosmetic_slot_key(CosmeticSlotKey::class_body, local->class_id));
-        const auto* hat_cosmetic = equipped_cosmetic(
-            local->player_id, cosmetic_slot_key(CosmeticSlotKey::class_hat, local->class_id));
-        const auto appearance = (body_cosmetic ? body_cosmetic->id : "") + std::string{"/"} +
-                                (hat_cosmetic ? hat_cosmetic->id : "");
-        if (local_body_shadow_rig.has_value() && local_body_shadow_rig->class_id == local->class_id &&
-            local_body_shadow_rig->team == local->team && local_body_shadow_rig->appearance == appearance &&
-            local_body_shadow_rig->color == color) {
-            return;
-        }
-        const auto color_key = (static_cast<std::uint32_t>(color.red) << 24U) |
-                               (static_cast<std::uint32_t>(color.green) << 16U) |
-                               (static_cast<std::uint32_t>(color.blue) << 8U) | color.alpha;
-        const auto class_key = std::pair{
-            (static_cast<std::uint64_t>(local->class_id) << 32U) | color_key, appearance};
-        auto cached = remote_class_model_cache.find(class_key);
-        if (cached == remote_class_model_cache.end()) {
-            const auto palette = body_cosmetic ? std::optional{body_cosmetic->palette} : std::nullopt;
-            const auto head = hat_cosmetic ? inventory_verified_model(*hat_cosmetic, config.asset_root) : nullptr;
-            const auto parts = inventory_character_parts(body_cosmetic, config.asset_root);
-            auto loaded = world::load_class_models(config.asset_root, local->class_id, color,
-                                                   model_inverse_scale, palette, head.get(), &parts);
-            if (!loaded) return;   // presentation only: no shadow rather than an error
-            cached = remote_class_model_cache.emplace(class_key, std::move(*loaded.models)).first;
-        }
-        const auto& character = cached->second;
-        LocalBodyShadowRig rig;
-        rig.base = RemotePlayerRenderRig::slot_base +
-                   static_cast<std::uint32_t>(local->player_id) * RemotePlayerRenderRig::slot_stride;
-        rig.class_id = local->class_id;
-        rig.team = local->team;
-        rig.appearance = appearance;
-        rig.color = color;
-        rig.combined_arms = character.combined_arms.has_value();
-        for (std::uint32_t slot = rig.base; slot <= rig.base + 11U; ++slot) pending_remote_mesh_clears.erase(slot);
-        const bool uploaded =
-            world_renderer.set_world_model_mesh(rig.base, character.standing_torso_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 1U, character.crouching_torso_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 2U, character.head_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 3U, character.left_leg_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 4U, character.right_leg_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 5U, character.crouching_left_leg_preview) &&
-            world_renderer.set_world_model_mesh(rig.base + 6U, character.crouching_right_leg_preview) &&
-            (!rig.combined_arms || world_renderer.set_world_model_mesh(rig.base + 10U, *character.combined_arms));
-        if (uploaded) local_body_shadow_rig = std::move(rig);
-        else local_body_shadow_rig.reset();
-    }
-
-    /**
-     * The local body posed like a remote player's (torso, pitched head and
-     * arms, walking legs), flagged shadow_only: it throws a moving shadow
-     * while the first-person camera, which sits inside it, never sees it.
-     */
-    [[nodiscard]] std::vector<render::WorldModelDraw> local_body_shadow_draws() {
-        std::vector<render::WorldModelDraw> draws;
-        if (!local_body_shadow_rig.has_value() || tutorial_session == nullptr || !local_body_shadow_enabled())
-            return draws;
-        const auto* local = tutorial_roster.player(*local_player_id);
-        if (local == nullptr || local->dead || death_camera.active() || local_jetpack_death_state() != nullptr ||
-            ugc_prefab_control.active() || local->class_id != local_body_shadow_rig->class_id ||
-            local->team != local_body_shadow_rig->team)
-            return draws;
-        const MotionScope motion_scope{draws, motion_key(MotionCategory::player, *local_player_id)};
-        const auto& player = tutorial_session->player();
-        const auto& rig = *local_body_shadow_rig;
-        const bool crouching = player.crouch;
-        auto root = mat_rotate_z(static_cast<float>(world::retail_character_root_yaw_degrees(
-            {player.orientation.x, player.orientation.y, player.orientation.z})));
-        root = mat_mul(root, mat_translate(static_cast<float>(player.position.x),
-                                           static_cast<float>(player.position.y),
-                                           static_cast<float>(player.position.z)));
-        // Looking straight down would swing the head and arms through the
-        // torso's shadow; a capped nod reads the same from the ground.
-        const double aim_pitch =
-            std::clamp(std::asin(std::clamp(player.orientation.z, -1.0, 1.0)) * 180.0 / std::numbers::pi,
-                       -45.0, 45.0);
-        draws.push_back({crouching ? rig.base + 1U : rig.base, root});
-        constexpr float head_pivot_z{0.3F};
-        auto head = mat_translate(0.0F, 0.0F, -head_pivot_z);
-        head = mat_mul(head, mat_rotate_x(static_cast<float>(aim_pitch)));
-        head = mat_mul(head, mat_translate(0.0F, 0.0F, head_pivot_z));
-        draws.push_back({rig.base + 2U, mat_mul(head, root)});
-        if (rig.combined_arms) {
-            auto arms = mat_translate(0.F, 0.F, -.25F);
-            arms = mat_mul(arms, mat_rotate_x(static_cast<float>(aim_pitch)));
-            arms = mat_mul(arms, mat_translate(0.F, crouching ? -.3F : 0.F, crouching ? .35F : .25F));
-            draws.push_back({rig.base + 10U, mat_mul(arms, root)});
-        }
-        const auto walk_pose = world::evaluate_retail_walk_pose(
-            static_cast<std::uint64_t>(character_animation_timer_ms),
-            world::ViewModelVector{player.velocity.x, player.velocity.y, player.velocity.z},
-            {player.orientation.x, player.orientation.y, player.orientation.z}, crouching);
-        const float leg_pivot_y = crouching ? -0.3F : 0.0F;
-        const float leg_pivot_z = crouching ? 0.7F : 1.1F;
-        const auto animated_leg = [&](float pivot_x, const world::RetailLegPose& leg_pose) {
-            auto model = mat_translate(-pivot_x, -leg_pivot_y, -leg_pivot_z);
-            model = mat_mul(model, mat_rotate_x(static_cast<float>(leg_pose.rotation_x_degrees)));
-            model = mat_mul(model, mat_rotate_y(static_cast<float>(leg_pose.rotation_y_degrees)));
-            model = mat_mul(model, mat_translate(pivot_x, leg_pivot_y, leg_pivot_z));
-            return mat_mul(model, root);
-        };
-        draws.push_back({crouching ? rig.base + 5U : rig.base + 3U, animated_leg(0.25F, walk_pose.left)});
-        draws.push_back({crouching ? rig.base + 6U : rig.base + 4U, animated_leg(-0.25F, walk_pose.right)});
-        for (auto& draw : draws) draw.shadow_only = true;
-        return draws;
     }
 
     [[nodiscard]] bool load_tutorial_packet_players() {
@@ -24768,32 +24081,22 @@ struct NativeFrontendModule::Impl final {
                 player.dead && !draws_jetpack_corpse && !equipped_jetpack.has_value() &&
                 match_initial_info.classic &&
                 exploded_corpse_generations[player.player_id & 0x7FU] != player.generation;
-            // Our own player never has a rig, but Character.draw leaves its
-            // ClassicCorpse too: the death camera looks at it.
-            const bool own_classic_corpse = draws_classic_corpse && network_match &&
-                                            local_player_id == player.player_id &&
-                                            rig == remote_player_rigs.end();
-            if ((rig == remote_player_rigs.end() && !own_classic_corpse) ||
+            if (rig == remote_player_rigs.end() ||
                 (player.dead && !draws_jetpack_corpse && !draws_classic_corpse))
                 continue;
             if (draws_classic_corpse) {
-                if (!own_classic_corpse && rig->second.disguised)
+                if (rig->second.disguised)
                     continue;
-                const auto corpse_position = own_classic_corpse ? player.position
-                                                                : rig->second.motion.sample().position;
-                const auto corpse_orientation = own_classic_corpse
-                                                    ? player.orientation
-                                                    : rig->second.motion.sample().orientation;
+                const auto& corpse_motion = rig->second.motion.sample();
                 auto corpse_root = mat_rotate_z(static_cast<float>(
-                    world::retail_character_root_yaw_degrees(
-                        {corpse_orientation.x, corpse_orientation.y, corpse_orientation.z})));
+                    world::retail_character_root_yaw_degrees({corpse_motion.orientation.x,
+                                                              corpse_motion.orientation.y,
+                                                              corpse_motion.orientation.z})));
                 corpse_root = mat_mul(
-                    corpse_root, mat_translate(static_cast<float>(corpse_position.x),
-                                               static_cast<float>(corpse_position.y),
-                                               static_cast<float>(corpse_position.z)));
-                const auto corpse_color =
-                    own_classic_corpse ? world::retail_character_color(remote_team_color(player.team))
-                                       : rig->second.resolved_team_color;
+                    corpse_root, mat_translate(static_cast<float>(corpse_motion.position.x),
+                                               static_cast<float>(corpse_motion.position.y),
+                                               static_cast<float>(corpse_motion.position.z)));
+                const auto corpse_color = rig->second.resolved_team_color;
                 const auto slot = character_accessory_slot(
                     "corpse:" + std::to_string(character_color_key(corpse_color)),
                     [&]() {
@@ -25647,134 +24950,33 @@ struct NativeFrontendModule::Impl final {
         scripted_motion={};
     }
 
-    /** Compiles a scripted skin and meshes its model parts; runs on a worker thread. */
-    [[nodiscard]] static PreparedScriptedSkin
-    prepare_scripted_skin(const std::filesystem::path& manifest,
-                          const world::SkinVariantSelection& variant, world::VxlColor team,
-                          const world::ClassModelOverrides& arms,
-                          std::shared_ptr<const ScriptedSkinMeshes> cached) {
-        PreparedScriptedSkin prepared;
-        prepared.skin = std::make_unique<world::ScriptedWeapon>();
-        if (!prepared.skin->load(manifest, prepared.error, variant)) {
-            prepared.skin.reset();
-            return prepared;
-        }
-        if (cached) {
-            prepared.meshes = std::move(cached);
-            return prepared;
-        }
-        auto meshes = std::make_shared<ScriptedSkinMeshes>();
-        const auto& resources = prepared.skin->resources();
-        for (std::size_t id{}; id < resources.size(); ++id) {
-            if (resources[id].kind == 0 && !resources[id].path.empty()) {
-                meshes->emplace_back(id, prepared.skin->model_mesh(id, team, arms));
-            }
-        }
-        prepared.meshes = std::move(meshes);
-        return prepared;
-    }
-
-    /** Everything a skin's prepared meshes depend on. */
-    [[nodiscard]] std::string scripted_skin_key(const InventoryCosmetic& item) const {
-        const auto team = world::retail_character_color(local_player_team_color());
-        const auto class_id = first_person_class_id();
-        const auto* character = local_equipped_cosmetic("class:" + std::to_string(class_id) + ":body");
-        std::string key = item.id;
-        key += '|' + std::to_string(team.red) + ',' + std::to_string(team.green) + ',' +
-               std::to_string(team.blue) + '|' + std::to_string(class_id) + '|' +
-               (character != nullptr ? character->id : std::string{});
-        if (skin_variant_preferences) {
-            for (const auto& [name, value] : skin_variant_preferences->selection(item.id)) {
-                key += '|' + name + '=' + value;
-            }
-        }
-        return key;
-    }
-
-    /** Starts preparing `item` in the background unless it already is. */
-    void queue_scripted_skin(const InventoryCosmetic* item) {
-        if (item == nullptr || item->scripted_skin.empty() ||
-            std::ranges::find(failed_scripted_skins, item->id) != failed_scripted_skins.end()) {
-            return;
-        }
-        auto key = scripted_skin_key(*item);
-        if (scripted_skin_jobs.contains(key)) return;
-        const auto* character =
-            local_equipped_cosmetic("class:" + std::to_string(first_person_class_id()) + ":body");
-        auto arms = inventory_character_parts(character, config.asset_root);
-        auto variant = skin_variant_preferences ? skin_variant_preferences->selection(item->id)
-                                                : world::SkinVariantSelection{};
-        const auto cached = scripted_skin_meshes.find(key);
-        scripted_skin_jobs.emplace(
-            std::move(key),
-            std::async(std::launch::async, prepare_scripted_skin,
-                       config.asset_root.parent_path() / item->scripted_skin, std::move(variant),
-                       world::retail_character_color(local_player_team_color()), std::move(arms),
-                       cached != scripted_skin_meshes.end() ? cached->second : nullptr));
-    }
-
-    /** Prepares every scripted skin in the current loadout before it is pulled out. */
-    void prewarm_scripted_skins() {
-        if (tutorial_session == nullptr || !applied_settings.main.show_skins) return;
-        std::vector<const InventoryCosmetic*> items;
-        std::string signature = std::to_string(first_person_class_id());
-        const auto team = local_player_team_color();
-        signature += '|' + std::to_string(team.red) + ',' + std::to_string(team.green) + ',' +
-                     std::to_string(team.blue);
-        for (const auto& slot : tutorial_session->inventory().slots()) {
-            const auto* item =
-                local_equipped_cosmetic("weapon:" + std::to_string(slot.tool_id) + ":view");
-            if (item == nullptr || item->scripted_skin.empty()) continue;
-            items.push_back(item);
-            signature += '|' + item->id;
-        }
-        if (signature == scripted_skin_prewarm_signature) return;
-        scripted_skin_prewarm_signature = std::move(signature);
-        std::set<std::string> wanted;
-        for (const auto* item : items) wanted.insert(scripted_skin_key(*item));
-        // Keep memory to the current loadout: a high-detail skin's meshes are
-        // tens of megabytes.
-        std::erase_if(scripted_skin_meshes,
-                      [&wanted](const auto& entry) { return !wanted.contains(entry.first); });
-        for (const auto* item : items) queue_scripted_skin(item);
-    }
-
     bool load_scripted_weapon(const InventoryCosmetic* item,std::uint8_t tool) {
         if(!item||item->scripted_skin.empty()||std::ranges::none_of(item->parents,[tool](const auto& p){return p.tool==tool;}))return false;
         if(std::ranges::find(failed_scripted_skins,item->id)!=failed_scripted_skins.end())return false;
-        // Normally prepared already by prewarm_scripted_skins; otherwise this
-        // waits for it exactly as the old synchronous load did.
-        queue_scripted_skin(item);
-        const auto key=scripted_skin_key(*item);
-        auto job=scripted_skin_jobs.extract(key);
-        if(job.empty())return false;
-        auto prepared=job.mapped().get();
-        if(!prepared.skin){
-            failed_scripted_skins.push_back(item->id);settings_warning="Skin animation failed: "+prepared.error;return false;
+        auto skin=std::make_unique<world::ScriptedWeapon>();std::string error;
+        const auto variant=skin_variant_preferences?skin_variant_preferences->selection(item->id):world::SkinVariantSelection{};
+        if(!skin->load(config.asset_root.parent_path()/item->scripted_skin,error,variant)){
+            failed_scripted_skins.push_back(item->id);settings_warning="Skin animation failed: "+error;return false;
         }
-        scripted_skin_meshes[key]=prepared.meshes;
-        auto skin=std::move(prepared.skin);
+        const auto* character=local_equipped_cosmetic("class:"+std::to_string(first_person_class_id())+":body");
+        const auto arms=inventory_character_parts(character,config.asset_root);
         world_renderer.clear_view_model();std::uint32_t slot=0;
-        for(const auto& [id,mesh]:*prepared.meshes){
-            if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
-                settings_warning="Skin model failed: "+skin->resources()[id].name;clear_scripted_weapon();return false;
-            }scripted_model_slots[id]=slot++;
-        }
         for(std::size_t id=0;id<skin->resources().size();++id){const auto& r=skin->resources()[id];
-            if(r.kind==2&&!r.path.empty()&&audio_started)scripted_sounds[id]=audio->preload_skin_sound(r.path);
+            if(r.path.empty())continue;
+            // draw_fps default colour is Character.color (team * 0.5).
+            if(r.kind==0){auto mesh=skin->model_mesh(id,world::retail_character_color(local_player_team_color()),arms);
+                if(mesh.empty()||slot>=render::WorldRenderer::view_model_slot_count||!world_renderer.set_view_model_mesh(slot,mesh)){
+                    settings_warning="Skin model failed: "+r.name;clear_scripted_weapon();return false;
+                }scripted_model_slots[id]=slot++;
+            }else if(r.kind==2&&audio_started)scripted_sounds[id]=audio->preload_skin_sound(r.path);
         }
         if(slot==0)return false;
-        std::string error;
         if(!scripted_images.load(renderer,*skin,error))settings_warning="Skin sight image failed: "+error;
         if(tutorial_session&&skin->variant().magnification>0.F)
             tutorial_session->set_skin_zoom(tool,world::skin_variant_zoom_target(skin->variant().magnification));
         scripted_cosmetic_id=item->id;scripted_weapon=std::move(skin);scripted_time=std::chrono::steady_clock::now();
         if(audio_started)static_cast<void>(audio->play_cosmetic_cue(item->id,"raise",0,{},.7F,true));
-        uploaded_sandbox_tool=tool;uploaded_tool.reset();view_model_meshes_uploaded=false;
-        // A fresh script instance for the next time this weapon is pulled out;
-        // its meshes come from the cache, so that is only the script compile.
-        queue_scripted_skin(item);
-        return true;
+        uploaded_sandbox_tool=tool;uploaded_tool.reset();view_model_meshes_uploaded=false;return true;
     }
 
     std::vector<render::ViewModelDraw> scripted_weapon_draws() {
@@ -25832,7 +25034,6 @@ struct NativeFrontendModule::Impl final {
         // Inventory refresh invalidates the arm cache even while the same
         // weapon is held. Refresh before uploading its viewmodel again.
         if(!load_tutorial_class_arms(first_person_class_id())) return false;
-        prewarm_scripted_skins();
         const auto selected = tutorial_session->selected_tool_id();
         if (!selected.has_value() || uploaded_sandbox_tool == selected) {
             return true;
@@ -26147,16 +25348,9 @@ struct NativeFrontendModule::Impl final {
                 network_match && match_initial_info.enable_player_score;
             game_hud.set_numeric_health_visible(
                 !network_match || match_initial_info.enable_numeric_hp);
-            // The server's SetScore total is authoritative. Reading the box's
-            // own last value kept a HUD reset (rejoin, map change) at 0 until
-            // the next award arrived.
-            const bool server_score_known = network_match && local_player_id.has_value() &&
-                                            *local_player_id < server_player_score_valid.size() &&
-                                            server_player_score_valid[*local_player_id];
             game_hud.set_player_score(
-                server_score_known ? server_player_scores[*local_player_id]
-                : network_match    ? game_hud.player_score()
-                                   : tutorial_session->targets_destroyed() * 100,
+                network_match ? game_hud.player_score()
+                              : tutorial_session->targets_destroyed() * 100,
                 player_score_visible);
 
             // draw_healthbar draws class_icons[class.id][team.id] beside the
@@ -27047,8 +26241,8 @@ struct NativeFrontendModule::Impl final {
                                  ? death_camera.pose().pitch_degrees
                                  : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world_fov(0.0)
-                                 : world_fov(
+                                 ? world::hip_fov_y_degrees
+                                 : world::zoom_fov_y_degrees(
                                        tutorial_session->zoom_level());
         std::uint8_t local_team{};
         if (local_player_id.has_value()) {
@@ -27188,8 +26382,8 @@ struct NativeFrontendModule::Impl final {
         const double pitch = death_camera.active() ? death_camera.pose().pitch_degrees
                                                     : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world_fov(0.0)
-                                 : world_fov(tutorial_session->zoom_level());
+                                 ? world::hip_fov_y_degrees
+                                 : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
         // Entity.create_3dText: Text3D('.', position, 0.005,
         // disable_depth_test=True) with the default white colour and
         // text3d_font (Edo 22). Text3DRenderer draws it through walls, scaled
@@ -27358,8 +26552,8 @@ struct NativeFrontendModule::Impl final {
         const double pitch = death_camera.active() ? death_camera.pose().pitch_degrees
                                                     : tutorial_session->pitch();
         const double fov_y = death_camera.active()
-                                 ? world_fov(0.0)
-                                 : world_fov(tutorial_session->zoom_level());
+                                 ? world::hip_fov_y_degrees
+                                 : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
         const auto white =
             ui::ColorModulation{ui::ColorRgba8{255U, 255U, 255U, 255U}, 1'000U, 1'000U};
         const auto smoothed_position = [this](const network::RemotePlayerReplica& player) {
@@ -27877,26 +27071,6 @@ struct NativeFrontendModule::Impl final {
         return list;
     }
 
-    /** Graphics > Show FPS: frame rate and frame times in the top-right corner. */
-    void append_frame_rate(ui::DrawList& list, platform::WindowExtent extent) const {
-        if (!applied_settings.graphics.show_fps || !frame_rate_meter.reading().has_value()) {
-            return;
-        }
-        const double width = static_cast<double>(extent.width);
-        list.push(ui::TextDrawCommand{FrameRateMeter::text(*frame_rate_meter.reading()),
-                                      std::string{settings_standard_font},
-                                      ui::DrawRect{std::max(0.0, width - 250.0), 4.0, 240.0, 16.0},
-                                      ui::DrawSpace::window_pixels,
-                                      14.0,
-                                      0.0,
-                                      1U,
-                                      ui::HorizontalTextAlignment::right,
-                                      ui::VerticalTextAlignment::center,
-                                      ui::TextTransform::preserve,
-                                      ui::TextFit::none,
-                                      {}});
-    }
-
     /**
      * Period of render-only frames between fixed ticks; zero keeps the retail
      * one-frame-per-tick presentation (setting off, <=75 Hz display, no live
@@ -27907,11 +27081,10 @@ struct NativeFrontendModule::Impl final {
             screen() != FrontendScreen::tutorial_world || !world_renderer.is_initialized()) {
             return std::chrono::nanoseconds::zero();
         }
-        const auto& graphics = applied_settings.graphics;
-        return limited_frame_period(graphics.frame_limit, graphics.frame_rate_cap,
-                                    graphics.render_interpolation,
-                                    window.current_refresh_rate_millihertz(), graphics.vsync,
-                                    current_tick_fixed_delta);
+        return render_interpolation_paced_period(
+            applied_settings.graphics.render_interpolation,
+            window.current_refresh_rate_millihertz(), applied_settings.graphics.vsync,
+            current_tick_fixed_delta);
     }
 
     /**
@@ -27939,8 +27112,7 @@ struct NativeFrontendModule::Impl final {
         const auto shift = world_anchors.shift(
             command.world_anchor, alpha,
             {at_frame[0U] - at_tick[0U], at_frame[1U] - at_tick[1U],
-             at_frame[2U] - at_tick[2U]},
-            frame_look_offset);
+             at_frame[2U] - at_tick[2U]});
         moved.destination.x += shift[0U];
         moved.destination.y += shift[1U];
         return moved;
@@ -27984,18 +27156,6 @@ struct NativeFrontendModule::Impl final {
         }
         auto camera = interpolation_scene.camera;
         camera.eye = camera_interpolator.sample(alpha);
-        if (tutorial_session != nullptr) {
-            // The view turns with the mouse input taken since the tick
-            // (present_intermediate); only position and moving parts are
-            // interpolated between ticks.
-            const auto angles = interpolation_scene.look.orient(
-                tutorial_session->yaw(), tutorial_session->pitch(),
-                interpolation_scene.camera.yaw_degrees, interpolation_scene.camera.pitch_degrees);
-            camera.yaw_degrees = angles[0U];
-            camera.pitch_degrees = angles[1U];
-        }
-        frame_look_offset = {camera.yaw_degrees - interpolation_scene.camera.yaw_degrees,
-                             camera.pitch_degrees - interpolation_scene.camera.pitch_degrees};
         motion_interpolation.sample(alpha);
         particles.build_draw_list({static_cast<float>(camera.eye[0U]),
                                    static_cast<float>(camera.eye[1U]),
@@ -28026,49 +27186,11 @@ struct NativeFrontendModule::Impl final {
                 break;
             }
         }
-        frame_look_offset = {};
         if (!renderer.end_frame()) {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
-        frame_rate_meter.record(FrameRateMeter::Clock::now());
         return true;
-    }
-
-    /**
-     * Applies the mouse look queued since the last read before a frame is
-     * drawn (render-only frames and the tick's own frame), so the camera
-     * turns at display rate. Only the leading
-     * run of pointer motion is taken; anything behind a key or button event
-     * waits for the tick, which therefore sees the same events in the same
-     * order and the same accumulated look angles as before.
-     */
-    void take_live_look() {
-        if (!world_look_captured() || steam_overlay_gate.suspended() ||
-            ui_layout_editor.active()) {
-            return;
-        }
-        for (const auto& event : window.take_leading_mouse_motion()) {
-            apply_world_look(event.mouse_delta_x, event.mouse_delta_y);
-        }
-    }
-
-    /** Captured mouse motion turns the live-world view (or the death camera). */
-    [[nodiscard]] bool world_look_captured() const {
-        return mouse_captured && tutorial_session != nullptr &&
-               screen() == FrontendScreen::tutorial_world;
-    }
-
-    void apply_world_look(float delta_x, float delta_y) {
-        if (death_camera.active()) {
-            death_camera.on_mouse_move(delta_x, delta_y);
-        } else if (retail_gameplay_input_locked()) {
-            // The LookAtController / forced ViewScores owns the view.
-        } else {
-            tutorial_session->apply_look_delta(delta_x, delta_y);
-            viewmodel_mouse_dx += delta_x;
-            viewmodel_mouse_dy += delta_y;
-        }
     }
 
     [[nodiscard]] bool render_frame() {
@@ -28122,7 +27244,6 @@ struct NativeFrontendModule::Impl final {
         // high-refresh display lowers it to this frame's place in the tick.
         double ui_anchor_alpha{1.0};
         auto list = build_active_draw_list(extent);
-        append_frame_rate(list, extent);
         if (!prepare_resources(list)) {
             return false;
         }
@@ -28150,7 +27271,7 @@ struct NativeFrontendModule::Impl final {
                 camera.yaw_degrees = tutorial_session->yaw();
                 camera.pitch_degrees = tutorial_session->pitch();
                 camera.fov_y_degrees =
-                    world_fov(tutorial_session->zoom_level());
+                    world::zoom_fov_y_degrees(tutorial_session->zoom_level());
             } else {
                 camera.eye = {gallery ? 10.5 : 4.2, 0.0, gallery ? 2.15 : 0.78};
                 camera.yaw_degrees = 0.0;
@@ -28184,7 +27305,8 @@ struct NativeFrontendModule::Impl final {
             // real submit. Paying that cost after SELECT made the first
             // playable frame look frozen. Submit one representative terrain,
             // skydome and shadow frame behind the opaque loading UI instead.
-            apply_world_presentation();
+            world_renderer.set_quality_profile(render::profile_for(
+                effective_shader_quality(), applied_settings.graphics.effect_quality));
             render::WorldCamera camera;
             camera.eye = {256.0, 256.0, 96.0};
             camera.yaw_degrees = 0.0;
@@ -28216,7 +27338,8 @@ struct NativeFrontendModule::Impl final {
             // constructor value (256, 256, 0), so the eye sits 362 blocks off
             // the dome's centre and the skyline fills the view. The map lies
             // behind the eye; below the horizon is the fog colour.
-            apply_world_presentation();
+            world_renderer.set_quality_profile(render::profile_for(
+                effective_shader_quality(), applied_settings.graphics.effect_quality));
             render::WorldCamera camera;
             camera.eye = {0.0, 0.0, 0.0};
             camera.yaw_degrees = 90.0;
@@ -28232,14 +27355,7 @@ struct NativeFrontendModule::Impl final {
             }
         } else if (tutorial_session != nullptr && tutorial_world_in_stack() &&
                    world_renderer.is_initialized()) {
-            // The tick read its input before the simulation ran; motion queued
-            // since then turns this frame too, so the tick frame is no staler
-            // than the render-only frames around it. The simulation already
-            // took this tick's orientation, and the next tick reads the
-            // accumulated angles exactly as if the motion had waited.
-            take_live_look();
             render::WorldCamera camera;
-            LiveLookFollow look_follow{};
             const auto result_camera = match_results.visible()
                                            ? resolve_match_result_camera(
                                                  match_state_info.screenshot_camera_points,
@@ -28287,12 +27403,10 @@ struct NativeFrontendModule::Impl final {
                 camera.yaw_degrees = tutorial_session->yaw() + corpse->rotation_degrees.x;
                 camera.pitch_degrees = std::clamp(
                     tutorial_session->pitch() + corpse->rotation_degrees.y, -89.0, 89.0);
-                look_follow = {true, corpse->rotation_degrees.x, corpse->rotation_degrees.y, 89.0};
             } else {
                 camera.eye = tutorial_session->eye_position();
                 camera.yaw_degrees = tutorial_session->yaw();
                 camera.pitch_degrees = tutorial_session->pitch();
-                look_follow.follows = true;
             }
             // Render-only interpolation on high-refresh displays: the tick
             // frame shows the eye one tick behind, and render_intermediate_frame
@@ -28313,13 +27427,8 @@ struct NativeFrontendModule::Impl final {
             camera.fov_y_degrees =
                 (result_camera.has_value() || death_camera.active() ||
                  local_jetpack_death_state() != nullptr)
-                                       ? world_fov(0.0)
-                                       : world_fov(tutorial_session->zoom_level());
-            // The first-person tool keeps retail's projection whatever the world
-            // FOV: a wider view must not stretch the weapon, and the scripted
-            // sight images are laid out for it.
-            camera.view_model_fov_y_degrees =
-                world::zoom_fov_y_degrees(tutorial_session->zoom_level());
+                                       ? world::zoom_fov_y_degrees(0.0)
+                                       : world::zoom_fov_y_degrees(tutorial_session->zoom_level());
             camera.fog_distance = static_cast<double>(
                 static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
             const auto tool_draws = (result_camera.has_value() ||
@@ -28356,16 +27465,15 @@ struct NativeFrontendModule::Impl final {
             terrain_draws.insert(terrain_draws.end(), retail_effect_models.begin(),
                                  retail_effect_models.end());
             terrain_draws.insert(terrain_draws.end(), packet_players.begin(), packet_players.end());
-            auto own_body_shadow = local_body_shadow_draws();
-            terrain_draws.insert(terrain_draws.end(), own_body_shadow.begin(), own_body_shadow.end());
             // One resolve drives both the renderer and the particle budget.
             // Re-applying every frame keeps them in sync with any settings path
             // without having to find every assignment site. Legacy
             // (Compatibility Shader) resolves to the recovered baked tables so
             // retail screenshot parity stays runnable; switching tier costs no
             // re-mesh.
-            const auto quality = active_quality_profile();
-            apply_world_presentation();
+            const auto quality = render::profile_for(effective_shader_quality(),
+                                                     applied_settings.graphics.effect_quality);
+            world_renderer.set_quality_profile(quality);
             particles.set_quality_scale(quality.effect_scale);
             // Interiors are dark because the sky cannot see into them. Build the
             // horizon once the map exists and re-upload only when it changes.
@@ -28449,7 +27557,6 @@ struct NativeFrontendModule::Impl final {
                 // Retain what the render-only frames cannot rebuild; the
                 // moving parts live in motion_interpolation.
                 interpolation_scene.camera = camera;
-                interpolation_scene.look = look_follow;
                 interpolation_scene.lights = std::move(frame_lights);
                 interpolation_scene.valid = true;
             }
@@ -28495,7 +27602,6 @@ struct NativeFrontendModule::Impl final {
             last_error = "renderer end-frame failed: " + std::string{renderer.last_error()};
             return false;
         }
-        frame_rate_meter.record(FrameRateMeter::Clock::now());
         save_pending_screenshot();
         consume_ugc_preview_capture();
         if (renderer.last_frame_dropped_draws() != 0U &&
@@ -28691,11 +27797,11 @@ bool NativeFrontendModule::start() {
             return false;
         }
 
-        render::BgfxUiRendererConfig renderer_config{
+        const auto initialized = impl_->renderer.initialize(render::BgfxUiRendererConfig{
             render::NativeWindow{
                 native.display,
                 native.window,
-                nullptr,
+                native.graphics_context,
                 nullptr,
                 nullptr,
                 native.system == platform::NativeWindowSystem::wayland,
@@ -28710,12 +27816,7 @@ bool NativeFrontendModule::start() {
             msaa_samples(startup_settings.graphics.antialiasing),
             texture_quality_tier(startup_settings.graphics.texture_quality),
             impl_->config.renderer_debug,
-        };
-        // Graphics > Reduce Input Latency: one queued frame, or two for
-        // steadier frame times on a GPU-bound system. Startup-only in bgfx.
-        renderer_config.max_frame_latency =
-            static_cast<std::uint8_t>(startup_settings.graphics.low_latency ? 1U : 2U);
-        const auto initialized = impl_->renderer.initialize(renderer_config);
+        });
         if (!initialized) {
             impl_->last_error =
                 "bgfx initialization failed for " +
@@ -29139,9 +28240,6 @@ core::TickDecision NativeFrontendModule::present_intermediate(double alpha) {
     if (impl_ == nullptr || !impl_->started || impl_->stop_requested) {
         return core::TickDecision::continue_running;
     }
-    if (impl_->interpolation_scene.valid) {
-        impl_->take_live_look();
-    }
     return impl_->render_intermediate_frame(alpha) ? core::TickDecision::continue_running
                                                    : core::TickDecision::stop;
 }
@@ -29254,16 +28352,10 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         const double remote_motion_gravity =
             impl_->network_match ? impl_->match_state_info.gravity : 1.0;
         for (auto& [player_id, rig] : impl_->remote_player_rigs) {
-            const auto* replica = impl_->tutorial_roster.player(player_id);
-            // A dead body without a pack lies where it fell (the server sends
-            // it no more rows); stepping it on its last held keys walked the
-            // corpse away. Jetpack corpses keep flying on their own rows.
-            if (replica == nullptr || !replica->dead ||
-                world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value()) {
-                rig.motion.tick(dt, remote_motion_map, remote_motion_gravity);
-            }
+            rig.motion.tick(dt, remote_motion_map, remote_motion_gravity);
             // MinigunWeapon.update for observers: the barrel spools while the
             // replicated primary trigger (WorldUpdate action bit 0x01) is held.
+            const auto* replica = impl_->tutorial_roster.player(player_id);
             const bool minigun = replica != nullptr && !replica->dead && replica->tool_id == 8U;
             rig.minigun_spin =
                 minigun ? world::advance_retail_remote_minigun_spin(
@@ -29441,15 +28533,6 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             }
             continue;
         }
-        if (event.type == platform::WindowEventType::key_pressed && !event.repeated &&
-            (event.scancode == scancode_return || event.scancode == scancode_keypad_enter) &&
-            (event.modifiers & alt_modifier_mask) != 0U &&
-            (event.modifiers & control_modifier_mask) == 0U && !impl_->boot_loading) {
-            // Alt+Enter toggles fullscreen everywhere, chat and menus included;
-            // it never reaches them as a plain Enter.
-            impl_->toggle_fullscreen_hotkey();
-            continue;
-        }
         if (impl_->ui_layout_editor.active()) {
             const auto editor_point = [&]() -> std::optional<ui::Point> {
                 return settings_point(mapped_point(event.mouse_x, event.mouse_y));
@@ -29550,8 +28633,18 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             }
             break;
         case platform::WindowEventType::mouse_moved:
-            if (impl_->world_look_captured()) {
-                impl_->apply_world_look(event.mouse_delta_x, event.mouse_delta_y);
+            if (impl_->mouse_captured && impl_->tutorial_session != nullptr &&
+                impl_->screen() == FrontendScreen::tutorial_world) {
+                if (impl_->death_camera.active()) {
+                    impl_->death_camera.on_mouse_move(event.mouse_delta_x, event.mouse_delta_y);
+                } else if (impl_->retail_gameplay_input_locked()) {
+                    // The LookAtController / forced ViewScores owns the view.
+                } else {
+                    impl_->tutorial_session->apply_look_delta(event.mouse_delta_x,
+                                                              event.mouse_delta_y);
+                    impl_->viewmodel_mouse_dx += event.mouse_delta_x;
+                    impl_->viewmodel_mouse_dy += event.mouse_delta_y;
+                }
                 break;
             }
             if (const auto point = mapped_point(event.mouse_x, event.mouse_y); point.has_value()) {

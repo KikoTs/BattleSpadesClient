@@ -21,13 +21,13 @@ enum class SettingsRowId : std::uint8_t {
     language,
     master_volume,
     music_volume,
+    fullscreen,
     invert_mouse,
     favorite_server,
     show_skins,
     show_other_skins,
     weapon_motion,
     ability_hints,
-    window_mode,
     resolution,
     graphics_api,
     antialiasing,
@@ -38,29 +38,6 @@ enum class SettingsRowId : std::uint8_t {
     model_quality,
     vsync,
     compatibility_shader,
-    // Native Graphics rows, grouped under four category headers.
-    graphics_display_category,
-    graphics_quality_category,
-    graphics_effects_category,
-    graphics_color_category,
-    graphics_preset,
-    frame_limit,
-    field_of_view,
-    render_scale,
-    upscale,
-    sharpness,
-    low_latency,
-    show_fps,
-    shadow_quality,
-    shadow_distance,
-    ambient_occlusion,
-    anisotropic_filtering,
-    texture_filtering,
-    bloom,
-    motion_blur,
-    brightness,
-    gamma,
-    color_vision,
     main_controls_category,
     mouse_sensitivity,
     forward,
@@ -138,17 +115,6 @@ struct SettingsMenuEnvironment final {
     std::string favorite_server_description{};
     std::vector<SettingsLanguageOption> languages{{"en", "English"}};
     std::vector<settings::Resolution> display_modes{};
-    /**
-     * What the running renderer's world post chain can do (render scale,
-     * sharpening, brightness/gamma/colour vision need the chain itself). A
-     * row the backend cannot run stays visible but disabled, reading
-     * NOT_SUPPORTED_BACKEND.
-     */
-    bool post_chain_supported{true};
-    bool ambient_occlusion_supported{true};
-    bool motion_blur_supported{true};
-    bool bloom_supported{true};
-    bool edge_adaptive_upscale_supported{true};
     /** Backends compiled into this executable, in the order shown to players. */
     std::vector<settings::GraphicsApi> graphics_apis{
         settings::GraphicsApi::automatic,
@@ -298,8 +264,7 @@ struct SettingsDefaultsCommand final {
 struct SettingsCommitCommand final {
     settings::ClientSettings settings{};
     bool changed{false};
-    /** Window mode or resolution changed: applied with the keep/revert prompt. */
-    bool display_changed{false};
+    bool resolution_changed{false};
     bool restart_required{false};
 };
 
@@ -445,8 +410,8 @@ private:
     SettingsMenuEnvironment environment_{};
     settings::SettingsTab active_tab_{settings::SettingsTab::main};
     std::array<std::size_t, 3U> scroll_indices_{};
-    /** Expansion of each category header, indexed by category_slot(). */
-    std::array<bool, 6U> categories_expanded_{true, true, true, true, true, true};
+    bool main_controls_expanded_{true};
+    bool ugc_controls_expanded_{true};
     bool favorite_server_{false};
     bool initial_favorite_server_{false};
     /** Tier restored when the retail Compatibility Shader toggle goes off. */

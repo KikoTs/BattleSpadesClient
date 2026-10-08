@@ -56,11 +56,6 @@ struct QualityProfile final {
      * thick, so do not raise these without looking at a bridge.
      */
     float shadow_softness{};
-    /**
-     * Half-extent of the sun shadow map around the eye, in blocks. Zero keeps
-     * the fog-relative default, clamp(fog_distance * 0.55, 32, 160).
-     */
-    float shadow_distance{};
     /** Reserved for screen-space AO. All shipped profiles keep this at zero. */
     std::uint8_t ssao_samples{};
     bool ssao_half_resolution{true};

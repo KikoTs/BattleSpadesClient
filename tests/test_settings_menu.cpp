@@ -1,5 +1,4 @@
 #include "battlespades/frontend/settings_menu.hpp"
-#include "battlespades/settings/graphics_presets.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -69,14 +68,6 @@ template <typename Effect>
     return nullptr;
 }
 
-void click(SettingsMenuModel& menu, Point point);
-
-[[nodiscard]] SettingsSession windowed_session() {
-    auto settings = battlespades::settings::retail_default_settings();
-    settings.graphics.window_mode = battlespades::settings::WindowMode::windowed;
-    return SettingsSession{settings};
-}
-
 [[nodiscard]] SettingsMenuEnvironment full_environment() {
     SettingsMenuEnvironment environment;
     environment.display_modes = {
@@ -95,12 +86,13 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 9U,
+    expect(view.rows.size() == 10U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
         SettingsRowId::master_volume,
         SettingsRowId::music_volume,
+        SettingsRowId::fullscreen,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
         SettingsRowId::show_skins,
@@ -144,43 +136,23 @@ void graphics_capabilities_and_wheel_scrolling_are_deterministic() {
     static_cast<void>(menu.take_effects());
 
     auto view = menu.presentation();
-    expect(view.rows.size() == 33U,
-           "full graphics capabilities must expose four groups of thirty-three rows");
-    expect(view.rows.front().id == SettingsRowId::graphics_display_category &&
-               view.rows[1U].id == SettingsRowId::window_mode &&
-               view.rows[2U].id == SettingsRowId::resolution,
-           "the Display group must lead with Window Mode and Resolution");
+    expect(view.rows.size() == 10U, "full graphics capabilities must expose ten rows");
+    expect(view.maximum_scroll_index == 2U, "ten 32px rows must require two retail row scrolls");
     expect(row(view, SettingsRowId::resolution).choice_count == 3U,
            "display modes must be filtered, deduplicated, sorted, and include current mode");
     expect(row(view, SettingsRowId::graphics_api).choice_count == 6U,
            "the complete cross-platform backend vocabulary must be selectable in tests");
-    expect(!row(view, SettingsRowId::color_vision).visible,
+    expect(!row(view, SettingsRowId::compatibility_shader).visible,
            "the final graphics row must initially be below the viewport");
-    expect(view.maximum_scroll_index > 0U, "the Graphics list must scroll");
 
-    for (std::size_t step{}; step < view.maximum_scroll_index; ++step) {
-        expect(menu.mouse_wheel(Point{200, 200}, -1), "wheel inside viewport must be consumed");
-    }
+    expect(menu.mouse_wheel(Point{200, 200}, -1), "wheel inside viewport must be consumed");
+    expect(menu.mouse_wheel(Point{200, 200}, -1), "second wheel step must be consumed");
     view = menu.presentation();
-    expect(view.scroll_index == view.maximum_scroll_index,
-           "wheel down must reach the final graphics row");
-    expect(!row(view, SettingsRowId::window_mode).visible &&
-               row(view, SettingsRowId::color_vision).visible,
-           "scrolling must replace the first rows with the final rows");
-
-    // Collapsing a group removes its rows from the list and the scroll range.
-    const auto before = view.maximum_scroll_index;
-    for (std::size_t step{}; step < before; ++step) {
-        static_cast<void>(menu.mouse_wheel(Point{200, 200}, 1));
-    }
-    view = menu.presentation();
-    const auto header = row(view, SettingsRowId::graphics_display_category);
-    click(menu, Point{header.bounds.x + 20, header.bounds.y + header.bounds.height / 2});
-    view = menu.presentation();
-    expect(!row(view, SettingsRowId::graphics_display_category).expanded &&
-               !row(view, SettingsRowId::window_mode).visible &&
-               view.maximum_scroll_index < before,
-           "a collapsed Graphics group hides its rows and shortens the list");
+    expect(view.scroll_index == 2U, "wheel down must reach the final graphics row");
+    expect(!row(view, SettingsRowId::resolution).visible &&
+               !row(view, SettingsRowId::graphics_api).visible &&
+               row(view, SettingsRowId::compatibility_shader).visible,
+           "scrolling must replace the first two rows with the final rows");
 
     SettingsMenuEnvironment limited;
     limited.multisampling_supported = false;
@@ -194,7 +166,7 @@ void graphics_capabilities_and_wheel_scrolling_are_deterministic() {
     SettingsMenuModel limited_menu{session, limited};
     limited_menu.set_active_tab(SettingsTab::graphics);
     auto limited_view = limited_menu.presentation();
-    expect(limited_view.rows.size() == 31U,
+    expect(limited_view.rows.size() == 8U,
            "unsupported antialiasing and GLSL rows must be omitted, not disabled placeholders");
     expect(row(limited_view, SettingsRowId::graphics_api).choices ==
                std::vector<std::string>{"AUTO", "VULKAN", "METAL"},
@@ -209,123 +181,6 @@ void graphics_capabilities_and_wheel_scrolling_are_deterministic() {
     limited_view = limited_menu.presentation();
     expect(row(limited_view, SettingsRowId::graphics_api).value_text == "VULKAN",
            "graphics API row must display the staged backend");
-}
-
-void native_graphics_rows_edit_presets_and_report_why_they_are_unavailable() {
-    using namespace battlespades::settings;
-    SettingsSession session;
-    SettingsMenuModel menu{session, full_environment()};
-    menu.set_active_tab(SettingsTab::graphics);
-    static_cast<void>(menu.take_effects());
-
-    auto view = menu.presentation();
-    expect(row(view, SettingsRowId::graphics_preset).value_text == "MEDIUM",
-           "the shipped defaults read as the Medium preset");
-    expect(row(view, SettingsRowId::field_of_view).value_text == "75" &&
-               row(view, SettingsRowId::render_scale).value_text == "100%" &&
-               row(view, SettingsRowId::frame_limit).value_text == "FRAME_LIMIT_DISPLAY" &&
-               row(view, SettingsRowId::motion_blur).value_text == "OFF" &&
-               row(view, SettingsRowId::gamma).value_text == "1.0" &&
-               row(view, SettingsRowId::brightness).value_text == "0%",
-           "every native row must open at the value that reproduces the old renderer");
-    expect(!row(view, SettingsRowId::upscale).enabled &&
-               row(view, SettingsRowId::upscale).description == "UPSCALE_FULL_RESOLUTION",
-           "upscaling is unavailable at 100% render scale and says why");
-    expect(row(view, SettingsRowId::low_latency).description == "RESTART_REQUIRED",
-           "frame latency is fixed when bgfx starts");
-
-    const auto step = [&menu](SettingsRowId target, InputAction action) {
-        expect(menu.set_focus(SettingsMenuTarget::for_row(target)),
-               std::string{settings_row_name(target)} + " must accept focus");
-        expect(menu.handle(InputEvent{action, InputPhase::pressed}),
-               std::string{settings_row_name(target)} + " must step");
-    };
-    step(SettingsRowId::field_of_view, InputAction::navigate_right);
-    expect(session.draft().graphics.field_of_view == 80.0, "FOV steps by five degrees");
-    step(SettingsRowId::render_scale, InputAction::navigate_left);
-    expect(session.draft().graphics.render_scale == 0.85, "render scale steps down");
-    expect(menu.presentation().rows.size() > 0U &&
-               row(menu.presentation(), SettingsRowId::upscale).enabled,
-           "upscaling becomes available below 100%");
-    step(SettingsRowId::frame_limit, InputAction::navigate_right);
-    expect(session.draft().graphics.frame_limit == FrameLimit::custom &&
-               session.draft().graphics.frame_rate_cap == 60U,
-           "the limiter's first custom step is 60 fps");
-    step(SettingsRowId::color_vision, InputAction::navigate_right);
-    expect(session.draft().graphics.color_vision == ColorVision::protanopia,
-           "colour vision steps to protanopia");
-    expect(find_effect<SettingsPreviewEffect>(menu.take_effects()) != nullptr,
-           "native rows emit live previews");
-
-    step(SettingsRowId::graphics_preset, InputAction::navigate_right);
-    expect(session.draft().graphics.shader_quality == ShaderQuality::high &&
-               session.draft().graphics.ambient_occlusion == EffectLevel::medium &&
-               session.draft().graphics.bloom == EffectLevel::low,
-           "Medium -> High writes the High preset");
-    expect(session.draft().graphics.field_of_view == 80.0 &&
-               session.draft().graphics.render_scale == 0.85,
-           "a preset never touches personal display choices");
-    step(SettingsRowId::ambient_occlusion, InputAction::navigate_right);
-    expect(row(menu.presentation(), SettingsRowId::graphics_preset).value_text == "PRESET_CUSTOM",
-           "a hand-edited quality field reads Custom");
-    step(SettingsRowId::graphics_preset, InputAction::navigate_left);
-    expect(matching_graphics_preset(session.draft().graphics) == GraphicsPreset::medium,
-           "leaving Custom lands on Medium");
-
-    // The Retail tier keeps its look: Enhanced effects grey out with a reason.
-    step(SettingsRowId::graphics_preset, InputAction::navigate_left);
-    step(SettingsRowId::graphics_preset, InputAction::navigate_left);
-    expect(session.draft().graphics.compatibility_shader(), "the first preset is Retail");
-    view = menu.presentation();
-    for (const auto id : {SettingsRowId::ambient_occlusion, SettingsRowId::bloom,
-                          SettingsRowId::motion_blur, SettingsRowId::shadow_quality}) {
-        expect(!row(view, id).enabled && row(view, id).description == "ENHANCED_ONLY",
-               std::string{settings_row_name(id)} + " is Enhanced-only in the Retail tier");
-    }
-    expect(row(view, SettingsRowId::brightness).enabled &&
-               row(view, SettingsRowId::color_vision).enabled,
-           "accessibility rows stay available in the Retail tier");
-
-    // A backend without the post chain disables its rows with a reason.
-    auto environment = full_environment();
-    environment.post_chain_supported = false;
-    SettingsMenuModel unsupported{session, environment};
-    unsupported.set_active_tab(SettingsTab::graphics);
-    view = unsupported.presentation();
-    for (const auto id : {SettingsRowId::render_scale, SettingsRowId::sharpness,
-                          SettingsRowId::gamma, SettingsRowId::color_vision}) {
-        expect(!row(view, id).enabled && row(view, id).description == "NOT_SUPPORTED_BACKEND",
-               std::string{settings_row_name(id)} + " explains an unsupported backend");
-    }
-}
-
-void window_mode_row_cycles_and_greys_out_resolution_when_borderless() {
-    using battlespades::settings::WindowMode;
-    SettingsSession session;
-    SettingsMenuModel menu{session, full_environment()};
-    menu.set_active_tab(SettingsTab::graphics);
-    static_cast<void>(menu.take_effects());
-    auto view = menu.presentation();
-    expect(row(view, SettingsRowId::window_mode).value_text == "WINDOW_MODE_BORDERLESS" &&
-               !row(view, SettingsRowId::resolution).enabled &&
-               row(view, SettingsRowId::resolution).value_text == "WINDOW_MODE_DESKTOP",
-           "borderless covers the desktop, so Resolution reads Desktop and is disabled");
-    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::window_mode)),
-           "Window Mode must accept focus");
-    expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}),
-           "activating Window Mode cycles it");
-    expect(session.draft().graphics.window_mode == WindowMode::exclusive,
-           "Borderless -> Fullscreen");
-    expect(row(menu.presentation(), SettingsRowId::resolution).enabled,
-           "exclusive fullscreen uses the chosen resolution");
-    expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}) &&
-               session.draft().graphics.window_mode == WindowMode::windowed,
-           "Fullscreen -> Windowed");
-    static_cast<void>(menu.take_effects());
-    menu.activate_done();
-    const auto* commit = find_effect<SettingsCommitCommand>(menu.take_effects());
-    expect(commit != nullptr && commit->display_changed,
-           "a window mode change goes through the keep/revert prompt");
 }
 
 void every_renderer_tier_is_reachable_and_legacy_stays_deliberate() {
@@ -397,7 +252,7 @@ void every_renderer_tier_is_reachable_and_legacy_stays_deliberate() {
 }
 
 void resolution_dropdown_opens_scrolls_selects_and_closes_outside() {
-    auto session = windowed_session();
+    SettingsSession session;
     SettingsMenuEnvironment environment;
     environment.display_modes = {
         {640U, 480U},
@@ -492,7 +347,7 @@ void scrollbar_arrows_track_and_thumb_drive_the_model() {
 void in_game_graphics_apply_live() {
     // Native: retail locked this tab in a match. Every row now applies live
     // or is marked RESTART_REQUIRED (settings/graphics_apply.hpp).
-    auto session = windowed_session();
+    SettingsSession session;
     auto environment = full_environment();
     environment.context = SettingsMenuContext::in_game;
     SettingsMenuModel menu{session, environment};
@@ -690,7 +545,7 @@ void raw_binding_capture_rejects_reserved_and_duplicate_scancodes() {
 }
 
 void defaults_done_and_cancel_are_transactional_typed_commands() {
-    auto session = windowed_session();
+    SettingsSession session;
     SettingsMenuModel menu{session, full_environment()};
     expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::invert_mouse)),
            "Invert Mouse must accept focus");
@@ -722,7 +577,7 @@ void defaults_done_and_cancel_are_transactional_typed_commands() {
     menu.activate_done();
     const auto committed_effects = menu.take_effects();
     const auto* commit = find_effect<SettingsCommitCommand>(committed_effects);
-    expect(commit != nullptr && commit->changed && commit->display_changed &&
+    expect(commit != nullptr && commit->changed && commit->resolution_changed &&
                commit->restart_required,
            "Done must describe resolution preview and restart-sensitive changes");
     const auto* committed_close = find_effect<SettingsCloseCommand>(committed_effects);
@@ -810,7 +665,7 @@ void skin_preferences_are_reachable_live_and_cancelable() {
     menu.activate_done();
     const auto effects=menu.take_effects();
     const auto* commit=find_effect<SettingsCommitCommand>(effects);
-    expect(commit&&commit->changed&&!commit->restart_required&&!commit->display_changed,
+    expect(commit&&commit->changed&&!commit->restart_required&&!commit->resolution_changed,
            "skin preferences must apply without restarting the renderer");
     expect(session.committed().main.show_skins&&!session.committed().main.show_other_skins,
            "Done must persist mine-only without switching off own skin");
@@ -923,23 +778,23 @@ void sensitivity_track_maps_and_its_box_takes_typed_values() {
 void toggle_rows_set_the_clicked_half() {
     SettingsSession session;
     SettingsMenuModel menu{session};
-    auto toggle = row(menu.presentation(), SettingsRowId::show_skins);
+    auto fullscreen = row(menu.presentation(), SettingsRowId::fullscreen);
     const auto on_half =
-        control_point(toggle, toggle.control_bounds.x + toggle.control_bounds.width - 5);
-    const auto off_half = control_point(toggle, toggle.control_bounds.x + 5);
-    const bool initial = session.draft().main.show_skins;
+        control_point(fullscreen, fullscreen.control_bounds.x + fullscreen.control_bounds.width - 5);
+    const auto off_half = control_point(fullscreen, fullscreen.control_bounds.x + 5);
+    const bool initial = session.draft().main.fullscreen;
     click(menu, initial ? on_half : off_half);
-    expect(session.draft().main.show_skins == initial,
+    expect(session.draft().main.fullscreen == initial,
            "clicking the selected half must not flip the toggle");
     click(menu, off_half);
-    expect(!session.draft().main.show_skins, "clicking OFF selects OFF");
+    expect(!session.draft().main.fullscreen, "clicking OFF selects OFF");
     click(menu, off_half);
-    expect(!session.draft().main.show_skins, "clicking OFF again keeps OFF");
+    expect(!session.draft().main.fullscreen, "clicking OFF again keeps OFF");
     menu.pointer_move(on_half);
-    toggle = row(menu.presentation(), SettingsRowId::show_skins);
-    expect(toggle.unselected_half_hovered, "hovering the unselected half highlights it");
+    fullscreen = row(menu.presentation(), SettingsRowId::fullscreen);
+    expect(fullscreen.unselected_half_hovered, "hovering the unselected half highlights it");
     click(menu, on_half);
-    expect(session.draft().main.show_skins, "clicking ON selects ON");
+    expect(session.draft().main.fullscreen, "clicking ON selects ON");
 }
 
 void choice_rows_react_only_to_their_arrows() {
@@ -1013,10 +868,6 @@ int main() {
         {"main_inventory_and_geometry_match_retail", main_inventory_and_geometry_match_retail},
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",
          graphics_capabilities_and_wheel_scrolling_are_deterministic},
-        {"native_graphics_rows_edit_presets_and_report_why_they_are_unavailable",
-         native_graphics_rows_edit_presets_and_report_why_they_are_unavailable},
-        {"window_mode_row_cycles_and_greys_out_resolution_when_borderless",
-         window_mode_row_cycles_and_greys_out_resolution_when_borderless},
         {"resolution_dropdown_opens_scrolls_selects_and_closes_outside",
          resolution_dropdown_opens_scrolls_selects_and_closes_outside},
         {"scrollbar_arrows_track_and_thumb_drive_the_model",

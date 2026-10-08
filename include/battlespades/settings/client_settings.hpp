@@ -6,7 +6,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 
 namespace battlespades::settings {
 
@@ -24,6 +23,7 @@ struct MainSettings final {
     std::string language{"en"};
     double master_volume{1.0};
     double music_volume{1.0};
+    bool fullscreen{true};
     bool invert_mouse{false};
     bool show_skins{true};
     bool show_other_skins{true};
@@ -180,186 +180,6 @@ parse_shader_quality(std::string_view value) noexcept {
     return std::nullopt;
 }
 
-/**
- * How the game window covers the display.
- *
- * `borderless` (the default) is a desktop-sized window on the display the game
- * is on, at the desktop's own mode: alt-tab, overlays and a second monitor
- * work instantly and nothing flickers, and on Windows 10/11 the compositor
- * hands a borderless flip-model swap chain the same direct-scanout path an
- * exclusive one gets. `exclusive` switches the display to the chosen
- * resolution (retail behaviour); `windowed` is a resizable desktop window of
- * the chosen size.
- */
-enum class WindowMode : std::uint8_t {
-    windowed,
-    borderless,
-    exclusive,
-};
-
-[[nodiscard]] constexpr bool is_fullscreen(WindowMode mode) noexcept {
-    return mode != WindowMode::windowed;
-}
-
-/**
- * Alt+Enter: a fullscreen mode goes windowed; windowed returns to the
- * fullscreen mode last used (`remembered`), borderless when there was none.
- */
-[[nodiscard]] constexpr WindowMode alt_enter_window_mode(WindowMode current,
-                                                         WindowMode remembered) noexcept {
-    if (is_fullscreen(current)) {
-        return WindowMode::windowed;
-    }
-    return is_fullscreen(remembered) ? remembered : WindowMode::borderless;
-}
-
-[[nodiscard]] constexpr std::string_view window_mode_name(WindowMode mode) noexcept {
-    switch (mode) {
-    case WindowMode::windowed:
-        return "windowed";
-    case WindowMode::borderless:
-        return "borderless";
-    case WindowMode::exclusive:
-        return "exclusive";
-    }
-    return "borderless";
-}
-
-[[nodiscard]] constexpr std::optional<WindowMode> parse_window_mode(std::string_view value) noexcept {
-    for (const auto mode : {WindowMode::windowed, WindowMode::borderless, WindowMode::exclusive}) {
-        if (window_mode_name(mode) == value) {
-            return mode;
-        }
-    }
-    return std::nullopt;
-}
-
-/** Frame-rate limiter. Frames are always spaced evenly across the 60 Hz tick. */
-enum class FrameLimit : std::uint8_t {
-    /** One frame per display refresh (the default). */
-    display,
-    /** At most `frame_rate_cap` frames per second. */
-    custom,
-    /** As many frames as the pacer allows (up to eight per tick, 480 fps). */
-    unlimited,
-};
-
-/** Upscaling used when the render scale is below 100%. */
-enum class UpscaleFilter : std::uint8_t {
-    bilinear,
-    /** Edge-adaptive spatial upscale (FSR 1 EASU style). */
-    edge_adaptive,
-};
-
-/** Off and three quality steps; used by ambient occlusion, bloom and motion blur. */
-enum class EffectLevel : std::uint8_t {
-    off,
-    low,
-    medium,
-    high,
-};
-
-/** Sun shadow map quality; `automatic` follows the shader tier. */
-enum class ShadowQuality : std::uint8_t {
-    automatic,
-    off,
-    low,
-    medium,
-    high,
-    ultra,
-};
-
-/** Sun shadow reach around the eye; `automatic` follows the draw distance. */
-enum class ShadowDistance : std::uint8_t {
-    automatic,
-    near,
-    medium,
-    far,
-};
-
-/** Colour-vision-deficiency correction of the world image. */
-enum class ColorVision : std::uint8_t {
-    off,
-    protanopia,
-    deuteranopia,
-    tritanopia,
-};
-
-/** Spellings shared by settings.toml and tests; see enum_name/parse_enum. */
-template <typename Enum, std::size_t Count>
-using EnumNames = std::array<std::pair<Enum, std::string_view>, Count>;
-
-inline constexpr EnumNames<FrameLimit, 3U> frame_limit_names{{
-    {FrameLimit::display, "display"},
-    {FrameLimit::custom, "custom"},
-    {FrameLimit::unlimited, "unlimited"},
-}};
-inline constexpr EnumNames<UpscaleFilter, 2U> upscale_filter_names{{
-    {UpscaleFilter::bilinear, "bilinear"},
-    {UpscaleFilter::edge_adaptive, "edge_adaptive"},
-}};
-inline constexpr EnumNames<EffectLevel, 4U> effect_level_names{{
-    {EffectLevel::off, "off"},
-    {EffectLevel::low, "low"},
-    {EffectLevel::medium, "medium"},
-    {EffectLevel::high, "high"},
-}};
-inline constexpr EnumNames<ShadowQuality, 6U> shadow_quality_names{{
-    {ShadowQuality::automatic, "auto"},
-    {ShadowQuality::off, "off"},
-    {ShadowQuality::low, "low"},
-    {ShadowQuality::medium, "medium"},
-    {ShadowQuality::high, "high"},
-    {ShadowQuality::ultra, "ultra"},
-}};
-inline constexpr EnumNames<ShadowDistance, 4U> shadow_distance_names{{
-    {ShadowDistance::automatic, "auto"},
-    {ShadowDistance::near, "near"},
-    {ShadowDistance::medium, "medium"},
-    {ShadowDistance::far, "far"},
-}};
-inline constexpr EnumNames<ColorVision, 4U> color_vision_names{{
-    {ColorVision::off, "off"},
-    {ColorVision::protanopia, "protanopia"},
-    {ColorVision::deuteranopia, "deuteranopia"},
-    {ColorVision::tritanopia, "tritanopia"},
-}};
-
-template <typename Enum, std::size_t Count>
-[[nodiscard]] constexpr std::string_view enum_name(const EnumNames<Enum, Count>& names,
-                                                   Enum value) noexcept {
-    for (const auto& [candidate, name] : names) {
-        if (candidate == value) {
-            return name;
-        }
-    }
-    return {};
-}
-
-template <typename Enum, std::size_t Count>
-[[nodiscard]] constexpr std::optional<Enum> parse_enum(const EnumNames<Enum, Count>& names,
-                                                       std::string_view text) noexcept {
-    for (const auto& [candidate, name] : names) {
-        if (name == text) {
-            return candidate;
-        }
-    }
-    return std::nullopt;
-}
-
-/** Field-of-view range, vertical degrees; retail is fixed at 75. */
-inline constexpr double minimum_field_of_view{60.0};
-inline constexpr double maximum_field_of_view{110.0};
-/**
- * Frame-rate cap range for FrameLimit::custom. Frames are spaced evenly inside
- * the 60 Hz tick, so a cap takes effect as whole frames per tick: the rate is
- * the largest multiple of 60 that does not exceed it.
- */
-inline constexpr std::uint16_t minimum_frame_rate_cap{60U};
-inline constexpr std::uint16_t maximum_frame_rate_cap{480U};
-inline constexpr double minimum_render_scale{0.5};
-inline constexpr double maximum_render_scale{2.0};
-
 /** Preferences exposed by the retail Graphics settings tab. */
 struct GraphicsSettings final {
     Resolution resolution{};
@@ -372,11 +192,11 @@ struct GraphicsSettings final {
     QualityLevel model_quality{QualityLevel::high};
     bool vsync{false};
     /**
-     * How the game window covers the display (Graphics tab, settings.toml
-     * `window_mode`). Replaces retail's Main-tab Fullscreen toggle and the
-     * native `fullscreen_mode` key; SettingsStore migrates both.
+     * Native-only (settings.toml `fullscreen_mode`). Borderless covers the
+     * desktop at its current mode so alt-tab is instant and never minimises
+     * the game; `exclusive` keeps the retail display-mode switch.
      */
-    WindowMode window_mode{WindowMode::borderless};
+    bool borderless_fullscreen{true};
     /**
      * Native-only (settings.toml `render_interpolation`). Extra render-only
      * frames between the fixed 60 Hz ticks on high-refresh displays, with the
@@ -393,43 +213,6 @@ struct GraphicsSettings final {
      * proportions unchanged); 0 picks max(1, floor(height / 1080)).
      */
     double hud_scale{1.0};
-
-    // Native additions to the Graphics tab. Every default reproduces the
-    // renderer as it was before they existed.
-
-    /** Vertical field of view of the world camera in degrees (retail 75). */
-    double field_of_view{75.0};
-    FrameLimit frame_limit{FrameLimit::display};
-    /** Frames per second for FrameLimit::custom. */
-    std::uint16_t frame_rate_cap{144U};
-    /**
-     * Keep at most one frame queued for the GPU (bgfx maxFrameLatency 1).
-     * Off allows two: steadier frame times on a GPU-bound system at the cost
-     * of up to a frame of input latency. Takes effect after a restart.
-     */
-    bool low_latency{true};
-    /** Frame rate and frame-time overlay in a corner of the screen. */
-    bool show_fps{false};
-    /** World resolution relative to the window, 0.5 .. 2.0. */
-    double render_scale{1.0};
-    UpscaleFilter upscale{UpscaleFilter::edge_adaptive};
-    /** Contrast-adaptive sharpening, 0 .. 1. */
-    double sharpness{0.0};
-    /** Anisotropic filtering of world textures at the device maximum. */
-    bool anisotropic_filtering{true};
-    /** Linear world-texture filtering; false is point-sampled ("crisp"). */
-    bool smooth_textures{true};
-    ShadowQuality shadow_quality{ShadowQuality::automatic};
-    ShadowDistance shadow_distance{ShadowDistance::automatic};
-    EffectLevel ambient_occlusion{EffectLevel::off};
-    EffectLevel bloom{EffectLevel::off};
-    /** Camera motion blur (Enhanced tiers only); off by default. */
-    EffectLevel motion_blur{EffectLevel::off};
-    /** Additive brightness, -0.25 .. 0.25. */
-    double brightness{0.0};
-    /** Display gamma adjustment, 0.7 .. 1.6. */
-    double gamma{1.0};
-    ColorVision color_vision{ColorVision::off};
 
     [[nodiscard]] constexpr bool compatibility_shader() const noexcept {
         return shader_quality == ShaderQuality::compatibility;

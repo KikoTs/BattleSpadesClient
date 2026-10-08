@@ -153,21 +153,13 @@ bash scripts/build.sh dev        # or: release
 The script picks `native-linux-*` or `native-macos-*`, builds, runs the tests
 and installs into `out/install/<preset>`.
 
-On Linux the client prefers X11, which Wayland desktops provide through
-XWayland, and falls back to native Wayland when no X server is available. Set
-`SDL_VIDEO_DRIVER=wayland` to use native Wayland directly.
-
 ### Presets
 
 | Platform | Configure / build / test presets |
 | --- | --- |
 | Windows | `native-dev`, `native-release`, `native-debug` (plus headless `dev`, `release`, `debug`) |
-| Windows on Arm | `native-windows-arm64-dev`, `native-windows-arm64-release` |
 | Linux | `native-linux-dev`, `native-linux-release` |
 | macOS | `native-macos-dev`, `native-macos-release` |
-
-All six platform builds (Windows, Linux and macOS on x64 and arm64) can also
-be made on GitHub Actions; see [docs/BUILDING.md](docs/BUILDING.md).
 
 The [runbook](docs/RUNBOOK.md) covers staging a playable folder, packaging,
 shaders, hosting, smoke tests and diagnostics. The
@@ -205,10 +197,6 @@ Bug reports, fixes and parity research are welcome. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report
 security problems privately as described in [SECURITY.md](SECURITY.md). Chat
 with the community on [Discord](https://discord.gg/aosbb).
-
-Thanks to the people who have contributed fixes:
-[@lucasoskorep](https://github.com/lucasoskorep) (Linux XWayland and native
-Wayland start-up, Classic CTF in the server browser, GCC 16 build warnings).
 
 ## License
 

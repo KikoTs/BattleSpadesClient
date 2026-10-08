@@ -320,7 +320,7 @@ void MatchLoadingModel::set_infographic_captions(std::array<std::string, 3U> cap
     for (std::size_t index{}; index < captions.size(); ++index) {
         // BattleSpades sends its short wire code; these three stock aliases
         // use different localization prefixes in the retail string catalog.
-        for (const auto& [wire, catalog] : {std::pair{"OC_INFOGRAPHIC_", "OCC_INFOGRAPHIC_"},
+        for (const auto [wire, catalog] : {std::pair{"OC_INFOGRAPHIC_", "OCC_INFOGRAPHIC_"},
                                          std::pair{"CCTF_INFOGRAPHIC_", "CTF_INFOGRAPHIC_"},
                                          std::pair{"NOR_INFOGRAPHIC_", "TDM_INFOGRAPHIC_"}}) {
             if (captions[index].starts_with(wire))

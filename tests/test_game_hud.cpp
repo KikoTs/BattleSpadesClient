@@ -521,9 +521,8 @@ int main() {
                        observed_retail_outline,
                    "ScoreLine fade must retain retail's foreground/stroke alpha curve");
 
-            // A title plus four reason rows is full. A fifth reason no longer
-            // restarts the stack (that wiped rows not yet shown, and their
-            // points never reached the title): its points join the title.
+            // A title plus four reason rows is full. Retail resets instead of
+            // retaining a fifth reason and displacing an earlier causal line.
             model.add_score_award(10, 1U);
             model.add_score_award(20, 3U);
             model.add_score_award(30, 4U);
@@ -531,24 +530,10 @@ int main() {
             expect(model.score_award().lines.size() == 5U,
                    "four reasons plus the title must fill the retail stack");
             model.add_score_award(50, 11U);
-            expect(model.score_award().lines.size() == 5U &&
-                       model.score_award().lines[1].text == "Kill",
-                   "a full stack keeps its rows");
-            for (int tick{}; tick < 90; ++tick) {
-                model.tick();
-                if (model.score_award().lines.empty()) break;
-                expect(model.score_award().displayed_delta <= 150, "no award counted twice");
-            }
-            {
-                GameHudModel burst;
-                for (std::int32_t award : {100, 150, 50, 50, 100, 75}) burst.add_score_award(award, 1U);
-                std::int32_t shown{};
-                for (int tick{}; tick < 120 && !burst.score_award().lines.empty(); ++tick) {
-                    shown = std::max(shown, burst.score_award().displayed_delta);
-                    burst.tick();
-                }
-                expect(shown == 525, "every award of a burst reaches the title");
-            }
+            expect(model.score_award().displayed_delta == 50 &&
+                       model.score_award().lines.size() == 2U &&
+                       model.score_award().lines[1].text == "Defend",
+                   "the next score reason must start a fresh title/reason stack");
             model.set_ammo_state("png/ui/weapons/pistol.png", 7, 24, true);
             model.set_player_score(300, true);
             model.set_inventory_state({GameHudInventorySlot{"png/ui/weapons/block.png", "1"},

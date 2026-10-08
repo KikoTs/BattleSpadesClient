@@ -59,22 +59,10 @@ target_link_libraries(aos_pause_menu_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_pause_menu_tests)
 add_test(NAME aos_pause_menu_tests COMMAND aos_pause_menu_tests)
 
-add_executable(aos_post_math_tests test_post_math.cpp)
-target_link_libraries(aos_post_math_tests PRIVATE BattleSpades::World)
-aos_enable_strict_warnings(aos_post_math_tests)
-add_test(NAME aos_post_math_tests COMMAND aos_post_math_tests)
-
 add_executable(aos_camera_basis_tests test_camera_basis.cpp)
 target_link_libraries(aos_camera_basis_tests PRIVATE BattleSpades::World)
 aos_enable_strict_warnings(aos_camera_basis_tests)
 add_test(NAME aos_camera_basis_tests COMMAND aos_camera_basis_tests)
-
-# Mouse look must turn the camera every presented frame, not in 60 Hz steps,
-# without changing the orientation the ticks send. Simulated clock; no GPU.
-add_executable(aos_look_smoothness_tests test_look_smoothness.cpp)
-target_link_libraries(aos_look_smoothness_tests PRIVATE BattleSpades::World BattleSpades::Core)
-aos_enable_strict_warnings(aos_look_smoothness_tests)
-add_test(NAME aos_look_smoothness_tests COMMAND aos_look_smoothness_tests)
 
 add_executable(aos_shadow_projection_tests test_shadow_projection.cpp)
 target_link_libraries(aos_shadow_projection_tests PRIVATE BattleSpades::World)
@@ -85,12 +73,6 @@ add_executable(aos_death_camera_tests test_death_camera.cpp)
 target_link_libraries(aos_death_camera_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_death_camera_tests)
 add_test(NAME aos_death_camera_tests COMMAND aos_death_camera_tests)
-
-# The retail achievement table and this player's unlock ledger.
-add_executable(aos_achievements_tests test_achievements.cpp)
-target_link_libraries(aos_achievements_tests PRIVATE BattleSpades::Frontend)
-aos_enable_strict_warnings(aos_achievements_tests)
-add_test(NAME aos_achievements_tests COMMAND aos_achievements_tests)
 
 # Render-rate interpolation between fixed ticks and even frame pacing. The
 # interpolation is header-only, so the frontend library is not linked.
@@ -257,11 +239,6 @@ add_executable(aos_quality_profile_tests test_quality_profile.cpp)
 target_link_libraries(aos_quality_profile_tests PRIVATE BattleSpades::Settings)
 aos_enable_strict_warnings(aos_quality_profile_tests)
 add_test(NAME aos_quality_profile_tests COMMAND aos_quality_profile_tests)
-
-add_executable(aos_graphics_options_tests test_graphics_options.cpp)
-target_link_libraries(aos_graphics_options_tests PRIVATE BattleSpades::Settings BattleSpades::Core)
-aos_enable_strict_warnings(aos_graphics_options_tests)
-add_test(NAME aos_graphics_options_tests COMMAND aos_graphics_options_tests)
 
 add_executable(aos_graphics_apply_tests test_graphics_apply.cpp)
 target_link_libraries(aos_graphics_apply_tests PRIVATE BattleSpades::Settings)
@@ -826,21 +803,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_asset_install_tests)
     add_test(NAME aos_asset_install_tests COMMAND aos_asset_install_tests)
 
-    # Steam/Proton/CrossOver discovery and "Download game assets" (synthetic
-    # files only), plus the installer's real HTTP path against a local server.
-    add_executable(aos_retail_download_tests test_retail_download.cpp)
-    target_link_libraries(aos_retail_download_tests PRIVATE BattleSpades::AssetInstall)
-    aos_enable_strict_warnings(aos_retail_download_tests)
-    add_test(NAME aos_retail_download_tests COMMAND aos_retail_download_tests)
-    set_tests_properties(aos_retail_download_tests PROPERTIES TIMEOUT 120)
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
-        add_test(NAME aos_retail_download_http_tests COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/test_retail_download_http.py"
-            "$<TARGET_FILE:BattleSpadesAssetInstaller>")
-        set_tests_properties(aos_retail_download_http_tests PROPERTIES TIMEOUT 120)
-    endif()
-
     add_executable(aos_ugc_preview_writer_tests test_ugc_preview_writer.cpp)
     target_link_libraries(aos_ugc_preview_writer_tests PRIVATE BattleSpades::FrontendNative)
     aos_enable_strict_warnings(aos_ugc_preview_writer_tests)
@@ -1063,22 +1025,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
         aos_enable_strict_warnings(aos_shadow_stability_render_tests)
         add_test(NAME aos_shadow_stability_render_tests COMMAND aos_shadow_stability_render_tests)
-        # World post chain: every effect against the same frame with it off, on
-        # each desktop backend this machine can start (others report SKIP).
-        add_executable(aos_post_process_render_tests test_post_process_render.cpp)
-        target_link_libraries(aos_post_process_render_tests PRIVATE
-            BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
-        target_include_directories(aos_post_process_render_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
-        target_compile_definitions(aos_post_process_render_tests PRIVATE
-            AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}"
-            AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
-        aos_enable_strict_warnings(aos_post_process_render_tests)
-        foreach(_aos_post_backend IN ITEMS direct3d11 direct3d12 vulkan opengl)
-            add_test(NAME aos_post_process_render_${_aos_post_backend}
-                     COMMAND aos_post_process_render_tests ${_aos_post_backend})
-            set_tests_properties(aos_post_process_render_${_aos_post_backend}
-                                 PROPERTIES RESOURCE_LOCK gpu TIMEOUT 120)
-        endforeach()
         add_executable(aos_inventory_view_tests test_inventory_view.cpp)
         add_executable(aos_cosmetic_icon_tests test_cosmetic_icons.cpp)
         target_link_libraries(aos_cosmetic_icon_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)

@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <chrono>
-#include <set>
 #include <cstdlib>
 #include <fstream>
 #include <stdexcept>
@@ -507,81 +506,6 @@ exit 0
 #endif
 #endif
 
-void generates_fresh_unambiguous_room_secrets() {
-    using namespace battlespades::platform;
-    std::set<std::string> passwords;
-    std::set<std::string> tokens;
-    for (int index{}; index < 64; ++index) {
-        const auto password = generate_local_room_admin_password();
-        const auto token = generate_local_room_creator_token();
-        expect(password.size() == local_room_admin_password_length &&
-                   valid_local_room_admin_password(password),
-               "room admin passwords must satisfy the server's 12+ character rule");
-        expect(password.find_first_of("0O1lI") == std::string::npos,
-               "room admin passwords must avoid look-alike characters");
-        expect(token.size() == local_room_creator_token_length &&
-                   valid_local_room_creator_token(token),
-               "creator tokens must be 32 URL-safe characters the server accepts");
-        passwords.insert(password);
-        tokens.insert(token);
-    }
-    expect(passwords.size() == 64U && tokens.size() == 64U,
-           "every room must get its own password and creator token");
-    expect(generate_local_server_secret(8U, "").empty(),
-           "an empty alphabet cannot produce a secret");
-    expect(generate_local_server_secret(40U, "ab").find_first_not_of("ab") == std::string::npos,
-           "secrets use only the requested alphabet");
-    expect(!valid_local_room_admin_password("changeme") &&
-               !valid_local_room_admin_password("short") &&
-               !valid_local_room_admin_password("has spaces in it!"),
-           "the shared default or weak passwords are never valid room passwords");
-    expect(!valid_local_room_creator_token("abc") &&
-               !valid_local_room_creator_token(std::string(24U, '"')),
-           "short or quoted creator tokens are rejected");
-}
-
-void writes_per_room_admin_secrets_into_the_session_config() {
-    using namespace battlespades::platform;
-    LocalServerLaunchConfig config;
-    config.map_name = "AncientEgypt";
-    const auto without = build_local_server_toml(config, 27015U);
-    expect(!without.empty() && without.find("[admin]") == std::string::npos,
-           "rooms without generated secrets leave [admin] alone");
-
-    config.admin_password = generate_local_room_admin_password();
-    config.creator_token = generate_local_room_creator_token();
-    const auto toml = build_local_server_toml(config, 27015U);
-    expect(toml.find("[admin]\npassword = \"" + config.admin_password + "\"\ncreator_token = \"" +
-                     config.creator_token + "\"\n") != std::string::npos,
-           "the session config carries this room's own admin password and creator token");
-    expect(toml.find("changeme") == std::string::npos,
-           "a client-hosted room never uses the shared default password");
-
-    auto weak = config;
-    weak.admin_password = "changeme";
-    expect(build_local_server_toml(weak, 27015U).empty(),
-           "a weak room password fails closed instead of disabling admin silently");
-    auto injected = config;
-    injected.creator_token = std::string(30U, 'a') + "\"\n[x]";
-    expect(build_local_server_toml(injected, 27015U).empty(),
-           "a malformed creator token can never inject TOML");
-}
-
-void claims_admin_once_then_logs_in_with_the_room_password() {
-    using namespace battlespades::platform;
-    const auto password = generate_local_room_admin_password();
-    const auto token = generate_local_room_creator_token();
-    expect(local_room_admin_command(token, password, false) == "/claimhost " + token,
-           "the first join redeems the one-time creator token");
-    expect(local_room_admin_command(token, password, true) == "/admin " + password,
-           "a rejoin after the token was spent logs in with the room password");
-    expect(local_room_admin_command("", password, false) == "/admin " + password,
-           "without a token the room password is used");
-    expect(local_room_admin_command("", "", false).empty() &&
-               local_room_admin_command("bad", "changeme", false).empty(),
-           "unusable secrets send nothing");
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -601,9 +525,6 @@ int main(int argc, char** argv) {
         hosts_an_authored_map_from_a_private_maps_directory();
         serializes_the_isolated_map_creator_program();
         enables_public_identity_only_for_a_complete_relay_contract();
-        generates_fresh_unambiguous_room_secrets();
-        writes_per_room_admin_secrets_into_the_session_config();
-        claims_admin_once_then_logs_in_with_the_room_password();
 #if !defined(_WIN32)
         launches_relative_posix_bundle_with_private_environment_and_graceful_control();
         closed_posix_control_does_not_raise_sigpipe_in_the_client();

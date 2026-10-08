@@ -11,19 +11,6 @@
 namespace battlespades::updater {
 
 inline constexpr std::string_view default_manifest_url = "https://www.aosplay.net/updates/stable.json";
-/**
- * Copy of stable.json on the client repository's fixed "update-manifest"
- * release, tried when aosplay.net cannot be reached (for example where the
- * site's host is blocked). Every publish uploads the same file to both.
- */
-inline constexpr std::string_view default_manifest_mirror_url =
-    "https://github.com/KikoTs/BattleSpadesClient/releases/download/update-manifest/stable.json";
-/**
- * The last stable.json that was fetched successfully, kept in <install>/update.
- * When the server is slow or blocked later, the first-run screen still offers
- * "Download game assets" from it: its mirrors (Google Drive) may still answer.
- */
-inline constexpr std::string_view saved_manifest_name = "last-manifest.json";
 inline constexpr std::string_view component_client = "client";
 inline constexpr std::string_view component_server = "server";
 inline constexpr std::string_view component_assets = "assets";

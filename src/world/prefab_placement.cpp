@@ -70,17 +70,12 @@ std::array<float, 16U> prefab_preview_transform(
     const auto x = rotate_prefab_cell({1, 0, 0}, yaw, pitch, roll);
     const auto y = rotate_prefab_cell({0, 1, 0}, yaw, pitch, roll);
     const auto z = rotate_prefab_cell({0, 0, 1}, yaw, pitch, roll);
-    // Cell coordinates and axis components are small integers, exact in float.
-    const auto translate = [&pivot](std::int32_t origin, int ax, int ay, int az) noexcept {
-        return static_cast<float>(origin) + 0.5F + pivot[0U] * static_cast<float>(ax) +
-               pivot[1U] * static_cast<float>(ay) + pivot[2U] * static_cast<float>(az);
-    };
     return {static_cast<float>(x.x), static_cast<float>(x.y), static_cast<float>(x.z), 0.0F,
             static_cast<float>(-z.x), static_cast<float>(-z.y), static_cast<float>(-z.z), 0.0F,
             static_cast<float>(y.x), static_cast<float>(y.y), static_cast<float>(y.z), 0.0F,
-            translate(anchor.x, x.x, y.x, z.x),
-            translate(anchor.y, x.y, y.y, z.y),
-            translate(anchor.z, x.z, y.z, z.z), 1.0F};
+            anchor.x + 0.5F + pivot[0U] * x.x + pivot[1U] * y.x + pivot[2U] * z.x,
+            anchor.y + 0.5F + pivot[0U] * x.y + pivot[1U] * y.y + pivot[2U] * z.y,
+            anchor.z + 0.5F + pivot[0U] * x.z + pivot[1U] * y.z + pivot[2U] * z.z, 1.0F};
 }
 
 namespace {

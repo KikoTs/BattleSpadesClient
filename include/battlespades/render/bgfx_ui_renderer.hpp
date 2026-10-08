@@ -221,12 +221,6 @@ struct BgfxUiRendererConfig final {
     /** Startup-only png/low, png/med, or png/high resource root. */
     TextureQualityTier texture_quality{TextureQualityTier::medium};
     bool debug_device{false};
-    /**
-     * Swap-chain queue depth, 1 .. 3. 1 = at most one frame queued (lowest
-     * input latency, the default); 2 smooths GPU-bound frame times at up to a
-     * frame of latency. Startup-only (bgfx has no runtime setter).
-     */
-    std::uint8_t max_frame_latency{bgfx_max_frame_latency};
 };
 
 /**

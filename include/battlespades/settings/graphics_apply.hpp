@@ -35,14 +35,9 @@ struct GraphicsApplyPlan final {
      * chunk mesher bakes; the resident terrain is re-meshed over several frames.
      */
     bool terrain_remesh{};
-    /**
-     * Read every frame: draw distance, render interpolation, HUD scale, field
-     * of view, frame limiter, FPS counter, render scale/upscale/sharpening,
-     * texture filtering, shadows, AO, bloom, motion blur, brightness, gamma
-     * and colour vision.
-     */
+    /** Draw distance, render interpolation or HUD scale: read every frame. */
     bool per_frame{};
-    /** Graphics API, texture or model quality, frame latency: startup-only. */
+    /** Graphics API, texture or model quality: startup-only resources. */
     bool restart_only{};
 
     /** True when something the player changed will only show after a restart. */

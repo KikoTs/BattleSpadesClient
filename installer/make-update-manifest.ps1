@@ -179,22 +179,8 @@ if ($Verify) {
     foreach ($name in $components.Keys) {
         foreach ($url in $components[$name].urls) {
             try {
-                try {
-                    $response = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url -MaximumRedirection 5
-                    $length = [int64]($response.Headers['Content-Length'] | Select-Object -First 1)
-                } catch {
-                    # Some hosts (presigned redirects such as Drime's) answer GET
-                    # only, like the game's downloader uses: ask for one byte and
-                    # read the total from Content-Range.
-                    # (Windows PowerShell 5.1 cannot set Range through -Headers.)
-                    $request = [System.Net.HttpWebRequest]::Create($url)
-                    $request.AddRange([int64]0, [int64]0)
-                    $request.AllowAutoRedirect = $true
-                    $ranged = $request.GetResponse()
-                    try { $range = [string]$ranged.Headers['Content-Range'] } finally { $ranged.Close() }
-                    if ($range -notmatch '/(\d+)$') { throw "no size in the reply (Content-Range '$range')" }
-                    $length = [int64]$Matches[1]
-                }
+                $response = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url -MaximumRedirection 5
+                $length = [int64]($response.Headers['Content-Length'] | Select-Object -First 1)
                 if ($length -ne $components[$name].size) { $failures += "$url : size $length, expected $($components[$name].size)" }
                 else { Write-Host "ok   $url" }
             } catch {

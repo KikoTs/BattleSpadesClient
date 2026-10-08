@@ -223,7 +223,7 @@ bool undo(const UpdateLayout& layout, const fs::path& rollback, const fs::path& 
     const auto text = read_text_file(file, error);
     if (!text.has_value()) return std::nullopt;
     try {
-        return std::optional<nlohmann::json>{std::in_place, nlohmann::json::parse(*text)};
+        return nlohmann::json::parse(*text);
     } catch (...) {
         return std::nullopt;
     }

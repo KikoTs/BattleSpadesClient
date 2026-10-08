@@ -91,8 +91,7 @@ RunResult Application::run() {
             };
             if (config_.pace_to_wall_clock && !stop_requested && pacing.present) {
                 // Optional render-only frames for high-refresh displays. They
-                // never advance simulation (they may turn the view with queued
-                // mouse motion, see present_intermediate), and scheduling keeps
+                // never poll input or advance simulation, and scheduling keeps
                 // slack before the next tick so the 60 Hz cadence is intact.
                 auto period = std::chrono::nanoseconds::zero();
                 for (const auto& module : modules_) {

@@ -692,12 +692,10 @@ public:
     /**
      * Window-pixel offset for the command tagged `anchor` in a frame `alpha`
      * of the way through the tick, whose eye is `eye_offset` away from the
-     * tick's own eye and whose view turned `look_offset` {yaw, pitch} degrees
-     * further with the live mouse input. Zero when the point cannot be followed.
+     * tick's own eye. Zero when the point cannot be followed.
      */
     [[nodiscard]] std::array<double, 2U> shift(std::uint16_t anchor, double alpha,
-                                               std::array<double, 3U> eye_offset,
-                                               std::array<double, 2U> look_offset = {}) const noexcept {
+                                               std::array<double, 3U> eye_offset) const noexcept {
         if (anchor == 0U || anchor > current_.size() || !std::isfinite(alpha)) {
             return {};
         }
@@ -720,10 +718,7 @@ public:
             }
         }
         const auto recorded = project(current.position, current.view, {});
-        auto turned = current.view;
-        turned.yaw_degrees += look_offset[0U];
-        turned.pitch_degrees += look_offset[1U];
-        const auto moved = project(point, turned, eye_offset);
+        const auto moved = project(point, current.view, eye_offset);
         if (!recorded.valid || !moved.valid) {
             return {};
         }

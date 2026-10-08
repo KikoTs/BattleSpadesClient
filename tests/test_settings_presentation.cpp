@@ -230,7 +230,7 @@ void graphics_rows_narrow_for_scrollbar_and_thumb_tracks_offset() {
     }
 
     auto commands = build(snapshot);
-    const auto row = find_sprite(commands,
+    const auto& row = find_sprite(commands,
                                   "settings_matchsettings_frame",
                                   DrawRect{162.0, 143.0, 442.0, 32.0});
     expect(row.retail_source_scale == 0.64,
@@ -238,7 +238,7 @@ void graphics_rows_narrow_for_scrollbar_and_thumb_tracks_offset() {
     static_cast<void>(find_sprite(
         commands, "white.png", DrawRect{337.333'333'333'333'3, 147.0, 252.666'666'666'666'7, 24.0}));
     static_cast<void>(find_sprite(commands, "white.png", DrawRect{614.0, 143.0, 22.0, 273.0}));
-    const auto top_thumb =
+    const auto& top_thumb =
         find_sprite(commands, "scroll_bar_top", DrawRect{615.0, 167.0, 20.0, 4.0});
     expect(top_thumb.sampling == TextureFilter::linear,
            "retail scrollbar bevels must use filtered sub-pixel sampling");
@@ -279,7 +279,7 @@ void controls_categories_key_bindings_and_dropdown_overlay_stack_correctly() {
 
     const auto commands = build(snapshot);
     static_cast<void>(find_sprite(commands, "white.png", DrawRect{162.0, 143.0, 474.0, 26.0}));
-    const auto minus = find_sprite(
+    const auto& minus = find_sprite(
         commands, "collapse_minus", DrawRect{604.0, 147.0, 18.0, 18.0});
     expect(minus.retail_source_scale == 1.0,
            "expanded category must place its collapse marker in the recovered right gutter");
@@ -339,7 +339,7 @@ void range_toggle_checkbox_and_scalar_controls_emit_retail_state_art() {
            "volume control must retain the retail 33-segment bar instead of a generic fill");
     expect(find_text(commands, "ON").destination.y == 185.0,
            "toggle labels must render inside the second retail row");
-    const auto star = find_sprite(commands,
+    const auto& star = find_sprite(commands,
                                    "favourite_star_settings_off",
                                    DrawRect{602.0, 219.0, 16.0, 16.0});
     expect(star.modulation.color == battlespades::ui::ColorRgba8{83U, 83U, 83U, 255U},

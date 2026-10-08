@@ -56,6 +56,25 @@ target_link_libraries(aos_assets PUBLIC BattleSpades::BuildOptions)
 aos_enable_strict_warnings(aos_assets)
 
 add_subdirectory("${PROJECT_SOURCE_DIR}/third_party/angelscript" "${PROJECT_BINARY_DIR}/third_party/angelscript")
+
+# Haiku compatibility: nlohmann_json package does not export the standard target
+find_package(nlohmann_json CONFIG REQUIRED)
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    find_path(NLOHMANN_JSON_INCLUDE_DIR
+        NAMES nlohmann/json.hpp
+        PATHS
+            /boot/system/develop/headers
+            /system/develop/headers
+    )
+    if(NOT NLOHMANN_JSON_INCLUDE_DIR)
+        message(FATAL_ERROR "nlohmann/json.hpp was not found")
+    endif()
+    add_library(nlohmann_json_haiku INTERFACE)
+    target_include_directories(nlohmann_json_haiku INTERFACE "${NLOHMANN_JSON_INCLUDE_DIR}")
+    add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json_haiku)
+    message(STATUS "Haiku nlohmann_json compatibility target: ${NLOHMANN_JSON_INCLUDE_DIR}")
+endif()
+
 add_library(
     aos_world
     STATIC
@@ -175,8 +194,6 @@ add_library(
         frontend/class_selection_presentation.cpp
         frontend/change_team_menu.cpp
         frontend/kick_vote_menu.cpp
-        frontend/achievements.cpp
-        frontend/achievements.generated.cpp
         frontend/death_camera.cpp
         frontend/favorite_server_store.cpp
         frontend/frontend_controller.cpp
@@ -292,19 +309,51 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     find_package(harfbuzz CONFIG REQUIRED)
     find_package(CURL REQUIRED)
     find_package(nlohmann_json CONFIG REQUIRED)
-    find_package(unofficial-sodium CONFIG REQUIRED)
-    # Use the native OpenAL framework on macOS. Other platforms receive
-    # OpenAL Soft from vcpkg; its CMake package (same OpenAL::OpenAL target)
-    # carries the fmt dependency a static Linux build must link, which
-    # CMake's FindOpenAL module does not know about.
-    if(APPLE)
-        find_package(OpenAL REQUIRED)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        find_package(PkgConfig REQUIRED)
+
+        pkg_check_modules(
+            AOS_SODIUM
+            REQUIRED
+            IMPORTED_TARGET
+            libsodium
+        )
+
+        if(NOT TARGET unofficial-sodium::sodium)
+            add_library(
+                unofficial-sodium::sodium
+                ALIAS
+                PkgConfig::AOS_SODIUM
+            )
+        endif()
     else()
-        find_package(OpenAL CONFIG REQUIRED)
+        find_package(unofficial-sodium CONFIG REQUIRED)
     endif()
+    # Use the native OpenAL framework on macOS. Other platforms receive
+    # OpenAL Soft from vcpkg, and CMake's module exposes the same target.
+    find_package(OpenAL REQUIRED)
     find_package(Stb REQUIRED)
     find_package(ZLIB REQUIRED)
-    find_package(unofficial-enet CONFIG REQUIRED)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        if(NOT TARGET PkgConfig::AOS_ENET)
+            pkg_check_modules(
+                AOS_ENET
+                REQUIRED
+                IMPORTED_TARGET
+                libenet
+            )
+        endif()
+
+        if(NOT TARGET unofficial::enet::enet)
+            add_library(
+                unofficial::enet::enet
+                ALIAS
+                PkgConfig::AOS_ENET
+            )
+        endif()
+    else()
+        find_package(unofficial-enet CONFIG REQUIRED)
+    endif()
 
     # Native HTML/CSS-style menus share the existing renderer and asset tree.
     # Pin the release archive; no browser process or runtime download is used.
@@ -331,26 +380,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         set(BUILD_SHARED_LIBS "${_aos_saved_build_shared_libs}")
     endif()
 
-    # The updater core again, with the default CRT: the asset installer reads
-    # the same release manifest, verifies and extracts the same packages and
-    # parses the same Steam library files on every OS.
-    include("${CMAKE_CURRENT_SOURCE_DIR}/updater/core_sources.cmake")
-    add_library(aos_updater_portable STATIC ${AOS_UPDATER_CORE_SOURCES})
-    add_library(BattleSpades::UpdaterPortable ALIAS aos_updater_portable)
-    target_include_directories(aos_updater_portable PUBLIC "${PROJECT_SOURCE_DIR}/include")
-    target_link_libraries(
-        aos_updater_portable
-        PUBLIC
-            BattleSpades::BuildOptions
-            nlohmann_json::nlohmann_json
-    )
-    aos_enable_strict_warnings(aos_updater_portable)
-
     add_library(
         aos_asset_install
         STATIC
             assets/asset_install.cpp
-            assets/retail_download.cpp
     )
     add_library(BattleSpades::AssetInstall ALIAS aos_asset_install)
     target_include_directories(
@@ -362,11 +395,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_asset_install
         PUBLIC
             BattleSpades::BuildOptions
-            BattleSpades::UpdaterPortable
         PRIVATE
             nlohmann_json::nlohmann_json
             unofficial-sodium::sodium
-            CURL::libcurl
     )
     aos_enable_strict_warnings(aos_asset_install)
 
@@ -500,12 +531,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         target_link_libraries(aos_steam_p2p_smoke PRIVATE BattleSpades::SteamNet)
         aos_enable_strict_warnings(aos_steam_p2p_smoke)
 
-        # Prints Steam's own server list for Ace of Spades (what the browser
-        # merges beside AoSPlay). Needs a running Steam client.
-        add_executable(aos_steam_server_list_probe "${PROJECT_SOURCE_DIR}/tools/steam_server_list_probe.cpp")
-        target_link_libraries(aos_steam_server_list_probe PRIVATE BattleSpades::SteamNet)
-        aos_enable_strict_warnings(aos_steam_server_list_probe)
-
         # Lists this account's Workshop subscriptions (and, with --download,
         # fetches them into a scratch directory) without the game.
         add_executable(aos_workshop_sync_probe "${PROJECT_SOURCE_DIR}/tools/workshop_sync_probe.cpp")
@@ -558,6 +583,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     if(WIN32)
         # The vcpkg ENet static target does not propagate its platform libs.
         target_link_libraries(aos_network_enet PUBLIC ws2_32 winmm crypt32)
+    endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        # Haiku keeps the BSD/POSIX socket API in libnetwork.
+        target_link_libraries(aos_network_enet PUBLIC network)
     endif()
     aos_enable_strict_warnings(aos_network_enet)
 
@@ -730,7 +760,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_render_bgfx
         STATIC
             render/bgfx_ui_renderer.cpp
-            render/post_process.cpp
             render/texture_quality.cpp
             render/world_renderer.cpp
     )
@@ -834,12 +863,6 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     set_source_files_properties(
         frontend/ugc_preview_writer.cpp
         PROPERTIES COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS"
-    )
-    # The embedded inventory catalogue is a 1.2 MB constexpr string_view; GCC
-    # stops constant-evaluating its length at 262,144 loop iterations.
-    set_source_files_properties(
-        frontend/inventory_session.cpp
-        PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-fconstexpr-loop-limit=16777216;-fconstexpr-ops-limit=4294967296>"
     )
     if(AOS_ENABLE_STEAM_NETWORKING)
         target_link_libraries(aos_frontend_native PRIVATE BattleSpades::SteamNet)

@@ -4,7 +4,6 @@
 #include "battlespades/updater/update_manifest.hpp"
 
 #include <cstdint>
-#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -112,13 +111,5 @@ struct MirrorResult {
  */
 [[nodiscard]] MirrorResult try_mirrors(const std::vector<std::string>& urls,
                                        const std::function<MirrorOutcome(const std::string&, std::string&)>& attempt);
-
-/**
- * The one check every downloaded package passes (launcher updates and the
- * asset installer's "Download game assets" alike): exact size, then SHA-256.
- * `error` says which check failed.
- */
-[[nodiscard]] bool verify_package_file(const std::filesystem::path& file, std::uint64_t expected_size,
-                                       std::string_view expected_sha256, std::string& error);
 
 } // namespace battlespades::updater

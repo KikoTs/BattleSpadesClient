@@ -158,36 +158,6 @@ int main() {
                    "VIP SelectClass must never submit an empty texture path");
         }
 
-        {
-            // BattleSpades TDM / Zombie survivor roster (BS server/class_data.py
-            // BATTLESPADES_TEAM_CLASSES): the stock six plus the Rocketeer,
-            // restored 2026-10-01. Its equipment row is Glide (67) first, then
-            // the Jump pack (66), and the packet keeps the chosen pack id.
-            constexpr std::array<std::uint8_t, 7U> battlespades_roster{
-                0U, 1U, 12U, 3U, 2U, 16U, 17U};
-            menu.configure(battlespades_roster, 2U, 2U);
-            expect(menu.classes().size() == 7U && menu.selected_class() == 2U,
-                   "the Rocketeer must be pickable from the advertised roster");
-            auto rocketeer = menu.selection();
-            expect(rocketeer.class_id == 2U &&
-                       std::ranges::find(rocketeer.loadout, 67U) != rocketeer.loadout.end() &&
-                       std::ranges::find(rocketeer.loadout, 66U) == rocketeer.loadout.end(),
-                   "the Rocketeer's default equipment is the Glider pack");
-            menu.cycle_group(3U, 1);
-            rocketeer = menu.selection();
-            expect(rocketeer.class_id == 2U &&
-                       std::ranges::find(rocketeer.loadout, 66U) != rocketeer.loadout.end() &&
-                       std::ranges::find(rocketeer.loadout, 67U) == rocketeer.loadout.end(),
-                   "the Jump pack must be the Rocketeer's alternative equipment");
-            const auto rocketeer_draw = presentation.build(menu, {800, 600});
-            // CLASS_NAMES[ROCKETEER] is the string id ENGINEER (english.py:
-            // ENGINEER = u'Rocketeer'); the Engineer itself uses ENGINEER2.
-            expect(find_text(rocketeer_draw, "ENGINEER") != nullptr &&
-                       has_sprite(rocketeer_draw, "png/ui/weapons/jetpack.png") &&
-                       has_sprite(rocketeer_draw, "png/ui/weapons/jetpack2.png"),
-                   "the Rocketeer card must show its name and both pack icons");
-        }
-
         constexpr std::array<std::uint8_t, 7U> full_roster{0U, 1U, 2U, 3U, 12U, 16U, 17U};
         // Exercise both retail card layouts and smaller server rosters. The
         // former bug drew a four-card background with five-card hit targets.

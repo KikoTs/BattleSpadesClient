@@ -1,8 +1,5 @@
 #pragma once
 
-#include "battlespades/core/frame_pacing.hpp"
-#include "battlespades/settings/client_settings.hpp"
-
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -17,7 +14,7 @@ namespace battlespades::frontend {
  * high-refresh display the frontend presents extra frames between ticks and
  * draws the camera eye `alpha` of the way from the previous tick's eye to the
  * current one (a one-tick presentation delay for position only; yaw/pitch
- * always use the latest mouse input, see LiveLookFollow). Jumps longer than `snap_distance`
+ * always use the latest mouse input). Jumps longer than `snap_distance`
  * (respawn, teleport, camera-mode switch) are never smoothed.
  */
 class CameraEyeInterpolator final {
@@ -70,43 +67,6 @@ private:
     bool valid_{false};
 };
 
-/**
- * How a render-only frame orients the camera.
- *
- * Mouse look is consumed between ticks (WindowPort::take_leading_mouse_motion)
- * and accumulates in the session's yaw/pitch, which the next tick turns into
- * the networked orientation exactly as before. A render-only frame of a
- * first-person view must therefore draw the camera at the LATEST look angles,
- * not at the angles the last tick frame was drawn with: re-using the tick
- * frame's camera turned the view in 60 Hz steps on a 144 Hz display, three
- * identical orientations and then a jump, which is the judder players see
- * when they move the mouse quickly.
- *
- * Views that do not follow the player's look (death camera, match results,
- * construct placement) keep the tick frame's orientation.
- */
-struct LiveLookFollow final {
-    bool follows{false};
-    /** Added to the live angles (a jetpack corpse spins the dead view). */
-    double yaw_offset_degrees{};
-    double pitch_offset_degrees{};
-    double pitch_limit_degrees{90.0};
-
-    /** {yaw, pitch} for a render-only frame; the tick frame's angles when not following. */
-    [[nodiscard]] constexpr std::array<double, 2U> orient(double live_yaw, double live_pitch,
-                                                          double tick_yaw,
-                                                          double tick_pitch) const noexcept {
-        if (!follows) {
-            return {tick_yaw, tick_pitch};
-        }
-        const double pitch = live_pitch + pitch_offset_degrees;
-        return {live_yaw + yaw_offset_degrees,
-                pitch < -pitch_limit_degrees
-                    ? -pitch_limit_degrees
-                    : (pitch > pitch_limit_degrees ? pitch_limit_degrees : pitch)};
-    }
-};
-
 /** Displays at or below this refresh rate keep exactly one frame per tick. */
 inline constexpr std::uint32_t render_interpolation_minimum_refresh_millihertz{75'000U};
 /** Intermediate frames are never scheduled faster than this. */
@@ -150,52 +110,6 @@ inline constexpr std::chrono::nanoseconds render_interpolation_minimum_period{2'
     const auto frames = (fixed_delta.count() * 10 / period.count() + 1) / 10;
     if (frames <= 1) {
         return std::chrono::nanoseconds::zero();
-    }
-    return fixed_delta / frames;
-}
-
-/**
- * Period handed to the frame pacer for the Graphics tab's frame-rate limit.
- *
- * `display` is the long-standing behaviour (render_interpolation_paced_period).
- * A custom cap and `unlimited` are whole frames per 60 Hz tick, because the
- * pacer spaces frames evenly inside the tick: a cap is the largest multiple of
- * 60 fps not above it, and `unlimited` is the pacer's maximum. With VSync the
- * display rate still bounds both, rounded down the same way. Zero means one
- * frame per tick.
- */
-[[nodiscard]] constexpr std::chrono::nanoseconds limited_frame_period(
-    settings::FrameLimit limit, std::uint16_t cap, bool interpolation,
-    std::uint32_t refresh_millihertz, bool vertical_sync,
-    std::chrono::nanoseconds fixed_delta) noexcept {
-    if (limit == settings::FrameLimit::display) {
-        return render_interpolation_paced_period(interpolation, refresh_millihertz,
-                                                 vertical_sync, fixed_delta);
-    }
-    if (!interpolation || fixed_delta <= std::chrono::nanoseconds::zero()) {
-        return std::chrono::nanoseconds::zero();
-    }
-    std::int64_t frames = core::IntermediateFramePacer::maximum_frames_per_tick;
-    if (limit == settings::FrameLimit::custom) {
-        frames = static_cast<std::int64_t>(cap) * fixed_delta.count() / 1'000'000'000;
-        // 60 fps is 0.99999 frames of a 16.666667 ms tick; count it as one.
-        if ((static_cast<std::int64_t>(cap) * fixed_delta.count()) % 1'000'000'000 >
-            999'000'000) {
-            ++frames;
-        }
-    }
-    if (vertical_sync) {
-        const auto display = render_interpolation_paced_period(true, refresh_millihertz, true,
-                                                               fixed_delta);
-        const std::int64_t display_frames =
-            display > std::chrono::nanoseconds::zero() ? fixed_delta / display : 1;
-        frames = frames < display_frames ? frames : display_frames;
-    }
-    if (frames <= 1) {
-        return std::chrono::nanoseconds::zero();
-    }
-    if (frames > core::IntermediateFramePacer::maximum_frames_per_tick) {
-        frames = core::IntermediateFramePacer::maximum_frames_per_tick;
     }
     return fixed_delta / frames;
 }

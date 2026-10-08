@@ -156,10 +156,6 @@ void direct3d_keeps_its_swap_chain(render::GraphicsBackend backend, std::string_
     present_frames(renderer, 3);
     expect(held_chain != nullptr,
            std::string{name} + ": the overlay stand-in never saw a Present; the test is vacuous");
-    // Every reset carries BGFX_RESET_MAXANISOTROPY from init on (the Texture
-    // Filtering setting switches per-draw sampler flags instead), so a resize
-    // or VSync toggle is a ResizeBuffers on the SAME chain the overlay holds.
-    const auto* const startup_chain = held_chain;
 
     // The crash: Antialiasing OFF -> 4x. Before the fix this aborted inside
     // bgfx's render thread on the next frame.
@@ -181,52 +177,6 @@ void direct3d_keeps_its_swap_chain(render::GraphicsBackend backend, std::string_
     // Resizing (resolution / fullscreen) is a ResizeBuffers too.
     expect(renderer.resize({1'280U, 720U}), std::string{renderer.last_error()});
     present_frames(renderer, 3);
-    expect(held_chain == startup_chain,
-           std::string{name} + ": VSync and resize resets must keep the overlay's swap chain");
-
-    // Window mode transitions (Graphics > Window Mode, Alt+Enter). SDL changes
-    // the window's style and size, and for exclusive fullscreen the display
-    // mode, but bgfx never puts the chain into DXGI fullscreen: every
-    // transition reaches the renderer as a resize of the same windowed chain.
-    // Replay the style and size changes on the hidden window (it is never
-    // shown and the display mode is never touched) and prove the overlay's
-    // chain survives each one, including Alt+Enter round trips.
-    {
-        const auto set_window = [window](LONG_PTR style, int width, int height) {
-            SetWindowLongPtrW(window, GWL_STYLE, style);
-            SetWindowPos(window, nullptr, 0, 0, width, height,
-                         SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-        };
-        struct Transition final {
-            const char* label;
-            LONG_PTR style;
-            std::uint32_t width;
-            std::uint32_t height;
-        };
-        const LONG_PTR windowed = WS_OVERLAPPEDWINDOW;
-        const LONG_PTR borderless = WS_POPUP;
-        const Transition transitions[]{
-            {"windowed -> borderless", borderless, 1'920U, 1'080U},
-            {"borderless -> exclusive 1024x768", borderless, 1'024U, 768U},
-            {"exclusive -> windowed", windowed, 1'152U, 864U},
-            {"Alt+Enter windowed -> borderless", borderless, 1'920U, 1'080U},
-            {"Alt+Enter borderless -> windowed", windowed, 1'152U, 864U},
-            {"Alt+Enter windowed -> exclusive", borderless, 1'280U, 720U},
-            {"Alt+Enter exclusive -> windowed", windowed, 1'152U, 864U},
-            {"borderless at the windowed size", borderless, 1'152U, 864U},
-        };
-        for (const auto& transition : transitions) {
-            set_window(transition.style, static_cast<int>(transition.width),
-                       static_cast<int>(transition.height));
-            expect(renderer.resize({transition.width, transition.height}),
-                   std::string{name} + ": " + transition.label + ": " +
-                       std::string{renderer.last_error()});
-            present_frames(renderer, 2);
-            expect(held_chain == startup_chain,
-                   std::string{name} + ": " + transition.label +
-                       " must keep the overlay's swap chain");
-        }
-    }
 
     // Choosing the startup value again clears the pending notice.
     expect(renderer.set_presentation_options(false, 0U), std::string{renderer.last_error()});

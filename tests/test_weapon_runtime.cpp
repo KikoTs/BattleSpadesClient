@@ -816,18 +816,14 @@ void only_burst_weapons_mark_follow_up_rounds() {
 }
 
 /**
- * A TAP during a clip_reload shell cycle is forgotten: set_primary_shoot
- * (character.pyd 0x10028290) only writes the never-read `reload_cancel`
- * while reloading, and the release clears shoot_primary again, so
- * Character.end_reload (0x1001FC00) keeps chaining shells to a full tube and
- * nothing fires on its own.
+ * P0-10: a trigger press during a clip_reload shell cycle stops the chain
+ * after the shell in progress and fires with the shells loaded so far.
  */
-void a_shell_reload_tap_does_not_interrupt_the_chain() {
+void a_shell_reload_press_fires_after_the_current_shell() {
     WeaponRuntime runtime{9091U};
     runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
     const auto& shotgun = weapon_catalog()[9U];
     expect(shotgun.retail.ammo.clip_reload, "the shotgun must be a clip_reload weapon");
-    const auto capacity = shotgun.retail.ammo.magazine_capacity.value_or(shotgun.clip_size);
     for (int shot{}; shot < 2; ++shot) {
         runtime.set_primary(true);
         runtime.tick(1.0 / 60.0);
@@ -835,113 +831,85 @@ void a_shell_reload_tap_does_not_interrupt_the_chain() {
         tick_for(runtime, shotgun.fire_interval + 0.05);
     }
     static_cast<void>(runtime.take_actions());
+    const auto magazine_before = runtime.replication().ammo(9U)->magazine;
     expect(runtime.request_reload() == battlespades::world::WeaponStateResult::accepted,
            "the shotgun shell reload must start");
     runtime.tick(1.0 / 60.0);
     runtime.set_primary(true);
     runtime.tick(1.0 / 60.0);
     runtime.set_primary(false);
-    std::size_t shots{};
-    for (int tick{}; tick < 600 && runtime.reload_remaining() > 0.0; ++tick) {
-        runtime.tick(1.0 / 60.0);
-        shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
-    }
-    tick_for(runtime, 0.5);
-    shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
-    expect(shots == 0U, "a tap during a shell reload must never fire");
-    expect(runtime.replication().ammo(9U)->magazine == capacity,
-           "the tapped shell chain still fills the tube");
+    auto actions = runtime.take_actions();
+    expect(count(actions, WeaponActionKind::hitscan) == 0U,
+           "the press must not fire while the current shell is still loading");
+    tick_for(runtime, shotgun.retail.use.reload_time.value_or(shotgun.reload_time));
+    actions = runtime.take_actions();
+    const auto completed = std::ranges::find(actions, WeaponActionKind::reload_completed,
+                                             &WeaponAction::kind);
+    const auto shot = std::ranges::find(actions, WeaponActionKind::hitscan,
+                                        &WeaponAction::kind);
+    expect(completed != actions.end() && completed->value == 1.0 &&
+               count(actions, WeaponActionKind::reload_started) == 0U,
+           "the latched press must end the shell chain after the current shell");
+    expect(shot != actions.end() && shot > completed,
+           "the latched press must fire once that shell is loaded");
+    expect(runtime.replication().ammo(9U)->magazine == magazine_before &&
+               runtime.reload_remaining() == 0.0,
+           "the interrupted chain fires with the shells loaded so far");
 }
 
 /**
- * V1: Character.end_reload (character.pyd 0x1001FC00) stops the chain on
- * `shoot_primary` (the trigger HELD at the shell boundary) and on
- * `shoot_primary_held` (the emptying shot had the trigger down and it was
- * never released), then fires. Releasing the trigger runs
- * set_primary_shoot(False) (0x10028290), which clears shoot_primary_held:
- * the chain then runs to a full tube and nothing fires on its own.
+ * V1: Character.end_reload stops the chain on `shoot_primary` (the trigger
+ * merely HELD at the shell boundary) and, when the shot that emptied the gun
+ * had the trigger down (shoot_primary_held), loads ONE shell and fires again.
  */
 void a_held_trigger_stops_the_shell_chain_and_resumes_fire() {
+    WeaponRuntime runtime{9092U};
+    runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
     const auto& shotgun = weapon_catalog()[9U];
     const auto reload_time = shotgun.retail.use.reload_time.value_or(shotgun.reload_time);
-    const auto capacity = shotgun.retail.ammo.magazine_capacity.value_or(shotgun.clip_size);
-    {
-        WeaponRuntime runtime{9092U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
-        // Fire one shell, reload, and press during the first shell, holding
-        // through its boundary: the held trigger (shoot_primary) ends the
-        // chain after that shell and fires it.
+    // Fire one shell and keep the trigger held (no new press edge), then
+    // reload: the held trigger ends the chain after the first shell.
+    runtime.set_primary(true);
+    runtime.tick(1.0 / 60.0);
+    tick_for(runtime, shotgun.fire_interval + 0.05);
+    static_cast<void>(runtime.take_actions());
+    const auto magazine_before = runtime.replication().ammo(9U)->magazine;
+    expect(runtime.request_reload() == battlespades::world::WeaponStateResult::accepted,
+           "the manual shell reload must start");
+    tick_for(runtime, reload_time + 1.0 / 60.0);
+    auto actions = runtime.take_actions();
+    const auto completed = std::ranges::find(actions, WeaponActionKind::reload_completed,
+                                             &WeaponAction::kind);
+    expect(completed != actions.end() && completed->value == 1.0 &&
+               runtime.reload_remaining() == 0.0,
+           "a held trigger stops the chain after the shell in progress");
+    expect(runtime.replication().ammo(9U)->magazine == magazine_before + 1U,
+           "exactly one shell was loaded");
+    runtime.set_primary(false);
+    tick_for(runtime, shotgun.fire_interval + 0.05);
+
+    // Empty the magazine; the last shot has the trigger down.
+    while (runtime.replication().ammo(9U)->magazine > 1U) {
         runtime.set_primary(true);
         runtime.tick(1.0 / 60.0);
         runtime.set_primary(false);
         tick_for(runtime, shotgun.fire_interval + 0.05);
-        static_cast<void>(runtime.take_actions());
-        const auto magazine_before = runtime.replication().ammo(9U)->magazine;
-        expect(runtime.request_reload() == battlespades::world::WeaponStateResult::accepted,
-               "the manual shell reload must start");
+    }
+    static_cast<void>(runtime.take_actions());
+    runtime.set_primary(true);
+    runtime.tick(1.0 / 60.0);
+    expect(runtime.replication().ammo(9U)->magazine == 0U && runtime.reload_remaining() > 0.0,
+           "the emptying shot starts the automatic shell reload");
+    static_cast<void>(runtime.take_actions());
+    runtime.set_primary(false); // released during the reload: retail still resumes
+    std::size_t shots{};
+    for (int tick{}; tick < 600 && shots == 0U; ++tick) {
         runtime.tick(1.0 / 60.0);
-        runtime.set_primary(true);
-        tick_for(runtime, reload_time);
-        auto actions = runtime.take_actions();
-        const auto completed = std::ranges::find(actions, WeaponActionKind::reload_completed,
-                                                 &WeaponAction::kind);
-        const auto shot = std::ranges::find(actions, WeaponActionKind::hitscan,
-                                            &WeaponAction::kind);
-        expect(completed != actions.end() && completed->value == 1.0 &&
-                   runtime.reload_remaining() == 0.0 &&
-                   count(actions, WeaponActionKind::reload_started) == 1U,
-               "a held trigger stops the chain after the shell in progress");
-        expect(shot != actions.end() && shot > completed &&
-                   count(actions, WeaponActionKind::hitscan) == 1U,
-               "the trigger still held at the shell boundary fires once");
-        expect(runtime.replication().ammo(9U)->magazine == magazine_before,
-               "exactly one shell was loaded and then fired");
+        shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
     }
-    const auto empty_the_tube = [&](WeaponRuntime& runtime) {
-        while (runtime.replication().ammo(9U)->magazine > 1U) {
-            runtime.set_primary(true);
-            runtime.tick(1.0 / 60.0);
-            runtime.set_primary(false);
-            tick_for(runtime, shotgun.fire_interval + 0.05);
-        }
-        static_cast<void>(runtime.take_actions());
-        runtime.set_primary(true);
-        runtime.tick(1.0 / 60.0);
-        expect(runtime.replication().ammo(9U)->magazine == 0U &&
-                   runtime.reload_remaining() == 0.0,
-               "the emptying shot only schedules the reload (weapon_shoot still plays)");
-        tick_for(runtime, shotgun.fire_interval + 1.0 / 60.0);
-        expect(runtime.reload_remaining() > 0.0,
-               "the automatic shell reload starts once weapon_shoot ends");
-        static_cast<void>(runtime.take_actions());
-    };
-    {
-        WeaponRuntime runtime{9093U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
-        empty_the_tube(runtime);
-        runtime.set_primary(false); // released: shoot_primary_held is cleared
-        std::size_t shots{};
-        for (int tick{}; tick < 1200 && runtime.reload_remaining() > 0.0; ++tick) {
-            runtime.tick(1.0 / 60.0);
-            shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
-        }
-        expect(shots == 0U, "a released trigger never fires on its own after the reload");
-        expect(runtime.replication().ammo(9U)->magazine == capacity,
-               "with the trigger released the shell chain fills the tube");
-    }
-    {
-        WeaponRuntime runtime{9094U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{9U}, std::uint8_t{9U});
-        empty_the_tube(runtime); // trigger stays down
-        std::size_t shots{};
-        for (int tick{}; tick < 600 && shots == 0U; ++tick) {
-            runtime.tick(1.0 / 60.0);
-            shots += count(runtime.take_actions(), WeaponActionKind::hitscan);
-        }
-        expect(shots == 1U, "empty-while-held loads one shell and fires it");
-        expect(runtime.replication().ammo(9U)->magazine == 0U,
-               "the resumed shot spent the single loaded shell");
-    }
+    expect(shots == 1U, "empty-while-held loads one shell and fires it");
+    expect(runtime.replication().ammo(9U)->magazine == 0U,
+           "the resumed shot spent the single loaded shell");
 }
 
 /**
@@ -1017,7 +985,8 @@ void both_mouse_buttons_never_double_a_dig() {
         both.set_primary(true);
         both.tick(dt);
         bool secondary{};
-        for (double elapsed{dt}; elapsed < duration; elapsed += dt) {
+        std::size_t frame{};
+        for (double elapsed{dt}; elapsed < duration; elapsed += dt, ++frame) {
             // RMB hammered every other frame, starting one frame after LMB.
             secondary = !secondary;
             both.set_secondary(secondary);
@@ -1103,261 +1072,6 @@ void hitscan_actions_carry_the_current_bloom() {
            "the first shot uses base accuracy and sustained fire blooms");
 }
 
-/**
- * Single-shot weapons (one-round magazine): RPG, Drillgun, Sniper, Grenade
- * Launcher, Mine Launcher. Retail cycle, per weapon.py / character.pyd:
- *  - Weapon.use_primary fires, starts weapon_shoot(shoot_interval) and sets
- *    reload_next_update (plus shoot_primary_held while LMB is down);
- *  - Character.update_alive calls reload() once weapon_shoot stops playing,
- *    i.e. shoot_interval after the round;
- *  - end_reload refills after reload_time and resumes fire only if the
- *    trigger is still down (set_primary_shoot(False) clears the latch).
- * So a tap never re-fires on its own, and the earliest next round is
- * shoot_interval + reload_time after the previous one.
- */
-void single_shot_weapons_follow_the_retail_fire_reload_cycle() {
-    constexpr double dt{1.0 / 60.0};
-    for (const std::uint8_t tool : std::array<std::uint8_t, 5U>{12U, 14U, 18U, 55U, 58U}) {
-        const auto& weapon = weapon_catalog()[tool];
-        const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(weapon.clip_size);
-        expect(capacity == 1U, "the single-shot roster must hold one round");
-        const double interval = weapon.retail.use.shoot_interval.value_or(weapon.fire_interval);
-        const double reload = weapon.retail.use.reload_time.value_or(weapon.reload_time);
-        const auto fire_kind = weapon.mechanism == WeaponMechanism::oriented_launcher
-                                   ? WeaponActionKind::oriented_item
-                                   : WeaponActionKind::hitscan;
-        const auto ticks_of = [](double seconds) {
-            return static_cast<int>(std::ceil(seconds * 60.0 - 1e-6));
-        };
-
-        // Tap: one round, a deferred automatic reload, and nothing else.
-        {
-            WeaponRuntime runtime{1000U + tool};
-            runtime.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
-            runtime.set_primary(true);
-            runtime.tick(dt);
-            auto actions = runtime.take_actions();
-            expect(count(actions, fire_kind) == 1U, "a tap fires the single round");
-            expect(count(actions, WeaponActionKind::reload_started) == 0U &&
-                       runtime.reload_remaining() == 0.0,
-                   "the reload must wait for the weapon_shoot animation");
-            runtime.set_primary(false);
-            int reload_tick{-1};
-            int completed_tick{-1};
-            std::size_t shots{};
-            for (int tick{1}; tick < ticks_of(interval + reload) + 240; ++tick) {
-                runtime.tick(dt);
-                for (const auto& action : runtime.take_actions()) {
-                    if (action.kind == WeaponActionKind::reload_started && reload_tick < 0) {
-                        reload_tick = tick;
-                    }
-                    if (action.kind == WeaponActionKind::reload_completed && completed_tick < 0) {
-                        completed_tick = tick;
-                    }
-                    shots += action.kind == fire_kind ? 1U : 0U;
-                }
-            }
-            expect(reload_tick >= ticks_of(interval) - 1 && reload_tick <= ticks_of(interval) + 1,
-                   "the automatic reload starts one shoot_interval after the round");
-            expect(completed_tick >= ticks_of(interval + reload) - 1 &&
-                       completed_tick <= ticks_of(interval + reload) + 2,
-                   "the reload completes shoot_interval + reload_time after the round");
-            expect(shots == 0U, "a tapped single-shot weapon must not re-fire after reloading");
-            expect(runtime.replication().ammo(tool)->magazine == 1U,
-                   "the reloaded round stays chambered for the next press");
-            // The next press fires at once.
-            runtime.set_primary(true);
-            runtime.tick(dt);
-            expect(count(runtime.take_actions(), fire_kind) == 1U,
-                   "a fresh press after the reload fires immediately");
-        }
-
-        // A press and release during the reload does not fire afterwards.
-        {
-            WeaponRuntime runtime{2000U + tool};
-            runtime.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
-            runtime.set_primary(true);
-            runtime.tick(dt);
-            runtime.set_primary(false);
-            tick_for(runtime, interval + reload * 0.5);
-            expect(runtime.reload_remaining() > 0.0, "the reload is running");
-            runtime.set_primary(true);
-            runtime.tick(dt);
-            runtime.set_primary(false);
-            static_cast<void>(runtime.take_actions());
-            tick_for(runtime, reload + 1.0);
-            expect(count(runtime.take_actions(), fire_kind) == 0U,
-                   "a press released during the reload must not fire later");
-        }
-
-        // Held: retail keeps firing, one round per shoot_interval + reload_time.
-        {
-            WeaponRuntime runtime{3000U + tool};
-            runtime.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
-            runtime.set_primary(true);
-            std::vector<int> shot_ticks;
-            for (int tick{}; tick < ticks_of(2.0 * (interval + reload)) + 30; ++tick) {
-                runtime.tick(dt);
-                for (const auto& action : runtime.take_actions()) {
-                    if (action.kind == fire_kind) {
-                        shot_ticks.push_back(tick);
-                    }
-                }
-            }
-            expect(shot_ticks.size() >= 2U, "a held trigger fires again after each reload");
-            const int gap = shot_ticks[1U] - shot_ticks[0U];
-            expect(gap >= ticks_of(interval + reload) - 1 &&
-                       gap <= ticks_of(interval + reload) + 2,
-                   "held fire cycles at shoot_interval + reload_time, never sooner");
-        }
-    }
-}
-
-/**
- * Character.update_weapon calls use_weapon_primary every update while
- * shoot_primary is set; only Tool.shoot_delay (the shoot_interval) limits it.
- * Retail has no semi-automatic weapons: a held trigger keeps firing at the
- * retail interval on every multi-round weapon, one action per interval.
- */
-void every_weapon_fires_at_its_interval_while_held() {
-    constexpr double dt{1.0 / 60.0};
-    const auto ticks_of = [](double seconds) {
-        return static_cast<int>(std::ceil(seconds * 60.0 - 1e-6));
-    };
-    for (const std::uint8_t tool :
-         std::array<std::uint8_t, 8U>{6U, 9U, 10U, 17U, 19U, 36U, 37U, 13U}) {
-        const auto& weapon = weapon_catalog()[tool];
-        const double interval = weapon.retail.use.shoot_interval.value_or(weapon.fire_interval);
-        const auto kind = weapon.mechanism == WeaponMechanism::oriented_launcher
-                              ? WeaponActionKind::oriented_item
-                              : WeaponActionKind::hitscan;
-        const auto capacity = weapon.retail.ammo.magazine_capacity.value_or(weapon.clip_size);
-        expect(capacity >= 2U, "the held-fire roster must hold several rounds");
-        WeaponRuntime runtime{4000U + tool};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{tool}, tool);
-        runtime.set_primary(true);
-        std::vector<int> shot_ticks;
-        std::vector<std::uint8_t> pellets;
-        for (int tick{}; shot_ticks.size() < capacity && tick < 2000; ++tick) {
-            runtime.tick(dt);
-            for (const auto& action : runtime.take_actions()) {
-                if (action.kind == kind) {
-                    shot_ticks.push_back(tick);
-                }
-            }
-        }
-        expect(shot_ticks.size() == capacity, "a held trigger empties the magazine");
-        for (std::size_t i{1U}; i < shot_ticks.size(); ++i) {
-            const int gap = shot_ticks[i] - shot_ticks[i - 1U];
-            // Frame-quantised like Tool.shoot_delay: never early, at most
-            // one frame late from float accumulation.
-            expect(gap >= ticks_of(interval) && gap <= ticks_of(interval) + 1,
-                   "held fire repeats at exactly the retail shoot_interval");
-        }
-        expect(runtime.replication().ammo(tool)->magazine == 0U,
-               "one action per round: nothing double-fired");
-        // Releasing stops it.
-        runtime.set_primary(false);
-        tick_for(runtime, 10.0);
-        expect(count(runtime.take_actions(), kind) == 0U,
-               "a released trigger stops firing");
-    }
-
-    // AssaultRifleWeapon: each held use_primary opens a 3-round burst; the
-    // last burst round resets shoot_delay, so bursts start every
-    // 2 * A1935 + shoot_interval while held.
-    {
-        const auto& weapon = weapon_catalog()[60U];
-        WeaponRuntime runtime{4060U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{60U}, std::uint8_t{60U});
-        runtime.set_primary(true);
-        std::size_t rounds{};
-        std::size_t bursts{};
-        // Bursts open at 0 and 2 * 0.1 + shoot_interval; stop before a third.
-        for (int tick{}; tick < ticks_of(0.2 + weapon.fire_interval + 0.3); ++tick) {
-            runtime.tick(dt);
-            for (const auto& action : runtime.take_actions()) {
-                if (action.kind == WeaponActionKind::hitscan) {
-                    ++rounds;
-                    bursts += action.burst_follow_up ? 0U : 1U;
-                }
-            }
-        }
-        expect(bursts == 2U && rounds == 6U,
-               "a held assault rifle keeps firing full 3-round bursts");
-    }
-}
-
-/** Deployables keep placing while held, but a refused ghost stops the hold. */
-void held_deployables_place_until_refused() {
-    WeaponRuntime runtime{4020U};
-    runtime.replace_loadout(std::array<std::uint8_t, 1U>{20U}, std::uint8_t{20U});
-    const auto& mine = weapon_catalog()[20U];
-    const auto stock = runtime.replication().ammo(20U)->magazine;
-    expect(stock >= 2U, "the landmine needs two placements for this test");
-    runtime.set_context(WeaponRuntimeContext{false, false, false, true});
-    runtime.set_primary(true);
-    runtime.tick(1.0 / 60.0);
-    tick_for(runtime, mine.fire_interval + 2.0 / 60.0);
-    expect(count(runtime.take_actions(), WeaponActionKind::deployable_place) == 2U,
-           "a held valid ghost places again after shoot_interval");
-    runtime.set_context(WeaponRuntimeContext{false, false, false, false});
-    tick_for(runtime, mine.fire_interval + 2.0 / 60.0);
-    auto actions = runtime.take_actions();
-    expect(count(actions, WeaponActionKind::placement_rejected) == 1U,
-           "a held refused ghost reports BUILD_ERROR once");
-    runtime.set_context(WeaponRuntimeContext{false, false, false, true});
-    tick_for(runtime, mine.fire_interval * 2.0);
-    expect(count(runtime.take_actions(), WeaponActionKind::deployable_place) == 0U,
-           "after a refusal the held trigger stays idle (shoot_primary cleared)");
-    runtime.set_primary(false);
-    runtime.tick(1.0 / 60.0);
-    runtime.set_primary(true);
-    runtime.tick(1.0 / 60.0);
-    expect(count(runtime.take_actions(), WeaponActionKind::deployable_place) == 1U,
-           "a fresh press places again");
-}
-
-/** UGCRPG2Weapon never spends ammo; UGCDrillgunWeapon reloads to (1, 1). */
-void ugc_launchers_never_run_dry() {
-    constexpr double dt{1.0 / 60.0};
-    {
-        const auto& rocket = weapon_catalog()[46U];
-        WeaponRuntime runtime{4046U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{46U}, std::uint8_t{46U});
-        runtime.set_primary(true);
-        std::size_t shots{};
-        std::size_t reloads{};
-        for (int tick{}; tick < static_cast<int>(10.0 / dt); ++tick) {
-            runtime.tick(dt);
-            for (const auto& action : runtime.take_actions()) {
-                shots += action.kind == WeaponActionKind::oriented_item ? 1U : 0U;
-                reloads += action.kind == WeaponActionKind::reload_started ? 1U : 0U;
-            }
-        }
-        expect(shots >= static_cast<std::size_t>(10.0 / rocket.fire_interval) - 1U,
-               "the UGC rocket fires at its interval forever");
-        expect(reloads == 0U && runtime.replication().ammo(46U)->magazine == 1U,
-               "the UGC rocket never spends or reloads its round");
-    }
-    {
-        const auto& drill = weapon_catalog()[47U];
-        const double cycle = drill.retail.use.shoot_interval.value_or(drill.fire_interval) +
-                             drill.retail.use.reload_time.value_or(drill.reload_time);
-        WeaponRuntime runtime{4047U};
-        runtime.replace_loadout(std::array<std::uint8_t, 1U>{47U}, std::uint8_t{47U});
-        runtime.set_primary(true);
-        std::size_t shots{};
-        for (int tick{}; tick < static_cast<int>((cycle * 6.0 + 1.0) / dt); ++tick) {
-            runtime.tick(dt);
-            shots += count(runtime.take_actions(), WeaponActionKind::oriented_item);
-        }
-        expect(shots >= 6U, "the UGC drill keeps reloading past its initial reserve");
-        const auto* ammo = runtime.replication().ammo(47U);
-        expect(ammo->reserve == 1U, "get_ammo_after_reload leaves one round in reserve");
-    }
-}
-
 int main() {
     try {
         every_original_tool_has_a_concrete_mechanism();
@@ -1378,12 +1092,8 @@ int main() {
         invalid_deployable_targets_do_not_spend_stock_or_emit_packets();
         reloads_match_retail_magazine_and_shell_cycles();
         block_cannon_repeats_and_empty_firearms_auto_reload();
-        a_shell_reload_tap_does_not_interrupt_the_chain();
+        a_shell_reload_press_fires_after_the_current_shell();
         a_held_trigger_stops_the_shell_chain_and_resumes_fire();
-        single_shot_weapons_follow_the_retail_fire_reload_cycle();
-        every_weapon_fires_at_its_interval_while_held();
-        held_deployables_place_until_refused();
-        ugc_launchers_never_run_dry();
         melee_right_click_sends_no_secondary_attack();
         both_mouse_buttons_never_double_a_dig();
         empty_weapons_auto_switch_and_crates_auto_reload();
