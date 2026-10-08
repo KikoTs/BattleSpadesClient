@@ -118,11 +118,22 @@ void lan_response_uses_datagram_source_as_authority() {
 
 void opaque_lobby_ids_resolve_to_current_endpoints() {
     using battlespades::network::DiscoveredServer;
-    const std::array servers{
-        DiscoveredServer{{"relay-a.aosplay.net", 30100U}, 30100U, 31U, "Lobby A",
-                         "London", "tdm", "europe", {}, "relay-id-a"},
-        DiscoveredServer{{"relay-b.aosplay.net", 30200U}, 30200U, 42U, "Lobby B",
-                         "Chicago", "ctf", "europe", {}, "relay-id-b"}};
+    std::array<DiscoveredServer, 2> servers{};
+    servers[0].game.host = "relay-a.aosplay.net";
+    servers[0].game.port = 30100U;
+    servers[0].query_port = 30100U;
+    servers[0].ping_milliseconds = 31U;
+    servers[0].name = "Lobby A";
+    servers[0].map = "London";
+    servers[0].master_identifier = "relay-id-a";
+    servers[1].game.host = "relay-b.aosplay.net";
+    servers[1].game.port = 30200U;
+    servers[1].query_port = 30200U;
+    servers[1].ping_milliseconds = 42U;
+    servers[1].name = "Lobby B";
+    servers[1].map = "Chicago";
+    servers[1].mode_code = "ctf";
+    servers[1].master_identifier = "relay-id-b";
     const auto opaque = battlespades::network::find_discovered_server(servers, "relay-id-b");
     expect(opaque.has_value() && opaque->game.port == 30200U,
            "social lobby IDs must resolve through authoritative master metadata");

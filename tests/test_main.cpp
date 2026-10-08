@@ -552,6 +552,23 @@ void application_presents_intermediate_frames_only_when_requested() {
     }
 }
 
+void native_handles_require_their_platform_resources() {
+    using battlespades::platform::NativeWindowHandle;
+    using battlespades::platform::NativeWindowSystem;
+    int resource{};
+    expect(!NativeWindowHandle{}.valid(), "empty native handles are invalid");
+    expect(!NativeWindowHandle{.system = NativeWindowSystem::haiku}.valid(),
+           "Haiku needs a live borrowed GL context");
+    expect(NativeWindowHandle{.system = NativeWindowSystem::haiku,
+                             .graphics_context = &resource}.valid(),
+           "Haiku uses BGLView without a public SDL BWindow handle");
+    expect(!NativeWindowHandle{.system = NativeWindowSystem::x11,
+                              .graphics_context = &resource}.valid(),
+           "a borrowed context must not bypass X11 window/display validation");
+    expect(NativeWindowHandle{.system = NativeWindowSystem::win32, .window = &resource}.valid(),
+           "Win32 still needs only its native window");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -561,6 +578,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"native_handles_require_their_platform_resources", native_handles_require_their_platform_resources},
         {"command_line_defaults_are_safe", command_line_defaults_are_safe},
         {"command_line_parses_headless_runtime_options",
          command_line_parses_headless_runtime_options},

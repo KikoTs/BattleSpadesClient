@@ -291,20 +291,23 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     find_package(Freetype REQUIRED)
     find_package(harfbuzz CONFIG REQUIRED)
     find_package(CURL REQUIRED)
-    find_package(nlohmann_json CONFIG REQUIRED)
-    find_package(unofficial-sodium CONFIG REQUIRED)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        find_package(unofficial-sodium CONFIG REQUIRED)
+    endif()
     # Use the native OpenAL framework on macOS. Other platforms receive
     # OpenAL Soft from vcpkg; its CMake package (same OpenAL::OpenAL target)
     # carries the fmt dependency a static Linux build must link, which
     # CMake's FindOpenAL module does not know about.
-    if(APPLE)
+    if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Haiku")
         find_package(OpenAL REQUIRED)
     else()
         find_package(OpenAL CONFIG REQUIRED)
     endif()
     find_package(Stb REQUIRED)
     find_package(ZLIB REQUIRED)
-    find_package(unofficial-enet CONFIG REQUIRED)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        find_package(unofficial-enet CONFIG REQUIRED)
+    endif()
 
     # Native HTML/CSS-style menus share the existing renderer and asset tree.
     # Pin the release archive; no browser process or runtime download is used.
@@ -316,6 +319,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         URL https://codeload.github.com/mikke89/RmlUi/tar.gz/refs/tags/6.3
         URL_HASH SHA256=d977298bb6147610e5984d5db85ddf284020d655a8713913f6982074f1dbdede
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        PATCH_COMMAND "${CMAKE_COMMAND}" "-DAOS_TARGET_SYSTEM=${CMAKE_SYSTEM_NAME}"
+            "-DAOS_RMLUI_SOURCE=<SOURCE_DIR>"
+            -P "${PROJECT_SOURCE_DIR}/cmake/PatchRmlUiHaiku.cmake"
         # Its headers are not ours to hold to -Werror.
         SYSTEM)
     if(NOT WIN32)
@@ -560,6 +566,11 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         target_link_libraries(aos_network_enet PUBLIC ws2_32 winmm crypt32)
     endif()
     aos_enable_strict_warnings(aos_network_enet)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        # BSD sockets live in libnetwork, including calls made by discovery.
+        target_link_libraries(aos_network_enet PUBLIC network)
+        target_link_libraries(aos_local_host PUBLIC network)
+    endif()
 
     add_executable(
         aos_protocol168_live_smoke

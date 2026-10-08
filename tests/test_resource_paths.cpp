@@ -142,7 +142,7 @@ void missing_roots_fail_with_attempted_paths() {
 }
 
 void process_image_path_is_absolute() {
-    std::string error;
+    std::string error{"previous discovery failed"};
     const auto path = battlespades::core::current_executable_path(error);
     expect(path.has_value(), "supported desktop platforms should expose the process image path");
     expect(path->is_absolute(), "process image path should be absolute");

@@ -1,0 +1,4 @@
+find_path(Stb_INCLUDE_DIR NAMES stb_image.h PATH_SUFFIXES stb)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(Stb REQUIRED_VARS Stb_INCLUDE_DIR)
+mark_as_advanced(Stb_INCLUDE_DIR)

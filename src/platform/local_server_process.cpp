@@ -16,7 +16,7 @@
 #include <crt_externs.h>
 #include <spawn.h>
 #else
-extern char** environ;
+extern "C" char** environ;
 #endif
 #endif
 

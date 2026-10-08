@@ -20,6 +20,10 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#if defined(__HAIKU__)
+#include <FindDirectory.h>
+#include <StorageDefs.h>
+#endif
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -31,7 +35,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-extern char** environ;
+extern "C" char** environ;
 #endif
 
 namespace battlespades::assets {
@@ -987,7 +991,14 @@ std::optional<std::filesystem::path> default_asset_source_directory() noexcept {
 
 std::optional<std::filesystem::path> user_data_directory() noexcept {
     try {
-#if defined(_WIN32)
+#if defined(__HAIKU__)
+        char directory[B_PATH_NAME_LENGTH]{};
+        if (find_directory(B_USER_NONPACKAGED_DATA_DIRECTORY, -1, false, directory,
+                           B_PATH_NAME_LENGTH) == B_OK) {
+            return std::filesystem::path{directory} / "BattleSpades";
+        }
+        return std::nullopt;
+#elif defined(_WIN32)
         if (const auto local = environment_path("LOCALAPPDATA"); local.has_value()) {
             return *local / "BattleSpades";
         }

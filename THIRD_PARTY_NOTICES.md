@@ -19,6 +19,13 @@ Versions are those resolved by `vcpkg.json` (builtin baseline
 `f14401ca0f2754347c3864da7488a9b955b4e47a`) for the Windows x64 build; macOS
 builds use the same ports as static libraries and the system OpenAL framework.
 
+Haiku uses HaikuPorts system libraries and DmitrySenpai's bgfx/BGLView port at
+`a81aefa585af7015e54ee3752c7b5268850d78bc`, with the reviewed patch in
+`packaging/haiku/patches/`. Its bgfx API version is also 129. The dependency
+script pins stb at `2c980bb59875b0d32144a71867fbdebb2f77cd20`. Haiku packages
+include the bgfx, bx, bimg and stb license texts in `bin/licenses/`. See
+[the Haiku build guide](docs/HAIKU.md) for provenance and runtime dependencies.
+
 ## Summary
 
 ### Source vendored in this repository

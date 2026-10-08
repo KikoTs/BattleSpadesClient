@@ -1,6 +1,7 @@
 #include "battlespades/platform/relay_host_tunnel.hpp"
 
 #include "battlespades/core/diagnostics.hpp"
+#include "battlespades/platform/socket_select.hpp"
 
 #include <sodium.h>
 
@@ -349,7 +350,7 @@ struct RelayHostTunnel::Impl final {
         std::array<unsigned char, maximum_payload_bytes> buffer{};
         for (const auto& [id, client] : clients) {
             const auto socket = client.socket;
-            if (!FD_ISSET(socket, &readable)) continue;
+            if (!select_has_socket(socket, readable)) continue;
             for (std::size_t packet{}; packet < receive_batch; ++packet) {
                 const auto bytes = recv(socket, reinterpret_cast<char*>(buffer.data()),
                                         static_cast<int>(buffer.size()), 0);
@@ -401,12 +402,12 @@ struct RelayHostTunnel::Impl final {
 
             fd_set readable;
             FD_ZERO(&readable);
-            FD_SET(relay_socket, &readable);
+            select_add_socket(relay_socket, readable);
             Socket maximum = relay_socket;
             for (const auto& [id, client] : clients) {
                 static_cast<void>(id);
                 const auto socket = client.socket;
-                FD_SET(socket, &readable);
+                select_add_socket(socket, readable);
                 maximum = std::max(maximum, socket);
             }
             timeval timeout{0, 100'000};
@@ -417,7 +418,7 @@ struct RelayHostTunnel::Impl final {
                 set_error("The public relay select loop failed.");
                 break;
             }
-            if (selected > 0 && FD_ISSET(relay_socket, &readable) && !receive_relay()) break;
+            if (selected > 0 && select_has_socket(relay_socket, readable) && !receive_relay()) break;
             if (selected > 0) receive_clients(readable);
         }
         if (relay_socket != invalid_socket) {

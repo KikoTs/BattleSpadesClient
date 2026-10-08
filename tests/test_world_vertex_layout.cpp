@@ -3,6 +3,11 @@
 
 #include <bgfx/bgfx.h>
 
+#if defined(__HAIKU__)
+#include "battlespades/platform/sdl_window_module.hpp"
+#include <bgfx/platform.h>
+#endif
+
 #include <array>
 #include <cstdarg>
 #include <cstdint>
@@ -197,8 +202,15 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     const auto skylight_texture =
         bgfx::createTexture2D(1U, 1U, false, 1U, bgfx::TextureFormat::R8,
                               BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    // OpenGL requires active samplers of different types to use distinct units,
+    // even when this test's Classic branch does not sample the 3D volume.
+    const auto emissive_texture = bgfx::createTexture3D(
+        1U, 1U, 1U, false, bgfx::TextureFormat::RGBA8,
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP,
+        bgfx::copy(white_texel.data(), static_cast<std::uint32_t>(white_texel.size())));
     const auto shadow_sampler = bgfx::createUniform("s_shadowMap", bgfx::UniformType::Sampler);
     const auto skylight_sampler = bgfx::createUniform("s_skylight", bgfx::UniformType::Sampler);
+    const auto emissive_sampler = bgfx::createUniform("s_emissiveVolume", bgfx::UniformType::Sampler);
     const auto retail_ao_sampler =
         bgfx::createUniform("s_retailAo", bgfx::UniformType::Sampler);
     const auto retail_noise_sampler =
@@ -235,6 +247,7 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     bgfx::setTexture(4U, retail_noise_sampler, retail_ao_texture);
     bgfx::setTexture(1U, shadow_sampler, shadow_texture);
     bgfx::setTexture(2U, skylight_sampler, skylight_texture);
+    bgfx::setTexture(3U, emissive_sampler, emissive_texture);
     bgfx::setTransform(kIdentity.data());
     bgfx::setVertexBuffer(0U, vertex_buffer);
     bgfx::setIndexBuffer(index_buffer);
@@ -266,11 +279,13 @@ constexpr std::array<float, 16U> kIdentity{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0
     bgfx::destroy(index_buffer);
     bgfx::destroy(shadow_sampler);
     bgfx::destroy(skylight_sampler);
+    bgfx::destroy(emissive_sampler);
     bgfx::destroy(retail_ao_sampler);
     bgfx::destroy(retail_noise_sampler);
     bgfx::destroy(retail_ao_texture);
     bgfx::destroy(shadow_texture);
     bgfx::destroy(skylight_texture);
+    bgfx::destroy(emissive_texture);
     bgfx::destroy(light_params);
     bgfx::destroy(fog_params);
     bgfx::destroy(fog_curve);
@@ -342,36 +357,68 @@ int main(int argc, char** argv) {
         static DiagnosticCallback callback;
         bgfx::Init init;
         init.callback = &callback;
+#if defined(__HAIKU__)
+        // Haiku's OpenGL Kit needs a real BGLView, including offscreen draws.
+        battlespades::platform::SdlWindowModule window{
+            battlespades::platform::SdlWindowConfig{
+                .title = "BattleSpades Haiku world shader test",
+                .initial_extent = {640U, 480U},
+            }};
+        const bool started = window.start();
+        expect(started, "SDL: " + std::string{window.last_error()});
+        init.platformData.context = window.native_handle().graphics_context;
+        init.type = bgfx::RendererType::OpenGL;
+        init.resolution.width = 640U;
+        init.resolution.height = 480U;
+        const auto expected_backend = bgfx::RendererType::OpenGL;
+        const auto backend = shader_root / "glsl";
+        static_cast<void>(bgfx::renderFrame());
+#else
         // Headless: bgfx treats a null window handle as such, and then requires
         // a 0x0 backbuffer. Rendering goes to an offscreen framebuffer instead,
         // so this needs a GPU but never a desktop.
         init.type = bgfx::RendererType::Direct3D11;
         init.resolution.width = 0U;
         init.resolution.height = 0U;
+        const auto expected_backend = bgfx::RendererType::Direct3D11;
+        const auto backend = shader_root / "dx11";
+#endif
         if (!bgfx::init(init)) {
+#if defined(__HAIKU__)
+            throw std::runtime_error{"Haiku OpenGL initialization failed"};
+#else
             std::cout << "SKIP: no Direct3D11 device for the render probe "
                          "(layout encoding still checked)\n";
             return 0;
+#endif
         }
-        // bgfx falls back to whatever backend the platform has instead of
-        // failing. The probe loads dx11 shader binaries, so on Metal or OpenGL
-        // it would read back black and report a layout fault that is not one.
-        if (bgfx::getRendererType() != bgfx::RendererType::Direct3D11) {
+        // bgfx can fall back instead of failing. The probe's shader binaries
+        // must match the selected backend or the readback is meaningless.
+        if (bgfx::getRendererType() != expected_backend) {
+#if defined(__HAIKU__)
+            bgfx::shutdown();
+            throw std::runtime_error{"Haiku must use the OpenGL shader variant"};
+#else
             std::cout << "SKIP: bgfx selected " << bgfx::getRendererName(bgfx::getRendererType())
-                      << ", not Direct3D11 (layout encoding still checked)\n";
+                      << ", not " << bgfx::getRendererName(expected_backend)
+                      << " (layout encoding still checked)\n";
             bgfx::shutdown();
             return 0;
+#endif
         }
 
         const auto* caps = bgfx::getCaps();
         if ((caps->supported & BGFX_CAPS_TEXTURE_READ_BACK) == 0U ||
             (caps->supported & BGFX_CAPS_TEXTURE_BLIT) == 0U) {
+#if defined(__HAIKU__)
+            bgfx::shutdown();
+            throw std::runtime_error{"Haiku OpenGL cannot blit or read textures back"};
+#else
             std::cout << "SKIP: device cannot blit or read textures back\n";
             bgfx::shutdown();
             return 0;
+#endif
         }
-
-        const auto backend = shader_root / "dx11";
 
         if (mode == "--probe") {
             // Informational: render both encodings so the difference between
