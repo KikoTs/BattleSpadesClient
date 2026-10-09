@@ -16,7 +16,17 @@ LauncherArguments parse_launcher_arguments(const std::vector<std::string>& argum
     LauncherArguments parsed;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto& argument = arguments[index];
-        if (argument == "--no-update") {
+        if (argument == "--offline" || argument == "--profile" || argument == "--play-demo") {
+            parsed.no_update = true;
+            parsed.forwarded.push_back(argument);
+            if (argument != "--offline") {
+                if (index + 1U >= arguments.size()) {
+                    parsed.error = argument + " requires a value";
+                    return parsed;
+                }
+                parsed.forwarded.push_back(arguments[++index]);
+            }
+        } else if (argument == "--no-update") {
             parsed.no_update = true;
         } else if (argument == "--rollback") {
             parsed.rollback = true;

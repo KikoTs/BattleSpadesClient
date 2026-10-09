@@ -137,23 +137,33 @@ MirrorOutcome fetch_from_mirror(const std::string& url, const fs::path& archive,
     auto partial = archive;
     partial += ".partial";
     std::error_code code;
-    const auto response = http_download(url, partial, download_options(config), callbacks.progress);
-    // Interrupted or refused downloads keep the partial file: the next mirror
-    // or the next launch resumes it (Range request) and the hash decides.
-    if (response.error == "cancelled") return MirrorOutcome::cancelled;
-    if (response.status != 200U) {
-        error = response.status == 0U ? response.error : "HTTP " + std::to_string(response.status);
-        return MirrorOutcome::failed;
+    const auto existing = prepare_package_partial(partial, release.size, release.sha256, error);
+    if (!existing.has_value()) return MirrorOutcome::failed;
+    if (*existing < release.size) {
+        const auto response = http_download(url, partial, download_options(config), callbacks.progress, release.size);
+        // Interrupted or refused downloads keep the partial file: the next mirror
+        // or the next launch resumes it (Range request) and the hash decides.
+        if (response.error == "cancelled") return MirrorOutcome::cancelled;
+        if (response.status != 200U) {
+            error = response.status == 0U ? response.error : "HTTP " + std::to_string(response.status);
+            return MirrorOutcome::failed;
+        }
+        if (!verify_package_file(partial, release.size, release.sha256, error)) {
+            fs::remove(partial, code);
+            return MirrorOutcome::failed;
+        }
     }
-    if (!verify_package_file(partial, release.size, release.sha256, error)) {
-        fs::remove(partial, code);
-        return MirrorOutcome::failed;
-    }
+    // Complete partials were already verified locally: do not ask for an
+    // empty range and then download the entire archive again after HTTP 416.
+    fs::remove(archive, code);
     fs::rename(partial, archive, code);
     if (code) {
         error = "cannot finalise the download: " + code.message();
         return MirrorOutcome::failed;
     }
+    auto identity = partial;
+    identity += ".identity";
+    fs::remove(identity, code);
     return MirrorOutcome::success;
 }
 

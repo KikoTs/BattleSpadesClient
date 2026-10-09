@@ -1,4 +1,5 @@
 #include "battlespades/world/retail_effects.hpp"
+#include "battlespades/world/blood_marks.hpp"
 #include "battlespades/world/retail_view_model.hpp"
 #include "battlespades/world/terrain_effects.hpp"
 #include "battlespades/world/vxl_map.hpp"
@@ -239,8 +240,48 @@ void view_muzzle_tip_is_the_barrel_mouth() {
     expect(centre[2U] - 6.0F * 0.75F < (*tip)[2U], "the flash rear overlaps the barrel mouth");
 }
 
+void blood_marks_stick_expire_and_follow_terrain() {
+    auto map=empty_map();
+    for(unsigned x=18;x<33;++x)for(unsigned y=18;y<33;++y)
+        static_cast<void>(map->set_voxel(x,y,50,{80,90,100}));
+    const auto revision=map->revision();
+    BloodMarks blood;
+    blood.emit({25,25,48},42);
+    expect(blood.drop_count()==8,"hits emit visible block droplets");
+    for(int tick=0;tick<180;++tick)blood.tick(1./60,*map);
+    expect(blood.drop_count()==0 && blood.mark_count()>8,"droplets leave irregular clusters on terrain");
+    const auto first=blood.mesh();
+    expect(!first.empty(),"lingering blood has surface geometry");
+    for(const auto& vertex:first.vertices)
+        expect(vertex.z<50 && (vertex.abgr>>24)==0,"blood sits above its supporting face without emissive glow");
+    const auto count=blood.mark_count();
+    for(int tick=0;tick<180;++tick)blood.tick(1./60,*map);
+    const auto later=blood.mesh();
+    expect(blood.mark_count()==count && first.minimum==later.minimum && first.maximum==later.maximum,
+           "landed stains stay fixed instead of bouncing or following the camera");
+    expect(map->revision()==revision,"blood never recolors or changes server terrain");
+    for(unsigned x=18;x<33;++x)for(unsigned y=18;y<33;++y)
+        static_cast<void>(map->clear_voxel(x,y,50));
+    blood.tick(1./60,*map);
+    expect(blood.mark_count()==0 && blood.mesh().empty(),"destroying support removes its blood immediately");
+    for(unsigned y=18;y<33;++y)for(unsigned z=40;z<55;++z)
+        static_cast<void>(map->set_voxel(26,y,z,{80,90,100}));
+    blood.emit({25.8F,25,45},123);
+    for(int tick=0;tick<100;++tick)blood.tick(1./60,*map);
+    expect(blood.mark_count()>0,"blood also sticks to vertical block faces");
+    for(int tick=0;tick<2100;++tick)blood.tick(1./60,*map);
+    expect(blood.mark_count()==0 && blood.drop_count()==0,"blood expires after its bounded lifetime");
+    for(int hit=0;hit<1000;++hit)blood.emit({25.8F,25,45},static_cast<std::uint32_t>(hit));
+    expect(blood.drop_count()<=BloodMarks::maximum_drops,"automatic fire cannot grow the drop pool without bound");
+    for(int tick=0;tick<150;++tick)blood.tick(1./60,*map);
+    expect(blood.mark_count()<=BloodMarks::maximum_marks,"surface mark memory is bounded");
+    blood.clear();
+    expect(blood.mesh().empty(),"disabling or changing maps clears all blood geometry");
+}
+
 int main() {
     try {
+        blood_marks_stick_expire_and_follow_terrain();
         patch_colour_ramps_follow_retail_constants();
         surface_anchor_resolves_its_voxel();
         set_hp_rows_map_to_retail_feedback();

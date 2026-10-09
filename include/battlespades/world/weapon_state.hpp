@@ -37,6 +37,8 @@ enum class WeaponStateResult : std::uint8_t {
  */
 class WeaponReplicationState final {
 public:
+    void set_classic_protocol(std::uint8_t protocol) noexcept { classic_protocol_ = protocol; }
+    void set_authoritative_ammo(std::uint8_t tool, std::uint16_t magazine, std::uint16_t reserve) noexcept;
     void replace_loadout(std::span<const std::uint8_t> tool_ids,
                          std::optional<std::uint8_t> selected = std::nullopt);
 
@@ -71,6 +73,7 @@ private:
     std::optional<std::uint8_t> selected_tool_;
     std::array<ToolAmmoState, selectable_tool_count> ammunition_{};
     std::uint64_t shot_sequence_{};
+    std::uint8_t classic_protocol_{};
 };
 
 } // namespace battlespades::world

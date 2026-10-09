@@ -1,5 +1,6 @@
 #include "win_util.hpp"
 
+#include "battlespades/updater/http_range.hpp"
 #include "battlespades/updater/zip_extract.hpp"
 
 #ifndef NOMINMAX
@@ -59,6 +60,7 @@ struct Request {
     InternetHandle request;
     unsigned status{};
     std::uint64_t content_length{};
+    std::optional<HttpContentRange> content_range;
 };
 
 [[nodiscard]] bool open_request(const std::string& url, const HttpOptions& options, Request& out,
@@ -137,6 +139,12 @@ struct Request {
                             length, &length_size, WINHTTP_NO_HEADER_INDEX)) {
         out.content_length = std::wcstoull(length, nullptr, 10);
     }
+    wchar_t range[128]{};
+    DWORD range_size = sizeof(range);
+    if (WinHttpQueryHeaders(out.request.get(), WINHTTP_QUERY_CONTENT_RANGE, WINHTTP_HEADER_NAME_BY_INDEX,
+                            range, &range_size, WINHTTP_NO_HEADER_INDEX)) {
+        out.content_range = parse_http_content_range(narrow(range));
+    }
     return true;
 }
 
@@ -195,7 +203,8 @@ HttpResponse http_get(const std::string& url, const HttpOptions& options, std::s
 }
 
 HttpResponse http_download(const std::string& url, const std::filesystem::path& file,
-                           const HttpOptions& options, const ProgressCallback& progress) {
+                           const HttpOptions& options, const ProgressCallback& progress,
+                           std::uint64_t expected_size) {
     HttpResponse response;
     std::error_code code;
     // Resume an interrupted download: ask for the remaining bytes. A server
@@ -203,6 +212,7 @@ HttpResponse http_download(const std::string& url, const std::filesystem::path& 
     // caller verifies size and SHA-256 of the whole file either way.
     std::uint64_t existing = std::filesystem::is_regular_file(file, code) ? std::filesystem::file_size(file, code) : 0U;
     if (code) existing = 0U;
+    if (expected_size != 0U && existing > expected_size) existing = 0U;
     for (int attempt = 0; attempt < 2; ++attempt) {
         HttpOptions request_options = options;
         if (existing > 0U) request_options.headers.push_back("Range: bytes=" + std::to_string(existing) + "-");
@@ -218,18 +228,36 @@ HttpResponse http_download(const std::string& url, const std::filesystem::path& 
         }
         const bool resumed = request.status == 206U && existing > 0U;
         if (request.status != 200U && !resumed) return response;
+        if (resumed && (!request.content_range.has_value() || request.content_range->first != existing ||
+                        (expected_size != 0U && request.content_range->total != expected_size))) {
+            response.status = 0U;
+            response.error = "the server sent an invalid Content-Range for this download";
+            return response;
+        }
         if (!resumed) existing = 0U;
+        if (expected_size != 0U && request.content_length > expected_size - existing) {
+            response.status = 0U;
+            response.error = "the server sent more than the expected package size";
+            return response;
+        }
         std::ofstream output{file, std::ios::binary | (resumed ? std::ios::app : std::ios::trunc)};
         if (!output) {
             response.error = "cannot create " + narrow(file.wstring());
             response.status = 0U;
             return response;
         }
-        const std::uint64_t total = request.content_length == 0U ? 0U : existing + request.content_length;
+        const std::uint64_t total = expected_size != 0U ? expected_size
+                                       : resumed ? request.content_range->total : request.content_length;
         std::uint64_t received = existing;
         const bool ok = read_body(
             request,
             [&](const char* data, std::size_t size) {
+                if ((expected_size != 0U && size > expected_size - received) ||
+                    (resumed && (received > request.content_range->last + 1U ||
+                                 size > request.content_range->last + 1U - received))) {
+                    response.error = "the server sent more than the expected package size";
+                    return false;
+                }
                 output.write(data, static_cast<std::streamsize>(size));
                 if (!output) {
                     response.error = "cannot write " + narrow(file.wstring()) + " (disk full?)";
@@ -248,6 +276,11 @@ HttpResponse http_download(const std::string& url, const std::filesystem::path& 
             if (response.error.empty()) response.error = "download interrupted";
             response.status = 0U;
             return response;   // the partial file is kept for the next attempt
+        }
+        if (resumed && received != request.content_range->last + 1U) {
+            response.status = 0U;
+            response.error = "the server sent an incomplete byte range";
+            return response;
         }
         response.status = 200U;
         return response;

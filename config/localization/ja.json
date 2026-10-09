@@ -2143,6 +2143,10 @@
     "SHOW_OTHER_SKINS": "他のプレイヤーのスキンを表示",
     "WEAPON_MOTION": "武器の動き",
     "ABILITY_HINTS": "能力のヒント",
+    "FALLBACK_MUSIC": "無音のサーバーで音楽を再生",
+    "FALLBACK_MUSIC_DESCRIPTION": "サーバーに音楽がない場合はオリジナルの音楽を再生。サーバーの音楽が優先されます。",
+    "RAGDOLL_CORPSES": "ラグドール",
+    "RAGDOLL_CORPSES_DESCRIPTION": "クラシックモードで倒れたキャラクターの物理演算を行います。次の死亡から適用。",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "パラシュート展開中",
     "ABILITY_HINT_PARACHUTE_PENDING": "降下中にパラシュートが開きます",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: 空中でパラシュートを開く",
@@ -2154,6 +2158,8 @@
     "SERVER_PASSWORD_TIMEOUT": "時間内にサーバーのパスワードが入力されませんでした",
     "ARENA": "アリーナ",
     "ARENA_DESCRIPTION": "敵を全滅させてラウンドに勝利しよう！",
-    "LOAD_FAILED": "読み込みに失敗しました"
+    "LOAD_FAILED": "読み込みに失敗しました",
+    "BLOOD_MARKS": "血痕を残す",
+    "BLOOD_MARKS_DESCRIPTION": "ClassicとStandardで血のしずくと一時的な血痕を表示します。20～32秒間残る視覚効果で、ゲームプレイには影響しません。"
   }
 }

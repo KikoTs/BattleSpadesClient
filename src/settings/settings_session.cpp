@@ -50,7 +50,7 @@ void SettingsSession::reset_tab(SettingsTab tab) noexcept {
     case SettingsTab::main:
         // Retail config.MAIN_DEFAULT names only these keys (its fourth,
         // fullscreen, is the Graphics tab's window mode now). Language, audio
-        // device, skins, weapon motion and ability hints are native additions
+        // device, fallback music, skins, weapon motion and ability hints are native additions
         // and survive the Main tab's Defaults button.
         draft_.main.master_volume = defaults.main.master_volume;
         draft_.main.music_volume = defaults.main.music_volume;

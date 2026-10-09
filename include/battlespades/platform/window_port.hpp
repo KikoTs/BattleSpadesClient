@@ -141,6 +141,8 @@ enum class WindowEventType : std::uint8_t {
     mouse_button_pressed,
     mouse_button_released,
     mouse_wheel,
+    /** OS URL activation; only strict game join URIs are accepted by the frontend. */
+    open_url,
 };
 
 /**

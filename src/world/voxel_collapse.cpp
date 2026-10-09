@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <unordered_set>
 #include <utility>
 
@@ -67,7 +68,7 @@ constexpr auto neighbors = collapse_neighbors();
 
 std::vector<UnsupportedComponent> find_unsupported_components(
     const VxlMap& map, const std::vector<VoxelCell>& removed_cells,
-    std::size_t work_budget) {
+    std::size_t work_budget, CollapseRules rules) {
     std::vector<UnsupportedComponent> components;
     if (removed_cells.empty() || work_budget == 0U) {
         return components;
@@ -75,11 +76,16 @@ std::vector<UnsupportedComponent> find_unsupported_components(
 
     std::unordered_set<SignedCell, SignedCellHash> visited;
     std::unordered_set<SignedCell, SignedCellHash> safe;
+    const auto adjacent = [rules](SignedCell delta) {
+        return rules == CollapseRules::retail ||
+               std::abs(delta.x) + std::abs(delta.y) + std::abs(delta.z) == 1;
+    };
     for (const auto& removed : removed_cells) {
         const SignedCell source{static_cast<std::int32_t>(removed.x),
                                 static_cast<std::int32_t>(removed.y),
                                 static_cast<std::int32_t>(removed.z)};
         for (const auto direction : neighbors) {
+            if (!adjacent(direction)) continue;
             const auto start = add(source, direction);
             if (visited.contains(start) || !solid(map, start)) {
                 continue;
@@ -94,7 +100,7 @@ std::vector<UnsupportedComponent> find_unsupported_components(
             while (!stack.empty()) {
                 const auto current = stack.back();
                 stack.pop_back();
-                if (safe.contains(current) || current.z > 238) {
+                if (safe.contains(current) || current.z >= (rules == CollapseRules::classic ? 238 : 239)) {
                     grounded = true;
                     break;
                 }
@@ -102,6 +108,7 @@ std::vector<UnsupportedComponent> find_unsupported_components(
                                      static_cast<std::uint32_t>(current.y),
                                      static_cast<std::uint32_t>(current.z)});
                 for (const auto step : neighbors) {
+                    if (!adjacent(step)) continue;
                     if (++work > work_budget) {
                         exhausted = true;
                         stack.clear();
@@ -136,9 +143,9 @@ std::vector<UnsupportedComponent> find_unsupported_components(
 
 std::vector<FallingComponent> collapse_unsupported_components(
     VxlMap& map, const std::vector<VoxelCell>& removed_cells,
-    std::size_t work_budget) {
+    std::size_t work_budget, CollapseRules rules) {
     const auto unsupported =
-        find_unsupported_components(map, removed_cells, work_budget);
+        find_unsupported_components(map, removed_cells, work_budget, rules);
     std::vector<FallingComponent> falling;
     falling.reserve(unsupported.size());
     for (const auto& component : unsupported) {

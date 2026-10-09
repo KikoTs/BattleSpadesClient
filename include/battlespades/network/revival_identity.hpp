@@ -3,6 +3,7 @@
 #include "battlespades/network/aosplay_scores.hpp"
 #include "battlespades/network/revival_social.hpp"
 #include "battlespades/network/revival_inventory.hpp"
+#include "battlespades/network/public_workshop.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -105,6 +106,10 @@ struct RevivalIdentityConfig final {
     std::filesystem::path state_path;
     std::chrono::milliseconds timeout{5'000};
     std::size_t maximum_payload_bytes{64U * 1'024U};
+    /** Explicit offline sessions use their own state file and never perform HTTP. */
+    bool offline{};
+    std::string offline_profile{"Player"};
+    bool allow_environment_override{true};
 };
 
 struct RevivalWorkshopFile final {
@@ -196,6 +201,9 @@ public:
     [[nodiscard]] RevivalWorkshopResult publish_ugc_project(
         const std::filesystem::path& maps_root, std::string_view uid,
         std::string_view title, std::stop_token stop = {});
+
+    [[nodiscard]] WorkshopResult workshop_request(const WorkshopRequest& request,
+                                                   std::stop_token stop = {});
 
 private:
     class Impl;

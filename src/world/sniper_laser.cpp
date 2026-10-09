@@ -93,6 +93,13 @@ constexpr float maximum_presented_distance{1024.0F};
 
 } // namespace
 
+std::optional<float> trace_player_body(std::array<float,3> origin,
+    std::array<float,3> direction, const SniperLaserTarget& target, float maximum_distance) noexcept {
+    if(target.dead || !finite(origin) || !finite(direction) || !finite(target.position) ||
+       !std::isfinite(maximum_distance) || maximum_distance<=0) return std::nullopt;
+    return player_intersection(origin,direction,target,maximum_distance);
+}
+
 SniperLaserPose evaluate_sniper_laser(
     const VxlMap& map, const SniperLaserInput& input,
     std::span<const SniperLaserTarget> targets) noexcept {
@@ -129,7 +136,7 @@ SniperLaserPose evaluate_sniper_laser(
             !finite(target.position)) {
             continue;
         }
-        if (const auto hit = player_intersection(
+        if (const auto hit = trace_player_body(
                 result.origin, result.direction, target, result.distance);
             hit.has_value() && *hit < result.distance) {
             result.distance = *hit;

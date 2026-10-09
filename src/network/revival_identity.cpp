@@ -1,4 +1,5 @@
 #include "battlespades/network/revival_identity.hpp"
+#include "battlespades/core/service_url.hpp"
 #include "battlespades/core/build_info.hpp"
 #include "battlespades/network/cosmetic_slots.hpp"
 
@@ -38,6 +39,15 @@ using Json = nlohmann::json;
 constexpr std::string_view user_agent{
     "BattleSpadesClient/" AOS_VERSION_STRING " (AoS Revival protocol 168)"};
 constexpr std::size_t state_size_limit{64U * 1'024U};
+
+[[nodiscard]] std::string identity_scope_key(std::string_view value) {
+    std::uint64_t hash{14695981039346656037ULL};
+    for (const auto character : value) {
+        hash ^= static_cast<unsigned char>(character);
+        hash *= 1099511628211ULL;
+    }
+    return std::to_string(hash);
+}
 
 struct HttpResult final {
     long status{};
@@ -470,6 +480,7 @@ public:
     explicit Impl(RevivalIdentityConfig source)
         : config{std::move(source)} {
         initialize_libraries();
+        const bool default_state = config.state_path.empty();
         if (config.state_path.empty()) {
             config.state_path = default_revival_state_path();
         }
@@ -477,7 +488,8 @@ public:
         // (for example the social dev server) without a rebuild. Only the
         // compiled default is overridable, and valid_base_url below still
         // admits HTTPS or loopback HTTP only.
-        if (config.api_base == RevivalIdentityConfig{}.api_base) {
+        if (!config.offline && config.allow_environment_override &&
+            config.api_base == RevivalIdentityConfig{}.api_base) {
             if (auto override_base = environment_value("AOS_REVIVAL_API_BASE");
                 override_base.has_value() && !override_base->empty()) {
                 config.api_base = std::move(*override_base);
@@ -490,13 +502,19 @@ public:
         while (!config.api_base.empty() && config.api_base.back() == '/') {
             config.api_base.pop_back();
         }
+        config.api_base = *core::service_origin(config.api_base);
+        // Isolate every explicit offline profile and alternate issuer. Switching
+        // masters must not overwrite a saved production login or expose its token.
+        if (default_state && (config.offline || config.api_base != RevivalIdentityConfig{}.api_base)) {
+            const auto key = config.offline ? "offline:" + config.offline_profile : config.api_base;
+            config.state_path = config.state_path.parent_path() / "profiles" /
+                                (identity_scope_key(key) + ".json");
+        }
         load();
     }
 
     [[nodiscard]] static bool valid_base_url(std::string_view url) noexcept {
-        return url.starts_with("https://") ||
-               url.starts_with("http://127.0.0.1") ||
-               url.starts_with("http://localhost");
+        return core::service_origin(url).has_value();
     }
 
     [[nodiscard]] std::optional<RevivalAccount> cached_account() const {
@@ -506,7 +524,7 @@ public:
 
     [[nodiscard]] bool has_online_session() const {
         std::scoped_lock lock{mutex};
-        return !access_token.empty();
+        return !config.offline && !access_token.empty();
     }
 
     [[nodiscard]] RevivalAuthResult refresh() {
@@ -613,6 +631,10 @@ public:
         std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> public_key{};
         std::array<unsigned char, crypto_sign_SECRETKEYBYTES> secret_key{};
         crypto_sign_seed_keypair(public_key.data(), secret_key.data(), seed->data());
+        if (config.offline) {
+            sodium_memzero(secret_key.data(), secret_key.size());
+            return offline_guest(public_key, {});
+        }
         const auto public_value =
             base64_encode(public_key, sodium_base64_VARIANT_URLSAFE_NO_PADDING);
         auto challenge = request("/api/auth/guest/challenge",
@@ -848,7 +870,13 @@ public:
         if (!account || account->public_id.empty() || !std::ranges::all_of(account->public_id, [](unsigned char c) {
             return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
         })) return {};
-        return config.state_path.parent_path() / "hosted-results" / account->public_id;
+        auto directory = config.state_path.parent_path() / "hosted-results";
+        // Account IDs belong to their issuer. Alternate master state files
+        // share a parent directory, so their reports also need an origin scope.
+        // Preserve the production path to recover reports queued before this.
+        if (config.api_base != RevivalIdentityConfig{}.api_base)
+            directory /= identity_scope_key(config.api_base);
+        return directory / account->public_id;
     }
 
     [[nodiscard]] std::filesystem::path hosted_results_directory() const {
@@ -936,6 +964,36 @@ public:
             result.error = error.what();
         } catch (const std::exception& error) { result.error = error.what(); }
         return result;
+    }
+
+    [[nodiscard]] WorkshopResult workshop_request(const WorkshopRequest& action, std::stop_token stop) {
+        std::string token;
+        const bool authenticated = action.kind != WorkshopRequestKind::catalog && action.kind != WorkshopRequestKind::details;
+        {
+            const std::scoped_lock lock{mutex};
+            if (!action.expected_account.empty() && (!account || account->public_id != action.expected_account))
+                return {{}, "Your account changed. Refresh the Workshop."};
+            if (authenticated) token = access_token;
+        }
+        struct TokenGuard { std::string& value; ~TokenGuard() { wipe(value); } } guard{token};
+        if (authenticated && token.empty()) return {{}, "Sign in to sync Workshop subscriptions."};
+        std::string path{"/api/workshop/subscriptions"}, method{"GET"};
+        std::optional<Json> payload;
+        if (action.kind == WorkshopRequestKind::catalog)
+            path = "/api/workshop/items?type=map&limit=12&offset=" + std::to_string(action.offset) + "&q=" + url_encode(action.query);
+        else if (action.kind == WorkshopRequestKind::details) {
+            if (!action.reference.valid() || action.reference.source != "aosplay") return {{}, "Invalid Workshop item."};
+            path = "/api/workshop/items/" + action.reference.id;
+        } else if (action.kind == WorkshopRequestKind::subscribe || action.kind == WorkshopRequestKind::unsubscribe) {
+            if (!action.reference.valid()) return {{}, "Invalid Workshop item."};
+            method = action.kind == WorkshopRequestKind::subscribe ? "PUT" : "DELETE";
+            payload = Json{{"source", action.reference.source}, {"item_id", action.reference.id}};
+        }
+        const auto response = request(path, method, std::move(payload), token, std::chrono::seconds{12}, stop, 1024U*1024U);
+        if (!response) return {{}, response.error.empty() ? "Workshop service is unavailable." : response.error};
+        const auto parsed = parse_json(response);
+        if (!parsed || !parsed->is_object()) return {{}, "Invalid Workshop response."};
+        return {*parsed, {}};
     }
 
     [[nodiscard]] InventoryResult inventory_request(const InventoryRequest& action, std::stop_token stop) {
@@ -1201,6 +1259,11 @@ private:
                                      std::stop_token stop = {},
                                      std::size_t maximum_payload = 0U) const {
         HttpResult result;
+        if (config.offline) {
+            result.error_code = "offline_mode";
+            result.error = "Online services are disabled for this offline profile.";
+            return result;
+        }
         CurlHandle owned{nullptr,curl_easy_cleanup};
         {
             std::lock_guard lock{transport_mutex};
@@ -1375,6 +1438,7 @@ private:
                 .substr(0U, 8U);
         RevivalAccount offline;
         offline.nickname = bounded_guest_name(fingerprint);
+        if (config.offline && !config.offline_profile.empty()) offline.nickname = config.offline_profile;
         offline.legacy_id = "LOCAL-" + lowercase(fingerprint);
         std::ranges::transform(offline.legacy_id,
                                offline.legacy_id.begin(),
@@ -1484,10 +1548,11 @@ private:
             // A bearer token belongs to the service that issued it. Never
             // replay a www.aosplay.net session to a local/test API, or the
             // reverse, when AOS_REVIVAL_API_BASE or a state file is reused.
-            if (const auto issuer = loaded.find("api_base");
-                issuer != loaded.end() && issuer->is_string() &&
-                !issuer->get_ref<const std::string&>().empty()) {
-                auto issued_by = issuer->get<std::string>();
+            {
+                const auto issuer = loaded.find("api_base");
+                auto issued_by = issuer != loaded.end() && issuer->is_string() &&
+                    !issuer->get_ref<const std::string&>().empty()
+                    ? issuer->get<std::string>() : RevivalIdentityConfig{}.api_base;
                 while (!issued_by.empty() && issued_by.back() == '/') issued_by.pop_back();
                 if (issued_by != config.api_base) {
                     if (auto secrets = loaded.find("secrets");
@@ -1632,6 +1697,10 @@ bool RevivalIdentityService::close_relay_lobby(
 
 AosPlayProfileResult RevivalIdentityService::own_profile() {
     return impl_->own_profile();
+}
+
+WorkshopResult RevivalIdentityService::workshop_request(const WorkshopRequest& request, std::stop_token stop) {
+    return impl_->workshop_request(request, stop);
 }
 
 InventoryResult RevivalIdentityService::inventory_request(const InventoryRequest& request, std::stop_token stop) {

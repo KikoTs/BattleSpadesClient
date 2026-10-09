@@ -3,6 +3,7 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <string>
 
@@ -36,6 +37,43 @@ void every_named_line_ships() {
         }
     }
     expect(checked > 300U, "the voice table looks suspiciously small");
+}
+
+void deuce_deaths_have_variety_without_changing_other_voices() {
+    const auto bank = presentation_voice_bank(5U, ClassVoice::death);
+    std::set<std::string_view> takes;
+    VoiceSelectionState state;
+    std::string_view previous;
+    for (std::uint32_t pick{}; pick < 128U; ++pick) {
+        const auto line = choose_voice_line(bank, 100U, pick / 2U, state);
+        expect(!line.empty() && line != previous,
+               "Deuce must vocalise each death without repeating the previous take");
+        expect(line != "classic_death_vo", "the repeated Classic scream must be replaced");
+        takes.insert(line);
+        previous = line;
+    }
+    expect(takes.size() == 16U, "all sixteen human death takes must be reachable");
+    const auto sounds = std::filesystem::path{AOS_TEST_ASSET_ROOT} / "sounds";
+    if (std::filesystem::is_directory(sounds)) {
+        for (const auto stem : takes) {
+            expect(std::filesystem::is_regular_file(sounds / (std::string{stem} + ".ogg")),
+                   "missing Deuce death take: " + std::string{stem});
+        }
+    }
+    for (const auto& set : class_voice_table()) {
+        for (std::uint8_t slot{}; slot < static_cast<std::uint8_t>(ClassVoice::count); ++slot) {
+            const auto voice = static_cast<ClassVoice>(slot);
+            if (set.class_id == 5U && voice == ClassVoice::death) continue;
+            const auto actual = presentation_voice_bank(set.class_id, voice);
+            const auto& authored = set.bank(voice);
+            expect(actual.stems.data() == authored.stems.data() &&
+                       actual.chance == authored.chance &&
+                       actual.no_consecutive_repeat == authored.no_consecutive_repeat,
+                   "other classes and deliberate silences must keep their authored voice");
+        }
+    }
+    expect(presentation_voice_bank(255U, ClassVoice::death).stems.empty(),
+           "an unknown class must stay silent");
 }
 
 /** Silence is authored. Some classes genuinely have no speech. */
@@ -199,6 +237,7 @@ void the_idle_voice_repeats() {
 int main() {
     try {
         every_named_line_ships();
+        deuce_deaths_have_variety_without_changing_other_voices();
         deliberate_silences_are_preserved();
         zombie_idle_groans_survive_generation();
         the_no_repeat_flag_is_honoured();

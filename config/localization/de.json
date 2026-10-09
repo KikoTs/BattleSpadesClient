@@ -2143,6 +2143,10 @@
     "SHOW_OTHER_SKINS": "Skins anderer Spieler anzeigen",
     "WEAPON_MOTION": "Waffenbewegung",
     "ABILITY_HINTS": "Fähigkeitshinweise",
+    "FALLBACK_MUSIC": "Musik auf stillen Servern",
+    "FALLBACK_MUSIC_DESCRIPTION": "Originalmusik, wenn der Server keine vorgibt. Servermusik hat Vorrang.",
+    "RAGDOLL_CORPSES": "Ragdoll-Leichen",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Physik für gefallene Figuren in klassischen Modi. Gilt für neue Todesfälle.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Fallschirm geöffnet",
     "ABILITY_HINT_PARACHUTE_PENDING": "Fallschirm öffnet sich beim Sinken",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: Fallschirm in der Luft öffnen",
@@ -2154,6 +2158,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Das Serverpasswort wurde nicht rechtzeitig eingegeben",
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Schalte alle Gegner aus, um die Runde zu gewinnen!",
-    "LOAD_FAILED": "Laden fehlgeschlagen"
+    "LOAD_FAILED": "Laden fehlgeschlagen",
+    "BLOOD_MARKS": "Blutspuren",
+    "BLOOD_MARKS_DESCRIPTION": "Sichtbare Blutstropfen und vorübergehende Flecken auf Blöcken in Classic und Standard. Bleiben 20–32 Sekunden; ohne Einfluss auf das Spiel."
   }
 }

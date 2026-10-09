@@ -24,6 +24,7 @@ struct FallingVoxel final {
 
 using UnsupportedComponent = std::vector<VoxelCell>;
 using FallingComponent = std::vector<FallingVoxel>;
+enum class CollapseRules { retail, classic };
 
 /**
  * Finds every face/edge-connected component exposed by removed cells which
@@ -36,7 +37,7 @@ using FallingComponent = std::vector<FallingVoxel>;
  */
 [[nodiscard]] std::vector<UnsupportedComponent> find_unsupported_components(
     const VxlMap& map, const std::vector<VoxelCell>& removed_cells,
-    std::size_t work_budget = 10'000'000U);
+    std::size_t work_budget = 10'000'000U, CollapseRules rules = CollapseRules::retail);
 
 /**
  * Captures colors then removes all unsupported components from `map`. The
@@ -45,6 +46,6 @@ using FallingComponent = std::vector<FallingVoxel>;
  */
 [[nodiscard]] std::vector<FallingComponent> collapse_unsupported_components(
     VxlMap& map, const std::vector<VoxelCell>& removed_cells,
-    std::size_t work_budget = 10'000'000U);
+    std::size_t work_budget = 10'000'000U, CollapseRules rules = CollapseRules::retail);
 
 } // namespace battlespades::world

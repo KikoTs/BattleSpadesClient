@@ -7,7 +7,7 @@ set(VCPKG_LIBRARY_LINKAGE static)
 
 set(VCPKG_CMAKE_SYSTEM_NAME Darwin)
 set(VCPKG_OSX_ARCHITECTURES arm64)
-set(VCPKG_OSX_DEPLOYMENT_TARGET 15.0)
+set(VCPKG_OSX_DEPLOYMENT_TARGET 11.0)
 
 # curl probes pipe2() by linking only, so a newer SDK enables it even though the
 # symbol is missing before macOS 27. Keep curl on its pipe() + fcntl() path.

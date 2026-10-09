@@ -128,8 +128,23 @@ const ComponentRelease* UpdateManifest::component(std::string_view name) const n
 }
 
 bool acceptable_url(std::string_view url) noexcept {
-    return starts_with_icase(url, "https://") || starts_with_icase(url, "http://127.0.0.1") ||
-           starts_with_icase(url, "http://localhost");
+    if (starts_with_icase(url, "https://")) return true;
+    if (!starts_with_icase(url, "http://")) return false;
+    const auto authority = url.substr(7U, url.find_first_of("/?#", 7U) - 7U);
+    const auto colon = authority.find(':');
+    const auto host = authority.substr(0U, colon);
+    // Match the complete authority: localhost.evil.example and
+    // 127.0.0.1@evil.example are not loopback HTTP test mirrors.
+    if (host != "127.0.0.1" && !(host.size() == 9U && starts_with_icase(host, "localhost"))) return false;
+    if (colon == std::string_view::npos) return true;
+    const auto port = authority.substr(colon + 1U);
+    if (port.empty() || port.size() > 5U) return false;
+    unsigned number{};
+    for (const char digit : port) {
+        if (digit < '0' || digit > '9') return false;
+        number = number * 10U + static_cast<unsigned>(digit - '0');
+    }
+    return number > 0U && number <= 65535U;
 }
 
 std::string default_component_target(std::string_view component) {

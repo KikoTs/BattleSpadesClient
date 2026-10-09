@@ -131,13 +131,15 @@ public:
     void push(RemoteMotionSample sample, double snapshot_interval) noexcept;
     /** Advance the extrapolated peer by one simulation step. */
     void tick(double dt, const world::VxlMap* map = nullptr,
-              double world_gravity = 1.0) noexcept;
+              double world_gravity = 1.0, bool classic = false) noexcept;
+    void push_classic(RemoteMotionSample sample, bool position_changed) noexcept;
     [[nodiscard]] const RemoteMotionSample& sample() const noexcept;
 
 private:
     RemoteMotionSample current_{};
     world::PlayerMovementState body_{};
     bool initialized_{};
+    bool classic_jump_held_{};
 };
 
 /**

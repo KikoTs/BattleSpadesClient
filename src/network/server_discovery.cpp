@@ -4,6 +4,7 @@
 #endif
 
 #include "battlespades/network/server_discovery.hpp"
+#include "battlespades/core/service_url.hpp"
 #include "battlespades/core/build_info.hpp"
 
 #include <algorithm>
@@ -184,6 +185,11 @@ template <typename Integer>
 
     DiscoveredServer result;
     result.game = {std::move(host), port};
+    const auto version = bounded_string(value, "game_version");
+    if (!version.empty()) {
+        if (version != "0.75" && version != "0.76") return std::nullopt;
+        result.game.protocol = version == "0.75" ? GameProtocol::classic075 : GameProtocol::classic076;
+    }
     result.query_port = bounded_integer<std::uint16_t>(value, "queryPort", port);
     result.ping_milliseconds = bounded_integer<std::uint16_t>(value, "ping", 65'000U);
     result.name = bounded_string(value, "name", result.game.identifier());
@@ -261,6 +267,16 @@ template <typename Integer>
     // `players` counts bots, so a bot-filled server reads as full. Keep the
     // human figure when the listing separates them.
     result.human_players = bounded_integer<std::uint16_t>(value, "human_players", result.players);
+    if (is_classic_protocol(result.game.protocol)) {
+        result.players = bounded_integer<std::uint16_t>(value, "players_current", result.players);
+        result.maximum_players = bounded_integer<std::uint16_t>(value, "players_max", result.maximum_players);
+        result.human_players = result.players;
+        result.classic = true;
+        result.identity_ticket = false;
+        result.official = false;
+        result.steam_host_id = result.steam_host_id_spacewar = result.steam_server_id = 0;
+        result.master_identifier.clear();
+    }
     return result;
 }
 
@@ -465,7 +481,9 @@ private:
 } // namespace
 
 std::string ServerEndpoint::identifier() const {
-    return "aos://" + host + ':' + std::to_string(port);
+    auto result = "aos://" + host + ':' + std::to_string(port);
+    if (is_classic_protocol(protocol)) result += protocol == GameProtocol::classic075 ? ":0.75" : ":0.76";
+    return result;
 }
 
 bool parse_server_endpoint(std::string_view text,
@@ -474,11 +492,21 @@ bool parse_server_endpoint(std::string_view text,
                            std::uint16_t default_port) {
     error.clear();
     auto input = trim(text);
+    GameProtocol protocol{GameProtocol::automatic};
     if (input == "local") input = "127.0.0.1:" + std::to_string(default_port);
+    if (input.size() >= 8U && lowercase(input.substr(0U, 8U)) == "aosbb://") {
+        input.erase(0U, 8U);
+        protocol = GameProtocol::retail168;
+    }
     constexpr std::string_view scheme{"aos://"};
-    if (input.size() >= scheme.size() &&
-        lowercase(input.substr(0U, scheme.size())) == scheme) {
+    const bool aos_link = input.size() >= scheme.size() && lowercase(input.substr(0U, scheme.size())) == scheme;
+    if (aos_link) {
         input.erase(0U, scheme.size());
+    }
+    if (input.ends_with(":0.75") || input.ends_with(":0.76")) {
+        protocol = input.ends_with(":0.75") ? GameProtocol::classic075 : GameProtocol::classic076;
+        input.resize(input.size() - 5U);
+        default_port = retail_game_port;
     }
     if (input.empty() || input.size() > maximum_text_field_bytes ||
         input.find_first_of("/\\?#@ \t\r\n") != std::string::npos) {
@@ -523,7 +551,19 @@ bool parse_server_endpoint(std::string_view text,
         error = "Host contains an unsupported character";
         return false;
     }
-    endpoint = ServerEndpoint{std::move(host), port};
+    // Original AoS links encode the four IPv4 octets in a little-endian uint32.
+    if (aos_link && std::ranges::all_of(host, [](char c) { return c >= '0' && c <= '9'; })) {
+        std::uint32_t packed{};
+        const auto parsed = std::from_chars(host.data(), host.data() + host.size(), packed);
+        if (parsed.ec != std::errc{} || parsed.ptr != host.data() + host.size()) {
+            error = "Invalid packed AoS IPv4 address";
+            return false;
+        }
+        host = std::to_string(packed & 255U) + '.' + std::to_string((packed >> 8U) & 255U) + '.' +
+               std::to_string((packed >> 16U) & 255U) + '.' + std::to_string(packed >> 24U);
+        if (colon == std::string::npos) port = retail_game_port;
+    }
+    endpoint = ServerEndpoint{std::move(host), port, protocol};
     return true;
 }
 
@@ -711,9 +751,9 @@ DiscoveryResult merge_discovered_servers(DiscoveryResult primary, const Discover
         // Steam lists a server at its retail port (32887) while AoSPlay lists
         // the game port; the same host with the same name, or the only row
         // at that host, is the same server.
-        if (existing == primary.servers.end()) {
+        if (existing == primary.servers.end() && !is_classic_protocol(extra.game.protocol)) {
             const auto same_host = [&](const DiscoveredServer& server) {
-                return server.game.host == extra.game.host;
+                return !is_classic_protocol(server.game.protocol) && server.game.host == extra.game.host;
             };
             const auto at_host = std::ranges::count_if(primary.servers, same_host);
             existing = std::ranges::find_if(primary.servers, [&](const DiscoveredServer& server) {
@@ -741,7 +781,7 @@ namespace {
 DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, std::stop_token stop,
                                          std::string& body) {
     DiscoveryResult output;
-    if (config.url.empty() || config.timeout.count() <= 0 ||
+    if (!core::valid_service_url(config.url) || config.timeout.count() <= 0 ||
         config.maximum_payload_bytes == 0U || config.maximum_servers == 0U) {
         output.error = "invalid public discovery configuration";
         return output;
@@ -767,7 +807,7 @@ DiscoveryResult fetch_public_server_list(const PublicDiscoveryConfig& config, st
     // The public list is metadata, but it still controls endpoints rendered
     // by the client. Never allow configuration or redirects to downgrade the
     // request to an unencrypted transport.
-    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "https");
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, config.url.starts_with("http://") ? "http,https" : "https");
     curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 2L);

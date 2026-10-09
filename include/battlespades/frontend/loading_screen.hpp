@@ -1,4 +1,5 @@
 #pragma once
+#include "battlespades/network/game_protocol.hpp"
 
 #include "battlespades/assets/preload_service.hpp"
 
@@ -120,6 +121,8 @@ public:
     /** Explain real host/authentication stages without changing readiness. */
     void set_status(std::string status);
     void set_infographic_captions(std::array<std::string, 3U> captions);
+    /** Original-protocol scoring; Classic+ retains its authored score table. */
+    void set_classic_scoring(bool territory_mode) noexcept;
     void receiving_packs() noexcept;
     void checking_map() noexcept;
     void receiving_map() noexcept;
@@ -190,6 +193,7 @@ private:
     std::array<bool, 2U> score_expanded_{true, true};
     std::size_t score_scroll_{};
     bool friendly_fire_{};
+    std::optional<bool> classic_territory_scoring_;
     std::array<std::string, 3U> infographic_captions_;
     std::vector<LoadingCustomRuleRow> custom_rules_;
 };
@@ -215,7 +219,8 @@ struct ServerModePresentation final {
 
 /** Resolve InitialInfo.mode_key using retail's MODE_* ordinal table. */
 [[nodiscard]] ServerModePresentation resolve_protocol168_mode(std::uint8_t mode_id,
-                                                              bool classic = false);
+                                                              bool classic = false,
+                                                              network::GameProtocol protocol = network::GameProtocol::retail168);
 
 namespace loading_screen_assets {
 

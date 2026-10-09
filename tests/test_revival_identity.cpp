@@ -29,6 +29,36 @@ void expect(bool condition, std::string_view message) {
             ".json");
 }
 
+void explicit_offline_profiles_never_need_a_master() {
+    const auto path = temporary_state();
+    RevivalIdentityConfig config;
+    config.state_path = path;
+    config.api_base = "http://127.0.0.1:1";
+    config.offline = true;
+    config.offline_profile = "LAN Player";
+    const auto before = std::chrono::steady_clock::now();
+    std::string id;
+    {
+        RevivalIdentityService service{config};
+        const auto login = service.guest_login();
+        expect(login && login.account->offline && !login.account->ranked_eligible &&
+               login.account->nickname == "LAN Player" && !service.has_online_session(),
+               "explicit offline profile has a local unranked identity");
+        id = login.account->legacy_id;
+        const auto rejected = service.login("ValidUser", "test-password");
+        expect(!rejected && rejected.error_code == "offline_mode", "account requests disabled offline");
+    }
+    {
+        RevivalIdentityService restored{config};
+        const auto login = restored.guest_login();
+        expect(login && login.account->legacy_id == id, "offline profile persists across processes");
+    }
+    expect(std::chrono::steady_clock::now() - before < std::chrono::seconds{3},
+           "explicit offline login must not wait for HTTP timeout");
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
+
 void validation_matches_public_contract() {
     expect(valid_revival_username("VoxelBuilder"),
            "valid ASCII username should pass");
@@ -81,6 +111,48 @@ void offline_account_state_is_loaded_and_logout_is_local() {
     expect(logout.error.empty() && !service.cached_account().has_value(),
            "logout must clear local account state without a bearer token");
 
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
+
+void hosted_results_are_scoped_to_their_master() {
+    const auto path = temporary_state();
+    const auto write_account = [&](std::string_view issuer) {
+        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+        stream << "{\"version\":1,";
+        if (!issuer.empty()) stream << "\"api_base\":\"" << issuer << "\",";
+        stream << R"("account":{"public_id":"shared-account","nickname":"Fixture"}})";
+        stream.close();
+        expect(static_cast<bool>(stream), "Could not write issuer isolation fixture");
+    };
+    const auto directory_for = [&](std::string_view api, std::string_view issuer) {
+        write_account(issuer);
+        RevivalIdentityConfig config;
+        config.api_base = api;
+        config.state_path = path;
+        config.allow_environment_override = false;
+        RevivalIdentityService service{config};
+        expect(service.cached_account().has_value(), "Matching issuer must retain the fixture account");
+        return service.hosted_results_directory();
+    };
+    const auto production = directory_for(RevivalIdentityConfig{}.api_base, {});
+    expect(production == path.parent_path() / "hosted-results" / "shared-account",
+           "Existing production reports must retain their legacy directory");
+    const auto first = directory_for("https://first.example", "https://first.example");
+    const auto second = directory_for("https://second.example", "https://second.example");
+    expect(first != second && first != production && second != production,
+           "Masters with overlapping account IDs must not upload or delete each other's queued reports");
+    const auto normalized = directory_for("https://FIRST.example/", "https://first.example");
+    expect(normalized == first, "Equivalent master origins must recover the same queued reports");
+
+    write_account({});
+    RevivalIdentityConfig custom;
+    custom.api_base = "https://first.example";
+    custom.state_path = path;
+    custom.allow_environment_override = false;
+    RevivalIdentityService service{custom};
+    expect(!service.cached_account().has_value() && service.hosted_results_directory().empty(),
+           "Legacy state without an issuer must not carry its account into a custom master");
     std::error_code error;
     std::filesystem::remove(path, error);
 }
@@ -209,7 +281,9 @@ int main(int argc, char** argv) {
             return 0;
         }
         validation_matches_public_contract();
+        explicit_offline_profiles_never_need_a_master();
         offline_account_state_is_loaded_and_logout_is_local();
+        hosted_results_are_scoped_to_their_master();
         std::cout << "revival identity tests passed\n";
         return 0;
     } catch (const std::exception& error) {

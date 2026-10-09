@@ -1,4 +1,5 @@
 #include "battlespades/network/protocol168_players.hpp"
+#include "battlespades/world/classic_movement.hpp"
 
 #include "battlespades/world/class_catalog.hpp"
 #include "battlespades/world/jetpack_death.hpp"
@@ -585,7 +586,7 @@ void RemoteMotionInterpolator::push(RemoteMotionSample sample,
 }
 
 void RemoteMotionInterpolator::tick(double dt, const world::VxlMap* map,
-                                    double world_gravity) noexcept {
+                                    double world_gravity, bool classic) noexcept {
     if (!initialized_ || !std::isfinite(dt) || dt <= 0.0 || current_.dead) return;
     world::PlayerInputState input;
     input.forward = (current_.input_flags & 0x01U) != 0U;
@@ -600,8 +601,8 @@ void RemoteMotionInterpolator::tick(double dt, const world::VxlMap* map,
     body_.orientation = current_.orientation;
     const auto movement_class =
         world::movement_config_for_class(current_.class_id, current_.movement_speed_scale);
-    static_cast<void>(world::step_player(body_, input, map, dt, movement_class, {},
-                                         world_gravity));
+    if (classic) static_cast<void>(world::step_classic_player(body_, input, map, dt, current_.hover, classic_jump_held_));
+    else static_cast<void>(world::step_player(body_, input, map, dt, movement_class, {}, world_gravity));
     const auto finite = std::isfinite(body_.position.x) && std::isfinite(body_.position.y) &&
                         std::isfinite(body_.position.z);
     if (!finite) {
@@ -610,6 +611,18 @@ void RemoteMotionInterpolator::tick(double dt, const world::VxlMap* map,
     }
     current_.position = body_.position;
     current_.velocity = body_.velocity;
+}
+
+void RemoteMotionInterpolator::push_classic(RemoteMotionSample sample, bool position_changed) noexcept {
+    if (!initialized_) { reset(sample); return; }
+    // Classic transmits no velocity. Continue simulation across position snaps,
+    // and do not rewind position for an input/tool-only bridge update.
+    const auto velocity = body_.velocity;
+    const bool crouch = body_.crouch;
+    if (!position_changed) sample.position = body_.position;
+    push(sample, 0.1);
+    body_.velocity = velocity;
+    if (!position_changed) body_.crouch = crouch;
 }
 
 const RemoteMotionSample& RemoteMotionInterpolator::sample() const noexcept {

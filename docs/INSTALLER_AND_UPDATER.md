@@ -218,6 +218,10 @@ Each component is versioned and updated on its own:
 - No package may write `assets\original`, except `retail_assets` through the
   importer.
 
+See [Update and asset download behavior](UPDATE_DOWNLOADS.md) for transfer
+granularity, HTTP Range resume, cache reuse, and keeping unchanged asset packs
+out of a client-only update.
+
 ### Screens (launcher; Windows-native dialogs)
 
 There are at most two simple screens. Both use standard Windows Task

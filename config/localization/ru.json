@@ -2143,6 +2143,10 @@
     "SHOW_OTHER_SKINS": "Показывать скины других игроков",
     "WEAPON_MOTION": "Движение оружия",
     "ABILITY_HINTS": "Подсказки способностей",
+    "FALLBACK_MUSIC": "Музыка на тихих серверах",
+    "FALLBACK_MUSIC_DESCRIPTION": "Оригинальная музыка, если сервер не передаёт свою. Музыка сервера имеет приоритет.",
+    "RAGDOLL_CORPSES": "Физика тел",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Физика погибших персонажей в классических режимах. Для новых смертей.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Парашют раскрыт",
     "ABILITY_HINT_PARACHUTE_PENDING": "Парашют раскроется при снижении",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: раскрыть парашют в воздухе",
@@ -2154,6 +2158,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Пароль сервера не был введён вовремя",
     "ARENA": "Арена",
     "ARENA_DESCRIPTION": "Уничтожьте всех врагов, чтобы выиграть раунд!",
-    "LOAD_FAILED": "Не удалось загрузить"
+    "LOAD_FAILED": "Не удалось загрузить",
+    "BLOOD_MARKS": "Следы крови",
+    "BLOOD_MARKS_DESCRIPTION": "Капли крови и временные пятна на блоках в Classic и Standard. Остаются на 20–32 секунды и не влияют на игровой процесс."
   }
 }

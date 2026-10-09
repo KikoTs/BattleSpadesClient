@@ -230,6 +230,15 @@ void test_hosting_gate(const fs::path& root) {
     battlespades::platform::HostingStatusFile not_offered;
     not_offered.state = "not_installed";
     expect(decide_hosting_gate(true, ready, true, false) == HostingGateAction::start, "server present and compatible");
+    expect(decide_hosting_gate(true, ready, true, false, false) == HostingGateAction::start,
+           "installed compatible server works offline");
+    expect(decide_hosting_gate(false, none, true, false, false) == HostingGateAction::offline_unavailable,
+           "offline host never requests a missing component download");
+    expect(decide_hosting_gate(true, status, true, false, false) == HostingGateAction::offline_unavailable,
+           "offline host never requests an incompatible component update");
+    const auto offline = battlespades::platform::check_hosting_gate(install, false, false);
+    expect(!offline.ready && !offline.download_started && offline.message.find("offline") != std::string::npos,
+           "offline failure explains the needed bundle without starting the launcher");
     expect(decide_hosting_gate(true, none, true, false) == HostingGateAction::start,
            "no status file (offline or dev build): an installed server is used");
     expect(decide_hosting_gate(false, none, true, false) == HostingGateAction::request_download,

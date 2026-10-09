@@ -1,13 +1,18 @@
 #include "battlespades/platform/workshop_sync.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <barrier>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -244,6 +249,45 @@ void index_saves_atomically() {
            "a missing index is empty");
 }
 
+void concurrent_preview_publication_is_atomic() {
+    const ScratchDirectory scratch{"concurrent-preview"};
+    const auto target = scratch.path() / "same-preview.png";
+    constexpr unsigned writers = 4U;
+    constexpr unsigned rounds = 16U;
+    constexpr std::size_t payload_size = 256U * 1024U;
+    std::barrier gate{static_cast<std::ptrdiff_t>(writers + 1U)};
+    std::atomic<unsigned> failures{};
+    std::vector<std::jthread> workers;
+    for (unsigned index{}; index < writers; ++index) {
+        workers.emplace_back([&, index] {
+            const std::vector<unsigned char> payload(payload_size, static_cast<unsigned char>('A' + index));
+            for (unsigned round{}; round < rounds; ++round) {
+                gate.arrive_and_wait();
+                std::string error;
+                if (!write_file_atomically(target, payload, error)) ++failures;
+                gate.arrive_and_wait();
+            }
+        });
+    }
+    bool complete = true;
+    for (unsigned round{}; round < rounds; ++round) {
+        gate.arrive_and_wait();
+        gate.arrive_and_wait();
+        // Writers are blocked at the next round while the reader checks the
+        // published file: it must be one complete image, never mixed bytes.
+        const auto result = read_text(target);
+        complete = complete && result.size() == payload_size &&
+                   !result.empty() && result.front() >= 'A' && result.front() < 'A' + static_cast<int>(writers) &&
+                   std::ranges::all_of(result, [&](char value) { return value == result.front(); });
+    }
+    workers.clear();
+    expect(failures.load() == 0U, "concurrent preview writers must not steal each other's temporary file");
+    expect(complete, "every published preview must contain one complete writer payload");
+    expect(std::distance(std::filesystem::directory_iterator{scratch.path()},
+                         std::filesystem::directory_iterator{}) == 1,
+           "no concurrent publication temporary files remain");
+}
+
 } // namespace
 
 int main() {
@@ -259,6 +303,7 @@ int main() {
         installs_files_atomically_and_removes_only_its_own();
         a_png_that_is_not_a_png_is_skipped();
         index_saves_atomically();
+        concurrent_preview_publication_is_atomic();
         std::cout << "workshop sync tests passed\n";
         return 0;
     } catch (const std::exception& error) {

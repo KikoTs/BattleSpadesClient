@@ -99,6 +99,8 @@ struct WeaponRuntimeContext final {
 class WeaponRuntime final {
 public:
     explicit WeaponRuntime(std::uint32_t random_seed = 0xA05B168U) noexcept;
+    void set_classic_protocol(std::uint8_t protocol) noexcept;
+    void classic_reload_completed(std::uint8_t magazine, std::uint8_t reserve) noexcept;
 
     void replace_loadout(std::span<const std::uint8_t> tool_ids,
                          std::optional<std::uint8_t> selected = std::nullopt);
@@ -179,6 +181,8 @@ public:
     [[nodiscard]] bool take_auto_switch_request() noexcept;
 
 private:
+    void tick_classic(double dt) noexcept;
+    std::uint8_t classic_protocol_{};
     void process_edges(const WeaponDefinition& weapon) noexcept;
     void process_held(const WeaponDefinition& weapon, double dt) noexcept;
     void update_minigun_motor(const WeaponDefinition& weapon, double dt,

@@ -5,6 +5,7 @@
 #include "battlespades/world/scripted_weapon.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
+#include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -23,6 +24,8 @@
 #include <sstream>
 #include <utility>
 #include <limits>
+#include <ctime>
+#include <regex>
 
 namespace battlespades::frontend {
 namespace {
@@ -127,7 +130,7 @@ std::vector<std::uint8_t> cached_thumbnail(const InventoryCosmetic& item,const s
 }
 std::string button(std::string_view action, std::string_view title, bool enabled = true,
                    std::string_view css = {}) {
-    return "<button action=\"" + escape(action) + "\" class=\"" + std::string{css} + "\"" +
+    return "<button action=\"" + escape(action) + "\" class=\"" + std::string{css} + (enabled ? "" : " disabled") + "\"" +
         (enabled ? "" : " disabled") + ">" + escape(title) + "</button>";
 }
 std::string card(const InventoryCosmetic& item, std::string_view action, bool selected = false) {
@@ -146,6 +149,12 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
     std::filesystem::path root;
     Rml::Context* context{};
     Rml::ElementDocument* document{};
+    Rml::ElementDocument* workshop_document{};
+    WorkshopMenuModel* workshop_model{};
+    WorkshopAction workshop_action{WorkshopAction::none};
+    std::uint64_t workshop_revision{~std::uint64_t{0}};
+    std::string workshop_viewport;
+    std::string workshop_grid_html, workshop_detail_html, workshop_pages_html;
     InventoryMenuModel* model{};
     InventoryAction action{InventoryAction::none};
     world::SkinVariantPreferences* variant_preferences{};
@@ -380,6 +389,7 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         return nullptr;
     }
     void ProcessEvent(Rml::Event& event) override {
+        if (workshop_model) { workshop_event(event); return; }
         // Building select elements emits change events too. Only user changes
         // should write preferences or replace an in-flight model preview.
         if (!model || preparing) return;
@@ -696,7 +706,152 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
             }
         });
     }
+    void workshop_event(Rml::Event& event) {
+        if (preparing || !workshop_model) return;
+        auto& state=*workshop_model;
+        if (event.GetType()=="change") {
+            if (auto* input=dynamic_cast<Rml::ElementFormControlInput*>(event.GetTargetElement()); input && input->GetId()=="search")
+                state.query=input->GetValue();
+            if (auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(event.GetTargetElement())) {
+                if (select->GetId()=="sort") state.filters.sort=select->GetValue();
+                else if (select->GetId()=="period") { try { state.filters.days=std::stoi(select->GetValue()); } catch (...) {} }
+                else if (select->GetId()=="mode") state.filters.tag=select->GetValue();
+                else return;
+                state.page=0; workshop_action=WorkshopAction::browse; ++state.revision;
+            }
+            return;
+        }
+        if (event.GetType()!="click") return;
+        auto* target=event.GetTargetElement();
+        while (target && !target->HasAttribute("action")) target=target->GetParentNode();
+        if (!target || target->HasAttribute("disabled")) return;
+        const auto command=target->GetAttribute<Rml::String>("action","");
+        if (command=="back") { navigation=0; return; }
+        if (command=="cancel") { workshop_action=WorkshopAction::cancel; return; }
+        sound=3;
+        if (command.starts_with("source:")) { state.source=command.substr(7); state.page=0; workshop_action=WorkshopAction::browse; }
+        else if (command=="search") { state.page=0; workshop_action=WorkshopAction::browse; }
+        else if (command=="next" && state.more) { ++state.page; workshop_action=WorkshopAction::browse; }
+        else if (command=="previous" && state.page) { --state.page; workshop_action=WorkshopAction::browse; }
+        else if (command=="sync" && !state.busy) workshop_action=WorkshopAction::sync;
+        else if (command=="download" && !state.busy) workshop_action=WorkshopAction::download;
+        else if (command=="subscribe" && !state.busy) workshop_action=WorkshopAction::subscribe;
+        else if (command=="unsubscribe" && !state.busy) workshop_action=WorkshopAction::unsubscribe;
+        else if (command=="remove" && !state.busy) workshop_action=WorkshopAction::remove;
+        else if (command=="show-images") state.details=false;
+        else if (command=="show-details") state.details=true;
+        else if (command=="image-next") {
+            if (const auto* item=state.selection();item && !item->preview_urls.empty()) state.image=(state.image+1U)%item->preview_urls.size();
+        } else if (command=="image-previous") {
+            if (const auto* item=state.selection();item && !item->preview_urls.empty()) state.image=(state.image+item->preview_urls.size()-1U)%item->preview_urls.size();
+        }
+        else if (command.starts_with("select:")) {
+            try { const auto index=std::stoul(command.substr(7)); if (index<state.items.size()) { state.selected=index; state.image=0; } } catch (...) {}
+        }
+        ++state.revision;
+    }
+    void prepare_workshop(WorkshopMenuModel& value,float scale) {
+        workshop_model=&value; model=nullptr;
+        if (!context || !document) return;
+        if (document->IsVisible()) document->Hide();
+        if (!workshop_document) {
+            workshop_document=context->LoadDocument((root.parent_path()/"client/ui/workshop.rml").string());
+            if (!workshop_document) { failure="Workshop layout could not be loaded."; return; }
+            workshop_document->AddEventListener("click",this);
+            workshop_document->AddEventListener("change",this);
+        }
+        if (!workshop_document->IsVisible()) workshop_document->Show();
+        scale=std::clamp(scale,0.25F,8.0F);
+        if (pixel_scale!=scale) {
+            pixel_scale=scale; context->SetDensityIndependentPixelRatio(scale);
+            context->SetDimensions({static_cast<int>(std::lround(800*scale)),static_cast<int>(std::lround(600*scale))});
+        }
+        for (const auto texture:retired_textures) static_cast<void>(renderer.release_texture(texture));
+        retired_textures.clear();
+        if (workshop_revision!=value.revision) {
+            workshop_revision=value.revision;
+            struct Guard { bool& flag; Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard{preparing};
+            const auto viewport=value.source+":"+value.query+":"+value.filters.sort+":"+value.filters.tag+":"+
+                std::to_string(value.filters.days)+":"+std::to_string(value.page);
+            auto* grid=workshop_document->GetElementById("workshop-grid");
+            const auto scroll=viewport==workshop_viewport?grid->GetScrollTop():0.0F;
+            workshop_viewport=viewport;
+            for (const auto* id:{"steam","aosplay","library"}) workshop_document->GetElementById(id)->SetClass("active",value.source==id);
+            for (const auto* id:{"sort","period","mode"}) {
+                auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(workshop_document->GetElementById(id));
+                select->SetDisabled(value.source!="steam" || (std::string_view{id}=="period" && value.filters.sort!="trend"));
+                select->SetValue(std::string_view{id}=="sort"?(value.source=="steam"?value.filters.sort:"mostrecent"):
+                    std::string_view{id}=="period"?std::to_string(value.filters.days):value.filters.tag);
+            }
+            workshop_document->GetElementById("workshop-cancel")->SetProperty("visibility",value.busy?"visible":"hidden");
+            const auto update_html=[](Rml::Element* element,std::string& previous,const std::string& html) {
+                if (html!=previous) { element->SetInnerRML(html); previous=html; return true; }
+                return false;
+            };
+            std::string html;
+            for (std::size_t i=0;i<value.items.size();++i) {
+                const auto& item=value.items[i]; const auto key=item.reference.key();
+                html+="<button class=\"map"+std::string{i==value.selected?" selected":""}+"\" action=\"select:"+std::to_string(i)+"\">";
+                if (!item.preview_file.empty()) html+="<img class=\"map-image\" src=\""+escape(std::filesystem::path{item.preview_file}.generic_string())+"\"/>";
+                else html+="<div class=\"map-image no-preview\">"+std::string{item.preview_url.empty() || item.preview_loaded?"NO PREVIEW":"LOADING PREVIEW"}+"</div>";
+                html+="<div class=\"map-title\">"+escape(item.title)+"</div><div class=\"map-meta\">"+
+                    (value.installed.contains(key)?"INSTALLED":value.subscriptions.contains(key)?"SUBSCRIBED":item.reference.source=="steam"?"STEAM WORKSHOP":"AOSPLAY")+"</div></button>";
+            }
+            if (value.items.empty()) html+="<p class=\"empty\">"+std::string{value.busy?"Loading maps...":"No maps on this page."}+"</p>";
+            const auto grid_changed=update_html(grid,workshop_grid_html,html);
+            html=button("previous","PREVIOUS",value.page>0)+"<span>PAGE "+std::to_string(value.page+1U)+"</span>"+button("next","NEXT",value.more);
+            update_html(workshop_document->GetElementById("workshop-pages"),workshop_pages_html,html);
+            html.clear();
+            if (const auto* item=value.selection()) {
+                const auto key=item->reference.key(); const bool subscribed=value.subscriptions.contains(key);
+                html="<h2 class=\"detail-title\">"+escape(item->title)+"</h2><div class=\"detail-tabs\">"+
+                    button("show-images","SCREENSHOTS",true,value.details?"":"active")+button("show-details","MAP DETAILS",true,value.details?"active":"")+"</div><div class=\"detail-body\">";
+                if (value.details) {
+                    std::uint64_t bytes{}; for (const auto& file:item->files) bytes+=file.bytes;
+                    std::ostringstream size; size<<std::fixed<<std::setprecision(1)<<static_cast<double>(bytes)/(1024.0*1024.0)<<" MiB";
+                    const auto date=[](std::uint64_t timestamp) {
+                        if (!timestamp || timestamp>4102444800ULL) return std::string{"Unknown"};
+                        const auto time=static_cast<std::time_t>(timestamp); std::tm utc{};
+#ifdef _WIN32
+                        gmtime_s(&utc,&time);
+#else
+                        gmtime_r(&time,&utc);
+#endif
+                        std::ostringstream out; out<<std::put_time(&utc,"%d %b %Y"); return out.str();
+                    };
+                    std::string modes; for (const auto& tag:item->tags) { if (!modes.empty()) modes+=" / "; modes+=tag; }
+                    html+="<div class=\"description\"><p class=\"map-facts\">"+escape(modes.empty()?"Community map":modes)+" · "+size.str()+"</p>";
+                    if (item->reference.source=="steam") html+="<p>"+std::to_string(item->subscribers)+" subscribers · "+std::to_string(item->favorites)+" favorites\nPublished "+date(item->created)+" · Updated "+date(item->updated)+"</p>";
+                    html+="<p>"+escape(item->author)+" · "+escape(item->reference.source+" / "+item->reference.id)+"</p>"+
+                        escape(std::regex_replace(item->description,std::regex{R"(\[/?[a-zA-Z][^\]\r\n]{0,200}\])"},""))+"</div>";
+                } else {
+                    const auto count=std::max(std::size_t{1},item->preview_urls.size());
+                    value.image=std::min(value.image,count-1U);
+                    const auto file=value.image<item->preview_files.size()?item->preview_files[value.image]:value.image==0?item->preview_file:std::string{};
+                    if (!file.empty()) html+="<img class=\"preview\" src=\""+escape(std::filesystem::path{file}.generic_string())+"\"/>";
+                    else html+="<div class=\"preview no-preview\">"+std::string{item->gallery_loaded?"PREVIEW UNAVAILABLE":"LOADING SCREENSHOTS"}+"</div>";
+                    html+="<div class=\"gallery-nav\">"+button("image-previous","<",count>1U)+"<span>"+
+                        std::to_string(value.image+1U)+" / "+std::to_string(count)+(item->gallery_loaded?item->gallery_error.empty()?"":" · More images unavailable":" · Loading")+"</span>"+
+                        button("image-next",">",count>1U)+"</div>";
+                }
+                html+="</div><div class=\"actions\">";
+                html+=button("download",value.installed.contains(key)?"CHECK UPDATE":"DOWNLOAD",!value.busy && !item->files.empty(),"primary");
+                html+=button(subscribed?"unsubscribe":"subscribe",subscribed?"UNSUBSCRIBE":"SUBSCRIBE",!value.busy && value.signed_in);
+                html+=button("remove","REMOVE FILES",!value.busy && !subscribed && value.installed.contains(key));
+                html+="</div>";
+            } else {
+                html+="<h2>BUILD YOUR MAP LIBRARY</h2><p class=\"description\">Steam downloads use public item links. Sign in to sync subscriptions between computers. Installed maps appear in Create Match.</p>";
+            }
+            update_html(workshop_document->GetElementById("workshop-details"),workshop_detail_html,html);
+            workshop_document->GetElementById("workshop-status")->SetInnerRML(escape(value.message));
+            if (grid_changed) { context->Update(); grid->SetScrollTop(scroll); }
+        }
+        draws.clear(); context->Update(); context->Render();
+    }
     void prepare(InventoryMenuModel& value, bool is_fixture, float scale) {
+        workshop_model=nullptr;
+        if (workshop_document && workshop_document->IsVisible()) workshop_document->Hide();
+        if (document && !document->IsVisible()) document->Show();
         model=&value; fixture=is_fixture;
         for(const auto texture:retired_textures)static_cast<void>(renderer.release_texture(texture));
         retired_textures.clear();
@@ -800,6 +955,19 @@ InventoryView::InventoryView(render::BgfxUiRenderer& renderer,std::filesystem::p
     : impl_(std::make_unique<Impl>(renderer,std::move(root),variants)) {}
 InventoryView::~InventoryView() = default;
 void InventoryView::prepare(InventoryMenuModel& model,bool fixture,float scale) { impl_->prepare(model,fixture,scale); }
+void InventoryView::prepare_workshop(WorkshopMenuModel& model,float scale) { impl_->prepare_workshop(model,scale); }
+WorkshopAction InventoryView::take_workshop_action() { return std::exchange(impl_->workshop_action,WorkshopAction::none); }
+void InventoryView::text_input(std::string_view text) { if (impl_->context) impl_->context->ProcessTextInput(Rml::String{text}); }
+void InventoryView::select_search_text() {
+    if (!impl_->workshop_model || !impl_->context) return;
+    auto* input=dynamic_cast<Rml::ElementFormControlInput*>(impl_->context->GetFocusElement());
+    if (input && input->GetId()=="search") input->Select();
+}
+void InventoryView::edit_key(bool backspace) {
+    if (!impl_->context) return;
+    const auto key=backspace?Rml::Input::KI_BACK:Rml::Input::KI_DELETE;
+    impl_->context->ProcessKeyDown(key,0); impl_->context->ProcessKeyUp(key,0);
+}
 bool InventoryView::draw() { for (const auto& draw:impl_->draws) if (!impl_->renderer.draw(draw)) return false; return true; }
 void InventoryView::pointer_move(ui::Point point) {
     if (!impl_->context) return;
@@ -835,6 +1003,17 @@ void InventoryView::wheel(int steps) {
 }
 void InventoryView::input(ui::InputEvent event) {
     if (!impl_->context) return;
+    if (impl_->workshop_model && event.action==ui::InputAction::activate && event.triggers_action()) {
+        const auto* focused=impl_->context->GetFocusElement();
+        if (focused && focused->GetId()=="search") {
+            if (!impl_->workshop_model->busy) {
+                impl_->workshop_model->page=0;
+                ++impl_->workshop_model->revision;
+                impl_->workshop_action=WorkshopAction::browse;
+            }
+            return;
+        }
+    }
     auto key=Rml::Input::KI_UNKNOWN;
     switch (event.action) {
     case ui::InputAction::focus_next: case ui::InputAction::focus_previous: key=Rml::Input::KI_TAB; break;

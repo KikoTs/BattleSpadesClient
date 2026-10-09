@@ -27,8 +27,9 @@ void expect(bool condition, const char* message) {
 
 // Reuse the test executable as a tiny real child on every platform. The
 // bounded lifetime also collects it if the ownership regression reappears.
-int fixture_child(const std::filesystem::path& config) {
+int fixture_child(const std::filesystem::path& config, bool offline) {
     const auto prefix = std::filesystem::current_path() / config.parent_path().filename();
+    if (offline) std::ofstream{prefix.string() + ".offline"} << "--offline";
 #if defined(_WIN32)
     BOOL in_job{};
     if (IsProcessInJob(GetCurrentProcess(), nullptr, &in_job) && in_job)
@@ -109,9 +110,12 @@ void move_assignment_stops_replaced_child_and_moved_from_owner_restarts(
     expect(destination.start(config, error), "Destination child did not launch");
     wait_ready(destination);
     const auto old_session = destination.session_directory();
+    expect(!fs::exists(marker(old_session, ".offline")), "Online child unexpectedly received --offline");
+    config.offline = true;
     expect(source.start(config, error), "Source child did not launch");
     wait_ready(source);
     const auto transferred_session = source.session_directory();
+    expect(fs::exists(marker(transferred_session, ".offline")), "Offline child did not receive --offline");
     destination = std::move(source);
     expect(fs::exists(marker(old_session, ".stopped")) && !fs::exists(old_session),
            "Move assignment must stop the replaced child and remove its session");
@@ -585,8 +589,9 @@ void claims_admin_once_then_logs_in_with_the_room_password() {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc == 4 && std::string_view{argv[1]} == "--config" &&
-        std::string_view{argv[3]} == "--control-stdin") return fixture_child(argv[2]);
+    if ((argc == 4 || (argc == 5 && std::string_view{argv[4]} == "--offline")) &&
+        std::string_view{argv[1]} == "--config" && std::string_view{argv[3]} == "--control-stdin")
+        return fixture_child(argv[2], argc == 5);
     // These tests exercise process ownership, not public reachability. A
     // loopback probe keeps Windows Firewall from prompting for every new
     // build directory's copy of this executable.

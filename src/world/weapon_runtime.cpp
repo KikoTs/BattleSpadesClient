@@ -1,4 +1,5 @@
 #include "battlespades/world/weapon_runtime.hpp"
+#include "battlespades/world/classic_weapons.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -90,6 +91,78 @@ namespace {
 WeaponRuntime::WeaponRuntime(std::uint32_t random_seed) noexcept
     : random_state_(random_seed == 0U ? 0xA05B168U : random_seed) {}
 
+void WeaponRuntime::set_classic_protocol(std::uint8_t protocol) noexcept {
+    classic_protocol_ = protocol == 3 || protocol == 4 ? protocol : 0;
+    replication_.set_classic_protocol(classic_protocol_);
+}
+
+void WeaponRuntime::classic_reload_completed(std::uint8_t magazine, std::uint8_t reserve) noexcept {
+    if (!classic_protocol_) return;
+    for (auto tool : replication_.loadout()) if (classic_weapon_rules(classic_protocol_, tool)) {
+        replication_.set_authoritative_ammo(tool, magazine, reserve);
+        reload_remaining_ = 0;
+        dry_fire_latched_ = false;
+        emit(WeaponActionKind::reload_completed, weapon_catalog()[tool]);
+        // A classic shotgun's server reloads the remaining shells itself.
+        // Keep the presentation timer running, without sending another request.
+        if (tool == 37 && !primary_held_ && reserve && magazine < classic_weapon_rules(classic_protocol_, tool)->magazine) {
+            static_cast<void>(replication_.begin_reload(tool));
+            reload_remaining_ = classic_weapon_rules(classic_protocol_, tool)->reload;
+        }
+        break;
+    }
+}
+
+void WeaponRuntime::tick_classic(double dt) noexcept {
+    cooldown_ = std::max(0.0, cooldown_ - dt);
+    secondary_cooldown_ = std::max(0.0, secondary_cooldown_ - dt);
+    reload_remaining_ = std::max(0.0, reload_remaining_ - dt);
+    const auto selected = replication_.selected_tool();
+    if (!selected) return;
+    const auto& weapon = weapon_catalog()[*selected];
+    if (const auto rules = classic_weapon_rules(classic_protocol_, *selected)) {
+        const auto* ammo = replication_.ammo(*selected);
+        if (primary_held_ && !context_.sprinting && (!ammo->reloading || *selected == 37) && cooldown_ <= 1e-9) {
+            if (replication_.observe_shot(*selected) == WeaponStateResult::accepted) {
+                reload_remaining_ = 0;
+                actions_.push_back({WeaponActionKind::hitscan, *selected, next_seed(), rules->pellets, false, 0, false, rules->spread});
+                cooldown_ = rules->interval;
+            } else if (!dry_fire_latched_) {
+                emit(WeaponActionKind::dry_fire, weapon);
+                dry_fire_latched_ = true;
+            }
+        }
+    } else if (*selected == 4) {
+        if (secondary_held_) {
+            // Digging's first removal happens one second after pressing RMB.
+            if (secondary_pressed_) secondary_cooldown_ = 1.0;
+            if (secondary_cooldown_ <= 1e-9) { emit(WeaponActionKind::melee, weapon, true); secondary_cooldown_ = 1.0; }
+        } else if (primary_held_ && cooldown_ <= 1e-9) { emit(WeaponActionKind::melee, weapon); cooldown_ = 0.2; }
+    } else if (*selected == 5 && !context_.sprinting) {
+        if (custom_pressed_) emit(WeaponActionKind::color_pick, weapon);
+        if (secondary_pressed_) emit(WeaponActionKind::block_line_begin, weapon, true);
+        if (secondary_released_ && cooldown_ <= 1e-9) {
+            emit(WeaponActionKind::block_line_commit, weapon, true);
+            cooldown_ = 0.5;
+        }
+        if (primary_held_ && !secondary_held_ && cooldown_ <= 1e-9) { emit(WeaponActionKind::block_line_begin, weapon); cooldown_ = 0.5; }
+    } else if (*selected == 31) {
+        if (primary_pressed_ && cooldown_ <= 1e-9 && replication_.ammo(31)->magazine && !context_.sprinting) {
+            interaction_active_ = true; interaction_elapsed_ = 0;
+            emit(WeaponActionKind::throwable_primed, weapon);
+        }
+        if (interaction_active_) {
+            interaction_elapsed_ += dt;
+            if (primary_released_ || interaction_elapsed_ >= 3.0) {
+                if (replication_.observe_shot(31) == WeaponStateResult::accepted)
+                    emit(WeaponActionKind::oriented_item, weapon, false, std::max(0.0, 3.0 - interaction_elapsed_));
+                interaction_active_ = false; cooldown_ = 0.5;
+            }
+        }
+    }
+    primary_pressed_ = primary_released_ = secondary_pressed_ = secondary_released_ = custom_pressed_ = custom_released_ = false;
+}
+
 void WeaponRuntime::replace_loadout(std::span<const std::uint8_t> tool_ids,
                                     std::optional<std::uint8_t> selected) {
     replication_.replace_loadout(tool_ids, selected);
@@ -97,9 +170,15 @@ void WeaponRuntime::replace_loadout(std::span<const std::uint8_t> tool_ids,
 }
 
 WeaponStateResult WeaponRuntime::select(std::uint8_t tool_id) noexcept {
+    const auto classic_delay = cooldown_;
+    const auto classic_reload = reload_remaining_;
     const auto result = replication_.select(tool_id);
     if (result == WeaponStateResult::accepted) {
         reset_selected_runtime();
+        if (classic_protocol_) {
+            cooldown_ = classic_delay;
+            reload_remaining_ = classic_reload;
+        }
     }
     return result;
 }
@@ -175,6 +254,15 @@ WeaponStateResult WeaponRuntime::request_reload() noexcept {
         return WeaponStateResult::invalid_tool;
     }
     const auto& weapon = weapon_catalog()[*selected];
+    if (const auto rules = classic_weapon_rules(classic_protocol_, *selected)) {
+        const auto* state = replication_.ammo(*selected);
+        if (state->reloading) return WeaponStateResult::already_reloading;
+        if (!state->reserve || state->magazine >= rules->magazine) return WeaponStateResult::no_ammunition;
+        const auto result = replication_.begin_reload(*selected);
+        reload_remaining_ = rules->reload;
+        emit(WeaponActionKind::reload_started, weapon);
+        return result;
+    }
     if (reload_remaining_ > 0.0) {
         return WeaponStateResult::already_reloading;
     }
@@ -198,6 +286,14 @@ WeaponStateResult WeaponRuntime::request_reload() noexcept {
 }
 
 void WeaponRuntime::restock_ammunition() noexcept {
+    if (classic_protocol_) {
+        for (auto tool : replication_.loadout()) {
+            if (const auto rules = classic_weapon_rules(classic_protocol_, tool))
+                replication_.set_authoritative_ammo(tool, replication_.ammo(tool)->magazine, rules->reserve);
+            else if (tool == 31) replication_.set_authoritative_ammo(tool, 3, 0);
+        }
+        return;
+    }
     replication_.restock_ammunition();
     // A resupplied weapon is no longer empty, so a trigger still held from
     // before the restock should be able to click again if it runs dry a second
@@ -270,6 +366,7 @@ void WeaponRuntime::tick(double dt) noexcept {
         return;
     }
     dt = std::min(dt, 0.25);
+    if (classic_protocol_) { tick_classic(dt); return; }
     cooldown_ = std::max(0.0, cooldown_ - dt);
     secondary_cooldown_ = std::max(0.0, secondary_cooldown_ - dt);
     shoot_animation_remaining_ = std::max(0.0, shoot_animation_remaining_ - dt);
@@ -941,7 +1038,8 @@ void WeaponRuntime::reset_selected_runtime() noexcept {
     // Character owns one global reload flag. Leaving a tool or life cancels
     // it; otherwise returning to a weapon switched away from mid-reload would
     // make begin_reload report already_reloading forever.
-    replication_.cancel_reload();
+    // Classic servers complete a gun reload even while another tool is held.
+    if (!classic_protocol_) replication_.cancel_reload();
     // An edge queued for the outgoing tool must never act through the newly
     // selected model on the following simulation tick.
     actions_.clear();

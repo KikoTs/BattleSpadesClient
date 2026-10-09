@@ -927,6 +927,152 @@ PARITY_HUD_OVERLAYS: dict[str, dict[str, str]] = {
 # SERVER_PASSWORD_PROMPT is retail's own English hint (loadingMenu.py
 # EditBoxControl empty_text); retail has no string id for it and none for the
 # rest, so every locale ships them.
+PRESENTATION_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
+    "en": {
+        "FALLBACK_MUSIC": "Music on silent servers",
+        "FALLBACK_MUSIC_DESCRIPTION": "Play retail music when the server provides none. Server music takes priority.",
+        "RAGDOLL_CORPSES": "Ragdoll corpses",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simulate fallen characters in Classic modes. Applies to new deaths."
+    },
+    "bg": {
+        "FALLBACK_MUSIC": "Музика на тихи сървъри",
+        "FALLBACK_MUSIC_DESCRIPTION": "Пуска оригинална музика, когато сървърът не подава. Музиката от сървъра е с предимство.",
+        "RAGDOLL_CORPSES": "Физика на телата",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Симулира падналите герои в класическите режими. Прилага се при следващи смъртни случаи."
+    },
+    "ru": {
+        "FALLBACK_MUSIC": "Музыка на тихих серверах",
+        "FALLBACK_MUSIC_DESCRIPTION": "Оригинальная музыка, если сервер не передаёт свою. Музыка сервера имеет приоритет.",
+        "RAGDOLL_CORPSES": "Физика тел",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Физика погибших персонажей в классических режимах. Для новых смертей."
+    },
+    "uk": {
+        "FALLBACK_MUSIC": "Музика на тихих серверах",
+        "FALLBACK_MUSIC_DESCRIPTION": "Оригінальна музика, якщо сервер не передає свою. Музика сервера має пріоритет.",
+        "RAGDOLL_CORPSES": "Фізика тіл",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Фізика загиблих персонажів у класичних режимах. Для нових смертей."
+    },
+    "pl": {
+        "FALLBACK_MUSIC": "Muzyka na cichych serwerach",
+        "FALLBACK_MUSIC_DESCRIPTION": "Oryginalna muzyka, gdy serwer nie odtwarza własnej. Muzyka serwera ma pierwszeństwo.",
+        "RAGDOLL_CORPSES": "Fizyka zwłok",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Symulacja poległych postaci w trybach klasycznych. Dotyczy kolejnych zgonów."
+    },
+    "cs": {
+        "FALLBACK_MUSIC": "Hudba na tichých serverech",
+        "FALLBACK_MUSIC_DESCRIPTION": "Původní hudba, pokud server nepřehrává vlastní. Hudba serveru má přednost.",
+        "RAGDOLL_CORPSES": "Fyzika těl",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simulace padlých postav v klasických režimech. Platí pro nová úmrtí."
+    },
+    "de": {
+        "FALLBACK_MUSIC": "Musik auf stillen Servern",
+        "FALLBACK_MUSIC_DESCRIPTION": "Originalmusik, wenn der Server keine vorgibt. Servermusik hat Vorrang.",
+        "RAGDOLL_CORPSES": "Ragdoll-Leichen",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Physik für gefallene Figuren in klassischen Modi. Gilt für neue Todesfälle."
+    },
+    "fr": {
+        "FALLBACK_MUSIC": "Musique sur serveurs silencieux",
+        "FALLBACK_MUSIC_DESCRIPTION": "Musique originale si le serveur n’en propose pas. La musique du serveur est prioritaire.",
+        "RAGDOLL_CORPSES": "Physique des corps",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simule les personnages morts en modes classiques. Pour les prochaines morts."
+    },
+    "es": {
+        "FALLBACK_MUSIC": "Música en servidores silenciosos",
+        "FALLBACK_MUSIC_DESCRIPTION": "Música original si el servidor no ofrece ninguna. La música del servidor tiene prioridad.",
+        "RAGDOLL_CORPSES": "Física de cadáveres",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simula personajes caídos en modos clásicos. Se aplica a nuevas muertes."
+    },
+    "es-MX": {
+        "FALLBACK_MUSIC": "Música en servidores silenciosos",
+        "FALLBACK_MUSIC_DESCRIPTION": "Música original si el servidor no ofrece ninguna. La música del servidor tiene prioridad.",
+        "RAGDOLL_CORPSES": "Física de cadáveres",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simula personajes caídos en modos clásicos. Se aplica a nuevas muertes."
+    },
+    "pt-BR": {
+        "FALLBACK_MUSIC": "Música em servidores silenciosos",
+        "FALLBACK_MUSIC_DESCRIPTION": "Música original quando o servidor não oferece nenhuma. A música do servidor tem prioridade.",
+        "RAGDOLL_CORPSES": "Física dos corpos",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simula personagens mortos nos modos clássicos. Vale para novas mortes."
+    },
+    "it": {
+        "FALLBACK_MUSIC": "Musica sui server silenziosi",
+        "FALLBACK_MUSIC_DESCRIPTION": "Musica originale se il server non ne offre. La musica del server ha la precedenza.",
+        "RAGDOLL_CORPSES": "Fisica dei cadaveri",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Simula i personaggi caduti nelle modalità classiche. Si applica alle nuove morti."
+    },
+    "tr": {
+        "FALLBACK_MUSIC": "Sessiz sunucularda müzik",
+        "FALLBACK_MUSIC_DESCRIPTION": "Sunucu müzik sunmadığında orijinal müziği çalar. Sunucu müziği önceliklidir.",
+        "RAGDOLL_CORPSES": "Ceset fiziği",
+        "RAGDOLL_CORPSES_DESCRIPTION": "Klasik modlarda ölen karakterleri simüle eder. Yeni ölümlere uygulanır."
+    },
+    "ja": {
+        "FALLBACK_MUSIC": "無音のサーバーで音楽を再生",
+        "FALLBACK_MUSIC_DESCRIPTION": "サーバーに音楽がない場合はオリジナルの音楽を再生。サーバーの音楽が優先されます。",
+        "RAGDOLL_CORPSES": "ラグドール",
+        "RAGDOLL_CORPSES_DESCRIPTION": "クラシックモードで倒れたキャラクターの物理演算を行います。次の死亡から適用。"
+    }
+}
+
+BLOOD_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
+    "en": {
+        "BLOOD_MARKS": "Lingering blood",
+        "BLOOD_MARKS_DESCRIPTION": "Visual blood droplets and temporary stains on blocks in Classic and Standard. Lasts 20–32 seconds; does not change gameplay."
+    },
+    "bg": {
+        "BLOOD_MARKS": "Следи от кръв",
+        "BLOOD_MARKS_DESCRIPTION": "Визуални капки и временни петна по блоковете в Classic и Standard. Остават 20–32 секунди; не променят играта."
+    },
+    "cs": {
+        "BLOOD_MARKS": "Krvavé stopy",
+        "BLOOD_MARKS_DESCRIPTION": "Vizuální kapky krve a dočasné skvrny na blocích v Classic a Standard. Trvají 20–32 sekund a nemění hratelnost."
+    },
+    "de": {
+        "BLOOD_MARKS": "Blutspuren",
+        "BLOOD_MARKS_DESCRIPTION": "Sichtbare Blutstropfen und vorübergehende Flecken auf Blöcken in Classic und Standard. Bleiben 20–32 Sekunden; ohne Einfluss auf das Spiel."
+    },
+    "es": {
+        "BLOOD_MARKS": "Rastros de sangre",
+        "BLOOD_MARKS_DESCRIPTION": "Gotas de sangre y manchas temporales en los bloques en Classic y Standard. Duran 20–32 segundos; solo es un efecto visual."
+    },
+    "es-MX": {
+        "BLOOD_MARKS": "Rastros de sangre",
+        "BLOOD_MARKS_DESCRIPTION": "Gotas de sangre y manchas temporales en los bloques en Classic y Standard. Duran 20–32 segundos; solo es un efecto visual."
+    },
+    "fr": {
+        "BLOOD_MARKS": "Traces de sang",
+        "BLOOD_MARKS_DESCRIPTION": "Gouttes de sang et taches temporaires sur les blocs en Classic et Standard. Durent 20–32 secondes, sans effet sur le jeu."
+    },
+    "it": {
+        "BLOOD_MARKS": "Tracce di sangue",
+        "BLOOD_MARKS_DESCRIPTION": "Gocce di sangue e macchie temporanee sui blocchi in Classic e Standard. Durano 20–32 secondi; solo un effetto visivo."
+    },
+    "ja": {
+        "BLOOD_MARKS": "血痕を残す",
+        "BLOOD_MARKS_DESCRIPTION": "ClassicとStandardで血のしずくと一時的な血痕を表示します。20～32秒間残る視覚効果で、ゲームプレイには影響しません。"
+    },
+    "pl": {
+        "BLOOD_MARKS": "Ślady krwi",
+        "BLOOD_MARKS_DESCRIPTION": "Wizualne krople krwi i tymczasowe plamy na blokach w Classic i Standard. Pozostają przez 20–32 sekundy i nie wpływają na rozgrywkę."
+    },
+    "pt-BR": {
+        "BLOOD_MARKS": "Marcas de sangue",
+        "BLOOD_MARKS_DESCRIPTION": "Gotas de sangue e manchas temporárias nos blocos em Classic e Standard. Duram 20–32 segundos; apenas um efeito visual."
+    },
+    "ru": {
+        "BLOOD_MARKS": "Следы крови",
+        "BLOOD_MARKS_DESCRIPTION": "Капли крови и временные пятна на блоках в Classic и Standard. Остаются на 20–32 секунды и не влияют на игровой процесс."
+    },
+    "tr": {
+        "BLOOD_MARKS": "Kan izleri",
+        "BLOOD_MARKS_DESCRIPTION": "Classic ve Standard modlarında görsel kan damlaları ve bloklarda geçici lekeler. 20–32 saniye kalır; oynanışı etkilemez."
+    },
+    "uk": {
+        "BLOOD_MARKS": "Сліди крові",
+        "BLOOD_MARKS_DESCRIPTION": "Краплі крові й тимчасові плями на блоках у Classic та Standard. Залишаються на 20–32 секунди й не впливають на гру."
+    }
+}
+
 SERVER_JOIN_OVERLAYS: dict[str, dict[str, str]] = {
     "en": {
         "SERVER_PASSWORD_PROMPT": "Type the server password and press enter to continue.",
@@ -1218,7 +1364,9 @@ def main() -> None:
         strings.update(NATIVE_FLOW_OVERLAYS.get(locale, {}))
         strings.update(APPEARANCE_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(PARITY_HUD_OVERLAYS.get(locale, {}))
+        strings.update(PRESENTATION_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(SERVER_JOIN_OVERLAYS.get(locale, {}))
+        strings.update(BLOOD_SETTINGS_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,

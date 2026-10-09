@@ -2106,6 +2106,10 @@
     "SHOW_OTHER_SKINS": "Pokaż skórki innych graczy",
     "WEAPON_MOTION": "Ruch broni",
     "ABILITY_HINTS": "Podpowiedzi umiejętności",
+    "FALLBACK_MUSIC": "Muzyka na cichych serwerach",
+    "FALLBACK_MUSIC_DESCRIPTION": "Oryginalna muzyka, gdy serwer nie odtwarza własnej. Muzyka serwera ma pierwszeństwo.",
+    "RAGDOLL_CORPSES": "Fizyka zwłok",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Symulacja poległych postaci w trybach klasycznych. Dotyczy kolejnych zgonów.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Spadochron otwarty",
     "ABILITY_HINT_PARACHUTE_PENDING": "Spadochron otworzy się przy opadaniu",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otwórz spadochron w powietrzu",
@@ -2117,6 +2121,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Nie podano hasła serwera na czas",
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Wyeliminuj wszystkich wrogów, aby wygrać rundę!",
-    "LOAD_FAILED": "Wczytywanie nie powiodło się"
+    "LOAD_FAILED": "Wczytywanie nie powiodło się",
+    "BLOOD_MARKS": "Ślady krwi",
+    "BLOOD_MARKS_DESCRIPTION": "Wizualne krople krwi i tymczasowe plamy na blokach w Classic i Standard. Pozostają przez 20–32 sekundy i nie wpływają na rozgrywkę."
   }
 }

@@ -917,6 +917,7 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
     startup.hStdError = log;
     auto command = quote_windows_argument(executable.wstring()) + L" --config " +
                    quote_windows_argument(config_path.wstring()) + L" --control-stdin";
+    if (config.offline) command += L" --offline";
     std::vector<wchar_t> mutable_command(command.begin(), command.end());
     mutable_command.push_back(L'\0');
     const auto environment = child_environment_block(child_overrides);
@@ -1005,9 +1006,10 @@ bool LocalServerProcess::start(const LocalServerLaunchConfig& config,
     environment.reserve(environment_entries.size() + 1U);
     for (auto& entry : environment_entries) environment.push_back(entry.data());
     environment.push_back(nullptr);
-    std::array<std::string, 4U> argument_entries{
+    std::vector<std::string> argument_entries{
         executable.string(), "--config", config_path.string(), "--control-stdin"};
-    std::array<char*, 5U> arguments{};
+    if (config.offline) argument_entries.emplace_back("--offline");
+    std::vector<char*> arguments(argument_entries.size() + 1U, nullptr);
     for (std::size_t index{}; index < argument_entries.size(); ++index) {
         arguments[index] = argument_entries[index].data();
     }

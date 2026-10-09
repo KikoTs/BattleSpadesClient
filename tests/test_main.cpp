@@ -1,6 +1,7 @@
 #include "battlespades/audio/audio_port.hpp"
 #include "battlespades/core/application.hpp"
 #include "battlespades/core/command_line.hpp"
+#include "battlespades/core/service_url.hpp"
 #include "battlespades/core/frame_pacing.hpp"
 #include "battlespades/headless/headless_module.hpp"
 #include "battlespades/network/transport_port.hpp"
@@ -552,6 +553,30 @@ void application_presents_intermediate_frames_only_when_requested() {
     }
 }
 
+void player_launch_options_are_isolated() {
+    using battlespades::core::parse_command_line;
+    const std::vector<std::string_view> local{"--profile", "Local Player", "+connect", "127.0.0.1:27015", "+language", "brazilian", "-reset"};
+    const auto parsed = parse_command_line(local);
+    expect(parsed && parsed.options->offline && parsed.options->offline_profile == "Local Player" &&
+           parsed.options->language == "pt-BR" && parsed.options->reset_settings,
+           "offline profile, retail language and reset must parse together");
+    for (const auto invalid : {"http://localhost.evil", "http://127.0.0.1@evil", "https://a.example/api", "http://192.168.1.3", "https://a.example:0", "https://a.example?secret=x"}) {
+        expect(!battlespades::core::service_origin(invalid), "unsafe/ambiguous service origin rejected");
+    }
+    expect(battlespades::core::service_origin("https://MASTER.example:8443/") == "https://master.example:8443" &&
+           battlespades::core::service_origin("http://localhost:3000"), "master origins normalized");
+    const auto join = parse_command_line(std::vector<std::string_view>{"--join-url", "aosbb://127.0.0.1:27015"});
+    expect(join && join.options->startup_endpoint == "aosbb://127.0.0.1:27015", "protocol activation parsed");
+    expect(!parse_command_line(std::vector<std::string_view>{"--join-url", "aosbb://host", "--master-url", "https://evil.example"}),
+           "protocol activation cannot inject extra options");
+    expect(!parse_command_line(std::vector<std::string_view>{"--offline", "+connect_lobby", "1"}), "offline rejects Steam lobby joins");
+    expect(!parse_command_line(std::vector<std::string_view>{"--record-demo", "one.demo", "--play-demo", "two.demo"}), "record and playback exclusive");
+    const auto replay = parse_command_line(std::vector<std::string_view>{"--play-demo", "one.demo"});
+    expect(replay && replay.options->offline, "replays use offline identity");
+    expect(!parse_command_line(std::vector<std::string_view>{"--headless", "--record-demo", "one.demo"}),
+           "headless bootstrap must never silently ignore recording");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -561,6 +586,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"player_launch_options_are_isolated", player_launch_options_are_isolated},
         {"command_line_defaults_are_safe", command_line_defaults_are_safe},
         {"command_line_parses_headless_runtime_options",
          command_line_parses_headless_runtime_options},

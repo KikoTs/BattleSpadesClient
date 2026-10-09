@@ -18,11 +18,18 @@ struct VxlColor final {
     std::uint8_t blue{};
     std::uint8_t alpha{255U};
 
-    [[nodiscard]] friend constexpr bool operator==(const VxlColor&,
-                                                   const VxlColor&) = default;
+    [[nodiscard]] friend constexpr bool operator==(const VxlColor&, const VxlColor&) = default;
 };
 
 struct VxlLoadResult;
+enum class VxlDecodeProfile : std::uint8_t {
+    retail,
+    classic64,
+    /** Headerless disk import: full 512-square maps at most 64 high use Classic. */
+    automatic,
+    /** Authoritative 240-high MapSync: coordinates and colors are already final. */
+    canonical240,
+};
 
 /**
  * Retail `BlockManager.DamagedBlock`: the remaining (already health-multiplier
@@ -74,8 +81,17 @@ public:
     /** DEFAULT_SNOW_HEALTH: BlockBuild(32) type 1 and BlockBuildColored(33). */
     static constexpr float snow_block_health{3.0F};
 
-    [[nodiscard]] static VxlLoadResult load(std::span<const std::byte> bytes);
-    [[nodiscard]] static VxlLoadResult load_file(const std::filesystem::path& path);
+    [[nodiscard]] static VxlLoadResult load(std::span<const std::byte> bytes,
+                                            VxlDecodeProfile profile = VxlDecodeProfile::retail);
+    /**
+     * Native disk import. Automatic preserves stock-map retail semantics and
+     * honors a sidecar's vxl_format (auto, retail, classic64). Legacy maps
+     * retain their authored colors and gain the fixed Classic z offset of 176.
+     * An explicit profile overrides the sidecar and resolves ambiguous files.
+     */
+    [[nodiscard]] static VxlLoadResult
+    load_file(const std::filesystem::path& path,
+              VxlDecodeProfile profile = VxlDecodeProfile::automatic);
 
     [[nodiscard]] bool solid(std::uint32_t x, std::uint32_t y,
                              std::uint32_t z) const noexcept;

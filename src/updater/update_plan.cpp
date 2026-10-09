@@ -1,5 +1,6 @@
 #include "battlespades/updater/update_plan.hpp"
 
+#include "battlespades/updater/file_util.hpp"
 #include "battlespades/updater/semver.hpp"
 #include "battlespades/updater/sha256.hpp"
 
@@ -205,6 +206,43 @@ bool verify_package_file(const std::filesystem::path& file, std::uint64_t expect
     }
     error.clear();
     return true;
+}
+
+std::optional<std::uint64_t> prepare_package_partial(const std::filesystem::path& partial,
+                                                    std::uint64_t expected_size,
+                                                    std::string_view expected_sha256,
+                                                    std::string& error) {
+    namespace fs = std::filesystem;
+    auto identity = partial;
+    identity += ".identity";
+    const auto wanted = std::to_string(expected_size) + "\n" + std::string{expected_sha256} + "\n";
+    std::error_code code;
+    std::uint64_t size{};
+    if (fs::is_regular_file(partial, code)) {
+        size = fs::file_size(partial, code);
+        if (code) {
+            error = "cannot inspect partial download: " + code.message();
+            return std::nullopt;
+        }
+        // A previous process may have finished receiving just before it was
+        // stopped. Verify locally, without asking a mirror for an empty range.
+        if (size == expected_size && verify_package_file(partial, expected_size, expected_sha256, error)) {
+            return size;
+        }
+    }
+    std::string ignored;
+    const auto saved = read_text_file(identity, ignored);
+    if (size >= expected_size || (saved.has_value() && *saved != wanted)) {
+        fs::remove(partial, code);
+        if (code) {
+            error = "cannot discard stale partial download: " + code.message();
+            return std::nullopt;
+        }
+        size = 0U;
+    }
+    if ((!saved.has_value() || *saved != wanted) && !write_file_atomic(identity, wanted, error)) return std::nullopt;
+    error.clear();
+    return size;
 }
 
 } // namespace battlespades::updater

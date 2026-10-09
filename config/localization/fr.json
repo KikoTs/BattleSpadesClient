@@ -2143,6 +2143,10 @@
     "SHOW_OTHER_SKINS": "Afficher les apparences des autres joueurs",
     "WEAPON_MOTION": "Mouvement de l'arme",
     "ABILITY_HINTS": "Aide des capacités",
+    "FALLBACK_MUSIC": "Musique sur serveurs silencieux",
+    "FALLBACK_MUSIC_DESCRIPTION": "Musique originale si le serveur n’en propose pas. La musique du serveur est prioritaire.",
+    "RAGDOLL_CORPSES": "Physique des corps",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Simule les personnages morts en modes classiques. Pour les prochaines morts.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Parachute déployé",
     "ABILITY_HINT_PARACHUTE_PENDING": "Le parachute s'ouvre en descente",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0} : déployer le parachute en l'air",
@@ -2154,6 +2158,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Le mot de passe du serveur n'a pas été saisi à temps",
     "ARENA": "Arène",
     "ARENA_DESCRIPTION": "Éliminez tous les ennemis pour gagner la manche !",
-    "LOAD_FAILED": "Échec du chargement"
+    "LOAD_FAILED": "Échec du chargement",
+    "BLOOD_MARKS": "Traces de sang",
+    "BLOOD_MARKS_DESCRIPTION": "Gouttes de sang et taches temporaires sur les blocs en Classic et Standard. Durent 20–32 secondes, sans effet sur le jeu."
   }
 }

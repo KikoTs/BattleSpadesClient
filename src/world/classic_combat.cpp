@@ -1,0 +1,258 @@
+/* Hit boxes and spread adapted from OpenSpades/ZeroSpades Player.cpp.
+ * Copyright (c) 2013 yvt. GPL-3.0-or-later. See docs/CLASSIC_PROTOCOL.md. */
+#include "battlespades/world/classic_combat.hpp"
+#include "battlespades/world/classic_weapons.hpp"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numbers>
+
+namespace battlespades::world {
+namespace {
+Vec3 sub(Vec3 a, Vec3 b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+double dot(Vec3 a, Vec3 b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+double chebyshev(Vec3 a) {
+    return std::max({std::abs(a.x), std::abs(a.y), std::abs(a.z)});
+}
+Vec3 rotate_z(Vec3 v, double a) {
+    return {v.x * std::cos(a) - v.y * std::sin(a), v.x * std::sin(a) + v.y * std::cos(a), v.z};
+}
+Vec3 rotate_x(Vec3 v, double a) {
+    return {v.x, v.y * std::cos(a) - v.z * std::sin(a), v.y * std::sin(a) + v.z * std::cos(a)};
+}
+std::array<float, 3> floats(Vec3 v) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+}
+double box(Vec3 start, Vec3 dir, Vec3 origin, double yaw, double pitch, Vec3 minimum, Vec3 size) {
+    const auto p = rotate_x(rotate_z(sub(start, origin), -yaw), -pitch);
+    const auto d = rotate_x(rotate_z(dir, -yaw), -pitch);
+    const std::array<double, 3> pos{p.x, p.y, p.z}, direction{d.x, d.y, d.z},
+        lo{minimum.x, minimum.y, minimum.z}, extent{size.x, size.y, size.z};
+    double near = 0, far = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (std::abs(direction[i]) < 1e-10) {
+            if (pos[i] < lo[i] || pos[i] > lo[i] + extent[i])
+                return far = -1;
+            continue;
+        }
+        double a = (lo[i] - pos[i]) / direction[i], b = (lo[i] + extent[i] - pos[i]) / direction[i];
+        if (a > b)
+            std::swap(a, b);
+        near = std::max(near, a);
+        far = std::min(far, b);
+        if (near > far)
+            return -1;
+    }
+    return near;
+}
+bool overlap(VoxelCell cell, Vec3 eye, bool crouch) {
+    return eye.x + 0.45 > cell.x && eye.x - 0.45 < cell.x + 1.0 && eye.y + 0.45 > cell.y &&
+           eye.y - 0.45 < cell.y + 1.0 && eye.z + (crouch ? 1.35 : 2.25) > cell.z &&
+           eye.z - 0.45 < cell.z + 1.0;
+}
+} // namespace
+
+ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
+                                          const PlayerMovementState& player,
+                                          std::span<const ClassicHitTarget> targets,
+                                          const WeaponAction& action,
+                                          std::uint8_t protocol,
+                                          bool aiming,
+                                          double seconds) {
+    ClassicAttackResult result;
+    const bool melee = action.kind == WeaponActionKind::melee;
+    const auto rules = classic_weapon_rules(protocol, action.tool_id);
+    if (!melee && !rules)
+        return result;
+    result.damage = expire(seconds);
+    const auto eye = player.position;
+    Vec3 start = eye;
+    if (!melee) {
+        start.x += player.orientation.x * 0.01;
+        start.y += player.orientation.y * 0.01;
+        start.z += player.orientation.z * 0.01;
+    }
+    Vec3 pellet = player.orientation;
+    std::uint32_t random = static_cast<std::uint32_t>(action.seed) + 0x9E3779B9U;
+    const auto sample = [&]() {
+        random ^= random << 13U;
+        random ^= random >> 17U;
+        random ^= random << 5U;
+        return static_cast<int>(random & 32767U);
+    };
+    for (int n = 0; n < (melee ? 1 : rules->pellets); ++n) {
+        if (!melee) {
+            double spread = rules->spread * (aiming ? 0.5 : 1.0) *
+                            (player.crouch && action.tool_id != 37 ? 0.5 : 1.0);
+            pellet.x += (sample() - sample()) / 16383.0 * spread;
+            pellet.y += (sample() - sample()) / 16383.0 * spread;
+            pellet.z += (sample() - sample()) / 16383.0 * spread;
+        }
+        const double length = std::sqrt(dot(pellet, pellet));
+        if (length < 1e-9)
+            break;
+        const Vec3 ray{pellet.x / length, pellet.y / length, pellet.z / length};
+        auto terrain = trace_first_solid(map, floats(start), floats(ray), melee ? 32.0F : 256.0F);
+        std::optional<ClassicHit> target;
+        double closest = std::numeric_limits<double>::infinity();
+        for (const auto& t : targets) {
+            const auto diff = sub(t.position, start);
+            const double horizontal = diff.x * diff.x + diff.y * diff.y;
+            const double projection = dot(diff, ray);
+            if (horizontal > 128.0 * 128.0 || projection <= 0 ||
+                dot(diff, diff) - projection * projection >= 9.0)
+                continue;
+            if (melee) {
+                if (!action.secondary && dot(diff, diff) <= 9.0) {
+                    target = ClassicHit{t.id, 4};
+                    closest = std::sqrt(dot(diff, diff));
+                    break;
+                }
+                continue;
+            }
+            const double yaw = std::atan2(t.orientation.y, t.orientation.x) + std::numbers::pi / 2;
+            const double pitch =
+                -std::atan2(t.orientation.z, std::hypot(t.orientation.x, t.orientation.y));
+            double arm_pitch = pitch - (t.sprinting ? 0.9 : 0);
+            if (arm_pitch < 0)
+                arm_pitch = std::max(arm_pitch, -std::numbers::pi / 2) * 0.9;
+            const Vec3 lower{t.position.x, t.position.y, t.position.z + (t.crouched ? 0.75 : 1.2)};
+            const Vec3 torso{lower.x, lower.y, lower.z - (t.crouched ? 0.5 : 1.0)};
+            const Vec3 head{torso.x, torso.y, torso.z - (t.crouched ? 0.05 : 0)};
+            const Vec3 arms{torso.x, torso.y, torso.z + (t.crouched ? 0 : 0.1)};
+            const auto consider = [&](double distance, std::uint8_t part) {
+                if (distance >= 0 && (distance < closest ||
+                                      ((part == 0 || part == 1) && target && target->part == 2))) {
+                    closest = distance;
+                    target = ClassicHit{t.id, part};
+                }
+            };
+            consider(box(start, ray, head, yaw, pitch, {-0.3, -0.3, -0.6}, {0.6, 0.6, 0.6}), 1);
+            consider(box(start,
+                         ray,
+                         torso,
+                         yaw,
+                         0,
+                         t.crouched ? Vec3{-0.4, -0.1, -0.1} : Vec3{-0.4, -0.2, 0},
+                         t.crouched ? Vec3{0.8, 0.8, 0.7} : Vec3{0.8, 0.4, 0.9}),
+                     0);
+            for (int leg = 0; leg < 2; ++leg)
+                consider(
+                    box(start,
+                        ray,
+                        lower,
+                        yaw,
+                        0,
+                        {leg ? 0.1 : -0.4, t.crouched ? -0.1 : -0.2, t.crouched ? -0.2 : -0.15},
+                        {0.3, 0.4, t.crouched ? 0.8 : 1.2}),
+                    3);
+            if (!target || (target->part != 0 && target->part != 1))
+                consider(box(start, ray, arms, yaw, arm_pitch, {-0.6, -1, -0.1}, {1.2, 1, 0.6}), 2);
+        }
+        if (!melee) {
+            const auto distance = std::min(
+                {128.0, closest, terrain ? static_cast<double>(terrain->distance) : 128.0});
+            result.tracers.push_back({ray,
+                                      {start.x + ray.x * distance,
+                                       start.y + ray.y * distance,
+                                       start.z + ray.z * distance}});
+        }
+        if (target && (!terrain || closest < terrain->distance)) {
+            target->position = {start.x + ray.x * closest, start.y + ray.y * closest,
+                                start.z + ray.z * closest};
+            result.hits.push_back(*target);
+            continue;
+        }
+        if (!terrain || terrain->cell.z >= 238)
+            continue;
+        if (melee) {
+            Vec3 center{terrain->cell.x + 0.5, terrain->cell.y + 0.5, terrain->cell.z + 0.5};
+            if (!action.secondary) {
+                center.x += terrain->normal[0] * 0.6;
+                center.y += terrain->normal[1] * 0.6;
+                center.z += terrain->normal[2] * 0.6;
+            }
+            if (chebyshev(sub(center, start)) >= 3)
+                continue;
+            if (action.secondary) {
+                result.impacts.push_back(
+                    {TerrainImpactKind::melee,
+                     terrain->cell,
+                     map.color(terrain->cell.x, terrain->cell.y, terrain->cell.z)
+                         .value_or(VxlColor{}),
+                     terrain->normal,
+                     false,
+                     1,
+                     action.tool_id});
+                result.destroy = terrain->cell;
+                result.block_action = 2;
+                continue;
+            }
+        }
+        auto& damage =
+            damage_[terrain->cell.x | (terrain->cell.y << 9U) | (terrain->cell.z << 18U)];
+        if (damage.expires == 0) {
+            const auto prior = map.damaged_block(terrain->cell.x, terrain->cell.y, terrain->cell.z);
+            damage.original = prior ? prior->original_color
+                                    : map.color(terrain->cell.x, terrain->cell.y, terrain->cell.z)
+                                          .value_or(VxlColor{});
+        }
+        damage.expires = seconds + 10.0;
+        damage.remaining = std::max(0, damage.remaining - (melee ? 50 : rules->block_damage));
+        result.damage.push_back({terrain->cell, damage.remaining, damage.original});
+        result.impacts.push_back({melee ? TerrainImpactKind::melee : TerrainImpactKind::bullet,
+                                  terrain->cell,
+                                  damage.original,
+                                  terrain->normal,
+                                  false,
+                                  1,
+                                  action.tool_id});
+        if (damage.remaining <= 0 && !result.destroy) {
+            result.destroy = terrain->cell;
+        }
+    }
+    return result;
+}
+
+std::vector<ClassicBlockDamage> ClassicCombat::expire(double seconds) {
+    std::vector<ClassicBlockDamage> expired;
+    const bool full = damage_.size() > 4096;
+    std::erase_if(damage_, [&](const auto& entry) {
+        if (!full && entry.second.expires > seconds)
+            return false;
+        const auto key = entry.first;
+        expired.push_back(
+            {{key & 511U, (key >> 9U) & 511U, key >> 18U}, 100, entry.second.original});
+        return true;
+    });
+    return expired;
+}
+
+std::optional<VoxelCell> classic_build_target(const VxlMap& map,
+                                              const PlayerMovementState& p,
+                                              std::span<const ClassicHitTarget> targets) {
+    const auto hit = trace_first_solid(map, floats(p.position), floats(p.orientation), 12);
+    if (!hit)
+        return {};
+    const auto x = static_cast<int>(hit->cell.x) + hit->normal[0],
+               y = static_cast<int>(hit->cell.y) + hit->normal[1],
+               z = static_cast<int>(hit->cell.z) + hit->normal[2];
+    if (x < 0 || x >= 512 || y < 0 || y >= 512 || z < 176 || z >= 238)
+        return {};
+    VoxelCell cell{static_cast<std::uint32_t>(x),
+                   static_cast<std::uint32_t>(y),
+                   static_cast<std::uint32_t>(z)};
+    if (chebyshev(sub({x + 0.5, y + 0.5, z + 0.5}, p.position)) >= 3 ||
+        map.solid(cell.x, cell.y, cell.z) || overlap(cell, p.position, p.crouch))
+        return {};
+    for (const auto& target : targets)
+        if (overlap(cell, target.position, target.crouched))
+            return {};
+    return cell;
+}
+
+} // namespace battlespades::world

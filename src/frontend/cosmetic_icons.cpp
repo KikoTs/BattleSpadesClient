@@ -13,6 +13,7 @@ namespace battlespades::frontend {
 std::string cosmetic_icon_key(const CosmeticIconRequest& r){
     std::string key="runtime/cosmetic/"+r.item.id+"/"+r.item.sha256+"/"+std::to_string(static_cast<int>(r.kind))+"/"+
         std::to_string(r.class_id)+"/"+std::to_string(r.blue_team);
+    if(r.team_color)key+="/rgb:"+std::to_string(r.team_color->red)+","+std::to_string(r.team_color->green)+","+std::to_string(r.team_color->blue);
     for(const auto& [name,part]:r.item.character_parts)key+="/"+name+":"+part.sha256;
     if(r.hat)key+="/hat:"+r.hat->id+":"+r.hat->sha256;
     for(const auto& [option,value]:r.variants)if(option!="zoom")key+="/"+option+":"+value;
@@ -21,16 +22,25 @@ std::string cosmetic_icon_key(const CosmeticIconRequest& r){
 
 std::vector<std::uint8_t> render_cosmetic_icon(const CosmeticIconRequest& r,const std::filesystem::path& root){
     const auto mesh=r.kind==CosmeticIconKind::weapon?inventory_weapon_preview_mesh(r.item,root,r.blue_team,r.variants):
-        inventory_preview_mesh(r.item,root,r.blue_team,r.class_id,r.hat?&*r.hat:nullptr,r.kind==CosmeticIconKind::class_head);
+        inventory_preview_mesh(r.item,root,r.blue_team,r.class_id,r.hat?&*r.hat:nullptr,r.kind==CosmeticIconKind::class_head,r.team_color);
     if(!mesh||mesh->empty())return {};
     world::CosmeticPreviewStyle style;
     style.width=style.height=cosmetic_icon_size;
     style.padding=r.kind==CosmeticIconKind::class_head?12.:9.;
-    style.outline=r.kind==CosmeticIconKind::weapon?4.:2.5;
+    style.outline=r.kind==CosmeticIconKind::class_head?5.:3.;
     if(r.kind==CosmeticIconKind::class_body)style.fit_width=ClassSelectionAppearance::portrait_source.width;
     // A slight diagonal gives long guns more room in square loadout slots.
-    if(r.kind==CosmeticIconKind::weapon)style.roll=-.38;
-    return world::cosmetic_preview(*mesh,r.kind==CosmeticIconKind::weapon?3.141592653589793-1.15:3.141592653589793-3.5,1.0,style);
+    if(r.kind==CosmeticIconKind::weapon){style.roll=-.38;style.outline=4.;}
+    else {
+        // The original class art faces forward with the camera near eye level.
+        // Keep a bold silhouette; outlining each helmet step adds noise in the HUD.
+        style.pitch=r.kind==CosmeticIconKind::class_head?-.04:.12;
+        if(r.kind==CosmeticIconKind::class_head)style.roll=-.08;
+        style.samples=4;
+        style.internal_contours=false;
+        style.boost_colors=false;
+    }
+    return world::cosmetic_preview(*mesh,r.kind==CosmeticIconKind::weapon?3.141592653589793-1.15:-.20,1.0,style);
 }
 struct CosmeticIconCache::Impl {
     struct Entry {std::optional<render::UiTextureInfo> image;std::uint64_t used{};bool pending{true};};
@@ -73,7 +83,7 @@ void CosmeticIconCache::pump(render::BgfxUiRenderer& renderer){
         const auto found=p.entries.find(result.key);if(found==p.entries.end())continue;
         found->second.pending=false;++p.rendered;
         if(!result.pixels.empty())found->second.image=renderer.create_texture_rgba8(result.pixels,
-            {cosmetic_icon_size,cosmetic_icon_size},render::TextureFilter::linear);
+            {cosmetic_icon_size,cosmetic_icon_size},render::TextureFilter::linear,true);
     }
     // Retire only icons unused for several frames, before drawing starts.
     while(p.entries.size()>96U){
@@ -95,4 +105,3 @@ void CosmeticIconCache::clear(render::BgfxUiRenderer& renderer){
 }
 std::size_t CosmeticIconCache::rendered_count()const{return impl_->rendered;}
 }
-

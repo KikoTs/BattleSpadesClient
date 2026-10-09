@@ -43,6 +43,12 @@ struct ClassModelSet final {
     ChunkMesh left_leg_preview;
     /** Right leg pre-positioned at the retail hip anchor. */
     ChunkMesh right_leg_preview;
+    /**
+     * Each standing leg cut at the knee (the middle of its model), in the same
+     * place as the whole leg: {left thigh, left shin, right thigh, right shin}.
+     * Only a body that can bend its knees, a ragdoll, draws these.
+     */
+    std::array<ChunkMesh, 4U> leg_halves;
     /** Compatibility complete crouch pose used by static previews. */
     ChunkMesh crouching_preview;
     /** Crouched torso only; the head and legs remain articulated at runtime. */

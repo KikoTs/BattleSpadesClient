@@ -4,6 +4,21 @@
 
 namespace battlespades::world {
 
+ClassVoiceBank presentation_voice_bank(std::uint8_t class_id, ClassVoice voice) noexcept {
+    // Deuce's retail bank has a single scream. Reuse the Soldier and Miner
+    // death recordings without changing the generated retail source table.
+    static constexpr std::string_view deuce_deaths[]{
+        "sol_death_vo_001", "sol_death_vo_002", "sol_death_vo_003", "sol_death_vo_004",
+        "sol_death_vo_005", "sol_death_vo_006", "sol_death_vo_007", "sol_death_vo_008",
+        "min_death_vo_001", "min_death_vo_002", "min_death_vo_003", "min_death_vo_004",
+        "min_death_vo_005", "min_death_vo_006", "min_death_vo_007", "min_death_vo_008"};
+    if (class_id == 5U && voice == ClassVoice::death) {
+        return {deuce_deaths, 100U, false};
+    }
+    const auto* set = find_class_voice(class_id);
+    return set != nullptr ? set->bank(voice) : ClassVoiceBank{};
+}
+
 const ClassVoiceBank& ClassVoiceSet::bank(ClassVoice voice) const noexcept {
     switch (voice) {
     case ClassVoice::death:

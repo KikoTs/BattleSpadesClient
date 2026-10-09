@@ -18,9 +18,9 @@ std::vector<std::uint8_t> cosmetic_preview(const ChunkMesh& mesh,double yaw,doub
     // Multipart authored guns such as the AWP exceed a single KV6's budget.
     if(mesh.empty()||mesh.vertices.size()>4'000'000U||!std::isfinite(yaw)||!std::isfinite(zoom)||
        !std::isfinite(style.roll)||!std::isfinite(style.padding)||!std::isfinite(style.fit_width)||
-       !std::isfinite(style.outline))return result;
-    constexpr int samples=2;
-    constexpr unsigned usamples=samples;
+       !std::isfinite(style.outline)||!std::isfinite(style.pitch))return result;
+    const auto usamples=std::clamp(style.samples,1U,4U);
+    const int samples=static_cast<int>(usamples);
     const int width=static_cast<int>(style.width)*samples,height=static_cast<int>(style.height)*samples;
     // Pixel buffers are indexed with size_t; coordinates stay signed for the neighbour tests.
     const auto stride=static_cast<std::size_t>(width);
@@ -30,7 +30,7 @@ std::vector<std::uint8_t> cosmetic_preview(const ChunkMesh& mesh,double yaw,doub
     using Normal=std::array<float,3>;
     std::vector<Vertex> vertices;vertices.reserve(mesh.vertices.size());
     double min_x=1e9,min_y=1e9,max_x=-1e9,max_y=-1e9;
-    const auto cy=std::cos(yaw),sy=std::sin(yaw),cp=std::cos(.25),sp=std::sin(.25);
+    const auto cy=std::cos(yaw),sy=std::sin(yaw),cp=std::cos(style.pitch),sp=std::sin(style.pitch);
     const auto cr=std::cos(style.roll),sr=std::sin(style.roll);
     for(const auto& v:mesh.vertices){
         const double rx=v.x*cy+v.z*sy,rz=-v.x*sy+v.z*cy;
@@ -62,9 +62,16 @@ std::vector<std::uint8_t> cosmetic_preview(const ChunkMesh& mesh,double yaw,doub
         // A fixed top-left studio light separates voxel faces in tiny UI slots.
         const double light=.42+.78*std::max(0.,nx*-.45+ny*-.65+nz*.61);
         std::array<double,3> rgb{};const auto albedo=mesh.vertices[mesh.indices[i]].abgr;
-        for(unsigned channel=0;channel<3;++channel)rgb[channel]=std::pow(((albedo>>(channel*8))&255)/255.*light,1./2.2);
-        const double luma=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
-        for(auto& channel:rgb)channel=std::clamp(((luma+(channel-luma)*1.38)*1.12-.45)*1.08+.45,0.,1.);
+        for(unsigned channel=0;channel<3;++channel){
+            const double color=((albedo>>(channel*8))&255)/255.;
+            // Character colors are authored in sRGB. Decode before lighting so
+            // dark uniforms/hair stay dark instead of becoming pastel portraits.
+            rgb[channel]=std::pow((style.boost_colors?color:std::pow(color,2.2))*light,1./2.2);
+        }
+        if(style.boost_colors){
+            const double luma=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
+            for(auto& channel:rgb)channel=std::clamp(((luma+(channel-luma)*1.38)*1.12-.45)*1.08+.45,0.,1.);
+        }else for(auto& channel:rgb)channel=std::clamp(channel,0.,1.);
         const int x0=std::clamp(static_cast<int>(std::floor(std::min({a.x,b.x,c.x}))),0,width-1);
         const int x1=std::clamp(static_cast<int>(std::ceil(std::max({a.x,b.x,c.x}))),0,width-1);
         const int y0=std::clamp(static_cast<int>(std::floor(std::min({a.y,b.y,c.y}))),0,height-1);
@@ -105,6 +112,7 @@ std::vector<std::uint8_t> cosmetic_preview(const ChunkMesh& mesh,double yaw,doub
             if(distance[p]<=static_cast<float>(radius)){pixels[p*4]=pixels[p*4+1]=pixels[p*4+2]=8;pixels[p*4+3]=255;}
             continue;
         }
+        if(!style.internal_contours)continue;
         bool crease=false;
         for(const auto delta:std::array<std::array<int,2>,4>{{{-samples,0},{samples,0},{0,-samples},{0,samples}}}){
             const int xx=x+delta[0],yy=y+delta[1];if(xx<0||xx>=width||yy<0||yy>=height)continue;

@@ -21,6 +21,13 @@ struct LaunchOptions final {
     LaunchAction action{LaunchAction::run};
     RuntimeConfig runtime{};
     bool headless{false};
+    bool offline{false};
+    bool reset_settings{false};
+    std::optional<std::string> offline_profile;
+    std::optional<std::string> master_url;
+    std::optional<std::string> language;
+    std::optional<std::string> record_demo_path;
+    std::optional<std::string> play_demo_path;
     /**
      * Host a Local Match over Steam alone, without publishing an AoSPlay relay
      * lobby. Testing only: it isolates the Steam path, so a friend who cannot

@@ -470,7 +470,9 @@ std::string ServerBrowserEntry::identifier() const {
     if (address.empty() && steam_host_id != 0U) {
         return "steam:" + std::to_string(steam_host_id);
     }
-    return "aos://" + address + ':' + std::to_string(game_port);
+    auto identifier = "aos://" + address + ':' + std::to_string(game_port);
+    if (network::is_classic_protocol(protocol)) identifier += protocol == network::GameProtocol::classic075 ? ":0.75" : ":0.76";
+    return identifier;
 }
 
 void ServerBrowserModel::replace_servers(std::vector<ServerBrowserEntry> servers) {
@@ -722,6 +724,7 @@ std::optional<ServerConnectRequest> ServerBrowserModel::connect_request() const 
     // Carried separately from the endpoint: a listing may offer both, and the
     // loader prefers Valve's relays while keeping the endpoint as the fallback.
     request.steam_host_id = server->steam_host_id;
+    request.protocol = server->protocol;
     return request;
 }
 

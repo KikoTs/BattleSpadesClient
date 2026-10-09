@@ -355,6 +355,8 @@ public:
     [[nodiscard]] std::vector<std::byte> provide_password(std::string_view password);
 
 private:
+    // Demo streams already contain bounded, decompressed server packets.
+    friend class DemoPlayback;
     [[nodiscard]] Protocol168IngestResult
     ingest_packet(std::span<const std::byte> packet);
     [[nodiscard]] Protocol168IngestResult fail(std::string message);

@@ -719,7 +719,7 @@ decode_full_map_records(std::span<const std::byte> records, std::string& error) 
         error = "MapSync full snapshot has trailing records";
         return std::nullopt;
     }
-    auto loaded = world::VxlMap::load(raw);
+    auto loaded = world::VxlMap::load(raw, world::VxlDecodeProfile::canonical240);
     if (!loaded) {
         error = "MapSync reconstructed invalid VXL: " + loaded.error;
         return std::nullopt;
@@ -1020,7 +1020,7 @@ protocol168_apply_map_records(std::span<const std::byte> base_raw,
         raw.insert(raw.end(), source.begin() + static_cast<std::ptrdiff_t>(begin),
                    source.begin() + static_cast<std::ptrdiff_t>(end));
     }
-    auto loaded = world::VxlMap::load(raw);
+    auto loaded = world::VxlMap::load(raw, world::VxlDecodeProfile::canonical240);
     if (!loaded) {
         error = "MapSync overlay produced an invalid VXL: " + loaded.error;
         return std::nullopt;
@@ -1211,7 +1211,7 @@ Protocol168IngestResult Protocol168Session::ingest_packet(
                 "invalid UGC source VXL: " + error, result, true));
             return result;
         }
-        const auto loaded = world::VxlMap::load(*raw);
+        const auto loaded = world::VxlMap::load(*raw, world::VxlDecodeProfile::automatic);
         if (!loaded) {
             static_cast<void>(note_malformed(
                 "invalid UGC source VXL: " + loaded.error, result, true));

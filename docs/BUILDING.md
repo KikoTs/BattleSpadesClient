@@ -52,6 +52,13 @@ Notes:
 * macOS needs Xcode 26 (libc++ 20) for `std::jthread`/`std::stop_token`.
   The job fails with the list of installed Xcodes if the image ever drops
   26.3; update the path in the workflow.
+  The player deployment target is **macOS 11.0**, in both presets and vcpkg
+  triplets. This leaves release optimization and the Metal renderer enabled;
+  a modern build host does not require a matching player OS. Package creation
+  runs `scripts/check-macos-compatibility.sh` against every Mach-O, including
+  bundled helper/server binaries, and rejects higher minimum versions or
+  references to build-machine libraries. This structural check does not
+  replace launch/render/audio/network/hosting tests on macOS 11 and 12.7.
 * Retail game files are never on a runner and never in an artifact; the
   payload check fails if `assets/original` appears in a package.
 
@@ -99,6 +106,12 @@ GitHub keeps 10 GB of caches per repository and drops entries unused for
 
 ## Reliability rules
 
+* Default smoke tests include Classic 0.75/0.76 packet and movement fixtures,
+  corpse physics, legacy VXL import, demo recording/playback, Workshop metadata,
+  concurrent media publication, and resumable package downloads. They use
+  synthetic files and loopback servers, without retail assets, account sessions,
+  a GPU, or public game servers. The WinHTTP transport test runs only on Windows;
+  portable download-core and libcurl transport checks run on every target.
 * `fail-fast: false`: one broken platform never cancels the others.
 * Network steps (git clone, apt, brew, vcpkg downloads, FetchContent,
   Inno Setup download) retry up to three times, **only** when the output
@@ -129,4 +142,3 @@ Jobs run in parallel, so a warm `targets=all` run takes about 7 minutes of
 wall-clock time and a cold one about 40 (bounded by macos-x64). With
 `run_tests=full`, linux-x64 runs 140 tests in about 40 seconds more. The
 caches together use about 2 GB of the 10 GB allowance.
-

@@ -42,7 +42,7 @@ struct AssetReadiness final {
 };
 
 [[nodiscard]] AssetReadiness
-ensure_runtime_assets(const std::filesystem::path& executable_path) {
+ensure_runtime_assets(const std::filesystem::path& executable_path, bool offline) {
     using battlespades::assets::AssetInstallerExit;
     using battlespades::assets::AssetVerificationDepth;
 
@@ -92,6 +92,7 @@ ensure_runtime_assets(const std::filesystem::path& executable_path) {
             return {candidate, {}, false};
         }
     }
+    if (offline) return {std::nullopt, "Offline mode needs assets already installed. Run the asset installer before going offline.", false};
     std::string destination_error;
     const auto destination =
         battlespades::assets::choose_asset_destination(executable_directory, destination_error)
@@ -179,7 +180,7 @@ int run_client(int argc, char* argv[]) {
             std::cerr << "BattleSpadesClient: " << executable_error << '\n';
             return 1;
         }
-        const auto assets = ensure_runtime_assets(*executable_path);
+        const auto assets = ensure_runtime_assets(*executable_path, options.offline);
         if (!assets.root.has_value()) {
             if (!assets.cancelled) {
                 std::cerr << "BattleSpadesClient: " << assets.error << '\n';
@@ -242,6 +243,28 @@ int run_client(int argc, char* argv[]) {
         frontend_config.tutorial_debug_cosmetic = options.tutorial_debug_cosmetic;
         frontend_config.tutorial_debug_aim = options.tutorial_debug_aim;
         frontend_config.startup_endpoint = options.startup_endpoint;
+        frontend_config.offline = options.offline;
+        frontend_config.offline_profile = options.offline_profile.value_or("Player");
+        frontend_config.master_url = options.master_url;
+        frontend_config.reset_settings = options.reset_settings;
+        frontend_config.language_override = options.language;
+        if (options.record_demo_path) frontend_config.record_demo_path = std::filesystem::path{
+            std::u8string{options.record_demo_path->begin(), options.record_demo_path->end()}};
+        if (options.play_demo_path) {
+            frontend_config.play_demo_path = std::filesystem::path{
+                std::u8string{options.play_demo_path->begin(), options.play_demo_path->end()}};
+            frontend_config.startup_endpoint = "127.0.0.1:27015";
+        }
+        if (options.master_url) {
+            frontend_config.public_server_list_url = *options.master_url + "/serverlist/";
+            frontend_config.leaderboard_url = *options.master_url + "/leaderboard";
+            frontend_config.player_profile_url = *options.master_url + "/profile";
+        }
+        if (options.offline) {
+            frontend_config.public_server_list_url.clear();
+            frontend_config.leaderboard_url.clear();
+            frontend_config.player_profile_url.clear();
+        }
         frontend_config.startup_password = options.startup_password;
         frontend_config.startup_steam_lobby = options.startup_steam_lobby;
         frontend_config.steam_only = options.steam_only;

@@ -92,9 +92,8 @@ void semantic_navigation_emits_typed_routes_and_audio() {
     static_cast<void>(menu.handle(pressed(InputAction::navigate_down)));
     const auto subscribe = menu.handle(pressed(InputAction::activate));
     expect(subscribe.has_value() && subscribe->action == UgcSelectAction::subscribe_workshop &&
-               subscribe->external_url ==
-                   "https://www.aosplay.net/workshop",
-           "Workshop browsing must open the supported Revival archive");
+               !subscribe->external_url.has_value(),
+           "Workshop browsing must open the native browser without a web redirect");
 }
 
 void workshop_app_id_is_configurable_but_never_zero() {

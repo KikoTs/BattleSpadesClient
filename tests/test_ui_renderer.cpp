@@ -180,6 +180,36 @@ void test_backend(render::GraphicsBackend backend, const std::filesystem::path& 
     expect(renderer.release_texture(cached->texture), "first PNG reference could not be released");
 
     {
+        // Portraits shrink from 256px to HUD size. Transparent texels must not
+        // bleed their RGB into the filtered silhouette, and updates need every LOD.
+        std::vector<std::uint8_t> checker(128U * 128U * 4U);
+        const auto fill = [&](std::array<std::uint8_t, 4U> color) {
+            for (std::size_t p{}; p < checker.size(); p += 4U) {
+                const auto sample = (p / 4U) % 2U ? std::array<std::uint8_t, 4U>{0, 0, 255, 0} : color;
+                std::copy(sample.begin(), sample.end(), checker.begin() + static_cast<std::ptrdiff_t>(p));
+            }
+        };
+        fill(red);
+        const auto icon = renderer.create_texture_rgba8(checker, {128U, 128U}, render::TextureFilter::linear, true);
+        expect(icon.has_value(), std::string{renderer.last_error()});
+        Capture capture;
+        for (const auto& color : {red, green}) {
+            fill(color);
+            expect(renderer.update_texture_rgba8(icon->texture, checker), "Mipmapped icon update failed");
+            expect(renderer.begin_frame(), std::string{renderer.last_error()});
+            expect(renderer.draw(render::UiSprite{runtime->texture, {0, 0, 64, 64}}), "Icon background failed");
+            expect(renderer.draw(render::UiSprite{icon->texture, {0, 0, 16, 64}}), "Small icon failed");
+            expect(renderer.draw(render::UiSprite{icon->texture, {16, 0, 32, 64}}), "Large icon failed");
+            const auto pixels = capture.finish(renderer);
+            const std::array<std::uint8_t, 4U> expected{static_cast<std::uint8_t>(color[0] ? 255U : 128U),
+                static_cast<std::uint8_t>(color[1] ? 255U : 128U), 128U, 255U};
+            expect_color(pixels, 8U, expected, "Small alpha-weighted mipmap");
+            expect_color(pixels, 32U, expected, "Large alpha-weighted mipmap");
+        }
+        expect(renderer.release_texture(icon->texture), "Mipmapped icon release failed");
+    }
+
+    {
         Capture capture;
         expect(renderer.begin_frame(), std::string{renderer.last_error()});
         expect(renderer.draw(render::UiSprite{runtime->texture, {0, 0, 64, 64}, {}, {},

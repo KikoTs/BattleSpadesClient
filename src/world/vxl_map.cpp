@@ -1,12 +1,17 @@
 #include "battlespades/world/vxl_map.hpp"
+#include "battlespades/world/map_catalog.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
-#include <tuple>
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <string_view>
+#include <tuple>
 
 namespace battlespades::world {
 namespace {
@@ -14,9 +19,12 @@ namespace {
 constexpr std::size_t area = VxlMap::width * VxlMap::depth;
 constexpr std::size_t voxel_count = area * VxlMap::height;
 constexpr std::uint16_t no_surface = std::numeric_limits<std::uint16_t>::max();
+// A legal 240-high stream needs at most one color and one span header per
+// voxel. Bound files before reading them, rather than allocating arbitrary
+// input and another 267 MiB of terrain before discovering malformed spans.
+constexpr std::size_t maximum_source_bytes = voxel_count * 8U;
 
-[[nodiscard]] std::size_t index(std::uint32_t x, std::uint32_t y,
-                                std::uint32_t z) noexcept {
+[[nodiscard]] std::size_t index(std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept {
     return x + y * VxlMap::width + z * area;
 }
 
@@ -31,25 +39,32 @@ constexpr std::uint16_t no_surface = std::numeric_limits<std::uint16_t>::max();
 struct SourceShape final {
     std::uint32_t columns{};
     std::uint32_t maximum_z{};
+    std::uint32_t maximum_colored_z{};
 };
 
 [[nodiscard]] std::optional<SourceShape> inspect(std::span<const std::byte> bytes) {
     std::size_t position{};
     SourceShape shape{};
     while (position < bytes.size()) {
-        if (bytes.size() - position < 4U) {
+        if (shape.columns == area || bytes.size() - position < 4U) {
             return std::nullopt;
         }
         for (;;) {
             const auto words = std::to_integer<std::uint8_t>(bytes[position]);
+            const auto top_start = std::to_integer<std::uint32_t>(bytes[position + 1U]);
+            const auto top_end = std::to_integer<std::uint32_t>(bytes[position + 2U]);
+            // Empty tops use the adjacent sentinel pair (height, height-1).
+            if (top_start > top_end + 1U)
+                return std::nullopt;
+            const auto top_words = top_end >= top_start ? top_end - top_start + 1U : 0U;
+            if (top_words != 0U) {
+                shape.maximum_colored_z = std::max(shape.maximum_colored_z, top_end);
+            }
             shape.maximum_z = std::max({shape.maximum_z,
-                                        std::to_integer<std::uint32_t>(bytes[position + 1U]),
-                                        std::to_integer<std::uint32_t>(bytes[position + 2U]),
+                                        top_start,
+                                        top_end,
                                         std::to_integer<std::uint32_t>(bytes[position + 3U])});
             if (words == 0U) {
-                const auto top_start = std::to_integer<std::uint8_t>(bytes[position + 1U]);
-                const auto top_end = std::to_integer<std::uint8_t>(bytes[position + 2U]);
-                const auto top_words = top_end >= top_start ? top_end - top_start + 1U : 0U;
                 const auto advance = 4U * (1U + top_words);
                 if (advance > bytes.size() - position) {
                     return std::nullopt;
@@ -58,9 +73,10 @@ struct SourceShape final {
                 break;
             }
             const auto advance = static_cast<std::size_t>(words) * 4U;
-            if (advance > bytes.size() - position) {
+            if (words < top_words + 1U || advance > bytes.size() - position) {
                 return std::nullopt;
             }
+            const auto bottom_words = words - top_words - 1U;
             position += advance;
             // The next span header reads four bytes. A non-terminal span that
             // left only 1..3 bytes used to over-read the heap buffer (fuzz
@@ -68,31 +84,182 @@ struct SourceShape final {
             if (bytes.size() - position < 4U) {
                 return std::nullopt;
             }
+            const auto next_start = std::to_integer<std::uint32_t>(bytes[position + 1U]);
+            const auto next_air = std::to_integer<std::uint32_t>(bytes[position + 3U]);
+            if (bottom_words > next_air || next_air - bottom_words < top_end + 1U ||
+                next_start < next_air || next_start <= top_start) {
+                return std::nullopt;
+            }
+            if (bottom_words != 0U) {
+                shape.maximum_colored_z = std::max(shape.maximum_colored_z, next_air - 1U);
+            }
         }
         ++shape.columns;
     }
     return position == bytes.size() ? std::optional{shape} : std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string> assignment_format(std::string_view text) {
+    // Recognize the inert, top-level legacy metadata spelling only. Scan past
+    // comments, quoted strings and bracketed data so an example in a docstring
+    // or a nested dictionary cannot accidentally select the map's format.
+    if (text.starts_with("\xEF\xBB\xBF")) text.remove_prefix(3U);
+    std::optional<std::string> result;
+    std::size_t depth{};
+    bool line_start{true};
+    for (std::size_t position{}; position < text.size();) {
+        const auto current = text[position];
+        if (current == '\n') {
+            line_start = true;
+            ++position;
+            continue;
+        }
+        if (line_start && depth == 0U && text.substr(position).starts_with("vxl_format")) {
+            auto line = text.substr(position + 10U);
+            line = line.substr(0U, line.find('\n'));
+            const auto trim = [](std::string_view value) {
+                const auto first = value.find_first_not_of(" \t\r");
+                return first == std::string_view::npos ? std::string_view{} : value.substr(first);
+            };
+            line = trim(line);
+            if (line.starts_with('=') && !line.starts_with("==")) {
+                line = trim(line.substr(1U));
+                if (!line.empty() && (line.front() == '\'' || line.front() == '"')) {
+                    const auto end = line.find(line.front(), 1U);
+                    if (end != std::string_view::npos &&
+                        line.substr(1U, end - 1U).find('\\') == std::string_view::npos) {
+                        const auto tail = trim(line.substr(end + 1U));
+                        if (tail.empty() || tail.starts_with('#')) {
+                            // Python metadata takes the last assignment in a
+                            // file; sibling sidecars use first-key precedence.
+                            result = std::string{line.substr(1U, end - 1U)};
+                        }
+                    }
+                }
+            }
+        }
+        line_start = false;
+        if (current == '#') {
+            const auto end = text.find('\n', position);
+            position = end == std::string_view::npos ? text.size() : end;
+        } else if (current == '\'' || current == '"') {
+            const auto triple = position + 2U < text.size() &&
+                                text[position + 1U] == current && text[position + 2U] == current;
+            const std::size_t delimiter_size = triple ? 3U : 1U;
+            const auto delimiter = text.substr(position, delimiter_size);
+            position += delimiter_size;
+            while (position < text.size()) {
+                if (text[position] == '\\') {
+                    position += std::min<std::size_t>(2U, text.size() - position);
+                } else if (text.substr(position).starts_with(delimiter)) {
+                    position += delimiter_size;
+                    break;
+                } else {
+                    ++position;
+                }
+            }
+        } else {
+            if (current == '(' || current == '[' || current == '{') ++depth;
+            if ((current == ')' || current == ']' || current == '}') && depth > 0U) --depth;
+            ++position;
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] std::optional<VxlDecodeProfile> disk_profile(const std::filesystem::path& path,
+                                                           std::string& error) {
+    // Match server metadata precedence; files without this key do not mask
+    // another sibling's value. Nothing in a legacy map script is executed.
+    for (const auto* extension : {".json", ".ugc", ".txt", ".vxl.json"}) {
+        auto sidecar = path;
+        sidecar.replace_extension(extension);
+        std::error_code code;
+        const auto size = std::filesystem::file_size(sidecar, code);
+        if (code || size > 1024U * 1024U)
+            continue;
+        std::ifstream input{sidecar, std::ios::binary};
+        std::string text(static_cast<std::size_t>(size), '\0');
+        if (!input.read(text.data(), static_cast<std::streamsize>(text.size()))) continue;
+        const auto document = nlohmann::json::parse(text, nullptr, false);
+        std::optional<std::string> format;
+        if (document.is_object() && document.contains("vxl_format")) {
+            const auto& value = document["vxl_format"];
+            format = value.is_string() ? value.get<std::string>() : std::string{};
+        } else if (document.is_discarded()) {
+            format = assignment_format(text);
+        }
+        if (!format) continue;
+        std::ranges::transform(*format, format->begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (*format == "auto") return VxlDecodeProfile::automatic;
+        if (*format == "retail") return VxlDecodeProfile::retail;
+        if (*format == "classic64") return VxlDecodeProfile::classic64;
+        error = "vxl_format must be auto, retail or classic64: " + sidecar.string();
+        return std::nullopt;
+    }
+    auto stem = path.stem().string();
+    std::ranges::transform(
+        stem, stem.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    // 20thCenturyTown is a stock 64-high retail map with authored flare
+    // markers, although the environment catalog lists its WW1 alias instead.
+    return find_official_map_environment(stem).has_value() || stem == "20thcenturytown"
+               ? VxlDecodeProfile::retail
+               : VxlDecodeProfile::automatic;
+}
+
 } // namespace
 
-VxlLoadResult VxlMap::load_file(const std::filesystem::path& path) {
-    std::ifstream input{path, std::ios::binary};
+VxlLoadResult VxlMap::load_file(const std::filesystem::path& path, VxlDecodeProfile profile) {
+    std::ifstream input{path, std::ios::binary | std::ios::ate};
     if (!input) {
         return {std::nullopt, "unable to open VXL file: " + path.string()};
     }
-    std::vector<char> raw{std::istreambuf_iterator<char>{input}, {}};
+    const auto size = input.tellg();
+    if (size <= 0 || static_cast<std::uint64_t>(size) > maximum_source_bytes) {
+        return {std::nullopt, "empty or oversized VXL file: " + path.string()};
+    }
+    input.seekg(0);
+    std::vector<char> raw(static_cast<std::size_t>(size));
+    if (!input.read(raw.data(), static_cast<std::streamsize>(raw.size()))) {
+        return {std::nullopt, "unable to read complete VXL file: " + path.string()};
+    }
+    if (profile == VxlDecodeProfile::automatic) {
+        std::string error;
+        const auto resolved = disk_profile(path, error);
+        if (!resolved)
+            return {std::nullopt, std::move(error)};
+        profile = *resolved;
+    }
     const auto bytes = std::as_bytes(std::span{raw});
-    return load(bytes);
+    return load(bytes, profile);
 }
 
-VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
+VxlLoadResult VxlMap::load(std::span<const std::byte> bytes, VxlDecodeProfile profile) {
+    if (bytes.size() > maximum_source_bytes) {
+        return {std::nullopt, "oversized VXL span stream"};
+    }
     const auto shape = inspect(bytes);
     if (!shape || shape->columns == 0U) {
         return {std::nullopt, "malformed or truncated VXL span stream"};
     }
     const auto edge = static_cast<std::uint32_t>(std::sqrt(shape->columns));
-    if (edge * edge != shape->columns || edge > width || shape->maximum_z >= 241U) {
+    if (profile == VxlDecodeProfile::automatic) {
+        profile =
+            shape->columns == area && shape->maximum_z <= 64U && shape->maximum_colored_z < 64U
+                ? VxlDecodeProfile::classic64
+                : VxlDecodeProfile::retail;
+    }
+    if (profile == VxlDecodeProfile::classic64 &&
+        (shape->columns != area || shape->maximum_z > 64U || shape->maximum_colored_z >= 64U)) {
+        return {std::nullopt, "Classic VXL must be 512 x 512 x 64"};
+    }
+    if (profile == VxlDecodeProfile::canonical240 && shape->columns != area) {
+        return {std::nullopt, "MapSync VXL must be 512 x 512 x 240"};
+    }
+    if (edge * edge != shape->columns || edge > width || shape->maximum_z > height ||
+        shape->maximum_colored_z >= height) {
         return {std::nullopt, "VXL dimensions are incompatible with Battle Builder"};
     }
 
@@ -107,19 +274,22 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
     // the fourth span-header byte. The server clamps their legacy-map shift
     // to zero. Unsigned `239 - 240` wrapped to UINT_MAX here, moving every
     // network MapSync voxel up one row and desynchronising collision.
-    map.source_z_shift_ =
-        shape->maximum_z < 239U ? 239U - shape->maximum_z : 0U;
+    map.source_z_shift_ = profile == VxlDecodeProfile::classic64      ? 176U
+                          : profile == VxlDecodeProfile::canonical240 ? 0U
+                          : shape->maximum_z < 239U                   ? 239U - shape->maximum_z
+                                                                      : 0U;
     const auto offset = (width - edge) / 2U;
     std::size_t position{};
     // Explicit colour words only: vxl.pyd matches chroma markers against the
     // stored colour records, never against implicit interior voxels.
     std::vector<std::uint32_t> marker_candidates;
-    const auto note_marker = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z,
-                                 std::uint32_t color_value) {
-        if (z <= max_damageable_z && is_vxl_chroma_marker(color_value)) {
-            marker_candidates.push_back(static_cast<std::uint32_t>(index(x, y, z)));
-        }
-    };
+    const auto note_marker =
+        [&](std::uint32_t x, std::uint32_t y, std::uint32_t z, std::uint32_t color_value) {
+            if (profile == VxlDecodeProfile::retail && z <= max_damageable_z &&
+                is_vxl_chroma_marker(color_value)) {
+                marker_candidates.push_back(static_cast<std::uint32_t>(index(x, y, z)));
+            }
+        };
 
     for (std::uint32_t source_y{}; source_y < edge; ++source_y) {
         for (std::uint32_t source_x{}; source_x < edge; ++source_x) {
@@ -148,8 +318,8 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
                 has_surface = has_surface || top_length != 0U;
                 if (words == 0U) {
                     if (has_surface) {
-                        for (std::uint32_t z = top_end + 1U;
-                             z + map.source_z_shift_ < height; ++z) {
+                        for (std::uint32_t z = top_end + 1U; z + map.source_z_shift_ < height;
+                             ++z) {
                             map.put_implicit(x, y, z + map.source_z_shift_, inherited_color);
                         }
                     }
@@ -162,8 +332,8 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
                 if (bottom_length * 4U + 4U > bytes.size() - position) {
                     return {std::nullopt, "truncated VXL cave span"};
                 }
-                const auto next_air = std::to_integer<std::uint8_t>(
-                    bytes[position + bottom_length * 4U + 3U]);
+                const auto next_air =
+                    std::to_integer<std::uint8_t>(bytes[position + bottom_length * 4U + 3U]);
                 if (bottom_length > next_air) {
                     return {std::nullopt, "invalid VXL cave ceiling"};
                 }
@@ -196,7 +366,8 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes) {
         }
     }
     // The finaliser runs the chroma-marker cleanup right after the bed.
-    map.remove_chroma_markers(marker_candidates);
+    if (profile == VxlDecodeProfile::retail)
+        map.remove_chroma_markers(marker_candidates);
     return {std::move(map), {}};
 }
 

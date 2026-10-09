@@ -206,6 +206,42 @@ static_assert(sizeof(UiVertex) == 24U);
     return flags;
 }
 
+void upload_rgba8(bgfx::TextureHandle texture, std::span<const std::uint8_t> pixels,
+                  UiExtent extent, bool mipmapped) {
+    std::vector<std::uint8_t> level;
+    for (std::uint8_t mip{};; ++mip) {
+        bgfx::updateTexture2D(texture, 0U, mip, 0U, 0U,
+            static_cast<std::uint16_t>(extent.width), static_cast<std::uint16_t>(extent.height),
+            bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size())));
+        if (!mipmapped || (extent.width == 1U && extent.height == 1U)) break;
+        const UiExtent next{std::max(1U, extent.width / 2U), std::max(1U, extent.height / 2U)};
+        std::vector<std::uint8_t> reduced(static_cast<std::size_t>(next.width) * next.height * 4U);
+        for (std::uint32_t y{}; y < next.height; ++y) {
+            for (std::uint32_t x{}; x < next.width; ++x) {
+                std::uint32_t alpha{}, count{};
+                std::array<std::uint32_t, 3U> rgb{};
+                // Include the last row/column of odd-sized textures as well.
+                for (auto yy = y * extent.height / next.height; yy < (y + 1U) * extent.height / next.height; ++yy) {
+                    for (auto xx = x * extent.width / next.width; xx < (x + 1U) * extent.width / next.width; ++xx) {
+                        const auto p = (static_cast<std::size_t>(yy) * extent.width + xx) * 4U;
+                        alpha += pixels[p + 3U];
+                        for (std::size_t c{}; c < 3U; ++c) rgb[c] += pixels[p + c] * pixels[p + 3U];
+                        ++count;
+                    }
+                }
+                const auto p = (static_cast<std::size_t>(y) * next.width + x) * 4U;
+                if (alpha) {
+                    for (std::size_t c{}; c < 3U; ++c) reduced[p + c] = static_cast<std::uint8_t>(rgb[c] / alpha);
+                    reduced[p + 3U] = static_cast<std::uint8_t>(alpha / count);
+                }
+            }
+        }
+        level = std::move(reduced);
+        pixels = level;
+        extent = next;
+    }
+}
+
 [[nodiscard]] std::uint32_t reset_flags(const BgfxUiRendererConfig& config) noexcept {
     // Always on, at init and at every reset alike: it only sets the device
     // maximum that BGFX_SAMPLER_*_ANISOTROPIC samplers use, so the Texture
@@ -366,6 +402,7 @@ struct BgfxUiRenderer::Impl final {
         std::uint32_t generation{1U};
         std::uint32_t references{};
         bool updatable{};
+        bool mipmapped{};
     };
 
     using CacheKey = std::pair<std::filesystem::path, TextureFilter>;
@@ -1112,13 +1149,14 @@ std::optional<UiTextureInfo> BgfxUiRenderer::load_texture(const std::filesystem:
     slot.filter = filter;
     slot.references = 1U;
     slot.updatable = false;
+    slot.mipmapped = false;
     impl_->texture_cache.emplace(key, index);
     impl_->error.clear();
     return UiTextureInfo{UiTexture{index, slot.generation}, extent};
 }
 
 std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
-    std::span<const std::uint8_t> pixels, UiExtent extent, TextureFilter filter) {
+    std::span<const std::uint8_t> pixels, UiExtent extent, TextureFilter filter, bool mipmapped) {
     if (!impl_->initialized || !impl_->check_thread()) {
         impl_->fail("cannot create a texture before the bgfx UI renderer is initialized");
         return std::nullopt;
@@ -1147,7 +1185,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
     // mutable texture first and upload its initial contents through the update.
     const auto native = bgfx::createTexture2D(static_cast<std::uint16_t>(extent.width),
                                               static_cast<std::uint16_t>(extent.height),
-                                              false,
+                                              mipmapped,
                                               1U,
                                               bgfx::TextureFormat::RGBA8,
                                               texture_flags(filter),
@@ -1156,9 +1194,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
         impl_->fail("bgfx could not create an RGBA8 runtime texture");
         return std::nullopt;
     }
-    bgfx::updateTexture2D(native,0U,0U,0U,0U,static_cast<std::uint16_t>(extent.width),
-        static_cast<std::uint16_t>(extent.height),
-        bgfx::copy(pixels.data(),static_cast<std::uint32_t>(pixels.size())));
+    upload_rgba8(native, pixels, extent, mipmapped);
 
     std::uint32_t index{};
     if (!impl_->free_slots.empty()) {
@@ -1182,6 +1218,7 @@ std::optional<UiTextureInfo> BgfxUiRenderer::create_texture_rgba8(
     slot.filter = filter;
     slot.references = 1U;
     slot.updatable = true;
+    slot.mipmapped = mipmapped;
     impl_->error.clear();
     return UiTextureInfo{UiTexture{index, slot.generation}, extent};
 }
@@ -1206,15 +1243,7 @@ bool BgfxUiRenderer::update_texture_rgba8(UiTexture texture, std::span<const std
         required_size > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())) {
         return impl_->fail("updated RGBA8 pixels must match the existing texture extent");
     }
-    const auto* memory = bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
-    bgfx::updateTexture2D(slot->native,
-                          0U,
-                          0U,
-                          0U,
-                          0U,
-                          static_cast<std::uint16_t>(slot->extent.width),
-                          static_cast<std::uint16_t>(slot->extent.height),
-                          memory);
+    upload_rgba8(slot->native, pixels, slot->extent, slot->mipmapped);
     impl_->error.clear();
     return true;
 }

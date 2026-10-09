@@ -511,6 +511,23 @@ int main() {
                    host_text->destination.x == 143.91,
                "lobby hosts must render the leader icon and advance the name column");
 
+        auto custom_team_state = player_state;
+        custom_team_state.server_team_colors = true;
+        custom_team_state.team1_color = {255U, 215U, 0U};
+        custom_team_state.team2_color = {255U, 0U, 0U};
+        custom_team_state.team1_players.front().class_icon_asset = "runtime/cosmetic/server-gold";
+        const auto custom_team_draw = ScoreboardPresentation{}.build(custom_team_state, "Classic 0.75", {800, 600});
+        const auto* gold_helmet = find_sprite(custom_team_draw, "png/ui/icons/deuce_head_colour_2.png");
+        const auto* red_helmet = find_sprite(custom_team_draw, "png/ui/icons/deuce_head_colour_1.png");
+        expect(gold_helmet && red_helmet && gold_helmet->modulation.color == battlespades::ui::ColorRgba8{255U,215U,0U,255U} &&
+               red_helmet->modulation.color == battlespades::ui::ColorRgba8{255U,0U,0U,255U},
+               "legacy scoreboard headers use both server team colors");
+        const auto* custom_name = find_text(custom_team_draw, "Ordinary");
+        const auto* custom_class = find_sprite(custom_team_draw, "runtime/cosmetic/server-gold");
+        expect(custom_name && custom_name->modulation.color == gold_helmet->modulation.color &&
+               custom_class && custom_class->modulation.color == battlespades::ui::ColorRgba8{255U,255U,255U,255U},
+               "legacy roster uses the server palette without tinting the face of precolored class art");
+
         // escapeMenu.py: catalogue ids, Spades 36 as written, 2 px press sink.
         PauseMenuModel plain{pause_menu_environment_for(PauseMenuServerState{
             6U, 2U, 1U, 4U, false, false, false, false, false, false, false, false, false})};

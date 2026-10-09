@@ -608,6 +608,43 @@ void test_download_pipeline(const fs::path& root) {
     expect(!offline && offline.error.find("internet connection") != std::string::npos &&
                offline.error.find("Could not resolve host") != std::string::npos,
            "offline errors explain the retry: " + offline.error);
+
+    // 9. A transfer completed before shutdown, but was not promoted yet.
+    //    Its valid bytes must install even when all mirrors are offline.
+    request.destination = install / "assets" / "original-complete-partial";
+    request.cache_directory = install / "assets" / ".retail-download-complete-partial";
+    write_file(request.cache_directory / (request.release.package + ".partial"), server.package);
+    unsigned requests{};
+    down.fetch_range = [&](const std::string&, std::uint64_t, const auto&, const auto&) {
+        ++requests;
+        assets::TransferResult failure;
+        failure.error = "offline";
+        return failure;
+    };
+    const auto complete = assets::download_and_install_retail_assets(request, down);
+    expect(static_cast<bool>(complete) && requests == 0U,
+           "a complete partial installs without any network transfer: " + complete.error);
+
+    // 10. Same file name and version, different bytes: do not waste a full
+    //     transfer stitching together prefixes from different releases.
+    request.destination = install / "assets" / "original-replaced-package";
+    request.cache_directory = install / "assets" / ".retail-download-replaced-package";
+    FakeServer replaced;
+    replaced.package = server.package;
+    replaced.cancel_at_half = true;
+    const auto stopped = assets::download_and_install_retail_assets(request, replaced.transport());
+    expect(stopped.status == assets::RetailInstallStatus::cancelled, "prepare an interrupted old release");
+    replaced.package = synthetic_pack();
+    // A ZIP comment changes its identity without changing the catalogued
+    // contents that the importer checks.
+    replaced.package[replaced.package.size() - 2U] = 19;
+    replaced.package += "new archive comment";
+    request.release = release_for(replaced.package);
+    replaced.cancel_at_half = false;
+    replaced.offsets.clear();
+    const auto replacement = assets::download_and_install_retail_assets(request, replaced.transport());
+    expect(static_cast<bool>(replacement) && replaced.offsets == std::vector<std::uint64_t>{0U},
+           "replacement package downloads exactly once from zero: " + replacement.error);
 }
 
 void test_destination(const fs::path& root) {

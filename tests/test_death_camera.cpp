@@ -90,6 +90,18 @@ int main() {
                "DEATHCAM_VALID_TYPES is [0..6, 21..24]");
 
         const Vec3 death_eye{100.0, 100.0, 200.0};
+        {
+            DeathCameraController camera;
+            camera.begin_death(death_eye, std::nullopt, false, false);
+            const auto before = camera.pose().eye;
+            camera.update_body_position({100, 100, 205});
+            expect(std::abs(camera.pose().eye.z - before.z - 5.0) < 1e-8,
+                   "death camera follows local corpse gravity");
+            camera.bind_grave(42, {100,100,208});
+            const auto grave = camera.pose().eye;
+            camera.update_body_position({100,100,215});
+            expect(std::abs(camera.pose().eye.z - grave.z) < 1e-8, "server grave retains camera ownership");
+        }
 
         // A first kill (streak 1): straight to the chase camera on our own
         // body, locked -- retail never lets a dead player browse the map.

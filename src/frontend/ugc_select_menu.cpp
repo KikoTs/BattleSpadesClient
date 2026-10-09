@@ -250,9 +250,6 @@ std::optional<UgcSelectActivation> UgcSelectMenuModel::focused_activation() cons
 UgcSelectActivation UgcSelectMenuModel::activation_for(UgcSelectAction action) const {
     const auto sound = action == UgcSelectAction::back ? main_menu_assets::back_sound
                                                        : main_menu_assets::confirmation_sound;
-    if (action == UgcSelectAction::subscribe_workshop) {
-        return UgcSelectActivation{action, sound, workshop_url()};
-    }
     return UgcSelectActivation{action, sound, std::nullopt};
 }
 

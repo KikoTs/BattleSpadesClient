@@ -18,6 +18,12 @@ target_include_directories(
 target_link_libraries(aos_core PUBLIC BattleSpades::BuildOptions)
 aos_enable_strict_warnings(aos_core)
 
+add_library(aos_demo STATIC network/demo_stream.cpp)
+add_library(BattleSpades::Demo ALIAS aos_demo)
+target_include_directories(aos_demo PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(aos_demo PUBLIC BattleSpades::BuildOptions)
+aos_enable_strict_warnings(aos_demo)
+
 add_library(
     aos_settings
     STATIC
@@ -73,7 +79,11 @@ add_library(
         world/ugc_prefab_control.cpp
         world/player_inventory.cpp
         world/jetpack_death.cpp
+        world/classic_corpse.cpp
+        world/blood_marks.cpp
         world/player_movement.cpp
+    world/classic_movement.cpp
+    world/classic_combat.cpp
         world/retail_inventory.cpp
         world/retail_character_pose.cpp
         world/retail_view_model.cpp
@@ -530,14 +540,21 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         aos_network_enet
         STATIC
             network/protocol168_session.cpp
+            network/classic_protocol.cpp
             network/enet_protocol168_client.cpp
             network/live_protocol168_connection.cpp
+            network/demo_playback.cpp
+            network/demo_recorder.cpp
             network/aosplay_scores.cpp
             network/revival_identity.cpp
+            network/public_workshop.cpp
+            network/workshop_preview.cpp
             network/revival_social.cpp
             network/server_discovery.cpp
     )
     add_library(BattleSpades::NetworkEnet ALIAS aos_network_enet)
+    target_link_libraries(aos_network_enet PUBLIC BattleSpades::Demo)
+    target_include_directories(aos_network_enet SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
     target_include_directories(
         aos_network_enet
         PUBLIC
@@ -554,12 +571,29 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             CURL::libcurl
             unofficial-sodium::sodium
             unofficial::enet::enet
+            BattleSpades::NativeSteam
+            BattleSpades::World
     )
     if(WIN32)
         # The vcpkg ENet static target does not propagate its platform libs.
         target_link_libraries(aos_network_enet PUBLIC ws2_32 winmm crypt32)
     endif()
     aos_enable_strict_warnings(aos_network_enet)
+
+    add_executable(BattleSpadesDemoRecorder "${PROJECT_SOURCE_DIR}/tools/demo_recorder.cpp")
+    target_link_libraries(BattleSpadesDemoRecorder PRIVATE BattleSpades::NetworkEnet)
+    if(WIN32)
+        # main() receives UTF-8 filenames, matching the client and asset importer.
+        target_sources(BattleSpadesDemoRecorder PRIVATE
+            platform/windows/battlespades_client.rc
+            platform/windows/battlespades_client.manifest
+            platform/windows/game.ico)
+        if(MSVC)
+            target_link_options(BattleSpadesDemoRecorder PRIVATE /MANIFEST:NO)
+        endif()
+    endif()
+    aos_enable_strict_warnings(BattleSpadesDemoRecorder)
+    install(TARGETS BattleSpadesDemoRecorder RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT Runtime)
 
     add_executable(
         aos_protocol168_live_smoke
@@ -819,6 +853,8 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             frontend/native_texture_preloader.cpp
             frontend/ugc_preview_writer.cpp
             frontend/inventory_session.cpp
+            frontend/workshop_session.cpp
+            frontend/workshop_media.cpp
             frontend/scripted_weapon_images.cpp
             frontend/inventory_view.cpp
             frontend/cosmetic_icons.cpp

@@ -1,4 +1,5 @@
 #include "battlespades/frontend/game_hud.hpp"
+#include "battlespades/frontend/fallback_music.hpp"
 #include "battlespades/frontend/retail_announcer.hpp"
 #include "battlespades/frontend/retail_input_rules.hpp"
 #include "battlespades/settings/client_settings.hpp"
@@ -250,6 +251,28 @@ void stinger_once_per_match() {
     expect(gate.update(true, false), "the next match's SelectTeam plays it again");
 }
 
+void fallback_music_ownership() {
+    using battlespades::frontend::FallbackMusic;
+    using enum battlespades::frontend::FallbackMusicAction;
+    FallbackMusic music;
+    expect(music.update(false, true, false) == none, "silent servers stay silent by default");
+    expect(music.update(true, false, false) == none, "enabling in menus preserves menu music");
+    expect(music.update(true, true, false) == start, "start on entering a silent match");
+    const auto first = music.choose_track(2U);
+    expect(music.update(true, true, false) == none, "pause, respawn and ticks must not restart music");
+    expect(music.update(false, true, false) == stop, "disable or cancel stops only fallback music");
+    expect(music.update(true, true, false) == start, "re-enabling starts the fallback again");
+    expect(music.choose_track(2U) != first, "do not immediately repeat the same gameplay track");
+    expect(music.update(true, true, true) == none, "server music takes ownership without a stop");
+    expect(music.update(false, true, true) == none, "disabling must not stop the server's track");
+    expect(music.update(true, true, true) == none, "server StopMusic must remain respected");
+    music.relinquish();
+    expect(music.update(true, false, false) == none, "map loading does not play fallback music");
+    expect(music.update(true, true, false) == start, "new silent map can play music again");
+    expect(music.update(true, false, false) == stop, "results and disconnect release fallback music");
+    expect(music.update(true, false, false) == none, "do not repeatedly stop subsequent menu music");
+}
+
 void music_and_keys() {
     using battlespades::frontend::developer_chord;
     using battlespades::frontend::retail_server_music_allowed;
@@ -278,6 +301,7 @@ int main() {
         ugc_tool_tips();
         stinger_once_per_match();
         music_and_keys();
+        fallback_music_ownership();
     } catch (const std::exception& error) {
         std::cerr << "retail input rules test failed: " << error.what() << '\n';
         return 1;

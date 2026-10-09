@@ -296,6 +296,13 @@ void DeathCameraController::update_grave(std::uint64_t entity_id, world::Vec3 po
     }
 }
 
+void DeathCameraController::update_body_position(world::Vec3 position) noexcept {
+    if (mode_ != DeathCameraMode::inactive && !spectator_ && !grave_entity_id_ &&
+        std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)) {
+        fallback_anchor_ = position;
+    }
+}
+
 void DeathCameraController::set_chase_target(std::optional<DeathCameraTarget> target) noexcept {
     if (mode_ == DeathCameraMode::inactive) return;
     const auto previous_eye = pose().eye;

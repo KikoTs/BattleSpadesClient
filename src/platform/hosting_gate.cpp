@@ -72,9 +72,10 @@ HostingStatusFile read_hosting_status(const std::filesystem::path& install) {
 }
 
 HostingGateAction decide_hosting_gate(bool bundle_found, const HostingStatusFile& status, bool launcher_present,
-                                      bool download_running) noexcept {
+                                      bool download_running, bool allow_download) noexcept {
     const bool needs_server = !bundle_found || status.state == "update_required";
     if (!needs_server) return HostingGateAction::start;
+    if (!allow_download) return HostingGateAction::offline_unavailable;
     if (download_running) return HostingGateAction::wait_for_download;
     if (!launcher_present) return HostingGateAction::missing_launcher;
     // The launcher knows the manifest; only skip asking it when it said
@@ -83,7 +84,7 @@ HostingGateAction decide_hosting_gate(bool bundle_found, const HostingStatusFile
     return HostingGateAction::request_download;
 }
 
-HostingGateResult check_hosting_gate(const std::filesystem::path& install, bool bundle_found) {
+HostingGateResult check_hosting_gate(const std::filesystem::path& install, bool bundle_found, bool allow_download) {
     HostingGateResult result;
     const auto status = read_hosting_status(install);
     const auto launcher = install / "BattleSpadesLauncher.exe";
@@ -98,9 +99,12 @@ HostingGateResult check_hosting_gate(const std::filesystem::path& install, bool 
     const std::string why = update ? "Server update required to host" + (status.reason.empty() ? std::string{}
                                                                                                : " (" + status.reason + ")")
                                    : std::string{"Hosting needs the BattleSpades server"};
-    switch (decide_hosting_gate(bundle_found, status, launcher_present, running)) {
+    switch (decide_hosting_gate(bundle_found, status, launcher_present, running, allow_download)) {
     case HostingGateAction::start:
         result.ready = true;
+        return result;
+    case HostingGateAction::offline_unavailable:
+        result.message = why + ". Install a compatible server bundle in server/ before hosting offline.";
         return result;
     case HostingGateAction::wait_for_download:
         result.message = why + ". The download is still running; start again when it finishes.";

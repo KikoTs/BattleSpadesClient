@@ -15,6 +15,10 @@ using updater_test::expect;
 namespace {
 
 void test_versions() {
+    const auto offline = up::parse_launcher_arguments({"--profile", "LocalPlayer", "+connect", "127.0.0.1:27015"});
+    expect(offline.no_update && offline.forwarded.size() == 4U, "offline profile launch skips updates and forwards options");
+    const auto replay = up::parse_launcher_arguments({"--play-demo", "match.demo"});
+    expect(replay.no_update && replay.forwarded.size() == 2U, "local replay skips updates");
     const auto parsed = up::parse_version("v0.2.0-beta.1");
     expect(parsed.has_value() && parsed->major == 0U && parsed->minor == 2U && parsed->patch == 0U &&
                parsed->prerelease.size() == 2U,

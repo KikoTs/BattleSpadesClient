@@ -63,6 +63,10 @@ struct ClassVoiceSet final {
 [[nodiscard]] const ClassVoiceSet* find_class_voice(std::uint8_t class_id) noexcept;
 [[nodiscard]] std::span<const ClassVoiceSet> class_voice_table() noexcept;
 
+/** Client presentation: Deuce uses varied human death takes; other banks stay authored. */
+[[nodiscard]] ClassVoiceBank presentation_voice_bank(std::uint8_t class_id,
+                                                     ClassVoice voice) noexcept;
+
 /** Idle-vocalisation timer state. */
 struct PeriodicVoiceState final {
     double remaining{};

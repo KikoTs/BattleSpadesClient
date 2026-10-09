@@ -5,7 +5,6 @@
 #include "battlespades/world/class_models.hpp"
 #include "battlespades/world/entity_catalog.hpp"
 #include "battlespades/world/cosmetic_preview.hpp"
-#include "battlespades/world/retail_character_pose.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -392,10 +391,12 @@ InventoryData inventory_preview_fixture() {
 
 std::optional<world::ChunkMesh> inventory_preview_mesh(
     const InventoryCosmetic& item, const std::filesystem::path& root, bool blue_team,
-    std::optional<std::uint8_t> class_id, const InventoryCosmetic* hat, bool head_only) {
+    std::optional<std::uint8_t> class_id, const InventoryCosmetic* hat, bool head_only,
+    std::optional<world::VxlColor> team_color) {
+    const bool stock_class = item.id.empty() && class_id.has_value();
     auto source=inventory_verified_model(item,root);
-    if (!source) return std::nullopt;
-    const auto team=blue_team?world::VxlColor{72,111,181,255}:world::VxlColor{79,132,61,255};
+    if (!source && !stock_class) return std::nullopt;
+    const auto team=team_color.value_or(blue_team?world::VxlColor{72,111,181,255}:world::VxlColor{79,132,61,255});
     if(item.kind=="prop_model"&&!item.slots.empty()){
         const auto number=std::string_view{item.slots[0]}.substr(7);unsigned type{};
         if(std::from_chars(number.data(),number.data()+number.size(),type).ec!=std::errc{}||type>255)return std::nullopt;
@@ -407,16 +408,19 @@ std::optional<world::ChunkMesh> inventory_preview_mesh(
             for(const auto index:mesh.indices)combined.indices.push_back(first+index);
         }return combined.empty()?std::nullopt:std::optional{std::move(combined)};
     }
-    if (item.kind=="character_skin" || item.kind=="hat") {
-        for (const auto& slot:item.slots) if (slot.starts_with("class:")) {
+    if (stock_class || item.kind=="character_skin" || item.kind=="hat") {
+        auto selected_class = class_id;
+        for (const auto& slot:item.slots) if (!selected_class && slot.starts_with("class:")) {
             unsigned id{};
             const auto number=std::string_view{slot}.substr(6);
             if (std::from_chars(number.data(),number.data()+number.size(),id).ec!=std::errc{} || id>255U) return std::nullopt;
-            if(class_id)id=*class_id;
+            selected_class = static_cast<std::uint8_t>(id);
+        }
+        if (selected_class) {
             const auto parts=inventory_character_parts(&item,root);
             const auto hat_model=hat?inventory_verified_model(*hat,root):nullptr;
-            auto loaded=world::load_class_models(root,static_cast<std::uint8_t>(id),team,1U,
-                item.kind=="hat"?std::nullopt:std::optional{item.palette},item.kind=="hat"?source.get():hat_model.get(),&parts);
+            auto loaded=world::load_class_models(root,*selected_class,team,1U,
+                stock_class || item.kind=="hat"?std::nullopt:std::optional{item.palette},item.kind=="hat"?source.get():hat_model.get(),&parts);
             if (!loaded) return std::nullopt;
             auto mesh=head_only?std::move(loaded.models->head_preview):std::move(loaded.models->standing_preview);
             // The assembled mannequin uses game XYZ/z-down; the orbit renderer uses X/-Z/Y.
@@ -424,41 +428,47 @@ std::optional<world::ChunkMesh> inventory_preview_mesh(
             const auto low=mesh.minimum,high=mesh.maximum;
             mesh.minimum={low[0],-high[2],low[1]}; mesh.maximum={high[0],-low[2],high[1]};
             if(head_only)return mesh;
+            const auto append_vertex=[&](world::ChunkVertex v) {
+                mesh.vertices.push_back(v);
+                const std::array xyz{v.x,v.y,v.z};
+                for (std::size_t axis{}; axis<3U; ++axis) {
+                    mesh.minimum[axis]=std::min(mesh.minimum[axis],xyz[axis]);
+                    mesh.maximum[axis]=std::max(mesh.maximum[axis],xyz[axis]);
+                }
+            };
             if(loaded.models->combined_arms){
                 const auto first=static_cast<std::uint32_t>(mesh.vertices.size());
-                for(auto v:loaded.models->combined_arms->vertices){const auto y=v.y;v.y=-v.z;v.z=y;mesh.vertices.push_back(v);}
+                for(auto v:loaded.models->combined_arms->vertices){const auto y=v.y;v.y=-v.z;v.z=y;append_vertex(v);}
                 for(const auto index:loaded.models->combined_arms->indices)mesh.indices.push_back(first+index);
             }
-            // The standing body deliberately excludes articulated arms. Attach the class's
-            // visible upper/lower meshes using its retail joints, with hands lowered.
+            // Menu artwork has relaxed, straight arms at the sides. The gameplay rifle
+            // pose overlaps the forearms and bends the support hand across the stomach;
+            // pitching that pose downward still leaves short, folded arms in portraits.
+            // Use the same fitted class parts at the body's scale, joined end to end.
             if (loaded.models->first_person_arms.size()==2U) {
-                const auto pose=world::evaluate_retail_third_person_pose(6U,0U,0.0,0U,70.0);
-                const auto rotate=[](std::array<double,3U>& p,std::size_t axis,double degrees) {
-                    const auto a=(axis+1U)%3U,b=(axis+2U)%3U;
-                    const auto radians=degrees*3.14159265358979323846/180.0;
-                    const auto c=std::cos(radians),s=std::sin(radians),old=p[a];
-                    p[a]=c*old-s*p[b]; p[b]=s*old+c*p[b];
-                };
-                for (std::size_t i{}; i<pose.arms.size(); ++i) {
-                    const auto& arm=pose.arms[i];
+                constexpr float arm_scale=.05F;
+                const auto& upper=loaded.models->first_person_arms[0];
+                // The fitted parts share the retail rig. Do not derive joints from
+                // cosmetic bounds: a backpack or antenna can extend past the head.
+                constexpr float shoulder_y=-.30F,shoulder_z=-.15F;
+                const float upper_length=(upper.maximum[2]-upper.minimum[2])*arm_scale;
+                for (std::size_t i{}; i<4U; ++i) {
                     const auto& source_mesh=loaded.models->first_person_arms[i%2U];
-                    const auto offset=world::retail_display_vector(arm.model_offset);
-                    const auto position=world::retail_display_vector(arm.position);
+                    const float shoulder_x=i<2U?-.49F:.49F;
+                    const float top=shoulder_y-(i%2U?upper_length-arm_scale:0.F);
+                    const float centre_x=(source_mesh.minimum[0]+source_mesh.maximum[0])*.5F;
+                    const float centre_y=(source_mesh.minimum[1]+source_mesh.maximum[1])*.5F;
                     const auto first=static_cast<std::uint32_t>(mesh.vertices.size());
                     for (auto v:source_mesh.vertices) {
-                        std::array<double,3U> p{v.x,v.y,v.z};
-                        rotate(p,2U,arm.extra_roll_degrees); rotate(p,1U,arm.extra_yaw_degrees);
-                        p[0]+=offset.x; p[1]+=offset.y; p[2]+=offset.z;
-                        rotate(p,1U,arm.yaw_degrees); rotate(p,0U,arm.pitch_degrees); rotate(p,2U,arm.roll_degrees);
-                        v.x=static_cast<float>(p[0]*pose.arm_model_scale+position.x);
-                        v.y=static_cast<float>(p[1]*pose.arm_model_scale+position.y);
-                        v.z=static_cast<float>(p[2]*pose.arm_model_scale+position.z);
-                        mesh.vertices.push_back(v);
-                        const std::array xyz{v.x,v.y,v.z};
-                        for (std::size_t axis{}; axis<3U; ++axis) {
-                            mesh.minimum[axis]=std::min(mesh.minimum[axis],xyz[axis]);
-                            mesh.maximum[axis]=std::max(mesh.maximum[axis],xyz[axis]);
-                        }
+                        const auto y=v.y;
+                        v.x=shoulder_x+(v.x-centre_x)*arm_scale;
+                        v.y=top-(v.z-source_mesh.minimum[2])*arm_scale;
+                        v.z=shoulder_z+(y-centre_y)*arm_scale;
+                        const auto normal_y=v.ao_v;
+                        v.ao_v=-v.edge_u;v.edge_u=normal_y;
+                        constexpr std::array<std::uint8_t,6U> faces{0,1,4,5,3,2};
+                        v.face=faces[v.face];
+                        append_vertex(v);
                     }
                     for (const auto index:source_mesh.indices) mesh.indices.push_back(first+index);
                 }

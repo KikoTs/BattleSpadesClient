@@ -146,6 +146,8 @@ public:
      */
     void bind_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
     void update_grave(std::uint64_t entity_id, world::Vec3 position) noexcept;
+    /** Follow a client-simulated corpse until a server grave takes ownership. */
+    void update_body_position(world::Vec3 position) noexcept;
 
     /**
      * Follow a replicated character, or nullopt to fall back to the

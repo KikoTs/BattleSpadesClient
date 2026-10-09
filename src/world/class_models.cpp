@@ -27,7 +27,8 @@ constexpr std::array<float, 3U> crouched_right_leg_adjust{-0.25F, -0.3F, 0.0F};
 load_mesh(const std::filesystem::path& root, std::string_view path,
           VxlColor team_color, std::uint8_t inverse_scale, std::string& error,
           std::optional<std::array<std::uint8_t,3U>> palette = std::nullopt,
-          const Kv6Model* replacement = nullptr) {
+          const Kv6Model* replacement = nullptr,
+          std::optional<bool> upper_half = std::nullopt) {
     std::string detail;
     auto model = replacement ? std::optional<Kv6Model>{*replacement} : Kv6Model::load_file(root / path, &detail);
     if (!model.has_value()) {
@@ -37,6 +38,7 @@ load_mesh(const std::filesystem::path& root, std::string_view path,
     *model = model->inverse_scaled(inverse_scale);
     if (palette) model->apply_cosmetic_palette(*palette);
     model->apply_default_color(team_color);
+    if (upper_half) *model = model->split_at_middle_z(*upper_half);
     auto mesh = model->mesh();
     if (mesh.empty()) {
         error = "class model produced an empty mesh: " + std::string{path};
@@ -110,6 +112,7 @@ ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
     initialize_bounds(result.head_preview);
     initialize_bounds(result.left_leg_preview);
     initialize_bounds(result.right_leg_preview);
+    for (auto& half : result.leg_halves) initialize_bounds(half);
     initialize_bounds(result.crouching_preview);
     initialize_bounds(result.crouching_torso_preview);
     initialize_bounds(result.crouching_left_leg_preview);
@@ -171,6 +174,19 @@ ClassModelLoadResult load_class_models(const std::filesystem::path& asset_root,
             append_preview(result.left_leg_preview, *mesh, part);
         } else if (part.part == BodyPart::right_leg) {
             append_preview(result.right_leg_preview, *mesh, part);
+        }
+        if (part.part == BodyPart::left_leg || part.part == BodyPart::right_leg) {
+            for (const bool upper : {true, false}) {
+                auto half = load_mesh(asset_root, part.model_asset, team_color, inverse_scale, error,
+                                      source ? std::nullopt : palette, source, upper);
+                if (!half.has_value()) {
+                    return {std::nullopt, std::move(error)};
+                }
+                fit(*half, source, part.model_asset, role);
+                append_preview(result.leg_halves[(part.part == BodyPart::left_leg ? 0U : 2U) +
+                                                 (upper ? 0U : 1U)],
+                               *half, part);
+            }
         }
         if (part.part == BodyPart::head || part.part == BodyPart::crouched_torso) {
             append_preview(result.crouching_preview, *mesh, part);

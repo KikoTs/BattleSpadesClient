@@ -82,6 +82,8 @@ struct LocalServerLaunchConfig final {
      * and refuses any replay.
      */
     std::string creator_token{};
+    /** Forward the client's offline policy to the child, including environment overrides. */
+    bool offline{};
 };
 
 /** Minimum length the server accepts for `[admin] password` (server/config.py). */

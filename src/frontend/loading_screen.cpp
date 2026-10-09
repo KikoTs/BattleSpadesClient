@@ -166,7 +166,18 @@ infographic_name(std::string_view mode, bool classic, std::string_view skin) noe
 /** Recovered from retail scoreTypesDisplay.py and constants_gamemode.py.
  * The protocol transmits the mode/friendly-fire filter, not score values. */
 [[nodiscard]] std::vector<LoadingScoreRow> score_rows(
-    std::string_view mode, const std::array<bool, 2U>& expanded, bool friendly_fire) {
+    std::string_view mode, const std::array<bool, 2U>& expanded, bool friendly_fire,
+    std::optional<bool> classic_territory = std::nullopt) {
+    if (classic_territory.has_value()) {
+        std::vector<LoadingScoreRow> rows;
+        if (!*classic_territory) {
+            rows.push_back({"MODE_SPECIFIC_SCORE_TYPES", {}, 0U, expanded[0]});
+            if (expanded[0]) rows.push_back({"Capture Flag", "+10", std::nullopt, false});
+        }
+        rows.push_back({"GENERIC_SCORE_TYPES", {}, 1U, expanded[1]});
+        if (expanded[1]) rows.push_back({"Kill", "+1", std::nullopt, false});
+        return rows;
+    }
     struct Score final { std::string_view key; std::string_view value; };
     static constexpr std::array generic{
         Score{"Headshot", "+150"}, Score{"Melee", "+150"},
@@ -274,10 +285,12 @@ void MatchLoadingModel::begin(std::string expected_map,
     score_expanded_ = {true, true};
     score_scroll_ = 0U;
     friendly_fire_ = false;
+    classic_territory_scoring_.reset();
     custom_rules_.clear();
     infographic_captions_ = mode_captions(mode_key_);
-    // initialize_from_frontend clears mode_text; only InitialInfo sets it.
-    mode_title_key_.clear();
+    // The advertised/detected mode is useful immediately; InitialInfo replaces
+    // it with the server's authoritative mode once the handshake completes.
+    mode_title_key_ = mode_key_.empty() ? std::string{} : resolve_server_mode(mode_key_, classic_).title_key;
     if (!mode_key_.empty()) rebuild_tabs(canonical_mode(mode_key_) == "ugc");
 }
 
@@ -292,6 +305,7 @@ void MatchLoadingModel::initial_info(std::string map_name,
     classic_ = classic;
     texture_skin_ = std::move(texture_skin);
     friendly_fire_ = friendly_fire;
+    classic_territory_scoring_.reset();
     custom_rules_.clear();
     infographic_captions_ = mode_captions(mode_key_);
     // loadingMenu: mode_name = packet.mode_name, 'CLASSIC_' + it when the
@@ -314,6 +328,11 @@ void MatchLoadingModel::initial_info(std::string map_name,
 
 void MatchLoadingModel::set_status(std::string status) {
     status_key_ = std::move(status);
+}
+
+void MatchLoadingModel::set_classic_scoring(bool territory_mode) noexcept {
+    classic_territory_scoring_ = territory_mode;
+    score_scroll_ = 0;
 }
 
 void MatchLoadingModel::set_infographic_captions(std::array<std::string, 3U> captions) {
@@ -478,7 +497,7 @@ bool MatchLoadingModel::select_tab(std::size_t selected) noexcept {
 
 bool MatchLoadingModel::scroll_scores(int rows) {
     if (tabs_[selected_tab_] != LoadingTab::scores) return false;
-    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_).size();
+    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_, classic_territory_scoring_).size();
     const auto max_scroll = count > visible_score_rows ? count - visible_score_rows : 0U;
     const auto next = static_cast<std::size_t>(std::clamp(
         static_cast<long long>(score_scroll_) + rows, 0LL, static_cast<long long>(max_scroll)));
@@ -490,7 +509,7 @@ bool MatchLoadingModel::scroll_scores(int rows) {
 
 bool MatchLoadingModel::set_score_scroll(double fraction) {
     if (tabs_[selected_tab_] != LoadingTab::scores || !std::isfinite(fraction)) return false;
-    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_).size();
+    const auto count = score_rows(mode_key_, score_expanded_, friendly_fire_, classic_territory_scoring_).size();
     const auto maximum = count > visible_score_rows ? count - visible_score_rows : 0U;
     const auto next = static_cast<std::size_t>(std::round(clamp_progress(fraction) * static_cast<double>(maximum)));
     tab_cycle_interrupted_ = true;
@@ -519,7 +538,7 @@ MatchLoadingSnapshot MatchLoadingModel::snapshot() const {
         overall,
         no_progress_remaining_,
         state_ == MatchLoadingState::ready,
-        infographic_captions_, score_rows(mode_key_, score_expanded_, friendly_fire_), score_scroll_,
+        infographic_captions_, score_rows(mode_key_, score_expanded_, friendly_fire_, classic_territory_scoring_), score_scroll_,
         map_preview_override_.empty() ? resolve_server_map_preview_asset(map_name_)
                                       : map_preview_override_,
         map_tagline_key(map_name_), custom_rules_,
@@ -676,6 +695,10 @@ ServerModePresentation resolve_server_mode(std::string_view mode_code, bool clas
     if (code == "territorycontrol") code = "tc";
     if (code == "tutorial") code = "tut";
     if (code == "zombie") code = "zom";
+    if (code == "classic075title" || code == "classic076title") {
+        return {"ctf", code == "classic075title" ? "CLASSIC_075_TITLE" : "CLASSIC_076_TITLE",
+                "CTF_DESCRIPTION", true};
+    }
     if (code == "cctf" || code == "classicctftitle") classic = true;
     struct Mode final {
         std::string_view code;
@@ -717,7 +740,12 @@ ServerModePresentation resolve_server_mode(std::string_view mode_code, bool clas
                                   std::string{found->description}, classic};
 }
 
-ServerModePresentation resolve_protocol168_mode(std::uint8_t mode_id, bool classic) {
+ServerModePresentation resolve_protocol168_mode(std::uint8_t mode_id, bool classic, network::GameProtocol protocol) {
+    if (network::is_classic_protocol(protocol)) {
+        return {mode_id == 9 ? "tc" : "ctf",
+                protocol == network::GameProtocol::classic075 ? "CLASSIC_075_TITLE" : "CLASSIC_076_TITLE",
+                mode_id == 9 ? "TC_DESCRIPTION" : "CTF_DESCRIPTION", true};
+    }
     // shared.constants_gamemode.MODE_* is a dense 0..12 ordinal table. The
     // classic server deliberately sends MODE_CTF plus InitialInfo.classic,
     // so that feature bit wins over the otherwise unused MODE_CCTF ordinal.

@@ -197,6 +197,7 @@ void edit_sessions_commit_cancel_and_reset_per_tab() {
     main.language = "de";
     main.show_skins = false;
     main.ability_hints = true;
+    main.fallback_music = true;
     main.invert_mouse = true;
     main.music_volume = 0.4;
     session.set_main(main);
@@ -206,7 +207,7 @@ void edit_sessions_commit_cancel_and_reset_per_tab() {
                session.draft().main.invert_mouse == defaults.main.invert_mouse,
            "Main Defaults must restore retail MAIN_DEFAULT's keys");
     expect(session.draft().main.language == "de" && !session.draft().main.show_skins &&
-               session.draft().main.ability_hints,
+               session.draft().main.ability_hints && session.draft().main.fallback_music,
            "Main Defaults must keep the native-only language and cosmetic options");
     expect(session.draft().graphics.vsync &&
                session.draft().graphics.model_quality == QualityLevel::low,
@@ -331,6 +332,10 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.show_skins = false;
     settings.main.show_other_skins = false;
     settings.main.weapon_motion = false;
+    settings.main.fallback_music = true;
+    settings.main.ragdoll_corpses = false;
+    settings.main.blood_marks = true;
+    settings.main.blood_marks = true;
     settings.graphics.resolution = {1'680U, 1'050U};
     settings.graphics.graphics_api = GraphicsApi::vulkan;
     settings.graphics.antialiasing = Antialiasing::samples_4;

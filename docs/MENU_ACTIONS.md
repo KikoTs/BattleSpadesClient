@@ -195,6 +195,8 @@ Sources: [profile](../src/frontend/player_profile_menu.cpp),
 | --- | --- |
 | Main / Graphics / Controls tabs | Change the settings section; preserve the current draft. |
 | Language, volume, fullscreen, invert mouse, favourite server, skin visibility, weapon motion | Edit the relevant draft preference; supported live previews apply immediately. |
+| Music on silent servers | Optional retail gameplay music for live servers without music cues. Off by default, uses Music Volume, previews immediately and restores on Cancel. Server PlayMusic/StopMusic takes priority for the map. |
+| Ragdoll corpses | Enables the articulated death-soldier body for new Deuce deaths in Classic modes. Gravity applies with either setting; other classes retain their own character models. |
 | Resolution, graphics API, antialiasing, effects, draw distance, shaders, texture/model quality, VSync, compatibility shader | Edit supported rendering/display options. Restart-only choices are identified by settings handling. |
 | Mouse sensitivity | Edits the draft sensitivity. |
 | Binding rows | Capture a keyboard/mouse binding for the named movement, weapon, chat, map, scoreboard, class/team, vote, HUD or editor action. Capture owns input; Escape cancels capture. |
@@ -222,7 +224,7 @@ Sources: [settings](../src/frontend/settings_menu.cpp),
 | --- | --- |
 | Create Map | Opens editor lobby discovery. |
 | Publish Map | Scans saved projects into the publishing screen. |
-| Subscribe / Workshop | Opens the Revival Workshop website. |
+| Subscribe / Workshop | Opens the native CSS-styled Workshop browser: Steam / AoSPlay / My Subscriptions, search, download, account subscription sync, and removal of browser-owned files. |
 | Editor source filter / Refresh | Selects open/friend editor lobbies and refreshes their authoritative list. |
 | Lobby row / Join | Selects and joins an available editor lobby; full/invalid rows cannot launch. |
 | New Lobby | Creates the editor lobby; the local editor path remains available when online discovery is unavailable. |

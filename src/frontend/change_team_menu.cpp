@@ -194,7 +194,9 @@ void append_player_lists(ui::DrawList& list,
         // from Team.color. Roster bands, labels, score and Deuce head use
         // UI_TEAM_COLOURS; only a living class/VIP portrait follows the
         // server-authored character colour.
-        const auto& team_ui_color = team2 ? retail_team2_ui : retail_team1_ui;
+        const auto& first_ui = state.server_team_colors ? state.team1_color : retail_team1_ui;
+        const auto& second_ui = state.server_team_colors ? state.team2_color : retail_team2_ui;
+        const auto& team_ui_color = team2 ? second_ui : first_ui;
         const auto& players = teams[column];
         const auto& name = team2 ? state.team2_name : state.team1_name;
         const auto score = team2 ? state.team2_score : state.team1_score;
@@ -293,7 +295,7 @@ void append_player_lists(ui::DrawList& list,
             // therefore i=1 and uses LIST_COLOR2; the second uses LIST_COLOR1.
             constexpr std::array<std::uint8_t, 3U> spectator_color{194U, 194U, 194U};
             const auto& row_ui_color = row_team == 0U ? spectator_color
-                                          : row_team == 3U ? retail_team2_ui : retail_team1_ui;
+                                          : row_team == 3U ? second_ui : first_ui;
             const auto& band_color = extra_player && row_player != nullptr &&
                                             !row_player->dead && !row_player->demo_player
                                         ? row_ui_color : team_ui_color;
@@ -310,7 +312,7 @@ void append_player_lists(ui::DrawList& list,
                                           ? dead_player_color
                                           : player.demo_player
                                                 ? demo_player_color
-                                                : extra_player ? color(row_ui_color)
+                                                : extra_player || state.server_team_colors ? color(row_ui_color)
                                                                : leaked_row_color;
             const auto& character_color = row_team == 3U ? state.team2_color
                                              : row_team == 2U ? state.team1_color
@@ -335,10 +337,11 @@ void append_player_lists(ui::DrawList& list,
                                  alive_icon_color));
             } else if (klass != nullptr && row_team >= 2U) {
                 const auto team_index = row_team == 3U ? 1U : 0U;
-                list.push(sprite(std::string{klass->team_icon_assets[team_index]},
+                list.push(sprite(player.class_icon_asset.empty() ? std::string{klass->team_icon_assets[team_index]}
+                                                                 : player.class_icon_asset,
                                  {x + 12.404, row_y - 0.596,
                                   16.192, 16.192},
-                                 alive_icon_color));
+                                 player.class_icon_asset.empty() ? alive_icon_color : white));
             }
 
             const double marker_y = row_y +
@@ -349,7 +352,7 @@ void append_player_lists(ui::DrawList& list,
                     {x + 36.18, marker_y, 10.24, 10.24}, white));
             } else if (player.dominated_by_local_player) {
                 const auto& other_team_color =
-                    team2 ? retail_team1_ui : retail_team2_ui;
+                    team2 ? first_ui : second_ui;
                 list.push(sprite(
                     "png/ui/in_game_menus/select_class/dominated.png",
                     {x + 36.18, marker_y, 10.24, 10.24},
@@ -390,7 +393,7 @@ void append_player_lists(ui::DrawList& list,
                            ui::TextTransform::preserve,
                            ui::TextFit::retail_width_scale, 1'000U,
                            ui::VerticalTextAlignment::baseline));
-            list.push(text(std::to_string(player.ping),
+            list.push(text(player.ping_known ? std::to_string(player.ping) : "—",
                            {ping_column, row_baseline, 45.0, 0.0}, 11.0,
                            ui::HorizontalTextAlignment::left,
                            player_color, row_font,

@@ -1,0 +1,296 @@
+#include "battlespades/network/classic_protocol.hpp"
+#include "battlespades/network/protocol168_runtime.hpp"
+#include "battlespades/network/protocol168_terrain.hpp"
+#include "battlespades/network/server_discovery.hpp"
+#include "battlespades/world/classic_combat.hpp"
+#include "battlespades/world/tutorial_session.hpp"
+#include <chrono>
+#include <iostream>
+#include <thread>
+
+// Opt-in interoperability test against a locally owned piqueserver, or a
+// handshake-only diagnostic for an explicitly supplied endpoint (--probe).
+// --spawn-probe additionally joins once and observes post-spawn map redirects.
+// No public server is contacted by CTest.
+int main(int argc, char** argv) {
+    using namespace battlespades::network;
+    LiveProtocol168Connection connection;
+    EnetProtocol168Config transport;
+    const bool probe = argc > 2 && std::string_view{argv[1]} == "--probe";
+    const bool spawn_probe = argc > 2 && std::string_view{argv[1]} == "--spawn-probe";
+    const bool remote_probe = probe || spawn_probe;
+    const bool rotation = !remote_probe && argc > 2 && std::string_view{argv[2]} == "--rotation";
+    transport.host = "127.0.0.1";
+    transport.port = !remote_probe && argc > 1 ? static_cast<std::uint16_t>(std::stoi(argv[1])) : 32887;
+    transport.protocol = rotation ? GameProtocol::classic075 : GameProtocol::automatic;
+    if (remote_probe) {
+        ServerEndpoint endpoint;
+        std::string error;
+        if (!parse_server_endpoint(argv[2], endpoint, error)) {
+            std::cerr << error << '\n';
+            return 1;
+        }
+        transport.host = endpoint.host;
+        transport.port = endpoint.port;
+        transport.protocol = endpoint.protocol;
+    }
+    Protocol168SessionConfig session;
+    session.auto_join = false;
+    session.player_name = rotation ? "BS rotation" : "BS local test";
+    if (!connection.start(transport, session))
+        return 1;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{45};
+    std::unique_ptr<Protocol168WorldBootstrap> boot;
+    bool spawned{};
+    unsigned bootstraps{};
+    std::uint64_t generation{};
+    std::unique_ptr<battlespades::world::TutorialWorldSession> simulation;
+    const bool exercise = !remote_probe && argc > 2 && std::string_view{argv[2]} == "--exercise";
+    auto previous_phase = LiveProtocol168Phase::idle;
+    auto previous_protocol = GameProtocol::automatic;
+    auto probe_ready_at = deadline;
+    std::chrono::steady_clock::time_point spawned_at{}, next_tick{};
+    bool shot{}, reloaded{}, colored{}, built{}, dug{}, grenade{}, color_confirmed{},
+        score_confirmed{};
+    unsigned corrections{}, reloads{};
+    unsigned live_updates{};
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto status = connection.status();
+        if (remote_probe && (status.phase != previous_phase || status.protocol != previous_protocol)) {
+            std::cout << protocol_name(status.protocol) << " phase=" << int(status.phase)
+                      << " received=" << status.received_datagrams
+                      << " sync=" << int(status.loading.sync_percent) << std::endl;
+            previous_phase = status.phase;
+            previous_protocol = status.protocol;
+        }
+        if (!status.error.empty()) {
+            std::cerr << status.error << '\n';
+            return 2;
+        }
+        if (auto next = connection.take_bootstrap()) {
+            if (bootstraps && next->map_generation <= generation) {
+                std::cerr << "Map generation did not advance\n";
+                return 6;
+            }
+            generation = next->map_generation;
+            ++bootstraps;
+            spawned = false;
+            live_updates = 0;
+            boot = std::move(next);
+            std::cout << "Bootstrap " << protocol_name(boot->protocol) << " player "
+                      << int(boot->local_player_id) << " generation " << generation << std::endl;
+            if (probe) {
+                probe_ready_at = std::chrono::steady_clock::now();
+                continue;
+            }
+            // A redirect's server-side CreatePlayer owns the resumed life.
+            // Repeating ExistingPlayer here would conceal the frontend bug.
+            if (spawn_probe && bootstraps > 1) continue;
+            auto join = session;
+            join.team = 2;
+            join.class_id = 5;
+            if (spawn_probe) {
+                SetClassLoadoutPacket loadout;
+                loadout.player_id = boot->local_player_id;
+                loadout.class_id = 5;
+                loadout.instant = true;
+                loadout.loadout = {4, 5, 6, 31};
+                if (!connection.send(encode_packet(loadout))) return 3;
+                std::cout << "Submitting class selection and initial join" << std::endl;
+            }
+            if (!connection.send(encode_protocol168_new_player_connection(join)))
+                return 3;
+        }
+        for (const auto& packet : connection.take_inbound()) {
+            if (packet.empty())
+                continue;
+            if (spawn_probe && spawned && packet.front() == std::byte{2}) ++live_updates;
+            if (const auto decoded = decode_runtime_packet(packet); decoded && boot) {
+                if (spawn_probe)
+                    if (const auto* chat = std::get_if<ChatMessagePacket>(&*decoded.packet);
+                        chat && chat->chat_type == 2)
+                        std::cout << "Server: " << chat->value << std::endl;
+                if (const auto* score = std::get_if<SetScorePacket>(&*decoded.packet))
+                    if (score->type == 1 && score->specifier == boot->local_player_id &&
+                        score->value == 1)
+                        score_confirmed = true;
+            }
+            if (packet.front() == std::byte{BlockBuildColoredPacket::id}) {
+                const auto decoded = decode_terrain_packet(packet);
+                if (decoded) {
+                    const auto& build = std::get<BlockBuildColoredPacket>(*decoded.packet);
+                    if (boot && build.player_id == boot->local_player_id)
+                        color_confirmed = build.color == 0xE05020;
+                }
+            }
+            if (packet.front() == std::byte{CreatePlayerPacket::id}) {
+                const auto decoded = decode_create_player(packet);
+                if (decoded)
+                    if (const auto* player = &*decoded.packet;
+                        boot && player->player_id == boot->local_player_id) {
+                        std::cout << "Spawn " << player->position[0] << ',' << player->position[1]
+                                  << ',' << player->position[2] << '\n';
+                        spawned = true;
+                        if (spawn_probe) spawned_at = std::chrono::steady_clock::now();
+                        if (exercise) {
+                            battlespades::world::TutorialSessionConfig settings;
+                            settings.network_authoritative = true;
+                            settings.classic_protocol = static_cast<std::uint8_t>(boot->protocol);
+                            settings.initial_class_id = 5;
+                            settings.initial_loadout = player->loadout;
+                            settings.initial_tool = 6;
+                            settings.initial_position = {
+                                player->position[0], player->position[1], player->position[2]};
+                            settings.initial_orientation = {1, 0, 0};
+                            simulation =
+                                std::make_unique<battlespades::world::TutorialWorldSession>(
+                                    boot->map, settings);
+                            spawned_at = next_tick = std::chrono::steady_clock::now();
+                        }
+                    }
+            }
+            if (packet.front() == std::byte{254}) {
+                ++corrections;
+                if (simulation)
+                    if (auto position = classic_correction(packet))
+                        simulation->apply_classic_correction(
+                            {(*position)[0], (*position)[1], (*position)[2]},
+                            packet[1] == std::byte{1});
+            }
+            if (packet.front() == std::byte{253} && packet.size() == 3) {
+                ++reloads;
+                std::cout << "Server ammo " << int(std::to_integer<unsigned char>(packet[1])) << '/'
+                          << int(std::to_integer<unsigned char>(packet[2])) << '\n';
+            }
+        }
+        if (probe && boot &&
+            std::chrono::steady_clock::now() - probe_ready_at > std::chrono::seconds{3}) {
+            std::cout << "Map bootstrap and live updates accepted; no player join sent.\n";
+            connection.stop();
+            return 0;
+        }
+        if (spawned && !exercise && (!rotation || bootstraps >= 2)) {
+            if (spawn_probe && std::chrono::steady_clock::now() - spawned_at < std::chrono::seconds{12}) {
+                std::this_thread::sleep_for(std::chrono::milliseconds{10});
+                continue;
+            }
+            if (spawn_probe) {
+                std::cout << "Post-spawn world updates: " << live_updates << std::endl;
+                if (!live_updates) return 7;
+            }
+            if (rotation)
+                std::cout << "Map rotation downloaded, bootstrapped and respawned.\n";
+            connection.stop();
+            return 0;
+        }
+        if (simulation && std::chrono::steady_clock::now() >= next_tick) {
+            namespace w = battlespades::world;
+            const double elapsed =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - spawned_at)
+                    .count();
+            next_tick += std::chrono::microseconds{16667};
+            simulation->set_action_held(w::TutorialAction::forward, elapsed < 2);
+            simulation->set_action_held(w::TutorialAction::backward, elapsed >= 2 && elapsed < 4);
+            simulation->set_action_held(w::TutorialAction::jump, elapsed >= 12.6 && elapsed < 13.9);
+            simulation->tick();
+            auto p = simulation->player();
+            ClassicMotion motion;
+            motion.position = {static_cast<float>(p.position.x),
+                               static_cast<float>(p.position.y),
+                               static_cast<float>(p.position.z)};
+            motion.orientation = {1, 0, 0};
+            motion.alive = true;
+            motion.movement = simulation->movement_flags();
+            motion.tool = 6;
+            if (elapsed >= 5 && elapsed < 5.6)
+                motion.actions = 1;
+            if (elapsed >= 8 && elapsed < 10) {
+                motion.tool = 5;
+                motion.orientation = {0.6F, 0, 0.8F};
+            }
+            if (elapsed >= 10 && elapsed < 12) {
+                motion.tool = 4;
+                motion.orientation = {0.6F, 0, 0.8F};
+                motion.actions = 2;
+            }
+            if (elapsed >= 12)
+                motion.tool = 31;
+            connection.update_classic_motion(motion);
+            if (elapsed > 5.05 && !shot) {
+                // A local test peer may stand five blocks ahead. Hit reports use the
+                // same fixed-size boxes and terrain occlusion as the interactive client.
+                w::ClassicCombat combat;
+                p.orientation = {1, 0, 0};
+                const std::array targets{
+                    w::ClassicHitTarget{1, {255.5, 250.5, 233.75}, {-1, 0, 0}, false, false}};
+                const auto attack = combat.attack(simulation->map(),
+                                                  p,
+                                                  targets,
+                                                  {w::WeaponActionKind::hitscan, 6, 3, 1},
+                                                  3,
+                                                  false,
+                                                  elapsed);
+                for (const auto hit : attack.hits)
+                    static_cast<void>(
+                        connection.send_classic(classic_hit_packet(hit.player, hit.part)));
+                shot = true;
+            }
+            if (elapsed > 6 && !reloaded) {
+                static_cast<void>(connection.send(
+                    encode_packet(WeaponReloadPacket{boot->local_player_id, 6, false})));
+                reloaded = true;
+            }
+            if (elapsed > 8.2 && !built) {
+                p.orientation = {0.6, 0, 0.8};
+                const auto cell = w::classic_build_target(simulation->map(), p, {});
+                if (cell)
+                    static_cast<void>(
+                        connection.send_classic(classic_block_packet(boot->local_player_id,
+                                                                     0,
+                                                                     {static_cast<int>(cell->x),
+                                                                      static_cast<int>(cell->y),
+                                                                      static_cast<int>(cell->z)})));
+                built = true;
+            }
+            if (elapsed > 7.8 && !colored) {
+                static_cast<void>(connection.send(
+                    encode_packet(SetColorPacket{boot->local_player_id, 0xE05020})));
+                colored = true;
+            }
+            if (elapsed > 11.2 && !dug) {
+                p.orientation = {0.6, 0, 0.8};
+                w::ClassicCombat combat;
+                const auto attack = combat.attack(simulation->map(),
+                                                  p,
+                                                  {},
+                                                  {w::WeaponActionKind::melee, 4, 0, 1, true},
+                                                  3,
+                                                  false,
+                                                  elapsed);
+                if (attack.destroy)
+                    static_cast<void>(connection.send_classic(
+                        classic_block_packet(boot->local_player_id,
+                                             2,
+                                             {static_cast<int>(attack.destroy->x),
+                                              static_cast<int>(attack.destroy->y),
+                                              static_cast<int>(attack.destroy->z)})));
+                dug = true;
+            }
+            if (elapsed > 12.2 && !grenade) {
+                static_cast<void>(connection.send_classic(classic_grenade_packet(
+                    boot->local_player_id, 3, motion.position, {1, 0, -0.1F})));
+                grenade = true;
+            }
+            if (elapsed > 14) {
+                std::cout << "Exercise: " << corrections << " corrections, " << reloads
+                          << " reload replies\n";
+                connection.stop();
+                return corrections == 0 && reloads > 0 && color_confirmed && score_confirmed ? 0
+                                                                                             : 5;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    std::cerr << (probe ? "Timed out before map bootstrap\n" : "Timed out before local spawn\n");
+    return 4;
+}

@@ -2106,6 +2106,10 @@
     "SHOW_OTHER_SKINS": "Diğer oyuncuların görünümlerini göster",
     "WEAPON_MOTION": "Silah hareketi",
     "ABILITY_HINTS": "Yetenek ipuçları",
+    "FALLBACK_MUSIC": "Sessiz sunucularda müzik",
+    "FALLBACK_MUSIC_DESCRIPTION": "Sunucu müzik sunmadığında orijinal müziği çalar. Sunucu müziği önceliklidir.",
+    "RAGDOLL_CORPSES": "Ceset fiziği",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Klasik modlarda ölen karakterleri simüle eder. Yeni ölümlere uygulanır.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paraşüt açıldı",
     "ABILITY_HINT_PARACHUTE_PENDING": "Paraşüt inişte açılır",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: havada paraşütü aç",
@@ -2117,6 +2121,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Sunucu şifresi zamanında girilmedi",
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Raundu kazanmak için tüm düşmanları yok edin!",
-    "LOAD_FAILED": "Yükleme başarısız"
+    "LOAD_FAILED": "Yükleme başarısız",
+    "BLOOD_MARKS": "Kan izleri",
+    "BLOOD_MARKS_DESCRIPTION": "Classic ve Standard modlarında görsel kan damlaları ve bloklarda geçici lekeler. 20–32 saniye kalır; oynanışı etkilemez."
   }
 }

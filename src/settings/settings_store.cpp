@@ -458,7 +458,8 @@ template <typename Value, typename Parser>
             return true;
         }
         if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
-            key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints") {
+            key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints" ||
+            key == "fallback_music" || key == "ragdoll_corpses" || key == "blood_marks") {
             if (!state.remember(line, key)) {
                 return false;
             }
@@ -476,6 +477,12 @@ template <typename Value, typename Parser>
                 state.candidate.main.weapon_motion = *parsed;
             } else if (key == "ability_hints") {
                 state.candidate.main.ability_hints = *parsed;
+            } else if (key == "fallback_music") {
+                state.candidate.main.fallback_music = *parsed;
+            } else if (key == "blood_marks") {
+                state.candidate.main.blood_marks = *parsed;
+            } else if (key == "ragdoll_corpses") {
+                state.candidate.main.ragdoll_corpses = *parsed;
             } else {
                 state.candidate.main.invert_mouse = *parsed;
             }
@@ -660,6 +667,9 @@ template <typename Value, typename Parser>
            << "language = \"" << settings.main.language << "\"\n"
            << "master_volume = " << decimal(settings.main.master_volume) << "\n"
            << "music_volume = " << decimal(settings.main.music_volume) << "\n"
+           << "fallback_music = " << (settings.main.fallback_music ? "true" : "false") << "\n"
+           << "ragdoll_corpses = " << (settings.main.ragdoll_corpses ? "true" : "false") << "\n"
+           << "blood_marks = " << (settings.main.blood_marks ? "true" : "false") << "\n"
            << "audio_device = " << std::quoted(settings.main.audio_device) << "\n"
            << "# Legacy mirror of [graphics] window_mode for older builds; ignored here.\n"
            << "fullscreen = " << (is_fullscreen(settings.graphics.window_mode) ? "true" : "false")

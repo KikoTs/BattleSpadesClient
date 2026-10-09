@@ -1,0 +1,14 @@
+<rml><head><title>Workshop</title>
+<link type="text/rcss" href="inventory.rcss"/><link type="text/rcss" href="workshop.rcss"/>
+</head><body><div id="frame">
+<div class="heading"><h1>WORKSHOP</h1></div>
+<div class="profile-tabs"><button id="steam" action="source:steam">STEAM WORKSHOP</button><button id="aosplay" action="source:aosplay">AOSPLAY</button><button id="library" action="source:library">MY SUBSCRIPTIONS</button></div>
+<div class="workshop-search"><input id="search" type="text" maxlength="256" placeholder="Search maps or paste a Workshop link / ID"/><button action="search">SEARCH</button><button action="sync">SYNC LIBRARY</button></div>
+<div class="workshop-filters">
+<label>ORDER</label><select id="sort"><option value="trend">Most popular</option><option value="toprated">Top rated</option><option value="totaluniquesubscribers">Most subscribed</option><option value="mostrecent">Newest</option><option value="lastupdated">Recently updated</option></select>
+<label>PERIOD</label><select id="period"><option value="7">This week</option><option value="30">This month</option><option value="90">Three months</option><option value="365">This year</option><option value="-1">All time</option></select>
+<label>MODE</label><select id="mode"><option value="">All modes</option><option value="CTF">Capture the Flag</option><option value="TDM">Team Deathmatch</option><option value="TC">Territory Control</option><option value="dem">Demolition</option><option value="dia">Diamond Mine</option><option value="MH">Multi-Hill</option><option value="oc">Occupation</option><option value="vip">VIP</option><option value="zom">Zombies</option></select>
+</div>
+<div id="workshop-content"><div class="workshop-browser"><div class="grid" id="workshop-grid"></div><div class="pages" id="workshop-pages"></div></div><div class="details" id="workshop-details"></div></div>
+<div class="footer"><button action="back">BACK</button><p id="workshop-status"></p><button id="workshop-cancel" action="cancel">CANCEL</button></div>
+</div></body></rml>

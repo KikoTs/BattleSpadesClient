@@ -237,7 +237,8 @@ public:
      */
     explicit Protocol168TerrainReplica(world::VxlMap& map,
                                        float health_multiplier = 1.0F,
-                                       bool classic = false, bool ugc = false) noexcept;
+                                       bool classic = false, bool ugc = false,
+                                       bool classic_wire = false) noexcept;
 
     [[nodiscard]] TerrainReplicaResult
     apply(std::span<const std::byte> payload);
@@ -257,6 +258,8 @@ public:
     /** Commit exact decoded air cells, without inventing collapse or impacts. */
     [[nodiscard]] TerrainReplicaResult
     apply_removed_cells(std::span<const world::VoxelCell> cells);
+    /** Local classic damage only shades blocks; removal stays server-owned. */
+    void set_classic_block_damage(world::VoxelCell cell, int remaining, world::VxlColor original);
     /**
      * Remember the exact colors expected in compact owner BlockBuild(32)
      * acknowledgements for one prefab action. Packet 32 omits RGB, while the
@@ -293,6 +296,7 @@ private:
     };
 
     world::VxlMap* map_{};
+    bool classic_wire_{};
     std::array<std::optional<std::uint32_t>, 256U> player_colors_{};
     std::unordered_map<ExpectedBuildKey, std::uint32_t,
                        ExpectedBuildKeyHash>

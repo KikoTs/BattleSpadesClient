@@ -163,6 +163,7 @@ bool PlayerInventory::spawn_with_selection(
         };
         maximum_blocks_ = scaled(definition->maximum_blocks);
         blocks_ = std::min(maximum_blocks_, scaled(definition->initial_blocks));
+        if (classic_protocol_) blocks_ = maximum_blocks_ = 50;
     }
     loadout_tools_ = tools;
     prefabs_.assign(requested_prefabs.begin(), requested_prefabs.end());

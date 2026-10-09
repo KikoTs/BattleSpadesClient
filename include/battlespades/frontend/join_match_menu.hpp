@@ -1,4 +1,5 @@
 #pragma once
+#include "battlespades/network/game_protocol.hpp"
 
 #include "battlespades/frontend/main_menu.hpp"
 #include "battlespades/ui/focus_navigator.hpp"
@@ -158,6 +159,7 @@ struct ServerBrowserEntry final {
     std::uint16_t human_players{};
     /** The listing says the server asks for a password; drawn as a padlock. */
     bool password_protected{};
+    network::GameProtocol protocol{network::GameProtocol::retail168};
 
     [[nodiscard]] std::string identifier() const;
 };
@@ -188,6 +190,7 @@ struct ServerConnectRequest final {
      * leaves the answer to the loading screen's prompt.
      */
     std::string password;
+    network::GameProtocol protocol{network::GameProtocol::automatic};
 };
 
 enum class DirectConnectActionKind : std::uint8_t {

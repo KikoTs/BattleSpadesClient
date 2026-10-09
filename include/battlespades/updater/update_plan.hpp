@@ -121,4 +121,16 @@ struct MirrorResult {
 [[nodiscard]] bool verify_package_file(const std::filesystem::path& file, std::uint64_t expected_size,
                                        std::string_view expected_sha256, std::string& error);
 
+/**
+ * Binds a partial file to its manifest size + hash, so republishing a package
+ * name cannot splice different releases together. Returns the reusable byte
+ * count (possibly complete), or nullopt on a filesystem error. A complete
+ * partial always passes SHA-256 first; an old, unlabelled incomplete partial
+ * is adopted once for compatibility and still passes final verification.
+ */
+[[nodiscard]] std::optional<std::uint64_t> prepare_package_partial(const std::filesystem::path& partial,
+                                                                  std::uint64_t expected_size,
+                                                                  std::string_view expected_sha256,
+                                                                  std::string& error);
+
 } // namespace battlespades::updater

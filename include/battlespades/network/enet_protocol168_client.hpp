@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battlespades/network/protocol168_session.hpp"
+#include "battlespades/network/game_protocol.hpp"
 
 #include <cstdint>
 #include <string>
@@ -18,6 +19,11 @@ struct EnetProtocol168Config final {
     std::uint32_t timeout_ms{30'000U};
     /** Retail NetworkClient.timeout: ENet CONNECT must arrive within 5 s. */
     std::uint32_t connect_timeout_ms{5'000U};
+    GameProtocol protocol{GameProtocol::retail168};
+    /** Optional incoming-packet recording, created once for this connection. */
+    std::filesystem::path record_demo_path;
+    /** Local spectator replay; bypasses ENet, DNS and authentication entirely. */
+    std::filesystem::path play_demo_path;
 };
 
 struct EnetProtocol168Result final {

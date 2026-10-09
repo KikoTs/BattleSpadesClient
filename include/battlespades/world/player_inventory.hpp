@@ -27,6 +27,7 @@ enum class PlayerLoadoutScope : std::uint8_t {
 class PlayerInventory final {
 public:
     explicit PlayerInventory(std::uint32_t random_seed = 0xA05B168U) noexcept;
+    void set_classic_protocol(std::uint8_t protocol) noexcept { classic_protocol_ = protocol; weapons_.set_classic_protocol(protocol); }
 
     [[nodiscard]] bool spawn_as(std::uint8_t class_id,
                                 PlayerLoadoutScope scope = PlayerLoadoutScope::retail_default);
@@ -102,6 +103,7 @@ private:
     void auto_switch_from_empty_tool() noexcept;
 
     WeaponRuntime weapons_;
+    std::uint8_t classic_protocol_{};
     RetailInventory toolbar_;
     std::uint8_t class_id_{};
     std::uint16_t blocks_{};

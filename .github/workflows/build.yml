@@ -45,8 +45,9 @@ env:
   SDL_AUDIODRIVER: dummy
   SDL_VIDEODRIVER: dummy
   # Fast unit tests that need neither retail assets nor a GPU, run on every
-  # target. They cover the paths that previously broke only on one platform.
-  SMOKE_TESTS: "^aos_(core|asset_install|retail_download|retail_download_http|client_unicode|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
+  # target. Network fixtures bind only loopback, never public game servers.
+  # WinHTTP is registered only on Windows; its absent name is ignored elsewhere.
+  SMOKE_TESTS: "^aos_(core|asset_install|retail_download|retail_download_http|updater_download|updater_http|client_unicode|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|classic_protocol|classic_corpse|legacy_vxl|demo_stream|demo_playback|public_workshop|workshop_media|workshop_sync|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
 
 jobs:
   plan:
@@ -495,6 +496,7 @@ jobs:
           cp packaging/macos/Info.plist "$app/Contents/Info.plist"
           plutil -replace CFBundleShortVersionString -string "${VERSION%%-*}" "$app/Contents/Info.plist"
           chmod 755 "$macos/BattleSpadesClient" "$macos/BattleSpadesAssetInstaller"
+          bash scripts/check-macos-compatibility.sh "$app" 11.0
           # Unsigned: Gatekeeper asks once (right-click -> Open).
           tar -C out/package -czf "out/dist/$PACKAGE_BASE.tar.gz" BattleSpadesClient.app
           mkdir -p out/package-smoke

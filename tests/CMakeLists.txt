@@ -13,6 +13,20 @@ aos_enable_strict_warnings(aos_core_tests)
 
 add_test(NAME aos_core_tests COMMAND aos_core_tests)
 
+add_executable(aos_demo_stream_tests test_demo_stream.cpp)
+target_link_libraries(aos_demo_stream_tests PRIVATE BattleSpades::Demo)
+aos_enable_strict_warnings(aos_demo_stream_tests)
+add_test(NAME aos_demo_stream_tests COMMAND aos_demo_stream_tests)
+
+if(AOS_ENABLE_NATIVE_BACKENDS)
+    find_package(ZLIB REQUIRED)
+    add_executable(aos_demo_playback_tests test_demo_playback.cpp)
+    target_link_libraries(aos_demo_playback_tests PRIVATE BattleSpades::NetworkEnet ZLIB::ZLIB)
+    aos_enable_strict_warnings(aos_demo_playback_tests)
+    add_test(NAME aos_demo_playback_tests COMMAND aos_demo_playback_tests)
+    set_tests_properties(aos_demo_playback_tests PROPERTIES TIMEOUT 30)
+endif()
+
 add_executable(aos_deferred_cleanup_tests test_deferred_cleanup.cpp)
 target_link_libraries(aos_deferred_cleanup_tests PRIVATE BattleSpades::Core)
 aos_enable_strict_warnings(aos_deferred_cleanup_tests)
@@ -555,6 +569,11 @@ target_compile_definitions(aos_vxl_tests PRIVATE
 aos_enable_strict_warnings(aos_vxl_tests)
 add_test(NAME aos_vxl_tests COMMAND aos_vxl_tests)
 
+add_executable(aos_legacy_vxl_tests test_legacy_vxl.cpp)
+target_link_libraries(aos_legacy_vxl_tests PRIVATE BattleSpades::World)
+aos_enable_strict_warnings(aos_legacy_vxl_tests)
+add_test(NAME aos_legacy_vxl_tests COMMAND aos_legacy_vxl_tests)
+
 add_executable(
     aos_resource_paths_tests
     test_resource_paths.cpp
@@ -974,6 +993,28 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     aos_enable_strict_warnings(aos_steam_overlay_tests)
     add_test(NAME aos_steam_overlay_tests COMMAND aos_steam_overlay_tests)
     add_executable(aos_workshop_sync_tests test_workshop_sync.cpp)
+    add_executable(aos_public_workshop_tests test_public_workshop.cpp)
+    add_executable(aos_classic_live_smoke classic_live_smoke.cpp)
+    add_executable(aos_classic_protocol_tests test_classic_protocol.cpp)
+    target_link_libraries(aos_classic_protocol_tests PRIVATE BattleSpades::NetworkEnet BattleSpades::Frontend)
+    target_compile_definitions(aos_classic_protocol_tests PRIVATE CLASSIC_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/classic-movement-piqueserver.json")
+    target_compile_definitions(aos_classic_protocol_tests PRIVATE AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}")
+    aos_enable_strict_warnings(aos_classic_protocol_tests)
+    add_test(NAME aos_classic_protocol_tests COMMAND aos_classic_protocol_tests)
+    # The ragdoll: collapse, momentum, per-part mass, terrain, rest, frame rate.
+    add_executable(aos_classic_corpse_tests test_classic_corpse.cpp)
+    target_link_libraries(aos_classic_corpse_tests PRIVATE BattleSpades::World)
+    aos_enable_strict_warnings(aos_classic_corpse_tests)
+    add_test(NAME aos_classic_corpse_tests COMMAND aos_classic_corpse_tests)
+    target_link_libraries(aos_classic_live_smoke PRIVATE BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_classic_live_smoke)
+    target_link_libraries(aos_public_workshop_tests PRIVATE BattleSpades::NetworkEnet BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_public_workshop_tests)
+    add_test(NAME aos_public_workshop_tests COMMAND aos_public_workshop_tests)
+    add_executable(aos_workshop_media_tests test_workshop_media.cpp ../src/frontend/workshop_media.cpp)
+    target_link_libraries(aos_workshop_media_tests PRIVATE BattleSpades::NetworkEnet)
+    aos_enable_strict_warnings(aos_workshop_media_tests)
+    add_test(NAME aos_workshop_media_tests COMMAND aos_workshop_media_tests)
     target_link_libraries(aos_workshop_sync_tests PRIVATE BattleSpades::NativeSteam)
     aos_enable_strict_warnings(aos_workshop_sync_tests)
     add_test(NAME aos_workshop_sync_tests COMMAND aos_workshop_sync_tests)
@@ -1080,6 +1121,15 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
                                  PROPERTIES RESOURCE_LOCK gpu TIMEOUT 120)
         endforeach()
         add_executable(aos_inventory_view_tests test_inventory_view.cpp)
+        add_executable(aos_workshop_view_tests test_workshop_view.cpp)
+        target_link_libraries(aos_workshop_view_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx RmlUi::RmlUi)
+        target_include_directories(aos_workshop_view_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+        target_compile_definitions(aos_workshop_view_tests PRIVATE AOS_TEST_ASSET_ROOT="${AOS_ASSET_ROOT}" AOS_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+        add_custom_command(TARGET aos_workshop_view_tests POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different $<TARGET_RUNTIME_DLLS:aos_workshop_view_tests> $<TARGET_FILE_DIR:aos_workshop_view_tests>
+            COMMAND_EXPAND_LISTS)
+        add_test(NAME aos_workshop_view_tests COMMAND aos_workshop_view_tests)
+        set_tests_properties(aos_workshop_view_tests PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" RESOURCE_LOCK gpu TIMEOUT 90)
         add_executable(aos_cosmetic_icon_tests test_cosmetic_icons.cpp)
         target_link_libraries(aos_cosmetic_icon_tests PRIVATE BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
         target_include_directories(aos_cosmetic_icon_tests SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
@@ -1213,6 +1263,16 @@ if(AOS_ENABLE_NATIVE_BACKENDS AND WIN32)
              COMMAND aos_character_scene_capture
                      "out=${CMAKE_CURRENT_BINARY_DIR}/character_scene_capture.png")
     set_tests_properties(aos_character_scene_capture_smoke PROPERTIES RESOURCE_LOCK gpu)
+    # Offscreen strobe of a Classic corpse falling: the same part meshes and
+    # transforms the frontend draws, plus each part's gap to the ground.
+    add_executable(aos_ragdoll_capture "${PROJECT_SOURCE_DIR}/tools/ragdoll_capture.cpp")
+    target_link_libraries(aos_ragdoll_capture PRIVATE
+        BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)
+    target_include_directories(aos_ragdoll_capture SYSTEM PRIVATE "${Stb_INCLUDE_DIR}")
+    target_compile_definitions(aos_ragdoll_capture PRIVATE
+        AOS_TOOL_ASSET_ROOT="${AOS_ASSET_ROOT}"
+        AOS_TOOL_SHADER_BIN_ROOT="${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
+    aos_enable_strict_warnings(aos_ragdoll_capture)
     add_executable(aos_placement_render_tests test_placement_render.cpp)
     target_link_libraries(aos_placement_render_tests PRIVATE
         BattleSpades::FrontendNative BattleSpades::RenderBgfx BattleSpades::World SDL3::SDL3 bgfx::bgfx)

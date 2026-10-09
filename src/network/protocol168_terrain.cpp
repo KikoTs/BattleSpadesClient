@@ -2,6 +2,7 @@
 
 #include "battlespades/network/protocol168_tool_actions.hpp"
 #include "battlespades/world/retail_random.hpp"
+#include "battlespades/world/classic_combat.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -868,8 +869,8 @@ std::uint16_t confirmed_owner_block_cost(
 
 Protocol168TerrainReplica::Protocol168TerrainReplica(world::VxlMap& map,
                                                      float health_multiplier,
-                                                     bool classic, bool ugc) noexcept
-    : map_{&map} {
+                                                     bool classic, bool ugc, bool classic_wire) noexcept
+    : map_{&map}, classic_wire_{classic_wire} {
     map_->set_health_multiplier(health_multiplier);
     map_->set_user_block_rules(classic, ugc);
 }
@@ -904,6 +905,33 @@ Protocol168TerrainReplica::apply(std::span<const std::byte> payload) {
     }
 
     const auto packet_id = std::to_integer<std::uint8_t>(payload.front());
+    if (classic_wire_ && packet_id == 252) {
+        if (payload.size()!=15) return {false, {}, "Invalid classic removal event"};
+        Reader reader{payload.subspan(1)};
+        const auto action=*reader.u8();static_cast<void>(reader.u8());
+        const int x=*reader.little_integer<std::int32_t>(),y=*reader.little_integer<std::int32_t>(),z=*reader.little_integer<std::int32_t>()+176;
+        if(action<1||action>3||x<0||x>=512||y<0||y>=512||z<176||z>=240)return {false, {}, "Invalid classic removal cell"};
+        std::vector<world::VoxelCell> cells;
+        const int radius=action==3?1:0,vertical=action==1?0:1;
+        for(int dx=-radius;dx<=radius;++dx)for(int dy=-radius;dy<=radius;++dy)for(int dz=-vertical;dz<=vertical;++dz) {
+            if(x+dx>=0&&x+dx<512&&y+dy>=0&&y+dy<512&&z+dz>=176&&z+dz<238)
+                cells.push_back({static_cast<std::uint32_t>(x+dx),static_cast<std::uint32_t>(y+dy),static_cast<std::uint32_t>(z+dz)});
+        }
+        for (const auto& cell : cells) if (const auto color=map_->color(cell.x,cell.y,cell.z))
+            impact_events_.push_back({action==3 ? world::TerrainImpactKind::explosion :
+                action==2 ? world::TerrainImpactKind::melee : world::TerrainImpactKind::bullet,
+                cell,*color,{},true,1,static_cast<std::uint8_t>(action==2?4:6)});
+        auto result=apply_removed_cells(cells);
+        TerrainApplyResult collapse;
+        collapse.falling_components = world::collapse_unsupported_components(
+            *map_, result.mutation.changed_cells, 10'000'000U, world::CollapseRules::classic);
+        for (const auto& component : collapse.falling_components)
+            for (const auto& voxel : component) collapse.changed_cells.push_back(voxel.cell);
+        record(collapse);
+        result.mutation.changed_cells.insert(result.mutation.changed_cells.end(),collapse.changed_cells.begin(),collapse.changed_cells.end());
+        result.mutation.falling_components = std::move(collapse.falling_components);
+        return result;
+    }
     if (packet_id == BlockBuildPacket::id ||
         packet_id == PaintBlockPacket::id) {
         const auto decoded = decode_tool_action_packet(payload);
@@ -1087,6 +1115,22 @@ TerrainReplicaResult Protocol168TerrainReplica::apply_prefab_user_blocks(
     result.mutation.accepted = result.mutation.user_blocks_added != 0U;
     record(result.mutation);
     return result;
+}
+
+void Protocol168TerrainReplica::set_classic_block_damage(world::VoxelCell cell, int remaining, world::VxlColor original) {
+    if (!classic_wire_ || !map_->solid(cell.x,cell.y,cell.z)) return;
+    if (remaining >= 100) {
+        static_cast<void>(map_->clear_damage(cell.x,cell.y,cell.z));
+        static_cast<void>(map_->recolor_voxel(cell.x,cell.y,cell.z,original));
+    } else {
+        // Use the existing native damage shader/mesh colours, without locally
+        // deleting a block while the legacy server is still validating it.
+        static_cast<void>(map_->set_damaged_block(cell.x,cell.y,cell.z,
+            map_->initial_health(cell.x,cell.y,cell.z)*std::max(1,remaining)/100.0F,original));
+    }
+    TerrainApplyResult changed;
+    changed.changed_cells.push_back(cell);
+    record(changed);
 }
 
 TerrainReplicaResult Protocol168TerrainReplica::apply_removed_cells(

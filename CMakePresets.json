@@ -74,7 +74,7 @@
         "AOS_BUILD_TESTS": "ON",
         "AOS_ENABLE_NATIVE_BACKENDS": "ON",
         "AOS_WARNINGS_AS_ERRORS": "ON",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets"

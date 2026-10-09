@@ -40,6 +40,9 @@ struct TeamRosterPlayer final {
     bool dominated_by_local_player{};
     /** Steam-lobby owner marker; local hosted matches map this to the host. */
     bool lobby_host{};
+    /** Already-rendered class art with the server team material applied. */
+    std::string class_icon_asset;
+    bool ping_known{true};
 };
 
 /** Live roster and lock state consumed by retail's ChangeTeam screen. */
@@ -69,6 +72,8 @@ struct ChangeTeamServerState final {
     bool lock_spectator_swap{};
     /** SelectTeam uses the full 750x589 join frame, not ChangeTeam's pause frame. */
     bool initial_join{};
+    /** Original-protocol servers define the UI palette as well as character colors. */
+    bool server_team_colors{};
 };
 
 /**

@@ -1,4 +1,5 @@
 #pragma once
+#include "battlespades/network/game_protocol.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -27,6 +28,7 @@ inline constexpr std::uint16_t default_game_port{27015U};
 struct ServerEndpoint final {
     std::string host;
     std::uint16_t port{default_game_port};
+    GameProtocol protocol{GameProtocol::automatic};
 
     [[nodiscard]] std::string identifier() const;
     [[nodiscard]] friend bool operator==(const ServerEndpoint&, const ServerEndpoint&) = default;

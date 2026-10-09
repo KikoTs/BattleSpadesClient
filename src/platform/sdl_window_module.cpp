@@ -596,6 +596,21 @@ core::TickDecision SdlWindowModule::tick(const core::TickContext&) {
                 });
             }
             break;
+        case SDL_EVENT_DROP_FILE:
+        case SDL_EVENT_DROP_TEXT:
+            if (source.drop.data != nullptr &&
+                (source.drop.windowID == 0U || impl_->belongs_to_window(source.drop.windowID))) {
+                const std::string_view value{source.drop.data};
+                if (value.size() <= 1024U &&
+                    (value.starts_with("aos://") || value.starts_with("aosbb://"))) {
+                    impl_->events.push_back(WindowEvent{
+                        .type = WindowEventType::open_url,
+                        .timestamp_ns = source.drop.timestamp,
+                        .text = std::string{value},
+                    });
+                }
+            }
+            break;
         case SDL_EVENT_TEXT_INPUT:
             if (impl_->belongs_to_window(source.text.windowID) &&
                 source.text.text != nullptr) {

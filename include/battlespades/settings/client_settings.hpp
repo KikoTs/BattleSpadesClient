@@ -24,6 +24,12 @@ struct MainSettings final {
     std::string language{"en"};
     double master_volume{1.0};
     double music_volume{1.0};
+    /** Play retail gameplay music when a server has not supplied music cues. */
+    bool fallback_music{false};
+    /** Articulated local corpses in Classic modes; gravity applies in either mode. */
+    bool ragdoll_corpses{true};
+    /** Local blood droplets and temporary terrain stains in all game modes. */
+    bool blood_marks{false};
     bool invert_mouse{false};
     bool show_skins{true};
     bool show_other_skins{true};

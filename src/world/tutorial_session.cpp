@@ -1,4 +1,6 @@
 #include "battlespades/world/tutorial_session.hpp"
+#include "battlespades/world/classic_movement.hpp"
+#include "battlespades/world/classic_weapons.hpp"
 #include "battlespades/world/build_wallet.hpp"
 #include "battlespades/world/retail_effects.hpp"
 #include "battlespades/world/class_catalog.hpp"
@@ -463,6 +465,7 @@ TutorialWorldSession::TutorialWorldSession(std::shared_ptr<VxlMap> map,
         }
         config_.initial_loadout = loadout;
         sync_movement_equipment(loadout);
+        sandbox_inventory_.set_classic_protocol(config_.classic_protocol);
         sandbox_inventory_.set_block_wallet_multiplier(config_.block_wallet_multiplier);
         if (!sandbox_inventory_.spawn_with_selection(config_.initial_class_id,
                                                      loadout,
@@ -641,7 +644,7 @@ void TutorialWorldSession::tick() {
     player_.orientation = {-std::cos(yaw_radians) * std::cos(pitch_radians),
                            -std::sin(yaw_radians) * std::cos(pitch_radians),
                            std::sin(pitch_radians)};
-    if (config_.network_authoritative) {
+    if (config_.network_authoritative && !config_.classic_protocol) {
         player_.orientation = {quantized_orientation_component(player_.orientation.x),
                                quantized_orientation_component(player_.orientation.y),
                                quantized_orientation_component(player_.orientation.z)};
@@ -669,7 +672,7 @@ void TutorialWorldSession::tick() {
         return tick_held_[static_cast<std::size_t>(action)];
     };
 
-    apply_crouch_request(player_, tick_held(TutorialAction::crouch), map_.get(),
+    if (!config_.classic_protocol) apply_crouch_request(player_, tick_held(TutorialAction::crouch), map_.get(),
                          player_collision_bodies_,
                          tick_held(TutorialAction::hover) && player_.jetpack == 4U);
 
@@ -690,7 +693,7 @@ void TutorialWorldSession::tick() {
     jump_requested_ = false;
     auto input = sampled_input;
     const auto current_aim = player_.orientation;
-    if (config_.network_authoritative) {
+    if (config_.network_authoritative && !config_.classic_protocol) {
         // Character records/sends ClientData after its native movement frame.
         // Directional movement and jump use the observed packet-L-1 button
         // latch; crouch geometry and action-hover are already current in L.
@@ -738,10 +741,16 @@ void TutorialWorldSession::tick() {
     const bool was_airborne = player_.airborne;
     const double pre_move_vz = player_.velocity.z;
     if (was_airborne && player_.parachute_active) parachute_fall_touched_ = true;
-    auto movement = step_player(
+    auto movement = config_.classic_protocol ? step_classic_player(
+        player_, input, map_.get(), config_.fixed_dt, zoom_target() > 0, classic_jump_held_) : step_player(
         player_, input, map_.get(), config_.fixed_dt, movement_class_,
         player_collision_bodies_, config_.gravity,
         server_movement_bounds_.has_value() ? &*server_movement_bounds_ : nullptr);
+    if (config_.classic_protocol) {
+        // Send only accepted jump edges, never held SPACE or blocked uncrouch.
+        last_simulated_input_.jump = movement.jumped;
+        last_simulated_input_.crouch = player_.crouch;
+    }
     if (!player_.airborne || player_.wade) {
         // A canopy zeroes the native fall distance every frame, but the server
         // charges a late canopy the free fall that reaches the same landing
@@ -1070,6 +1079,7 @@ void TutorialWorldSession::update_weapon_sandbox() {
 }
 
 void TutorialWorldSession::process_weapon_action(const WeaponAction& action) {
+    if (action.kind == WeaponActionKind::melee) classic_secondary_animation_ = action.secondary;
     const auto* weapon = find_weapon_definition(action.tool_id);
     if (weapon == nullptr) {
         return;
@@ -1260,13 +1270,18 @@ void TutorialWorldSession::spawn_projectile(const WeaponAction& action,
     projectile.velocity = {player_.velocity.x + direction.x * speed,
                            player_.velocity.y + direction.y * speed,
                            player_.velocity.z + direction.z * speed};
+    if (config_.classic_protocol && action.tool_id == 31) {
+        projectile.position = {player_.position.x+direction.x*0.1,player_.position.y+direction.y*0.1,player_.position.z+direction.z*0.1};
+        projectile.spawn_position = projectile.position;
+        projectile.velocity = {(player_.velocity.x+direction.x)*32,(player_.velocity.y+direction.y)*32,(player_.velocity.z+direction.z)*32};
+    }
     projectile.behavior = projectile_behavior(action.tool_id);
     // Same rule as radius: use the generator's primary explosion damage, not
     // a suffix match that can accidentally select Molotov block-fire damage.
     projectile.block_damage = weapon.block_damage;
     projectile.crater_radius = projectile_crater_radius(weapon);
     if (weapon.mechanism == WeaponMechanism::cooked_throwable) {
-        projectile.remaining = std::max(0.05, action.value);
+        projectile.remaining = std::max(config_.classic_protocol ? 0.0 : 0.05, action.value);
     } else if (action.tool_id == 55U) {
         projectile.remaining =
             named_weapon_value(weapon, "GRENADE_LAUNCHER_PROJECTILE_LIFESPAN", 3.0);
@@ -1302,7 +1317,7 @@ bool TutorialWorldSession::apply_server_oriented_item(
     projectile.source_player = player_id;
 
     if (weapon->mechanism == WeaponMechanism::cooked_throwable) {
-        projectile.remaining = std::max(0.05, value);
+        projectile.remaining = std::max(config_.classic_protocol ? 0.0 : 0.05, value);
     } else if (tool_id == 55U) {
         projectile.remaining =
             named_weapon_value(*weapon, "GRENADE_LAUNCHER_PROJECTILE_LIFESPAN", 3.0);
@@ -1395,6 +1410,21 @@ void TutorialWorldSession::update_projectiles() {
             continue;
         }
         const Vec3 old = iterator->position;
+        if (config_.classic_protocol && iterator->tool_id == 31) {
+            // Original grenades use 32 units/s^2 and endpoint/axis collision,
+            // not the retail swept ray and 30 units/s^2 simulation below.
+            if (iterator->remaining < 0.0) {
+                explode_projectile(*iterator, std::nullopt);
+                iterator = projectiles_.erase(iterator);
+                continue;
+            }
+            const auto impact = step_classic_grenade(iterator->position, iterator->velocity,
+                                                     *map_, dt);
+            if (impact > 1.1)
+                projectile_bounces_.push_back({iterator->id, iterator->tool_id, old, impact * 32.0});
+            ++iterator;
+            continue;
+        }
         // Projectile/grenade simulation uses the recovered 30 units/s^2
         // gravity, independently of character gravity.
         iterator->velocity.z += 30.0 * iterator->gravity_multiplier * dt;
@@ -2313,6 +2343,23 @@ void TutorialWorldSession::apply_melee_terrain(const WeaponAction& action,
 
 void TutorialWorldSession::apply_weapon_recoil(const WeaponAction& action,
                                                const WeaponDefinition& weapon) noexcept {
+    if (config_.classic_protocol) {
+        if (action.kind == WeaponActionKind::hitscan) {
+            if (const auto rules = classic_weapon_rules(config_.classic_protocol, action.tool_id)) {
+                const bool walking = action_held(TutorialAction::forward) ||
+                                     action_held(TutorialAction::backward) ||
+                                     action_held(TutorialAction::left) ||
+                                     action_held(TutorialAction::right);
+                const auto kick = classic_recoil_kick(*rules, retail_scene_timer_ms(ticks_),
+                    walking, zoom_target() > 0, player_.crouch, player_.airborne);
+                pitch_ = std::clamp(pitch_ + kick.pitch_degrees, -89.0, 89.0);
+                yaw_ += kick.yaw_degrees;
+            }
+        }
+        // Original empty magazines keep the sight raised; spades and throws
+        // must not inherit camera recoil from the retail weapon definitions.
+        return;
+    }
     const double up = weapon.retail.aim.recoil_up.value_or(0.0);
     const double side = weapon.retail.aim.recoil_side.value_or(0.0);
     // Character.shoot (character.pyd 0x10049db0): a deterministic sawtooth
@@ -2701,6 +2748,16 @@ int TutorialWorldSession::targets_destroyed() const noexcept {
     return static_cast<int>(std::count(target_down_.begin(), target_down_.end(), true));
 }
 
+double TutorialWorldSession::seconds_since_weapon_animation() const noexcept {
+    if (!config_.classic_protocol || selected_tool_id() != 4) return seconds_since_primary();
+    const auto& spade = weapon_catalog()[4];
+    const double native_length = spade.retail.use.shoot_interval.value_or(spade.fire_interval);
+    // Keep the authored spade swing, but fit its full cycle into the original
+    // 0.2s primary / 1s dig cadence. Skip retail's sign-flipped start frame.
+    return std::max(since_primary_, 0.000001) * native_length /
+           (classic_secondary_animation_ ? 1.0 : 0.2);
+}
+
 double TutorialWorldSession::seconds_since_primary() const noexcept {
     if (debug_full_loadout_) {
         const auto selected = selected_tool_id();
@@ -3068,6 +3125,16 @@ bool TutorialWorldSession::zoomed() const noexcept {
 
 double TutorialWorldSession::weapon_reload_remaining() const noexcept {
     return debug_full_loadout_ ? sandbox_inventory_.weapons().reload_remaining() : reload_remaining_;
+}
+
+double TutorialWorldSession::weapon_reload_progress() const noexcept {
+    const auto tool = selected_tool_id();
+    const auto* weapon = tool ? find_weapon_definition(*tool) : nullptr;
+    if (!weapon) return 1.0;
+    const auto classic = classic_weapon_rules(config_.classic_protocol, *tool);
+    const double duration = classic ? classic->reload
+        : weapon->retail.use.reload_time.value_or(weapon->reload_time);
+    return 1.0 - std::clamp(weapon_reload_remaining() / std::max(duration, .001), 0.0, 1.0);
 }
 
 bool TutorialWorldSession::magnified_scope() const noexcept {
@@ -4119,9 +4186,9 @@ std::uint8_t TutorialWorldSession::movement_flags() const noexcept {
         flags |= 0x04U;
     if (sent_held(TutorialAction::right))
         flags |= 0x08U;
-    if (sent_held(TutorialAction::jump))
+    if (config_.classic_protocol ? last_simulated_input_.jump : sent_held(TutorialAction::jump))
         flags |= 0x10U;
-    if (sent_held(TutorialAction::crouch))
+    if (config_.classic_protocol ? last_simulated_input_.crouch : sent_held(TutorialAction::crouch))
         flags |= 0x20U;
     if (sent_held(TutorialAction::sneak))
         flags |= 0x40U;
@@ -4147,6 +4214,12 @@ std::uint8_t TutorialWorldSession::action_flags() const noexcept {
         flags |= 0x40U;
     if (sent_held(TutorialAction::hover))
         flags |= 0x80U;
+    if (config_.classic_protocol) {
+        const auto selected = selected_tool_id();
+        const auto* ammo = selected ? sandbox_inventory_.ammo(*selected) : nullptr;
+        if (ammo && ammo->reloading && selected != 37) flags &= static_cast<std::uint8_t>(~1U);
+        if (sent_held(TutorialAction::sprint)) flags &= static_cast<std::uint8_t>(~1U);
+    }
     return flags;
 }
 
@@ -4187,6 +4260,7 @@ void TutorialWorldSession::apply_authoritative_transform(Vec3 position,
     // airborne bit is false; boxclipmove owns the first transition even for a
     // deliberately elevated spawn.
     player_.airborne = false;
+    classic_jump_held_ = false;
     network_latched_input_ = {};
     network_latched_orientation_.reset();
     last_simulated_input_ = {};
@@ -4202,6 +4276,19 @@ void TutorialWorldSession::apply_authoritative_transform(Vec3 position,
     const auto horizontal = std::hypot(orientation.x, orientation.y);
     yaw_ = std::atan2(-orientation.y, -orientation.x) / degrees_to_radians;
     pitch_ = std::atan2(orientation.z, horizontal) / degrees_to_radians;
+}
+
+void TutorialWorldSession::apply_classic_correction(Vec3 value, bool orientation) noexcept {
+    if (!config_.classic_protocol) return;
+    if (orientation) {
+        player_.orientation = value;
+        yaw_ = std::atan2(-value.y, -value.x) / degrees_to_radians;
+        pitch_ = std::atan2(value.z, std::hypot(value.x,value.y)) / degrees_to_radians;
+    } else {
+        player_.position = value;
+        network_interpolated_position_ = value;
+        position_lerp_timer_ = 0;
+    }
 }
 
 void TutorialWorldSession::note_authoritative_snapshot(std::int32_t acknowledged_loop,

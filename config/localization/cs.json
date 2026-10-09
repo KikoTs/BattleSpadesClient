@@ -48,6 +48,10 @@
     "SHOW_OTHER_SKINS": "Zobrazit skiny ostatních hráčů",
     "WEAPON_MOTION": "Pohyb zbraně",
     "ABILITY_HINTS": "Nápověda schopností",
+    "FALLBACK_MUSIC": "Hudba na tichých serverech",
+    "FALLBACK_MUSIC_DESCRIPTION": "Původní hudba, pokud server nepřehrává vlastní. Hudba serveru má přednost.",
+    "RAGDOLL_CORPSES": "Fyzika těl",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Simulace padlých postav v klasických režimech. Platí pro nová úmrtí.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Padák otevřen",
     "ABILITY_HINT_PARACHUTE_PENDING": "Padák se otevře při klesání",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: otevřít padák ve vzduchu",
@@ -59,6 +63,8 @@
     "SERVER_PASSWORD_TIMEOUT": "Heslo serveru nebylo zadáno včas",
     "ARENA": "Aréna",
     "ARENA_DESCRIPTION": "Zlikvidujte všechny nepřátele a vyhrajte kolo!",
-    "LOAD_FAILED": "Načítání se nezdařilo"
+    "LOAD_FAILED": "Načítání se nezdařilo",
+    "BLOOD_MARKS": "Krvavé stopy",
+    "BLOOD_MARKS_DESCRIPTION": "Vizuální kapky krve a dočasné skvrny na blocích v Classic a Standard. Trvají 20–32 sekund a nemění hratelnost."
   }
 }

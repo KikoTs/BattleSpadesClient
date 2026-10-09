@@ -1,6 +1,7 @@
 #include "battlespades/world/kv6_model.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -209,6 +210,44 @@ std::vector<Kv6Model> Kv6Model::articulated_classic_arms() const {
         }
     }
     return result;
+}
+
+Kv6Model Kv6Model::split_at_middle_z(bool upper) const {
+    Kv6Model half{*this};
+    half.voxels_.clear();
+    if (voxels_.empty()) return half;
+    std::uint16_t top{std::numeric_limits<std::uint16_t>::max()}, bottom{};
+    for (const auto& voxel : voxels_) {
+        top = std::min(top, voxel.z);
+        bottom = std::max(bottom, voxel.z);
+    }
+    const auto cut = static_cast<std::uint16_t>((top + bottom + 1U) / 2U);
+    for (const auto& voxel : voxels_) {
+        if ((voxel.z < cut) == upper) half.voxels_.push_back(voxel);
+    }
+    // Close the cut: fill each row of the layer beside it between its two
+    // outermost shell voxels, in the colour of the shell.
+    const auto layer = static_cast<std::uint16_t>(upper ? cut - 1U : cut);
+    std::map<std::uint16_t, std::pair<Voxel, Voxel>> rows;
+    std::set<std::pair<std::uint16_t, std::uint16_t>> occupied;
+    for (const auto& voxel : half.voxels_) {
+        if (voxel.z != layer) continue;
+        occupied.emplace(voxel.x, voxel.y);
+        const auto [row, added] = rows.try_emplace(voxel.x, voxel, voxel);
+        if (!added) {
+            if (voxel.y < row->second.first.y) row->second.first = voxel;
+            if (voxel.y > row->second.second.y) row->second.second = voxel;
+        }
+    }
+    for (const auto& [x, ends] : rows) {
+        for (auto y = static_cast<std::uint16_t>(ends.first.y + 1U); y < ends.second.y; ++y) {
+            if (occupied.contains({x, y})) continue;
+            auto fill = ends.first;
+            fill.y = y;
+            half.voxels_.push_back(fill);
+        }
+    }
+    return half;
 }
 
 Kv6Model Kv6Model::inverse_scaled(std::uint8_t inverse_scale) const {

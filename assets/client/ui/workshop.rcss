@@ -1,0 +1,45 @@
+/* inventory.rcss supplies the game's frame, heading, tabs, buttons and dropdown skin. */
+.profile-tabs button { flex:1; }
+.workshop-search { position:absolute; left:28dp; top:112dp; width:724dp; height:30dp; display:flex; }
+.workshop-search input { width:456dp; height:30dp; padding:6dp 9dp; border:1dp #676238; background-color:#191a12; color:#eee5b0; font-family:GameSans; font-size:12dp; tab-index:auto; }
+.workshop-search input:focus { border-color:#dfca58; }
+.workshop-search button { width:119dp; height:30dp; margin-left:8dp; font-size:16dp; }
+.workshop-filters { position:absolute; left:28dp; top:151dp; width:724dp; height:28dp; display:flex; align-items:center; }
+.workshop-filters label { margin-right:6dp; font-size:10dp; color:#cac395; }
+.workshop-filters select { height:26dp; width:159dp; margin-right:12dp; padding:5dp 20dp 4dp 7dp; background-color:#c5b961; color:#211f10; font-size:11dp; tab-index:auto; }
+.workshop-filters #period { width:116dp; }
+.workshop-filters #mode { width:166dp; margin-right:0; }
+.workshop-filters select:disabled { background-color:#757252; color:#d0c99e; }
+.workshop-filters select selectarrow { width:12dp; height:8dp; margin:8dp 4dp; background-color:transparent; decorator:image(game:png/ui/common_elements/filter_arrow_down.png); }
+#workshop-content { position:absolute; left:28dp; top:190dp; width:724dp; height:327dp; display:flex; background-color:#24211b; }
+.workshop-browser { width:370dp; flex-shrink:0; padding:7dp 8dp 0; }
+.grid { display:flex; flex-direction:row; flex-wrap:wrap; align-content:flex-start; width:354dp; height:290dp; overflow-y:auto; }
+button.map { width:166dp; height:141dp; margin:0 6dp 5dp 0; padding:4dp; text-align:left; font-family:GameSans; overflow:hidden; flex-shrink:0; decorator:none; background-color:#343329; border:0; border-bottom:2dp #686640; color:#efe4ad; }
+button.map:hover,button.map:focus { decorator:none; background-color:#4a4a2e; }
+button.map.selected { decorator:none; background-color:#565731; border-bottom-color:#e2ca55; }
+.map-image { display:block; width:158dp; height:88.875dp; background-color:#191a14; }
+.map-title { height:30dp; line-height:15dp; font-size:11dp; color:#f1ecc5; overflow:hidden; margin-top:3dp; }
+.map-meta { font-size:9dp; line-height:11dp; color:#b7b590; }
+.no-preview { display:flex; align-items:center; justify-content:center; color:#88866a; font-size:10dp; }
+.pages { display:flex; height:28dp; justify-content:space-between; align-items:center; }
+.pages span { color:#b7b68d; font-size:9dp; }
+.pages button { min-height:23dp; height:23dp; width:85dp; padding:3dp; font-size:11dp; }
+.details { width:354dp; height:327dp; padding:8dp 10dp; background-color:#17170f; }
+.detail-title { height:33dp; line-height:16dp; font-family:GameSans; font-size:13dp; color:#efe4ad; overflow:hidden; }
+.detail-tabs { display:flex; height:24dp; margin:2dp 0 5dp; }
+.detail-tabs button { height:24dp; min-height:24dp; flex:1; margin-right:3dp; padding:4dp; font-size:11dp; decorator:none; background-color:#38362b; color:#efe4ad; }
+.detail-tabs button.active { decorator:none; background-color:#a53e1b; }
+.detail-tabs button:hover { decorator:none; background-color:#5d5c36; }
+.detail-body { height:207dp; overflow:hidden; }
+.preview { display:block; width:334dp; height:187.875dp; background-color:#191a14; }
+.gallery-nav { display:flex; justify-content:space-between; align-items:center; height:19dp; }
+.gallery-nav button { width:57dp; min-height:19dp; height:19dp; padding:1dp; font-size:11dp; }
+.gallery-nav span { color:#b7b590; font-size:9dp; }
+.description { height:207dp; overflow-y:auto; font-size:11dp; line-height:15dp; white-space:pre-wrap; color:#d3cca3; padding-right:7dp; }
+.description p { margin-bottom:7dp; font-size:10dp; line-height:14dp; }
+.description .map-facts { color:#f1da79; }
+.actions { display:flex; margin-top:8dp; height:30dp; }
+.actions button { flex:1; margin-right:4dp; min-height:29dp; height:29dp; padding:5dp 2dp; font-size:12dp; }
+.actions button:last-child { margin-right:0; }
+.empty { padding:20dp; color:#bbb998; line-height:18dp; }
+.footer p { width:474dp; }

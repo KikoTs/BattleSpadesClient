@@ -1,4 +1,5 @@
 #include "battlespades/core/command_line.hpp"
+#include "battlespades/core/service_url.hpp"
 
 #include <algorithm>
 #include <array>
@@ -109,6 +110,19 @@ constexpr std::uint64_t maximum_tool_id{64U};
 ParseResult parse_command_line(std::span<const std::string_view> arguments) {
     LaunchOptions options{};
 
+    // Protocol handlers use an exclusive switch. A quote injected into a URL
+    // must never turn the rest of that URL into additional command-line options.
+    if (std::ranges::find(arguments, "--join-url") != arguments.end()) {
+        if (arguments.size() != 2U || arguments.front() != "--join-url" ||
+            (!arguments[1].starts_with("aos://") && !arguments[1].starts_with("aosbb://")) ||
+            arguments[1].find_first_of("\"'\\ \t\r\n") != std::string_view::npos ||
+            arguments[1].size() > 1024U) {
+            return failure("--join-url requires exactly one aos:// or aosbb:// address");
+        }
+        options.startup_endpoint = std::string{arguments[1]};
+        return ParseResult{.options = options, .error = {}};
+    }
+
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto argument = arguments[index];
 
@@ -122,6 +136,61 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
         }
         if (argument == "--headless") {
             options.headless = true;
+            continue;
+        }
+        if (argument == "--offline") {
+            options.offline = true;
+            continue;
+        }
+        if (argument == "-reset" || argument == "--reset-settings") {
+            options.reset_settings = true;
+            continue;
+        }
+        if (argument == "--profile") {
+            if (++index >= arguments.size() || arguments[index].empty() ||
+                arguments[index].size() > 15U ||
+                !std::ranges::all_of(arguments[index], [](unsigned char c) {
+                    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                           (c >= '0' && c <= '9') || c == '_' || c == '-' || c == ' ';
+                })) return failure("--profile requires 1-15 letters, digits, spaces, _ or -");
+            options.offline_profile = std::string{arguments[index]};
+            options.offline = true;
+            continue;
+        }
+        if (argument == "--master-url" || argument == "+master_server") {
+            if (++index >= arguments.size()) return failure("--master-url requires a service origin");
+            options.master_url = service_origin(arguments[index]);
+            if (!options.master_url) return failure("--master-url requires an HTTPS origin or loopback HTTP origin");
+            continue;
+        }
+        if (argument == "--language" || argument == "+language") {
+            if (++index >= arguments.size() || arguments[index].empty() || arguments[index].size() > 32U)
+                return failure("--language requires a language name or locale");
+            auto locale = arguments[index];
+            constexpr std::pair<std::string_view, std::string_view> aliases[]{
+                {"english", "en"}, {"german", "de"}, {"french", "fr"},
+                {"spanish", "es"}, {"italian", "it"}, {"brazilian", "pt-BR"},
+                {"portuguese_brazil", "pt-BR"}, {"russian", "ru"}, {"polish", "pl"},
+                {"turkish", "tr"}, {"mexican", "es-MX"}, {"spanish_mexico", "es-MX"},
+                {"japanese", "ja"}};
+            for (const auto& [name, code] : aliases) if (locale == name) locale = code;
+            if (!std::ranges::all_of(locale, [](unsigned char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-';
+            })) return failure("invalid language name");
+            options.language = std::string{locale};
+            continue;
+        }
+        if (argument == "--record-demo" || argument == "--play-demo") {
+            if (++index >= arguments.size() || arguments[index].empty())
+                return failure(std::string{argument} + " requires a file path");
+            (argument == "--record-demo" ? options.record_demo_path : options.play_demo_path) =
+                std::string{arguments[index]};
+            continue;
+        }
+        if (argument.starts_with("aos://") || argument.starts_with("aosbb://")) {
+            if (argument.size() > 1024U || argument.find_first_of("\"'\\ \t\r\n") != std::string_view::npos)
+                return failure("invalid join URL");
+            options.startup_endpoint = std::string{argument};
             continue;
         }
         if (argument == "--steam-only") {
@@ -392,11 +461,28 @@ ParseResult parse_command_line(std::span<const std::string_view> arguments) {
     }
 #endif
 
+    if (options.play_demo_path && (options.record_demo_path || options.startup_endpoint || options.startup_steam_lobby))
+        return failure("--play-demo cannot be combined with recording or connecting");
+    if (options.headless && (options.record_demo_path || options.play_demo_path))
+        return failure("demo playback/recording requires the graphical client; use BattleSpadesDemoRecorder for headless capture");
+    if (options.play_demo_path) options.offline = true;
+    if (options.offline && (options.steam_only || options.startup_steam_lobby ||
+        (options.startup_endpoint && options.startup_endpoint->starts_with("steam:"))))
+        return failure("offline mode cannot join or host through Steam");
     return ParseResult{.options = options, .error = {}};
 }
 
 std::string_view command_line_usage() noexcept {
     return "Usage: BattleSpadesClient [options]\n"
+           "  --offline           Use a local profile without online services\n"
+           "  --profile NAME      Select a persistent named offline profile\n"
+           "  --master-url URL    AoSPlay-compatible HTTPS origin (loopback HTTP allowed)\n"
+           "  +master_server URL  Alias for --master-url\n"
+           "  +language NAME      Retail language name or locale (also --language)\n"
+           "  -reset              Start with default settings (also --reset-settings)\n"
+           "  --record-demo FILE  Record incoming match packets, including the map\n"
+           "  --play-demo FILE    Play a local demo without connecting to a server\n"
+           "  --join-url URL      Exclusive aos:// or aosbb:// protocol-handler input\n"
            "  --headless          Run without platform or graphics backends\n"
            "  --ticks N           Stop after N fixed simulation ticks (default: 1)\n"
            "  --tick-rate N       Fixed simulation frequency from 1 to 1000 Hz\n"
@@ -406,7 +492,7 @@ std::string_view command_line_usage() noexcept {
            "  --tutorial-tool ID  Equip tool 0..64 in the local Tutorial lab\n"
            "  --tutorial-aim      Start the Tutorial lab with aiming toggled on\n"
            "  --tutorial-cosmetic ID  Preview a bundled cosmetic in the local Tutorial lab\n"
-           "  --tutorial-map N    Load map N from assets/original/maps instead\n"
+           "  --tutorial-map N    Load map N from the asset or user maps directory\n"
            "  --tutorial-skydome N  Override the skydome, e.g. Tokyo.txt\n"
            "  --tutorial-spawn X,Y,Z  Spawn at a canonical voxel position\n"
            "  --tutorial-stand X,Y    Resolve a safe standing spot near this column\n"

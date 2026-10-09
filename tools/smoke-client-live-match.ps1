@@ -31,7 +31,10 @@ param(
     # Exercise the authoritative class-change death lifecycle after ordinary
     # movement. This captures the class menu, grave camera, delayed chase
     # transition and eventual respawn without injecting client-only state.
-    [switch] $ExerciseDeathState
+    [switch] $ExerciseDeathState,
+    # Original servers support /kill; capture our corpse after moving away
+    # from spawn, then the server-driven respawn, without a retail class swap.
+    [switch] $ExerciseClassicDeath
 )
 
 Set-StrictMode -Version Latest
@@ -388,6 +391,20 @@ try {
     }
     [BattleSpades.LiveSmoke.Native]::Key($window,0x57,$true)|Out-Null; Start-Sleep -Seconds 2; [BattleSpades.LiveSmoke.Native]::Key($window,0x57,$false)|Out-Null
     $walk=Capture $window '03-live-after-walk.png'
+    if($ExerciseClassicDeath) {
+        [BattleSpades.LiveSmoke.Native]::Key($window,0x54,$true)|Out-Null
+        [BattleSpades.LiveSmoke.Native]::Key($window,0x54,$false)|Out-Null
+        Start-Sleep -Milliseconds 150
+        if(-not [BattleSpades.LiveSmoke.Native]::UnicodeText('/kill')) { throw 'Could not enter local legacy suicide command.' }
+        [BattleSpades.LiveSmoke.Native]::Key($window,0x0D,$true)|Out-Null
+        [BattleSpades.LiveSmoke.Native]::Key($window,0x0D,$false)|Out-Null
+        Start-Sleep -Milliseconds 500
+        Alive $process 'classic corpse'
+        Capture $window '03-classic-corpse-after-walk.png' | Out-Null
+        Start-Sleep -Seconds 5
+        Alive $process 'classic respawn'
+        Capture $window '03-classic-respawn.png' | Out-Null
+    }
     [BattleSpades.LiveSmoke.Native]::Key($window,0x1B,$true)|Out-Null;[BattleSpades.LiveSmoke.Native]::Key($window,0x1B,$false)|Out-Null;Start-Sleep -Milliseconds 1200
     $pause=Capture $window '04-live-pause.png'
     if($ExerciseDeathState){

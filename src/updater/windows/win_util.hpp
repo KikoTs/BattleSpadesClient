@@ -32,8 +32,10 @@ using ProgressCallback = std::function<bool(std::uint64_t received, std::uint64_
 [[nodiscard]] HttpResponse http_get(const std::string& url, const HttpOptions& options,
                                     std::size_t max_body);
 /// GET streamed into `file`. Follows GitHub's redirect to its asset CDN.
+/// expected_size, when nonzero, bounds disk writes and validates range totals.
 [[nodiscard]] HttpResponse http_download(const std::string& url, const std::filesystem::path& file,
-                                         const HttpOptions& options, const ProgressCallback& progress);
+                                         const HttpOptions& options, const ProgressCallback& progress,
+                                         std::uint64_t expected_size = 0U);
 
 /// HKCU\Software\Valve\Steam\SteamPath, else HKLM ...\WOW6432Node\Valve\Steam\InstallPath.
 [[nodiscard]] std::optional<std::filesystem::path> registry_steam_root();

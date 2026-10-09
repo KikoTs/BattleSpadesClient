@@ -290,9 +290,10 @@ public:
     [[nodiscard]] std::optional<UiTextureInfo> load_texture(const std::filesystem::path& asset_path,
                                                             TextureFilter filter);
 
-    /** Creates an updatable RGBA8 runtime texture from top-left-origin pixels. */
+    /** Creates an updatable RGBA8 texture. Optional alpha-weighted mipmaps keep small icons smooth. */
     [[nodiscard]] std::optional<UiTextureInfo> create_texture_rgba8(
-        std::span<const std::uint8_t> pixels, UiExtent extent, TextureFilter filter);
+        std::span<const std::uint8_t> pixels, UiExtent extent, TextureFilter filter,
+        bool mipmapped = false);
 
     /**
      * Replaces every pixel of an existing runtime texture.

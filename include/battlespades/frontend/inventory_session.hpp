@@ -13,7 +13,7 @@ namespace battlespades::frontend {
 [[nodiscard]] std::optional<world::ChunkMesh> inventory_preview_mesh(
     const InventoryCosmetic& item, const std::filesystem::path& root, bool blue_team,
     std::optional<std::uint8_t> class_id = std::nullopt, const InventoryCosmetic* hat = nullptr,
-    bool head_only = false);
+    bool head_only = false, std::optional<world::VxlColor> team_color = std::nullopt);
 [[nodiscard]] std::optional<world::ChunkMesh> inventory_weapon_preview_mesh(
     const InventoryCosmetic& item, const std::filesystem::path& root, bool blue_team,
     const world::SkinVariantSelection& variants);

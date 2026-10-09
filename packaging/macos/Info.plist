@@ -21,9 +21,19 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
+    <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>net.aosplay.battlespades.join</string>
+            <key>CFBundleURLSchemes</key>
+            <array><string>aosbb</string><string>aos</string></array>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+        </dict>
+    </array>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright (c) 2026 Kiril Tsanov. Licensed under AGPL-3.0-or-later.</string>
 </dict>

@@ -2143,6 +2143,10 @@
     "SHOW_OTHER_SKINS": "Show other players' skins",
     "WEAPON_MOTION": "Weapon movement",
     "ABILITY_HINTS": "Ability key hints",
+    "FALLBACK_MUSIC": "Music on silent servers",
+    "FALLBACK_MUSIC_DESCRIPTION": "Play retail music when the server provides none. Server music takes priority.",
+    "RAGDOLL_CORPSES": "Ragdoll corpses",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Simulate fallen characters in Classic modes. Applies to new deaths.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Parachute deployed",
     "ABILITY_HINT_PARACHUTE_PENDING": "Parachute opens on descent",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: deploy parachute in air",
@@ -2154,6 +2158,8 @@
     "SERVER_PASSWORD_TIMEOUT": "No server password was entered in time",
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Eliminate all enemies to win the round!",
-    "LOAD_FAILED": "Loading failed"
+    "LOAD_FAILED": "Loading failed",
+    "BLOOD_MARKS": "Lingering blood",
+    "BLOOD_MARKS_DESCRIPTION": "Visual blood droplets and temporary stains on blocks in Classic and Standard. Lasts 20–32 seconds; does not change gameplay."
   }
 }

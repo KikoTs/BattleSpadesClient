@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <optional>
 
 namespace battlespades::world {
 
@@ -21,6 +22,11 @@ struct SniperLaserTarget final {
     bool crouching{};
     bool dead{};
 };
+
+/** Presentation-only body clipping; direction must be normalized. */
+[[nodiscard]] std::optional<float> trace_player_body(
+    std::array<float,3> origin, std::array<float,3> direction,
+    const SniperLaserTarget& target, float maximum_distance) noexcept;
 
 /** Replicated state required by retail LaserAttachment.update/draw. */
 struct SniperLaserInput final {

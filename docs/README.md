@@ -24,6 +24,9 @@ the current source, retained executable, package or live service.
 | Acceptance and future work | [Roadmap](ROADMAP.md) |
 | Content import and ownership | [Assets](../assets/README.md) |
 | Windows installer and auto-updater | [Installer and updater](INSTALLER_AND_UPDATER.md) |
+| Component packages and resumable downloads | [Update downloads](UPDATE_DOWNLOADS.md) |
+| Offline profiles, custom masters and click-to-join | [Launch options](LAUNCH_OPTIONS.md) |
+| Match recording and spectator playback | [Demos](DEMOS.md) |
 | Steam networking and Workshop maps | [Steam networking](STEAM_NETWORKING.md), [Steam Workshop](STEAM_WORKSHOP.md) |
 | Licence, legal notice, security, contributing | [LICENSING](../LICENSING.md), [LEGAL](../LEGAL.md), [SECURITY](../SECURITY.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 

@@ -93,6 +93,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: 
 [Run]
 Filename: "{app}\{#LauncherExe}"; Description: "Play {#AppName}"; Flags: postinstall nowait skipifsilent
 
+[Registry]
+; Always register our own scheme; leave an existing classic-client choice intact.
+Root: HKCU; Subkey: "Software\Classes\aosbb"; ValueType: string; ValueData: "URL:BattleSpades join link"
+Root: HKCU; Subkey: "Software\Classes\aosbb"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\aosbb\shell\open\command"; ValueType: string; ValueData: """{app}\BattleSpadesClient.exe"" --join-url ""%1"""
+Root: HKCU; Subkey: "Software\Classes\aos"; ValueType: string; ValueData: "URL:Ace of Spades join link"; Check: CanRegisterAos
+Root: HKCU; Subkey: "Software\Classes\aos"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: CanRegisterAos
+Root: HKCU; Subkey: "Software\Classes\aos\shell\open\command"; ValueType: string; ValueData: """{app}\BattleSpadesClient.exe"" --join-url ""%1"""; Check: CanRegisterAos
+
 [InstallDelete]
 ; A (re)install sets every component to the installer's versions again;
 ; drop what the launcher recorded for earlier component updates.
@@ -105,6 +114,23 @@ Type: filesandordirs; Name: "{app}\update"
 var
   SteamRoot: String;
   GameDir: String;
+
+function CanRegisterAos(): Boolean;
+var
+  Command: String;
+begin
+  Result := not RegQueryStringValue(HKCR, 'aos\shell\open\command', '', Command) or
+    (Command = '"' + ExpandConstant('{app}\BattleSpadesClient.exe') + '" --join-url "%1"');
+end;
+
+procedure UnregisterJoinProtocol(const Scheme: String);
+var
+  Command: String;
+begin
+  if RegQueryStringValue(HKCU, 'Software\Classes\' + Scheme + '\shell\open\command', '', Command) and
+    (Command = '"' + ExpandConstant('{app}\BattleSpadesClient.exe') + '" --join-url "%1"') then
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\' + Scheme);
+end;
 
 function DetectedValue(const Lines: TArrayOfString; const Key: String): String;
 var
@@ -376,7 +402,11 @@ var
 begin
   App := ExpandConstant('{app}');
   if CurUninstallStep = usUninstall then
+  begin
     UnregisterFromSteam();
+    UnregisterJoinProtocol('aosbb');
+    UnregisterJoinProtocol('aos');
+  end;
   if CurUninstallStep = usPostUninstall then
   begin
     { Only named files: a player may have installed into a folder holding other things. Screenshots are always kept. }

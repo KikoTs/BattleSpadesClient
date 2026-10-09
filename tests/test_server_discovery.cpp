@@ -22,6 +22,10 @@ void expect(bool condition, std::string_view message) {
 void endpoints_are_strict_and_retail_local_is_supported() {
     battlespades::network::ServerEndpoint endpoint;
     std::string error;
+    expect(battlespades::network::parse_server_endpoint("aosbb://127.0.0.1:27015", endpoint, error) &&
+               endpoint.host == "127.0.0.1" && endpoint.port == 27015U &&
+               endpoint.protocol == battlespades::network::GameProtocol::retail168,
+           "game-specific URI selects retail protocol");
     expect(battlespades::network::default_game_port == 27015U &&
                battlespades::network::retail_game_port == 32887U,
            "BattleSpades servers listen on 27015; 32887 is retail's default");

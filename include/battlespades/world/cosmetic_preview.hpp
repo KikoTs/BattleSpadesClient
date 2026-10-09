@@ -5,6 +5,10 @@ namespace battlespades::world {
 struct CosmeticPreviewStyle {
     std::uint32_t width{540U},height{264U};
     double padding{12.0},fit_width{},roll{},outline{2.0};
+    double pitch{0.25};
+    unsigned samples{2U};
+    bool internal_contours{true};
+    bool boost_colors{true};
 };
 [[nodiscard]] std::vector<std::uint8_t>
 cosmetic_preview(const ChunkMesh& mesh, double yaw, double zoom,

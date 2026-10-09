@@ -55,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if self.path != "/files/pack.zip":
+        if self.path not in ("/files/pack.zip", "/files/bad-range.zip", "/files/missing-range.zip"):
             self.send_error(404)
             return
         start = 0
@@ -65,8 +65,9 @@ class Handler(BaseHTTPRequestHandler):
             start = int(header[len("bytes="):-1])
         body = PACK[start:]
         self.send_response(206 if start else 200)
-        if start:
-            self.send_header("Content-Range", f"bytes {start}-{len(PACK) - 1}/{len(PACK)}")
+        if start and self.path != "/files/missing-range.zip":
+            first = 0 if self.path == "/files/bad-range.zip" else start
+            self.send_header("Content-Range", f"bytes {first}-{len(PACK) - 1}/{len(PACK)}")
         self.send_header("Content-Type", "application/zip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -160,6 +161,33 @@ def main():
                                             if report_bundle.exists() else "")
             for name, data in FILES.items():
                 assert (bundled / name).read_bytes() == data, name
+
+            # A broken CDN must not overwrite a valid prefix. The healthy
+            # mirror resumes the same offset after a wrong/missing range.
+            for route in ("bad-range", "missing-range"):
+                destination_range = work / route / "assets" / "original"
+                cache = destination_range.parent / ".retail-download"
+                cache.mkdir(parents=True)
+                prefix = len(PACK) // 3
+                (cache / f"{ROOT}.zip.partial").write_bytes(PACK[:prefix])
+                offered = manifest(base, True)
+                offered["components"]["retail_assets"]["urls"] = [
+                    f"{base}/files/{route}.zip", f"{base}/files/pack.zip",
+                ]
+                Handler.manifests[f"/{route}.json"] = offered
+                before = len(Handler.requests)
+                result = run(installer, "--download", "--manifest-url", f"{base}/{route}.json",
+                             "--manifest", str(catalog_file), "--destination", str(destination_range),
+                             "--report", str(work / f"{route}-report.txt"))
+                assert result.returncode == 0, (route, result.stdout, result.stderr)
+                transfers = [(path, value) for path, value in Handler.requests[before:]
+                             if path.startswith("/files/")]
+                assert transfers == [
+                    (f"/files/{route}.zip", f"bytes={prefix}-"),
+                    ("/files/pack.zip", f"bytes={prefix}-"),
+                ], transfers
+                for name, data in FILES.items():
+                    assert (destination_range / name).read_bytes() == data, name
 
             # 2. No retail_assets: a clear message, no phantom button.
             report2 = work / "report2.txt"

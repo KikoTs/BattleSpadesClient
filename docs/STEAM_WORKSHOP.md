@@ -1,9 +1,67 @@
-# Steam Workshop map subscriptions
+# Workshop browser and map subscriptions
+
+**Map Creator > Browse Workshop** opens the native RmlUi browser. It uses
+the inventory's existing bgfx renderer, RmlUi context and `inventory.rcss` game
+skin (frame, heading, tabs and buttons). `workshop.rml` and `workshop.rcss` define
+the browser's content layout; the normal menu backdrop remains visible. Steam Workshop,
+AoSPlay and My Subscriptions are separate tabs. Search accepts map text or an
+HTTPS Steam Workshop item link / decimal published-file ID. Enter submits the
+search; Escape/Back closes the browser; downloads run on a cancellable worker.
+
+The Steam tab supports Most popular (week/month/three months/year/all time),
+Top rated, Most subscribed, Newest and Recently updated, plus game-mode tags.
+These filters apply to Steam's whole catalog. Its supported 30-item page size
+is preserved so paging never skips the remainder of a Steam page. Archive
+ordering stays newest-first; Steam-specific filters are disabled on other tabs.
+Selecting a map opens Screenshots and Map details in place, including dates,
+size, modes, description and public subscriber/favorite counts.
+
+Catalog metadata appears before images. Four cancellable media workers stream
+PNG/JPEG thumbnails and fetch additional screenshots only for the selected map.
+Changing pages or selection cancels obsolete media without waiting on the UI
+thread. Metadata pages cache for 60 seconds (16 pages), gallery lists for five
+minutes (64 maps), and normalized images on disk. Progress changes do not rebuild
+the result grid or steal search focus. Unavailable images never block downloads.
+
+Public Steam discovery reads item links from the public Steam Community browse
+page, then obtains authoritative metadata and download URLs with Valve's
+`ISteamRemoteStorage/GetPublishedFileDetails/v1` API. Steam's key-requiring
+QueryFiles API is not used. If Steam changes the browse-page markup, direct
+item-ID lookup still works. Public legacy `.aos` downloads need no Steam login;
+private, banned, wrong-app and collection items are rejected. Items without a
+public file URL report an error instead of trying to bypass Steam access.
+
+AoSPlay catalog entries use `/api/workshop/items` and `/api/workshop/items/<uuid>`.
+Downloads validate the archive's SHA-256 and length, or the Steam API's file
+length, then parse VXL with the actual game parser and require a JSON sidecar.
+Only supported HTTPS CDN hosts are fetched, without redirects or account
+credentials. Assets install under `<asset root>/ugc/maps/` with the prefix
+`Subscribed_Web_<source>_<id>`. The `.ugc` marker is published last, failed
+writes restore the previous revision, and the Create Match map list refreshes.
+These names cannot be owned or deleted by the separate Steam subscription sync.
+Downloaded maps appear in **Create Match > Subscribed Maps**.
+
+Subscribe/Unsubscribe use the signed-in AoSPlay identity, with up to 256 entries
+per account and full 64-bit Steam IDs preserved as strings. Subscribing downloads
+immediately; account sign-in and a five-minute timer check for updates. Manual
+Sync Library retries failures. Unsubscribe keeps the local files; Remove Files
+is enabled after unsubscribing and only removes files backed by a browser receipt.
+Steam account subscriptions and AoSPlay subscriptions remain independent.
+
+Backend rollout: deploy `aos_revival` migration `0018_workshop_subscriptions.sql`
+and its subscription/item-detail routes together. Public Steam browse/download
+does not require that deployment. Account sync and the AoSPlay detail endpoint do.
+
+Checks: `aos_public_workshop_tests` covers IDs, URL boundaries and metadata;
+`aos_workshop_view_tests` renders the screen and exercises search, escaping and
+Inventory/Workshop transitions on Windows. For an opt-in real download into a
+scratch directory, run `aos_public_workshop_tests --live 185279489 <scratch>`.
+
+## Steam account subscriptions
 
 Maps a player subscribes to on the Ace of Spades Workshop (app 224540)
 download by themselves and show up under **Subscribed Maps** in Create Match.
-Nothing needs clicking in the game. The Subscribe button still opens the
-Workshop page.
+Nothing needs clicking in the game for this existing Steam-managed sync.
 
 ## What retail did
 

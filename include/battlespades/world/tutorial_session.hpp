@@ -192,6 +192,8 @@ struct TutorialSessionConfig final {
     std::vector<std::uint8_t> initial_ugc_tools;
     std::optional<std::uint8_t> initial_tool;
     FlightProfile flight_profile;
+    /** 3=AoS 0.75, 4=AoS 0.76; zero retains all BattleSpades rules. */
+    std::uint8_t classic_protocol{};
 };
 
 struct TutorialDiagnostics final {
@@ -271,6 +273,10 @@ public:
     void set_weapon_custom_held(bool held) noexcept;
     [[nodiscard]] WeaponStateResult request_reload() noexcept;
     void restock_ammunition() noexcept;
+    void classic_reload_completed(std::uint8_t magazine, std::uint8_t reserve) noexcept {
+        sandbox_inventory_.weapons().classic_reload_completed(magazine, reserve);
+    }
+    void apply_classic_correction(Vec3 value, bool orientation) noexcept;
     /** Apply Restock(69) type 3 using retail's per-tool partial crate top-up. */
     void restock_from_ammo_crate() noexcept;
     void restock_blocks() noexcept;
@@ -322,6 +328,7 @@ public:
     [[nodiscard]] int targets_destroyed() const noexcept;
     /** Seconds since the last primary use; drives the recoil animation. */
     [[nodiscard]] double seconds_since_primary() const noexcept;
+    [[nodiscard]] double seconds_since_weapon_animation() const noexcept;
     /**
      * Retail pullout timer: 0.5 s on every tool switch, decaying to zero;
      * the viewmodel rises from below while it runs.
@@ -388,6 +395,8 @@ public:
     [[nodiscard]] MovementStepResult take_movement_events() noexcept;
     [[nodiscard]] const ToolAmmoState* selected_ammo() const noexcept;
     [[nodiscard]] double weapon_reload_remaining() const noexcept;
+    /** Normalized animation time from the active protocol's actual reload duration. */
+    [[nodiscard]] double weapon_reload_progress() const noexcept;
     /** True for either a non-magnified sight or a magnified sniper scope. */
     [[nodiscard]] bool zoomed() const noexcept;
     /** True only for the sniper-family magnified scope behavior. */
@@ -896,6 +905,7 @@ private:
     MovementStepResult movement_events_{};
     /** Retail sends current flags after simulating the preceding held frame. */
     PlayerInputState network_latched_input_{};
+    bool classic_jump_held_{};
     std::optional<Vec3> network_latched_orientation_;
     /** Input actually consumed by the most recently completed native step. */
     PlayerInputState last_simulated_input_{};
@@ -963,6 +973,7 @@ private:
     /** Character.pullout=0.5 when a non-melee sprint ends. */
     double sprint_pullout_remaining_{};
     double since_primary_{1e9};
+    bool classic_secondary_animation_{};
     int pistol_clip_{};
     int pistol_stock_{};
     int blocks_remaining_{};

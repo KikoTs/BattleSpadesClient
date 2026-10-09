@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstring>
 #include <fstream>
+#include <mutex>
 #include <set>
 #include <sstream>
 
@@ -229,6 +230,12 @@ bool workshop_entry_files_present(const std::filesystem::path& maps_directory,
 
 bool write_file_atomically(const std::filesystem::path& target,
                            std::span<const unsigned char> bytes, std::string& error) {
+    // The gallery and thumbnail workers can publish the same cached image.
+    // Protect the shared temporary filename through its final rename; network
+    // fetches, validation and image decoding all happen before this short disk
+    // transaction. The other callers only publish Workshop maps and indexes.
+    static std::mutex publication_mutex;
+    const std::lock_guard publication_lock{publication_mutex};
     error.clear();
     // A leading dot keeps the half-written file out of the client's map
     // scanner (it reads *.ugc) and out of its reserved-stem list.

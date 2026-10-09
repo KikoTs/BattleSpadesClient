@@ -51,6 +51,13 @@ struct LiveProtocol168Status final {
      * the exchange can be told apart from an ordinary one.
      */
     Protocol168PasswordPrompt password;
+    GameProtocol protocol{GameProtocol::retail168};
+    /** Measured ENet RTT for this client; Classic does not publish other players' pings. */
+    std::optional<std::uint32_t> round_trip_time_ms;
+    bool demo_playback{};
+    bool demo_finished{};
+    /** Recording failures do not interrupt a live game. */
+    std::string demo_error;
 };
 
 /**
@@ -117,6 +124,7 @@ struct Protocol168WorldBootstrap final {
     std::uint8_t local_player_id{};
     /** Zero before interactive selection; one after diagnostic auto-join. */
     std::uint32_t next_client_loop_count{};
+    GameProtocol protocol{GameProtocol::retail168};
 };
 
 /**
@@ -154,13 +162,19 @@ public:
     take_inbound(std::size_t limit = 64U,
                  std::optional<std::uint64_t> expected_generation = std::nullopt);
     [[nodiscard]] bool send(std::span<const std::byte> plain_packet);
+    /** Classic packets only; never available on a retail connection. */
+    [[nodiscard]] bool send_classic(std::span<const std::byte> packet);
+    void update_classic_motion(const struct ClassicMotion& motion);
     /**
      * Answer the pending password prompt with PasswordProvided(113). False
      * when no prompt is pending or the text cannot be a password.
      */
     [[nodiscard]] bool provide_password(std::string password);
+    /** Replay pauses at each new map until its viewer is ready. */
+    void set_demo_paused(bool paused) noexcept;
 
 private:
+    void run_demo_playback(const std::filesystem::path& path);
     struct State;
     std::unique_ptr<State> state_;
 };

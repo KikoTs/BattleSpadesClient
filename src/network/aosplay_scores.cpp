@@ -3,6 +3,7 @@
 #endif
 
 #include "battlespades/network/aosplay_scores.hpp"
+#include "battlespades/core/service_url.hpp"
 #include "battlespades/core/build_info.hpp"
 
 #include <algorithm>
@@ -127,7 +128,7 @@ struct HttpResult final {
 [[nodiscard]] HttpResult post_form(const AosPlayScoreServiceConfig& config,
                                    std::string_view url,
                                    std::string_view form) {
-    if (url.empty() || !url.starts_with("https://") || config.timeout.count() <= 0 ||
+    if (!core::valid_service_url(url) || config.timeout.count() <= 0 ||
         config.maximum_payload_bytes == 0U) {
         return {{}, "invalid AoSPlay score-service configuration"};
     }
@@ -149,7 +150,7 @@ struct HttpResult final {
     const std::string url_copy{url};
     const std::string form_copy{form};
     curl_easy_setopt(handle, CURLOPT_URL, url_copy.c_str());
-    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "https");
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, url.starts_with("http://") ? "http,https" : "https");
     curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 2L);

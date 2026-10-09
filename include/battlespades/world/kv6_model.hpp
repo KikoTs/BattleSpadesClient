@@ -54,6 +54,12 @@ public:
     /** Adapt the classic 12x10x6 combined arm pose into upper/lower segments.
      * Uses the authored sleeve/glove voxels; returns empty for other layouts. */
     [[nodiscard]] std::vector<Kv6Model> articulated_classic_arms() const;
+    /**
+     * The half of the model above (`upper`) or below the middle of its height,
+     * for a one-piece limb that must bend there. KV6 stores a hollow shell, so
+     * the cut is capped: each half shows a closed end, not an open ring.
+     */
+    [[nodiscard]] Kv6Model split_at_middle_z(bool upper) const;
 
     /**
      * Apply retail KV6.offset_pivots in authored voxel units.

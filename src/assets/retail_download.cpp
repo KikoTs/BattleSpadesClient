@@ -1,6 +1,7 @@
 #include "battlespades/assets/retail_download.hpp"
 
 #include "battlespades/updater/file_util.hpp"
+#include "battlespades/updater/http_range.hpp"
 #include "battlespades/updater/update_apply.hpp"
 #include "battlespades/updater/update_plan.hpp"
 #include "battlespades/updater/updater_config.hpp"
@@ -115,17 +116,45 @@ struct RangeContext final {
     const std::function<bool(std::uint64_t, std::uint64_t)>* progress{};
     bool sink_aborted{};
     bool progress_cancelled{};
+    std::uint64_t offset{};
+    std::optional<updater::HttpContentRange> range;
+    std::uint64_t received{};
+    bool invalid_range{};
 };
+
+std::size_t range_header(char* data, std::size_t size, std::size_t count, void* user) {
+    auto& context = *static_cast<RangeContext*>(user);
+    const std::string_view line{data, size * count};
+    if (line.starts_with("HTTP/")) {
+        // Redirects and informational responses have their own header block.
+        context.range.reset();
+        context.received = 0U;
+    } else if (line.size() >= 14U) {
+        auto name = std::string{line.substr(0U, 14U)};
+        std::ranges::transform(name, name.begin(), [](unsigned char c) {
+            return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
+        });
+        if (name == "content-range:") context.range = updater::parse_http_content_range(line.substr(14U));
+    }
+    return line.size();
+}
 
 std::size_t write_range(char* data, std::size_t size, std::size_t count, void* user) {
     auto& context = *static_cast<RangeContext*>(user);
     const auto bytes = size * count;
     long status{};
     curl_easy_getinfo(context.handle, CURLINFO_RESPONSE_CODE, &status);
+    if (status == 206 && (!context.range.has_value() || context.range->first != context.offset ||
+                         context.received > context.range->last - context.range->first + 1U ||
+                         bytes > context.range->last - context.range->first + 1U - context.received)) {
+        context.invalid_range = true;
+        return 0U;
+    }
     if (!(*context.sink)(status, data, bytes)) {
         context.sink_aborted = true;
         return 0U;
     }
+    context.received += bytes;
     return bytes;
 }
 
@@ -158,14 +187,9 @@ FetchOutcome fetch_package(const std::string& url,
     auto partial = archive;
     partial += ".partial";
     std::error_code code;
-    std::uint64_t offset{};
-    if (fs::is_regular_file(partial, code)) {
-        offset = fs::file_size(partial, code);
-        if (code || offset > release.size) {
-            fs::remove(partial, code);
-            offset = 0U;
-        }
-    }
+    const auto prepared = updater::prepare_package_partial(partial, release.size, release.sha256, error);
+    if (!prepared.has_value()) return FetchOutcome::failed;
+    const auto offset = *prepared;
 
     if (offset < release.size) {
         std::ofstream output(partial, std::ios::binary | (offset > 0U ? std::ios::app : std::ios::trunc));
@@ -212,6 +236,7 @@ FetchOutcome fetch_package(const std::string& url,
         };
         const auto result = transport.fetch_range(url, offset, sink, on_progress);
         output.close();
+        if (!output) write_failed = true;
         if (result.cancelled) {
             return FetchOutcome::cancelled;
         }
@@ -243,7 +268,7 @@ FetchOutcome fetch_package(const std::string& url,
     }
 
     if (progress && !progress(RetailStage::verifying, 0U, release.size)) return FetchOutcome::cancelled;
-    if (!updater::verify_package_file(partial, release.size, release.sha256, error)) {
+    if (offset != release.size && !updater::verify_package_file(partial, release.size, release.sha256, error)) {
         fs::remove(partial, code);
         return FetchOutcome::failed;
     }
@@ -253,6 +278,9 @@ FetchOutcome fetch_package(const std::string& url,
         error = "cannot finish the download: " + code.message();
         return FetchOutcome::failed;
     }
+    auto identity = partial;
+    identity += ".identity";
+    fs::remove(identity, code);
     return FetchOutcome::success;
 }
 
@@ -341,7 +369,11 @@ RetailTransport curl_retail_transport(std::chrono::milliseconds connect_timeout)
             result.error = "cannot create an HTTP request";
             return result;
         }
-        RangeContext context{handle.value, &sink, &progress, false, false};
+        RangeContext context;
+        context.handle = handle.value;
+        context.sink = &sink;
+        context.progress = &progress;
+        context.offset = offset;
         configure_common(handle.value, url, connect_timeout);
         // A manual Range (not CURLOPT_RESUME_FROM): a server that ignores it
         // answers 200 and the sink restarts the file instead of failing.
@@ -349,6 +381,8 @@ RetailTransport curl_retail_transport(std::chrono::milliseconds connect_timeout)
         if (offset > 0U) curl_easy_setopt(handle.value, CURLOPT_RANGE, range.c_str());
         curl_easy_setopt(handle.value, CURLOPT_WRITEFUNCTION, &write_range);
         curl_easy_setopt(handle.value, CURLOPT_WRITEDATA, &context);
+        curl_easy_setopt(handle.value, CURLOPT_HEADERFUNCTION, &range_header);
+        curl_easy_setopt(handle.value, CURLOPT_HEADERDATA, &context);
         curl_easy_setopt(handle.value, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(handle.value, CURLOPT_XFERINFOFUNCTION, &transfer_progress);
         curl_easy_setopt(handle.value, CURLOPT_XFERINFODATA, &context);
@@ -356,6 +390,12 @@ RetailTransport curl_retail_transport(std::chrono::milliseconds connect_timeout)
         curl_easy_getinfo(handle.value, CURLINFO_RESPONSE_CODE, &result.status);
         if (context.progress_cancelled) {
             result.cancelled = true;
+        } else if (context.invalid_range ||
+                   (result.status == 206 && (!context.range.has_value() || context.range->first != offset))) {
+            result.error = "the server sent an invalid Content-Range for this download";
+        } else if (performed == CURLE_OK && result.status == 206 && context.range.has_value() &&
+                   context.received != context.range->last - context.range->first + 1U) {
+            result.error = "the server sent an incomplete byte range";
         } else if (performed != CURLE_OK && !context.sink_aborted) {
             result.error = curl_easy_strerror(performed);
         }

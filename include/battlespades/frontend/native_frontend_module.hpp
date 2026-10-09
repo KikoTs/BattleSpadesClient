@@ -31,6 +31,13 @@ struct NativeFrontendConfig final {
     std::string player_name{"Player"};
     bool enable_audio{true};
     bool renderer_debug{false};
+    bool offline{};
+    bool reset_settings{};
+    std::string offline_profile{"Player"};
+    std::optional<std::string> master_url;
+    std::optional<std::string> language_override;
+    std::filesystem::path record_demo_path;
+    std::filesystem::path play_demo_path;
     /** Explicit per-install settings file; the executable directory is used by main(). */
     std::filesystem::path settings_path{"settings.toml"};
     /** Raw Tutorial VXL used by the local world-parser test launcher. */

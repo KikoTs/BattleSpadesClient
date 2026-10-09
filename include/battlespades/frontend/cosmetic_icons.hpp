@@ -12,6 +12,7 @@ struct CosmeticIconRequest {
     CosmeticIconKind kind{CosmeticIconKind::weapon};
     std::uint8_t class_id{};
     bool blue_team{true};
+    std::optional<world::VxlColor> team_color;
 };
 inline constexpr std::uint32_t cosmetic_icon_size=256;
 [[nodiscard]] std::string cosmetic_icon_key(const CosmeticIconRequest& request);

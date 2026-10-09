@@ -34,10 +34,12 @@ struct HostingStatusFile {
 [[nodiscard]] HostingStatusFile read_hosting_status(const std::filesystem::path& install);
 
 /// Pure decision used by check_hosting_gate (exposed for tests).
-enum class HostingGateAction { start, request_download, wait_for_download, unavailable, missing_launcher };
+enum class HostingGateAction { start, request_download, wait_for_download, unavailable, missing_launcher, offline_unavailable };
 [[nodiscard]] HostingGateAction decide_hosting_gate(bool bundle_found, const HostingStatusFile& status,
-                                                    bool launcher_present, bool download_running) noexcept;
+                                                    bool launcher_present, bool download_running,
+                                                    bool allow_download = true) noexcept;
 
-[[nodiscard]] HostingGateResult check_hosting_gate(const std::filesystem::path& install, bool bundle_found);
+[[nodiscard]] HostingGateResult check_hosting_gate(const std::filesystem::path& install, bool bundle_found,
+                                                  bool allow_download = true);
 
 } // namespace battlespades::platform

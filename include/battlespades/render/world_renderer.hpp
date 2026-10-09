@@ -364,7 +364,8 @@ public:
     // Keep the entity band above the maximum valid player id (127). The 32
     // slot guard band makes a bad presentation index fail empty instead of
     // aliasing a pickup/turret model on a full server.
-    static constexpr std::uint32_t world_model_slot_count{2240U};
+    static constexpr std::uint32_t blood_marks_slot{2240U};
+    static constexpr std::uint32_t world_model_slot_count{2241U};
     static constexpr std::uint32_t terrain_effect_slot_base{24U};
     static constexpr std::uint32_t terrain_effect_slot_count{40U};
     static constexpr std::uint32_t projectile_slot_base{64U};
@@ -386,7 +387,7 @@ public:
     static constexpr std::uint32_t character_accessory_slot_base{1984U};
     static constexpr std::uint32_t character_accessory_slot_count{256U};
     static_assert(character_accessory_slot_base + character_accessory_slot_count ==
-                  world_model_slot_count);
+                  blood_marks_slot);
     /** Shader-side bounded forward-light array. */
     static constexpr std::size_t maximum_dynamic_lights{8U};
     [[nodiscard]] bool set_world_model_mesh(std::uint32_t slot,

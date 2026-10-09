@@ -95,18 +95,21 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 9U,
+    expect(view.rows.size() == 12U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
         SettingsRowId::master_volume,
         SettingsRowId::music_volume,
+        SettingsRowId::fallback_music,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
         SettingsRowId::show_skins,
         SettingsRowId::show_other_skins,
         SettingsRowId::weapon_motion,
         SettingsRowId::ability_hints,
+        SettingsRowId::ragdoll_corpses,
+        SettingsRowId::blood_marks,
     };
     expect(view.rows.size() >= expected.size() &&
                !row(view, SettingsRowId::ability_hints).value_text.empty(),
@@ -785,6 +788,65 @@ void favorite_server_is_transient_and_commits_only_on_done() {
            "Done must emit the separate server-browser favourite command");
 }
 
+void fallback_music_previews_cancels_and_commits() {
+    auto environment = full_environment();
+    environment.context = SettingsMenuContext::in_game;
+    SettingsSession session;
+    SettingsMenuModel menu{session, environment};
+    expect(!session.draft().main.fallback_music, "fallback music is opt-in");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::fallback_music)),
+           "fallback music must be reachable from in-game settings");
+    expect(menu.presentation().tooltip_key == "FALLBACK_MUSIC_DESCRIPTION",
+           "focused music row must explain server priority using the existing help area");
+    expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}),
+           "fallback music must toggle");
+    const auto previews = menu.take_effects();
+    const auto* preview = find_effect<SettingsPreviewEffect>(previews);
+    expect(preview && preview->source == SettingsRowId::fallback_music &&
+               preview->draft.main.fallback_music, "toggle must preview music immediately");
+    menu.activate_cancel();
+    expect(!session.draft().main.fallback_music &&
+               find_effect<SettingsRestoreCommand>(menu.take_effects()),
+           "Cancel must restore the original music preference");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::fallback_music)),
+           "music remains focusable after Cancel");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    static_cast<void>(menu.take_effects());
+    menu.activate_done();
+    const auto commits = menu.take_effects();
+    const auto* commit = find_effect<SettingsCommitCommand>(commits);
+    expect(commit && commit->changed && !commit->restart_required &&
+               !commit->display_changed && session.committed().main.fallback_music,
+           "Done must persist music without a restart");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::ragdoll_corpses)) &&
+               row(menu.presentation(), SettingsRowId::ragdoll_corpses).visible,
+           "the lower ragdoll option must scroll into view");
+    expect(session.draft().main.ragdoll_corpses, "ragdolls start enabled");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    expect(!session.draft().main.ragdoll_corpses,
+           "ragdolls can be turned off independently of music");
+    menu.activate_cancel();
+    expect(session.draft().main.ragdoll_corpses && session.draft().main.fallback_music,
+           "Cancel restores the ragdoll draft without losing the committed music choice");
+    expect(!session.draft().main.blood_marks,"lingering blood starts disabled");
+    static_cast<void>(menu.take_effects());
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::blood_marks)) &&
+               row(menu.presentation(),SettingsRowId::blood_marks).visible,
+           "blood option scrolls into view");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate,InputPhase::pressed}));
+    expect(session.draft().main.blood_marks,"blood toggles independently");
+    const auto blood_effects=menu.take_effects();
+    const auto* blood_preview=find_effect<SettingsPreviewEffect>(blood_effects);
+    expect(blood_preview && blood_preview->source==SettingsRowId::blood_marks,
+           "blood preference previews in the running match");
+    menu.activate_cancel();
+    expect(!session.draft().main.blood_marks,"cancel restores the blood preference");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::blood_marks)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate,InputPhase::pressed}));
+    menu.activate_done();
+    expect(session.committed().main.blood_marks,"blood preference persists on Done");
+}
+
 void skin_preferences_are_reachable_live_and_cancelable() {
     auto environment=full_environment();
     environment.context=SettingsMenuContext::in_game;
@@ -1013,6 +1075,7 @@ int main() {
         {"main_inventory_and_geometry_match_retail", main_inventory_and_geometry_match_retail},
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",
          graphics_capabilities_and_wheel_scrolling_are_deterministic},
+        {"fallback_music_previews_cancels_and_commits", fallback_music_previews_cancels_and_commits},
         {"native_graphics_rows_edit_presets_and_report_why_they_are_unavailable",
          native_graphics_rows_edit_presets_and_report_why_they_are_unavailable},
         {"window_mode_row_cycles_and_greys_out_resolution_when_borderless",

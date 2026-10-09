@@ -2106,6 +2106,10 @@
     "SHOW_OTHER_SKINS": "Mostrar visuais de outros jogadores",
     "WEAPON_MOTION": "Movimento da arma",
     "ABILITY_HINTS": "Dicas de habilidade",
+    "FALLBACK_MUSIC": "Música em servidores silenciosos",
+    "FALLBACK_MUSIC_DESCRIPTION": "Música original quando o servidor não oferece nenhuma. A música do servidor tem prioridade.",
+    "RAGDOLL_CORPSES": "Física dos corpos",
+    "RAGDOLL_CORPSES_DESCRIPTION": "Simula personagens mortos nos modos clássicos. Vale para novas mortes.",
     "ABILITY_HINT_PARACHUTE_DEPLOYED": "Paraquedas aberto",
     "ABILITY_HINT_PARACHUTE_PENDING": "O paraquedas abre na descida",
     "ABILITY_HINT_PARACHUTE_DEPLOY": "{0}: abrir o paraquedas no ar",
@@ -2117,6 +2121,8 @@
     "SERVER_PASSWORD_TIMEOUT": "A senha do servidor não foi digitada a tempo",
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Elimine todos os inimigos para vencer a rodada!",
-    "LOAD_FAILED": "Falha ao carregar"
+    "LOAD_FAILED": "Falha ao carregar",
+    "BLOOD_MARKS": "Marcas de sangue",
+    "BLOOD_MARKS_DESCRIPTION": "Gotas de sangue e manchas temporárias nos blocos em Classic e Standard. Duram 20–32 segundos; apenas um efeito visual."
   }
 }

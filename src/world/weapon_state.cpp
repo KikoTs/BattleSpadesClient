@@ -1,4 +1,5 @@
 #include "battlespades/world/weapon_state.hpp"
+#include "battlespades/world/classic_weapons.hpp"
 
 #include <algorithm>
 
@@ -35,6 +36,9 @@ void WeaponReplicationState::replace_loadout(
     for (const auto tool_id : loadout_) {
         const auto& definition = weapon_catalog()[tool_id];
         ammunition_[tool_id] = initial_ammo(definition);
+        if (auto rules = classic_weapon_rules(classic_protocol_, tool_id))
+            ammunition_[tool_id] = {rules->magazine, rules->reserve, false};
+        else if (classic_protocol_ && tool_id == 31) ammunition_[tool_id] = {3, 0, false};
     }
     selected_tool_.reset();
     if (selected.has_value() && contains(*selected)) {
@@ -149,7 +153,14 @@ void WeaponReplicationState::restock_ammunition() noexcept {
     for (const auto tool_id : loadout_) {
         const auto& definition = weapon_catalog()[tool_id];
         ammunition_[tool_id] = initial_ammo(definition);
+        if (auto rules = classic_weapon_rules(classic_protocol_, tool_id))
+            ammunition_[tool_id] = {rules->magazine, rules->reserve, false};
+        else if (classic_protocol_ && tool_id == 31) ammunition_[tool_id] = {3, 0, false};
     }
+}
+
+void WeaponReplicationState::set_authoritative_ammo(std::uint8_t tool, std::uint16_t magazine, std::uint16_t reserve) noexcept {
+    if (contains(tool)) ammunition_[tool] = {magazine, reserve, false};
 }
 
 bool WeaponReplicationState::restock_from_ammo_crate() noexcept {
