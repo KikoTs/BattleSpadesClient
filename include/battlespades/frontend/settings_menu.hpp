@@ -22,6 +22,7 @@ enum class SettingsRowId : std::uint8_t {
     master_volume,
     music_volume,
     fallback_music,
+    death_voices,
     ragdoll_corpses,
     blood_marks,
     classic_sky,

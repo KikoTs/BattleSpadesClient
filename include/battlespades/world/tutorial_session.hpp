@@ -280,6 +280,10 @@ public:
     /** Apply Restock(69) type 3 using retail's per-tool partial crate top-up. */
     void restock_from_ammo_crate() noexcept;
     void restock_blocks() noexcept;
+    /** Classic scripts may send Restock before the build that triggered it. */
+    void queue_classic_block_restock() noexcept { classic_block_restock_pending_ = true; }
+    void finish_classic_packet_batch() noexcept;
+    void classic_block_placed() noexcept { sandbox_inventory_.weapons().classic_block_placed(); }
     void restock_jetpack_fuel() noexcept;
     [[nodiscard]] double jetpack_fuel() const noexcept { return jetpack_prediction_.fuel; }
     /** Apply the local player's current TeamInfiniteBlocks authority bit. */
@@ -907,6 +911,7 @@ private:
     /** Retail sends current flags after simulating the preceding held frame. */
     PlayerInputState network_latched_input_{};
     bool classic_jump_held_{};
+    bool classic_block_restock_pending_{};
     std::optional<Vec3> network_latched_orientation_;
     /** Input actually consumed by the most recently completed native step. */
     PlayerInputState last_simulated_input_{};

@@ -1,6 +1,7 @@
 #include "battlespades/audio/openal_frontend_audio.hpp"
 #include "battlespades/audio/server_audio_catalog.hpp"
 #include "battlespades/audio/sound_groups.hpp"
+#include "battlespades/audio/spatial_pcm.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_presentation.hpp"
 
@@ -68,6 +69,7 @@ constexpr std::size_t maximum_decoded_bytes{256U * 1024U * 1024U};
 
 struct DecodedAudio final {
     std::vector<short> samples;
+    std::vector<short> spatial_samples;
     int channels{};
     int sample_rate{};
 };
@@ -203,7 +205,8 @@ void clear_openal_error() noexcept {
 }
 
 [[nodiscard]] bool
-read_ogg(const std::filesystem::path& path, DecodedAudio& decoded, std::string& error) {
+read_ogg(const std::filesystem::path& path, DecodedAudio& decoded, std::string& error,
+         bool prepare_spatial = true) {
     static_assert(sizeof(short) == 2U, "stb_vorbis PCM output requires 16-bit short");
 
     std::error_code filesystem_error;
@@ -296,6 +299,9 @@ read_ogg(const std::filesystem::path& path, DecodedAudio& decoded, std::string& 
     decoded.samples.resize(decoded_frames * channels);
     decoded.channels = info.channels;
     decoded.sample_rate = static_cast<int>(info.sample_rate);
+    if (prepare_spatial && decoded.channels == 2) {
+        decoded.spatial_samples = spatial_mono_pcm(decoded.samples);
+    }
     return true;
 }
 
@@ -305,6 +311,8 @@ struct OpenAlFrontendAudio::Impl final {
     struct Buffer final {
         SoundHandle handle{};
         ALuint id{};
+        /** Mono for positioned playback; aliases id when already mono. */
+        ALuint spatial_id{};
         float duration_seconds{};
         /** Decoded PCM size, for the music/ambience LRU budget. */
         std::size_t bytes{};
@@ -404,6 +412,7 @@ struct OpenAlFrontendAudio::Impl final {
     struct ServerLoopSlot final {
         ALuint source{};
         std::uint8_t loop_id{};
+        SoundHandle handle{};
         SoundPosition position{};
         float requested_gain{};
         bool relative{};
@@ -477,19 +486,19 @@ struct OpenAlFrontendAudio::Impl final {
         return relative ? SoundPosition{} : retail_source_position(nominal);
     }
 
-    /** audio.py:411-412: AL_DIRECT_CHANNELS_SOFT on every source. */
-    void apply_direct_channels(ALuint source) const noexcept {
+    /** Preserve authored stereo locally; world emitters use the spatial mixer. */
+    void apply_direct_channels(ALuint source, bool relative = true) const noexcept {
         if (direct_channels_supported && source != 0U) {
-            alSourcei(source, AL_DIRECT_CHANNELS_SOFT, AL_TRUE);
+            alSourcei(source, AL_DIRECT_CHANNELS_SOFT, relative ? AL_TRUE : AL_FALSE);
         }
     }
 
-    [[nodiscard]] ALuint buffer_for(SoundHandle handle) const noexcept {
+    [[nodiscard]] ALuint buffer_for(SoundHandle handle, bool relative = true) const noexcept {
         const auto found =
             std::find_if(buffers.begin(), buffers.end(), [handle](const Buffer& item) {
                 return item.handle == handle;
             });
-        return found == buffers.end() ? 0U : found->id;
+        return found == buffers.end() ? 0U : (relative ? found->id : found->spatial_id);
     }
 
     [[nodiscard]] float duration_for(SoundHandle handle) const noexcept {
@@ -527,10 +536,28 @@ struct OpenAlFrontendAudio::Impl final {
             return false;
         }
 
+        ALuint spatial_buffer = decoded.channels == 1 ? buffer : 0U;
+        const std::size_t spatial_bytes = decoded.spatial_samples.size() * sizeof(short);
+        if (!decoded.spatial_samples.empty()) {
+            alGenBuffers(1, &spatial_buffer);
+            error = alGetError();
+            if (error == AL_NO_ERROR && spatial_buffer != 0U) {
+                alBufferData(spatial_buffer, AL_FORMAT_MONO16, decoded.spatial_samples.data(),
+                             static_cast<ALsizei>(spatial_bytes), decoded.sample_rate);
+                error = alGetError();
+            }
+            if (error != AL_NO_ERROR || spatial_buffer == 0U) {
+                if (spatial_buffer != 0U) alDeleteBuffers(1, &spatial_buffer);
+                alDeleteBuffers(1, &buffer);
+                last_error = "cannot upload spatial OpenAL buffer for '" + path_utf8(path) +
+                             "': " + openal_error_text(error);
+                return false;
+            }
+        }
         const auto frames = decoded.samples.size() / static_cast<std::size_t>(decoded.channels);
         const float duration = static_cast<float>(frames) / static_cast<float>(decoded.sample_rate);
-        buffers.push_back(Buffer{
-            .handle = handle, .id = buffer, .duration_seconds = duration, .bytes = byte_count});
+        buffers.push_back(Buffer{.handle = handle, .id = buffer, .spatial_id = spatial_buffer,
+                                 .duration_seconds = duration, .bytes = byte_count + spatial_bytes});
         return true;
     }
 
@@ -612,7 +639,9 @@ struct OpenAlFrontendAudio::Impl final {
                     continue;
                 }
                 const ALuint id = buffer_for(entry->first);
-                if (id != 0U && buffer_attached(id)) {
+                const ALuint spatial_id = buffer_for(entry->first, false);
+                if ((id != 0U && buffer_attached(id)) ||
+                    (spatial_id != 0U && spatial_id != id && buffer_attached(spatial_id))) {
                     continue;
                 }
                 if (victim == evictable_buffers.end() ||
@@ -627,6 +656,9 @@ struct OpenAlFrontendAudio::Impl final {
             if (const auto found = std::ranges::find(buffers, handle, &Buffer::handle);
                 found != buffers.end()) {
                 total -= std::min(total, found->bytes);
+                if (found->spatial_id != 0U && found->spatial_id != found->id) {
+                    alDeleteBuffers(1, &found->spatial_id);
+                }
                 if (found->id != 0U) {
                     alDeleteBuffers(1, &found->id);
                 }
@@ -685,7 +717,10 @@ struct OpenAlFrontendAudio::Impl final {
 
     [[nodiscard]] bool load_buffer(SoundHandle handle, const std::filesystem::path& path) {
         DecodedAudio decoded;
-        if (!read_ogg(path, decoded, last_error)) {
+        const bool prepare_spatial = handle != OpenAlFrontendAudio::main_menu_music &&
+                                     handle != OpenAlFrontendAudio::tutorial_music &&
+                                     handle != OpenAlFrontendAudio::training_ambience;
+        if (!read_ogg(path, decoded, last_error, prepare_spatial)) {
             return false;
         }
         return upload_buffer(handle, path, std::move(decoded));
@@ -737,10 +772,10 @@ struct OpenAlFrontendAudio::Impl final {
         pending.path = path;
         pending.directory = *tree;
         pending.stem = std::string{stem};
-        pending.decode = std::async(std::launch::async, [path]() {
+        pending.decode = std::async(std::launch::async, [path, prepare_spatial = *tree != NamedDirectory::music]() {
             AsyncDecodedAudio result;
             try {
-                result.succeeded = read_ogg(path, result.audio, result.error);
+                result.succeeded = read_ogg(path, result.audio, result.error, prepare_spatial);
             } catch (const std::exception& exception) {
                 result.error = std::string{"audio decode worker failed: "} + exception.what();
             } catch (...) {
@@ -813,7 +848,7 @@ struct OpenAlFrontendAudio::Impl final {
                 }
                 slot.pending = false;
                 slot.pending_canonical.clear();
-                const ALuint buffer = uploaded ? buffer_for(handle) : 0U;
+                const ALuint buffer = uploaded ? buffer_for(handle, slot.relative) : 0U;
                 if (buffer == 0U || !begin_loop_playback(slot, buffer, slot.reverb_send)) {
                     slot.active = false;
                     slot.voice = invalid_loop_voice;
@@ -1341,7 +1376,7 @@ struct OpenAlFrontendAudio::Impl final {
             last_error = "invalid Protocol 168 loop parameters";
             return false;
         }
-        const ALuint buffer = buffer_for(handle);
+        const ALuint buffer = buffer_for(handle, relative);
         if (buffer == 0U) {
             last_error = "Protocol 168 loop buffer is unavailable";
             return false;
@@ -1370,6 +1405,7 @@ struct OpenAlFrontendAudio::Impl final {
         clear_openal_error();
         slot->active = true;
         slot->loop_id = loop_id;
+        slot->handle = handle;
         slot->position = position;
         slot->requested_gain = std::clamp(gain, 0.0F, 4.0F);
         slot->relative = relative;
@@ -1377,6 +1413,7 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(slot->source, AL_BUFFER, 0);
         alSourcei(slot->source, AL_LOOPING, AL_TRUE);
         alSourcei(slot->source, AL_SOURCE_RELATIVE, relative ? AL_TRUE : AL_FALSE);
+        apply_direct_channels(slot->source, relative);
         alSourcef(slot->source, AL_PITCH, 1.0F);
         alSourcef(slot->source, AL_ROLLOFF_FACTOR, relative ? 0.0F : attenuation);
         alSourcef(slot->source, AL_REFERENCE_DISTANCE, retail_reference_distance);
@@ -1470,7 +1507,7 @@ struct OpenAlFrontendAudio::Impl final {
             return;
         }
 
-        const ALuint buffer = buffer_for(handle);
+        const ALuint buffer = buffer_for(handle, relative);
         if (buffer == 0U || handle == OpenAlFrontendAudio::main_menu_music ||
             handle == OpenAlFrontendAudio::tutorial_music ||
             handle == OpenAlFrontendAudio::training_ambience) {
@@ -1490,6 +1527,7 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(voice->source, AL_BUFFER, 0);
         alSourcei(voice->source, AL_LOOPING, AL_FALSE);
         alSourcei(voice->source, AL_SOURCE_RELATIVE, relative ? AL_TRUE : AL_FALSE);
+        apply_direct_channels(voice->source, relative);
         alSourcef(voice->source, AL_PITCH, pitch);
         alSourcef(voice->source, AL_GAIN, resolved_spatial_gain(gain));
         alSourcef(voice->source, AL_ROLLOFF_FACTOR, relative ? 0.0F : attenuation);
@@ -1632,6 +1670,7 @@ struct OpenAlFrontendAudio::Impl final {
         alSourcei(slot.source, AL_BUFFER, 0);
         alSourcei(slot.source, AL_LOOPING, AL_TRUE);
         alSourcei(slot.source, AL_SOURCE_RELATIVE, slot.relative ? AL_TRUE : AL_FALSE);
+        apply_direct_channels(slot.source, slot.relative);
         alSourcef(slot.source, AL_PITCH, 1.0F);
         alSourcef(slot.source,
                   AL_ROLLOFF_FACTOR,
@@ -2162,7 +2201,7 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
     if (group == nullptr) {
         return invalid_loop_voice;
     }
-    const ALuint buffer = impl_->buffer_for(group->front());
+    const ALuint buffer = impl_->buffer_for(group->front(), head_relative);
     if (buffer == 0U) {
         return invalid_loop_voice;
     }
@@ -2183,6 +2222,7 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
     alSourcei(slot->source, AL_BUFFER, 0);
     alSourcei(slot->source, AL_LOOPING, AL_TRUE);
     alSourcei(slot->source, AL_SOURCE_RELATIVE, head_relative ? AL_TRUE : AL_FALSE);
+    impl_->apply_direct_channels(slot->source, head_relative);
     alSourcef(slot->source, AL_PITCH, 1.0F);
     alSourcef(slot->source, AL_ROLLOFF_FACTOR, head_relative ? 0.0F : spatial_rolloff(profile));
     alSourcef(slot->source,
@@ -2246,7 +2286,7 @@ LoopVoice OpenAlFrontendAudio::start_named_voice_loop(std::string_view stem,
         slot->pending = true;
         slot->pending_canonical = request.canonical;
     } else {
-        const ALuint buffer = impl_->buffer_for(request.handle);
+        const ALuint buffer = impl_->buffer_for(request.handle, head_relative);
         if (buffer == 0U || !impl_->begin_loop_playback(*slot, buffer, slot->reverb_send)) {
             return invalid_loop_voice;
         }
@@ -2443,6 +2483,10 @@ void OpenAlFrontendAudio::stop() noexcept {
         // the context. Resolver installation/removal must never touch them.
         impl_->release_world_reverb();
         for (auto& buffer : impl_->buffers) {
+            if (buffer.spatial_id != 0U && buffer.spatial_id != buffer.id) {
+                alDeleteBuffers(1, &buffer.spatial_id);
+            }
+            buffer.spatial_id = 0U;
             if (buffer.id != 0U) {
                 alDeleteBuffers(1, &buffer.id);
                 buffer.id = 0U;
@@ -2789,7 +2833,21 @@ void OpenAlFrontendAudio::set_named_loop_mix(std::uint8_t loop_id,
     }
     clear_openal_error();
     if (non_positional && !slot->relative) {
+        // A server can turn an emitter into a global bed. Restore its authored
+        // stereo buffer at the same playback time instead of keeping the mono mix.
+        ALint attached{};
+        alGetSourcei(slot->source, AL_BUFFER, &attached);
+        const ALuint direct = impl_->buffer_for(slot->handle);
+        if (direct != 0U && direct != static_cast<ALuint>(attached)) {
+            ALfloat offset{};
+            alGetSourcef(slot->source, AL_SEC_OFFSET, &offset);
+            alSourceStop(slot->source);
+            alSourcei(slot->source, AL_BUFFER, static_cast<ALint>(direct));
+            impl_->apply_start_offset(slot->source, slot->handle, offset);
+            alSourcePlay(slot->source);
+        }
         slot->relative = true;
+        impl_->apply_direct_channels(slot->source, true);
         alSourcei(slot->source, AL_SOURCE_RELATIVE, AL_TRUE);
         alSourcef(slot->source, AL_ROLLOFF_FACTOR, 0.0F);
         alSource3f(slot->source, AL_POSITION, 0.0F, 0.0F, 0.0F);

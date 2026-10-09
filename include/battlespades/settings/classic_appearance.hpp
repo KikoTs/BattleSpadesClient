@@ -1,9 +1,18 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string_view>
 
 namespace battlespades::settings {
+
+/** Native servers own their atmosphere, even when hosting an imported VXL. */
+[[nodiscard]] constexpr bool classic_appearance_allowed(std::uint8_t protocol,
+                                                        bool connected,
+                                                        bool classic_source) noexcept {
+    if (connected) return protocol == 3U || protocol == 4U;
+    return classic_source;
+}
 
 struct ClassicSkyOption final {
     std::string_view id;

@@ -2148,6 +2148,8 @@
     "CLASSIC_FOG_GREEN": "Sis: yeşil",
     "CLASSIC_FOG_BLUE": "Sis: mavi",
     "CLASSIC_FOG_DESCRIPTION": "Eski VXL haritaları: sunucu rengi, gökyüzü veya özel RGB. Sis mesafesi değişmez. İptal önceki renkleri geri getirir.",
-    "CLASSIC_FOG_GRAY": "Klasik gri (varsayılan)"
+    "CLASSIC_FOG_GRAY": "Klasik gri (varsayılan)",
+    "DEATH_VOICES": "Ölüm sesleri",
+    "DEATH_VOICES_DESCRIPTION": "Kendi karakterinizin ve diğer oyuncuların ölüm çığlıklarını çalar. Diğer savaş sesleri değişmez."
   }
 }

@@ -2185,6 +2185,8 @@
     "CLASSIC_FOG_GREEN": "Nebel: Grün",
     "CLASSIC_FOG_BLUE": "Nebel: Blau",
     "CLASSIC_FOG_DESCRIPTION": "Für alte VXL-Karten: Serverfarbe, Himmelfarbe oder eigenes RGB. Die Nebeldistanz bleibt gleich. Abbrechen stellt die vorherigen Farben wieder her.",
-    "CLASSIC_FOG_GRAY": "Klassisches Grau (Standard)"
+    "CLASSIC_FOG_GRAY": "Klassisches Grau (Standard)",
+    "DEATH_VOICES": "Todesschreie",
+    "DEATH_VOICES_DESCRIPTION": "Spielt Todesschreie deiner Figur und anderer Spieler ab. Andere Kampfgeräusche bleiben unverändert."
   }
 }

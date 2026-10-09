@@ -963,6 +963,13 @@ void TutorialWorldSession::restock_jetpack_fuel() noexcept {
     }
 }
 
+void TutorialWorldSession::finish_classic_packet_batch() noexcept {
+    if (classic_block_restock_pending_) {
+        classic_block_restock_pending_ = false;
+        restock_blocks();
+    }
+}
+
 void TutorialWorldSession::grant_blocks(std::uint16_t amount) noexcept {
     if (!debug_full_loadout_ || amount == 0U) {
         return;
@@ -4156,12 +4163,16 @@ double TutorialWorldSession::pitch() const noexcept {
 }
 
 std::array<double, 3U> TutorialWorldSession::eye_position() const noexcept {
+    // OpenSpades/ZeroSpades RepositionPlayer: collision climbs one voxel
+    // immediately, while the eye catches up over 250 ms. Never smooth the
+    // physical position sent to the server or used for collision.
+    const double climb = config_.classic_protocol ? player_.climb_timer / 0.25 : 0.0;
     if (config_.network_authoritative) {
         return {network_interpolated_position_.x,
                 network_interpolated_position_.y,
-                network_interpolated_position_.z};
+                network_interpolated_position_.z + climb};
     }
-    return {player_.position.x, player_.position.y, player_.position.z};
+    return {player_.position.x, player_.position.y, player_.position.z + climb};
 }
 
 TutorialDiagnostics TutorialWorldSession::diagnostics() const noexcept {
@@ -4292,6 +4303,7 @@ void TutorialWorldSession::apply_authoritative_transform(Vec3 position,
     // deliberately elevated spawn.
     player_.airborne = false;
     classic_jump_held_ = false;
+    classic_block_restock_pending_ = false;
     network_latched_input_ = {};
     network_latched_orientation_.reset();
     last_simulated_input_ = {};
@@ -4318,6 +4330,7 @@ void TutorialWorldSession::apply_classic_correction(Vec3 value, bool orientation
     } else {
         player_.position = value;
         network_interpolated_position_ = value;
+        player_.climb_timer = 0.0;
         position_lerp_timer_ = 0;
     }
 }
@@ -4368,7 +4381,8 @@ void TutorialWorldSession::conceal_authoritative_correction(Vec3 position_delta)
         // A correction received while already smoothing starts a fresh retail
         // 0.1-second window from the current interpolated presentation.
         const auto visible = eye_position();
-        network_interpolated_position_ = {visible[0U], visible[1U], visible[2U]};
+        const double climb = config_.classic_protocol ? player_.climb_timer / 0.25 : 0.0;
+        network_interpolated_position_ = {visible[0U], visible[1U], visible[2U] - climb};
         position_lerp_timer_ = 0.1;
     } else {
         network_interpolated_position_ = player_.position;

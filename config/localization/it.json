@@ -2148,6 +2148,8 @@
     "CLASSIC_FOG_GREEN": "Nebbia: verde",
     "CLASSIC_FOG_BLUE": "Nebbia: blu",
     "CLASSIC_FOG_DESCRIPTION": "Vecchie mappe VXL: colore del server, del cielo o RGB personale. Distanza invariata. Annulla ripristina i colori precedenti.",
-    "CLASSIC_FOG_GRAY": "Grigio classico (predefinito)"
+    "CLASSIC_FOG_GRAY": "Grigio classico (predefinito)",
+    "DEATH_VOICES": "Urla di morte",
+    "DEATH_VOICES_DESCRIPTION": "Riproduce le urla di morte del tuo personaggio e degli altri giocatori. Gli altri suoni di combattimento restano invariati."
   }
 }

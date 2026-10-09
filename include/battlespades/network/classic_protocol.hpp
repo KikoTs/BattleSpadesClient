@@ -87,6 +87,7 @@ private:
     std::array<std::uint8_t, 2> carriers_{255, 255};
     std::array<std::optional<std::array<float, 3>>, 16> objectives_{};
     std::array<std::array<std::uint8_t, 3>, 2> team_colors_{};
+    std::array<std::string, 2> team_names_{};
     struct ObjectiveZone {
         std::array<std::int16_t, 3> minimum{}, maximum{};
     };

@@ -507,6 +507,13 @@ Vec3 entity_presentation_position(const LocalEntity& entity, const EntityModelPa
     auto y = entity.position.y;
     const auto z = entity.position.z;
 
+    // Classic checkpoints are anchored directly at the server's base point.
+    // cp.kv6's pivot already rests on that surface; the generic attached-item
+    // half-block standoff would leave the tent floating above the ground.
+    if (entity.type == 1U && entity.face == 4U) {
+        return {x + part.offset[0U], y + part.offset[1U], z + part.offset[2U]};
+    }
+
     // rocketTurret.py centres the entire assembly before Entity.set_position.
     if (entity.type == 8U) {
         x -= 0.5;

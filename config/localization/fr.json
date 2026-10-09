@@ -2185,6 +2185,8 @@
     "CLASSIC_FOG_GREEN": "Brouillard : vert",
     "CLASSIC_FOG_BLUE": "Brouillard : bleu",
     "CLASSIC_FOG_DESCRIPTION": "Anciennes cartes VXL : couleur du serveur, du ciel ou RVB personnalisé. Distance inchangée. Annuler restaure les couleurs précédentes.",
-    "CLASSIC_FOG_GRAY": "Gris classique (par défaut)"
+    "CLASSIC_FOG_GRAY": "Gris classique (par défaut)",
+    "DEATH_VOICES": "Cris de mort",
+    "DEATH_VOICES_DESCRIPTION": "Joue les cris de mort de votre personnage et des autres joueurs. Les autres sons de combat restent inchangés."
   }
 }

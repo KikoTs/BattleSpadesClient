@@ -11,6 +11,18 @@ class VxlMap;
 
 namespace battlespades::frontend {
 
+/** Classic identifies aimed teammates only; retail retains its normal label paths. */
+[[nodiscard]] constexpr bool protocol_player_name_visible(std::uint8_t protocol,
+                                                          std::uint8_t observer_team,
+                                                          std::uint8_t subject_team,
+                                                          bool overhead) noexcept {
+    if (protocol != 3U && protocol != 4U) return true;
+    // ZeroSpades HotTrackedPlayer excludes enemies. Do not expose the retail
+    // death/spectator billboards through a legacy connection either.
+    return !overhead && (observer_team == 2U || observer_team == 3U) &&
+           observer_team == subject_team;
+}
+
 /** Screen-space result of retail's billboarded player-name text. */
 struct PlayerNameProjection final {
     double x_pixels{};

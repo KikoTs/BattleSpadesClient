@@ -163,7 +163,11 @@ void WeaponRuntime::tick_classic(double dt) noexcept {
             timing.block = now + 0.5;
         }
         timing.block_dragging = dragging;
-        if (primary_held_ && !secondary_held_ && !context_.sprinting && now >= timing.block) { emit(WeaponActionKind::block_line_begin, weapon); timing.block = now + 0.5; }
+        // An invalid ground-level attempt must not consume the jump's build
+        // window. ZeroSpades starts nextBlockTime only after an actual build;
+        // the adapter calls classic_block_placed for immediate/deferred sends.
+        if (primary_held_ && !secondary_held_ && !context_.sprinting && now >= timing.block)
+            emit(WeaponActionKind::block_line_begin, weapon);
     } else if (*selected == 31) {
         if (primary_pressed_ && now >= timing.grenade && replication_.ammo(31)->magazine && !context_.sprinting) {
             interaction_active_ = true; interaction_elapsed_ = 0;
@@ -309,15 +313,8 @@ WeaponStateResult WeaponRuntime::request_reload() noexcept {
 }
 
 void WeaponRuntime::restock_ammunition() noexcept {
-    if (classic_protocol_) {
-        for (auto tool : replication_.loadout()) {
-            if (const auto rules = classic_weapon_rules(classic_protocol_, tool))
-                replication_.set_authoritative_ammo(tool, replication_.ammo(tool)->magazine, rules->reserve);
-            else if (tool == 31) replication_.set_authoritative_ammo(tool, 3, 0);
-        }
-        return;
-    }
     replication_.restock_ammunition();
+    if (classic_protocol_) return;
     // A resupplied weapon is no longer empty, so a trigger still held from
     // before the restock should be able to click again if it runs dry a second
     // time without ever being released.

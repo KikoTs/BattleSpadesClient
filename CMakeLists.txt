@@ -9,7 +9,7 @@ project(
 
 # CMake versions are numeric. The public release label carries the beta tag
 # and matches the BattleSpades server's VERSION format.
-set(AOS_RELEASE_VERSION "${PROJECT_VERSION}-beta.2")
+set(AOS_RELEASE_VERSION "${PROJECT_VERSION}-beta.3")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

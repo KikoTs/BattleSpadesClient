@@ -116,6 +116,10 @@ public:
     static constexpr std::uint32_t ugc_capacity_chunk_limit{3'200U};
     [[nodiscard]] std::uint32_t source_edge() const noexcept;
     [[nodiscard]] std::uint32_t source_z_shift() const noexcept;
+    /** Resolved decoder semantics. A retail map can share Classic's z offset. */
+    [[nodiscard]] VxlDecodeProfile source_profile() const noexcept { return source_profile_; }
+    /** True only where the loader inserted the map-wide fallback water bed. */
+    [[nodiscard]] bool synthetic_bed(std::uint32_t x, std::uint32_t y) const noexcept;
 
     /**
      * Places one solid voxel, replacing any existing color. Fails closed for
@@ -252,6 +256,8 @@ private:
     std::vector<std::uint32_t> colors_;
     /** One bit per voxel, set while the cell holds an implicit (unauthored) colour. */
     std::vector<std::uint8_t> implicit_bits_;
+    /** One bit per column; authored black water is distinct from an empty bed. */
+    std::vector<std::uint8_t> synthetic_bed_bits_;
     std::array<std::uint32_t, height> ground_table_{};
     bool ground_table_set_{};
     std::vector<std::uint16_t> surfaces_;
@@ -269,6 +275,7 @@ private:
     std::uint64_t revision_{};
     std::uint32_t source_edge_{};
     std::uint32_t source_z_shift_{};
+    VxlDecodeProfile source_profile_{VxlDecodeProfile::retail};
 
     void put(std::uint32_t x, std::uint32_t y, std::uint32_t z,
              std::uint32_t color) noexcept;

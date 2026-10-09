@@ -1,4 +1,5 @@
 #include "battlespades/settings/client_settings.hpp"
+#include "battlespades/settings/classic_appearance.hpp"
 #include "battlespades/settings/settings_session.hpp"
 #include "battlespades/settings/settings_store.hpp"
 
@@ -333,6 +334,7 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.show_other_skins = false;
     settings.main.weapon_motion = false;
     settings.main.fallback_music = true;
+    settings.main.death_voices = false;
     settings.main.ragdoll_corpses = false;
     settings.main.discord_presence = false;
     settings.main.discord_join = false;
@@ -540,6 +542,16 @@ void local_skin_visibility_preserves_independent_preferences() {
 }
 
 void classic_appearance_settings_validate_and_restore() {
+    using battlespades::settings::classic_appearance_allowed;
+    expect(!classic_appearance_allowed(168U, true, false) &&
+               !classic_appearance_allowed(168U, true, true),
+           "normal servers keep their authored atmosphere even with imported Classic terrain");
+    expect(!classic_appearance_allowed(168U, false, false) &&
+               classic_appearance_allowed(168U, false, true),
+           "offline appearance overrides require an actual Classic source, not its height offset");
+    expect(classic_appearance_allowed(3U, true, true) &&
+               classic_appearance_allowed(4U, true, true),
+           "legacy server maps retain the Classic appearance controls");
     TemporaryDirectory temporary;
     const auto path = temporary.path("classic.toml");
     write_text(path, "[main]\nclassic_sky = \"../../untrusted\"\n");

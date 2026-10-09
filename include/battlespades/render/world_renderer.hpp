@@ -200,6 +200,9 @@ public:
      * The argument is a validated basename (`Tokyo.txt`), never a path. The
      * old layers remain active if parsing or GPU upload fails, so a malformed
      * UGC update cannot blank the world mid-frame.
+     * Every successful selection restores sky-only lighting while preserving
+     * installed fog, even when the same dome's GPU assets are reused. Callers
+     * may then fit that baseline to the current map's surface brightness.
      */
     [[nodiscard]] bool set_skydome(std::string_view definition_name);
     [[nodiscard]] std::string_view skydome_name() const noexcept;

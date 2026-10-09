@@ -95,13 +95,14 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 19U,
+    expect(view.rows.size() == 20U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
         SettingsRowId::master_volume,
         SettingsRowId::music_volume,
         SettingsRowId::fallback_music,
+        SettingsRowId::death_voices,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
         SettingsRowId::show_skins,
@@ -795,6 +796,25 @@ void favorite_server_is_transient_and_commits_only_on_done() {
            "Done must emit the separate server-browser favourite command");
 }
 
+void death_voices_preview_cancel_and_commit() {
+    SettingsSession session;
+    SettingsMenuModel menu{session, full_environment()};
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::death_voices)), "death voice control exists");
+    expect(session.draft().main.death_voices && menu.presentation().tooltip_key == "DEATH_VOICES_DESCRIPTION",
+           "death voices default on with a localized description");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    const auto effects = menu.take_effects();
+    const auto* preview = find_effect<SettingsPreviewEffect>(effects);
+    expect(preview && preview->source == SettingsRowId::death_voices && !preview->draft.main.death_voices,
+           "death voices can be muted live independently of master volume");
+    menu.activate_cancel();
+    expect(session.draft().main.death_voices, "Cancel restores death voices");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::death_voices)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    menu.activate_done();
+    expect(!session.committed().main.death_voices, "Done persists muted death voices");
+}
+
 void fallback_music_previews_cancels_and_commits() {
     auto environment = full_environment();
     environment.context = SettingsMenuContext::in_game;
@@ -1146,6 +1166,7 @@ int main() {
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",
          graphics_capabilities_and_wheel_scrolling_are_deterministic},
         {"fallback_music_previews_cancels_and_commits", fallback_music_previews_cancels_and_commits},
+        {"death_voices_preview_cancel_and_commit", death_voices_preview_cancel_and_commit},
         {"discord_preferences_preview_cancel_and_commit", discord_preferences_preview_cancel_and_commit},
         {"native_graphics_rows_edit_presets_and_report_why_they_are_unavailable",
          native_graphics_rows_edit_presets_and_report_why_they_are_unavailable},

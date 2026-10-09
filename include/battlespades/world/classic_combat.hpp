@@ -5,6 +5,7 @@
 #include "battlespades/world/weapon_runtime.hpp"
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <unordered_map>
 
@@ -40,13 +41,15 @@ public:
     ClassicCombat();
     /** Reproducible stream for reference tests; production seeds once from entropy. */
     explicit ClassicCombat(std::array<std::uint64_t, 2> seed) noexcept;
+    /** Optional presentation eye includes Classic's climb smoothing; body state stays physical. */
     [[nodiscard]] ClassicAttackResult attack(const VxlMap& map,
                                              const PlayerMovementState& player,
                                              std::span<const ClassicHitTarget> targets,
                                              const WeaponAction& action,
                                              std::uint8_t protocol,
                                              bool aiming,
-                                             double seconds);
+                                             double seconds,
+                                             std::optional<Vec3> eye = std::nullopt);
     [[nodiscard]] std::vector<ClassicBlockDamage> expire(double seconds);
     void reset() {
         damage_.clear();
@@ -73,5 +76,21 @@ private:
     std::unordered_map<std::uint32_t, Damage> damage_;
 };
 [[nodiscard]] std::optional<VoxelCell> classic_build_target(
-    const VxlMap&, const PlayerMovementState&, std::span<const ClassicHitTarget> targets);
+    const VxlMap&, const PlayerMovementState&, std::span<const ClassicHitTarget> targets,
+    bool allow_local_overlap = false, std::optional<Vec3> eye = std::nullopt);
+
+/** One attempted airborne placement, retained only until the physical body clears it.
+ * Optional eye affects the aim ray and build range, never the collision overlap. */
+class ClassicBlockPlacement final {
+public:
+    [[nodiscard]] std::optional<VoxelCell> request(
+        const VxlMap&, const PlayerMovementState&, std::span<const ClassicHitTarget>,
+        std::optional<Vec3> eye = std::nullopt);
+    [[nodiscard]] std::optional<VoxelCell> update(
+        const VxlMap&, const PlayerMovementState&, std::span<const ClassicHitTarget>, bool enabled,
+        std::optional<Vec3> eye = std::nullopt);
+    void cancel() noexcept { pending_.reset(); }
+private:
+    std::optional<VoxelCell> pending_;
+};
 } // namespace battlespades::world

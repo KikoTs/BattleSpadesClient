@@ -84,6 +84,28 @@ void normal_play_requires_the_crosshair_to_touch_the_player() {
            "an aimed player behind terrain must not leak a name");
 }
 
+void classic_labels_do_not_reveal_enemies_or_dead_player_targets() {
+    using battlespades::frontend::protocol_player_name_visible;
+    for (const auto protocol : {std::uint8_t{3U}, std::uint8_t{4U}}) {
+        for (const auto team : {std::uint8_t{2U}, std::uint8_t{3U}}) {
+            const auto other_team = static_cast<std::uint8_t>(team == 2U ? 3U : 2U);
+            expect(protocol_player_name_visible(protocol, team, team, false),
+                   "Classic retains aimed teammate identification");
+            expect(!protocol_player_name_visible(protocol, team, other_team, false),
+                   "Classic aiming at an enemy must not disclose their name");
+            expect(!protocol_player_name_visible(protocol, team, other_team, true) &&
+                       !protocol_player_name_visible(protocol, team, team, true),
+                   "Classic death cameras must not add overhead labels");
+            expect(!protocol_player_name_visible(protocol, 0U, team, true) &&
+                       !protocol_player_name_visible(protocol, 0U, team, false),
+                   "Classic spectators must not inherit retail name overlays");
+        }
+    }
+    expect(protocol_player_name_visible(168U, 2U, 3U, false) &&
+               protocol_player_name_visible(168U, 0U, 3U, true),
+           "Classic+ and standard retain their existing label behavior");
+}
+
 } // namespace
 
 int main() {
@@ -91,6 +113,7 @@ int main() {
         projection_tracks_retail_camera_and_scale();
         visibility_fails_closed_at_voxel_walls();
         normal_play_requires_the_crosshair_to_touch_the_player();
+        classic_labels_do_not_reveal_enemies_or_dead_player_targets();
         std::cout << "player-name projection tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -1358,6 +1358,52 @@ void ugc_launchers_never_run_dry() {
     }
 }
 
+void classic_block_attempts_wait_for_actual_placement_before_cooldown() {
+    constexpr double dt{1.0 / 60.0};
+    for (const auto protocol : std::array<std::uint8_t, 2>{3, 4}) {
+        WeaponRuntime runtime{42U};
+        runtime.set_classic_protocol(protocol);
+        runtime.replace_loadout(std::array<std::uint8_t, 2>{4, 5}, std::uint8_t{5});
+        runtime.set_primary(true);
+        runtime.tick(dt);
+        expect(count(runtime.take_actions(), WeaponActionKind::block_line_begin) == 1U,
+               "grounded held build attempts a placement");
+        // The world rejects a block inside the standing feet. The next tick
+        // may jump: no successful send/cooldown notification occurred yet.
+        runtime.tick(dt);
+        expect(count(runtime.take_actions(), WeaponActionKind::block_line_begin) == 1U,
+               "rejected ground attempt cannot suppress the next airborne attempt");
+        for (int frame = 0; frame < 6; ++frame) {
+            runtime.tick(dt);
+            expect(count(runtime.take_actions(), WeaponActionKind::block_line_begin) == 1U,
+                   "deferred underfoot attempt may retry until physical clearance");
+        }
+        // Both immediate and deferred sends take this path. This timestamp,
+        // rather than the original rejected click, starts the half-second.
+        runtime.classic_block_placed();
+        for (int frame = 0; frame < 29; ++frame) {
+            runtime.tick(dt);
+            expect(runtime.take_actions().empty(),
+                   "successful Classic placement throttles held builds for half a second");
+        }
+        bool resumed{};
+        for (int frame = 0; frame < 4; ++frame) {
+            runtime.tick(dt);
+            if (!runtime.take_actions().empty()) {
+                resumed = true;
+                break;
+            }
+        }
+        expect(resumed, "held build resumes after the actual-placement cooldown");
+        runtime.classic_block_placed();
+        runtime.set_primary(false);
+        runtime.tick(dt);
+        runtime.set_primary(true);
+        runtime.tick(dt);
+        expect(runtime.take_actions().empty(), "repressing build cannot bypass successful-placement cooldown");
+    }
+}
+
 int main() {
     try {
         every_original_tool_has_a_concrete_mechanism();
@@ -1374,6 +1420,7 @@ int main() {
         delayed_spade_secondary_matches_retail_windup();
         throwables_preserve_cook_and_charge_release_rules();
         builders_deployables_and_special_tools_have_distinct_actions();
+        classic_block_attempts_wait_for_actual_placement_before_cooldown();
         mounted_machine_gun_keeps_fire_and_deployment_separate();
         invalid_deployable_targets_do_not_spend_stock_or_emit_packets();
         reloads_match_retail_magazine_and_shell_cycles();

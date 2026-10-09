@@ -62,6 +62,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("executable", type=Path)
     parser.add_argument("--port", type=int, default=32889)
+    parser.add_argument("--refill-script", type=Path, help="Optional local copy of aloha-pk's infiblocks.py")
     args = parser.parse_args()
     executable = args.executable.resolve(strict=True)
     if not 1024 <= args.port <= 65535:
@@ -74,10 +75,14 @@ def main():
         (root / "maps/flat.vxl").write_bytes(column * (512 * 512))
         (root / "maps/flat.txt").write_text("name = 'Flat local test'\n", encoding="utf-8")
         shutil.copyfile(Path(__file__).with_name("piqueserver_observe.py"), root / "scripts/observe.py")
+        scripts = '["observe"]'
+        if args.refill_script:
+            shutil.copyfile(args.refill_script.resolve(strict=True), root / "scripts/infiblocks.py")
+            scripts = '["infiblocks", "observe"]'
         (root / "config.toml").write_text(
             f'name = "Classic local test"\nmaster = false\nnetwork_interface = "127.0.0.1"\n'
             f'port = {args.port}\nip_getter = ""\nmax_connections_per_ip = 8\n'
-            'scripts = ["observe"]\nrotation = ["flat"]\ngame_mode = "ctf"\n'
+            f'scripts = {scripts}\nrotation = ["flat"]\ngame_mode = "ctf"\n'
             'respawn_time = "2sec"\nrespawn_waves = false\n', encoding="utf-8"
         )
         with (root / "server.log").open("w", encoding="utf-8") as log:
@@ -93,9 +98,11 @@ def main():
                     time.sleep(0.1)
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     target = pool.submit(target_peer, args.port, root / "events.jsonl")
-                    subprocess.run([str(executable), str(args.port), "--exercise"], check=True, timeout=45)
+                    subprocess.run([str(executable), str(args.port), "--exercise"] +
+                                   (["--refill"] if args.refill_script else []), check=True, timeout=45)
                     target.result(timeout=25)
                 subprocess.run([str(executable), str(args.port), "--rotation"], check=True, timeout=45)
+                subprocess.run([str(executable), str(args.port), "--base-refill"], check=True, timeout=30)
                 events = [json.loads(line) for line in (root / "events.jsonl").read_text(encoding="utf-8").splitlines()]
                 kinds = {event["event"] for event in events}
                 required = {"hit", "kill", "build", "line", "remove", "grenade", "color", "jump"}
@@ -106,6 +113,13 @@ def main():
                 if sum(event["event"] == "jump" and event["player"] == 0 for event in events) != 1:
                     raise RuntimeError("Held SPACE must result in exactly one server jump")
                 print("Accepted hit, kill, colored build, block line, dig, grenade and reload; no corrections or hack reports.")
+                base_refill = next(event for event in events if event["event"] == "base_refill")
+                assert [base_refill[key] for key in ("blocks", "grenades", "hp", "ammo", "reserve")] == [50,3,100,4,50], base_refill
+                print("Ordinary base contact restored health, blocks, grenades and ammunition reserve.")
+                if args.refill_script:
+                    refill = next(event for event in events if event["event"] == "refill")
+                    assert [refill[key] for key in ("blocks", "grenades", "hp", "ammo", "reserve")] == [50,3,64,4,11], refill
+                    print("Actual infiblocks script refilled supplies and preserved health/ammunition.")
             except Exception:
                 print((root / "server.log").read_text(encoding="utf-8", errors="replace"), file=sys.stderr)
                 raise

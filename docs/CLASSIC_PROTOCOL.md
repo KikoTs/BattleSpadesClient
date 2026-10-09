@@ -171,6 +171,29 @@ rates drive that HUD between server updates. No second set of marker graphics
 is introduced. The existing territory HUD has ten slots; larger original TC
 layouts retain their map zones but do not gain extra HUD slots.
 
+CTF bases and TC posts additionally draw the existing `cp.kv6` checkpoint using
+the local BASE entity. These adapter events never go to a server; BASE remains
+unsafe for the retail wire format. Server moves, hiding and ownership changes
+replace or remove the model alongside its marker. Its authored bottom pivot
+rests at the exact server point, and entity mesh reuse includes team/RGB state
+so captured posts do not keep the previous owner's colour.
+
+Ordinary Classic base contact refills 100 HP, 50 blocks, 3 grenades and the
+weapon's full reserve through the server's Restock packet. The loaded magazine
+and any active reload are preserved, matching piqueserver and ZeroSpades.
+Merely rendering or standing near a local entity grants nothing; server script vetoes and refill intervals
+remain authoritative.
+
+Checkpoint validation uses the local piqueserver's ordinary contact/refill path:
+a nonzero player slot walks into a moved base with 37 HP, 7 blocks, 2 grenades
+and 4/11 rifle ammunition. Client and server both finish at 100 HP, 50 blocks,
+3 grenades and 4/50 ammunition, with zero movement corrections or hack reports.
+The same run passes map rotation and the unmodified Aloha infiblocks script.
+Six affected CTest suites pass, including 0.75/0.76 reserve differences,
+refill during an active reload, hidden/moved objectives and TC capture.
+An offscreen render verifies the reused checkpoint model's upright placement
+and custom-coloured flag; this is not an interactive public-server test.
+
 Legacy rosters, team headings and their Deuce helmet masks use the server's
 team palette, including spectator name tags. The health portrait and roster class icons reuse the existing
 cached model-icon renderer with that RGB included in the cache key. Stock
@@ -588,6 +611,127 @@ captures exercise Compatibility and Medium on all four APIs. Metal and ESSL
 variants compile; no Metal hardware visual run is claimed. The loopback
 piqueserver fixture now requires an accepted `on_line_build` event in addition to
 its existing combat, movement and map-rotation checks.
+
+## Classic presentation and script follow-up
+
+The 0.75 sky fades into the same fog color as fully obscured terrain. The fade
+covers the possible 64-block terrain silhouette at the horizontal visibility
+limit, while retaining the selected sky above it. This hides the cutoff without
+extending visibility. The 0.76 and retail sky paths keep their existing behavior.
+Classic VXL import also preserves authored bottom-layer colors, which the minimap
+uses for water, instead of overwriting them with retail's black collision bed.
+
+**Settings → Main → Death voices** independently controls local and remote death
+cries, defaults on, and supports live preview, Cancel and persistent saving. It
+does not affect other combat sounds or corpse physics.
+
+Classic step-up presentation now applies the reference client's 250 ms eye-height
+settling while keeping collision and transmitted positions unchanged. A single
+block click made while jumping can wait for the player's feet to clear the
+original cell. It is cancelled on landing, tool changes, death or invalid terrain;
+range, stock, support and other-player overlap remain checked. The normal block
+cooldown starts when the deferred action is actually sent.
+
+### Aloha's infinite-block script
+
+The script runs on the server; clients consume its normal protocol packets.
+[`infiblocks.py` at 4d0df82](https://github.com/aloha-pk/spades-public/blob/4d0df821902bbf6bead8c97ea2b36d6bc963da71/scripts/infiblocks.py)
+refills after a line leaves at most 25 blocks, or a single build leaves at most
+5. It saves health and ammunition, sends Restock, restores health, then sends
+WeaponReload with the saved magazine/reserve. Piqueserver broadcasts the accepted
+BlockLine after the script hook.
+
+Two client mismatches are corrected:
+
+- Restock's unused player-ID byte is ignored. Piqueserver leaves it zero even
+  when the receiving player occupies another slot; the refill applies locally.
+  [ZeroSpades NetClient.cpp](https://github.com/zerospades/zerospades/blob/6a56dc8444b0380eb77f677ba029d83a9c78d29a/Sources/Client/NetClient.cpp)
+  and [BetterSpades network.c](https://github.com/xtreme8000/BetterSpades/blob/a695aaa7686561c6a3565499716227d8ae3483aa/src/network.c)
+  both use the receiver this way. OpenSpades at `ff9b3e71` also restocks its
+  local player and defers the block top-up until the next player update.
+- Block replenishment is deferred until the packet batch has applied build
+  debits, following the pending-restock approach in
+  [ZeroSpades Player.cpp](https://github.com/zerospades/zerospades/blob/6a56dc8444b0380eb77f677ba029d83a9c78d29a/Sources/Client/Player.cpp).
+  The following HP and ammunition packets retain the script's restored values.
+  No server-specific infinite-supply rule is invented locally.
+
+The optional loopback harness accepts `--refill-script path/to/infiblocks.py` to
+exercise an unmodified copy of that script. Its observer establishes low supplies
+after normal server line validation, then checks the script's resulting stock,
+grenades, health and ammunition. The client checks its resulting stock, health
+and ammunition after receiving the real ENet packet sequence. The ordinary
+exercise also retains its combat, build, movement and map-rotation checks.
+
+Validation on Windows: all seven affected protocol, VXL, settings, tutorial and
+weapon test suites pass, as do all ten localization checks. The Aloha loopback
+exercise ends with 50 blocks, 3 server grenades, 64 HP and 4/11 ammunition, with
+zero movement corrections or hack reports. Map rotation and the separate 0.76
+ENet fixture also pass. The GPU regression passes on D3D11, D3D12, Vulkan and
+OpenGL at both 0x and 4x MSAA, covering every shader tier and the fog/sky seam.
+Real Classic map captures additionally check ground and elevated camera views.
+Metal and ESSL shaders compile; they have not received hardware visual tests.
+
+## Community compatibility and atmosphere isolation follow-up
+
+Normal maps no longer infer Classic appearance from their vertical offset. A
+retail map can also have a +176 offset (`20thCenturyTown` is a shipped example).
+The resolved VXL format owns offline appearance; the negotiated protocol owns
+online appearance, so native servers retain authority even for imported VXLs.
+Personal Classic sky/fog settings cannot replace a native server's atmosphere.
+Selecting a sky resets its unmodified lighting baseline even when that sky is
+already resident; the previous map's surface-brightness normalization must not
+carry into another map sharing the dome.
+
+Classic world water preserves each authored bottom voxel, including black tiles
+with zero baked light. An explicit per-column synthetic-bed bit distinguishes a
+missing water bed from authored black, at 32 KiB per map and no extra draw pass.
+
+Classic disables enemy aimed names and all overhead/death name labels. An aimed
+teammate name remains available, with the nearest enemy still occluding teammates
+behind it. Retail name presentation is unchanged. The adapter explicitly leaves
+retail killer-tracking deathcam disabled.
+
+The hitbox audit uses an independent float32 forward-transform/plane-intersection
+reference derived from ZeroSpades. It compares 4,488 rays across standing,
+crouched, looking, turning and sprinting poses: 1,406 hits and 3,082 misses.
+Hit/miss and body-part checks are strict. Two contact points require alternate
+ordering of verified coplanar float32 ties; all contacts must still match a
+reference candidate within 0.003 blocks. This is not bit-exact binary parity.
+Dimensions are retained; accepted
+body-part flags follow the reference torso/head/arms/legs priority. Terrain gun
+damage also obeys the 128-block horizontal reach gate. Shot/build/grenade origins
+use the smoothed climbing eye while collision retains the physical player body.
+Rejected block placements do not consume the build cooldown; successful immediate
+and deferred sends still start the ordinary half-second cooldown.
+
+Positioned stereo effects now use a cached mono buffer for OpenAL spatialization;
+local/UI/music playback retains authored stereo. The existing cache budget counts
+both buffers. This fixes the confirmed stereo positioning failure; it does not
+claim a new distance mix for the mostly-mono retail weapon recordings.
+
+Authoritative intel pickup, drop and capture packets produce the existing chat
+and center notices with the server's player/team names. Script alert types 3�6
+and legacy server prefixes use that same HUD lane, while missing-sender script
+chat remains visible. Player chat cannot inject those prefixed server alerts.
+Babel apocalypse timing remains server-owned; no local script behavior is guessed.
+
+Graphics validation on Windows passed all five shader tiers on D3D11, D3D12,
+Vulkan and OpenGL with 0x and 4x MSAA. Numeric color differences verify the
+squared fog curve at 0, 32, 64 and 96 blocks, with full obscuration at the cap.
+Water-pattern rendering and both different-dome and same-dome atmosphere resets
+pass. The actual stock town map also renders under its WW1 sky. OpenAL Soft
+loopback verifies left/right positioning, view rotation and preserved local
+stereo; the 21-bed audio cache stays within its 128 MiB budget.
+
+The piqueserver/Aloha exercise, ordinary base contact and map rotation passed
+with zero movement corrections or hack reports. An initial fixture run ended
+with a reason-0 handshake refusal before spawning; a fresh fixture run passed.
+The separate 0.76 ENet fallback/redirect fixture passed. These are loopback
+checks, not a claim of validation against every public server or script.
+
+The Release client builds successfully, and all 13 affected CPU/audio suites
+pass after updating the accepted-build fixture and accounting for verified
+coplanar reference ties. Death/ragdoll simulation was not changed by this pass.
 
 ## Reference provenance and licensing
 

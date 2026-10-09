@@ -3,6 +3,7 @@
 #include "battlespades/render/render_views.hpp"
 #include "battlespades/render/world_renderer.hpp"
 #include "battlespades/world/skylight_map.hpp"
+#include "classic_water_fixture.hpp"
 
 #include <SDL3/SDL.h>
 #include <bgfx/bgfx.h>
@@ -352,6 +353,97 @@ int main(int argc, char** argv) {
         profile=render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
         std::cout << "0.75 gray fog boundary passed at every shader tier" << std::endl;
 
+        // The reference fades by squared XY distance, not just at its final
+        // cutoff. Subtracting two fog colors removes the unknown lighting term:
+        // C192 - C64 = 128 * (distance / 128)^2. Exercise real chunk and model
+        // submissions, all quality tiers, and the separate legacy sea draw.
+        {
+            const auto loaded = world::VxlMap::load(test::classic_water_bytes(),
+                                                   world::VxlDecodeProfile::classic64);
+            expect(static_cast<bool>(loaded), loaded.error);
+            const auto water = world::ChunkMesher{}.mesh(*loaded.map, {16U, 16U});
+            expect(scene.set_world_model_mesh(0, water), std::string{scene.last_error()});
+            camera.classic075_fog = true;
+            camera.fog_distance = 128;
+            for (const auto tier : {settings::ShaderQuality::compatibility,settings::ShaderQuality::low,
+                                   settings::ShaderQuality::medium,settings::ShaderQuality::high,settings::ShaderQuality::ultra}) {
+                profile = render::profile_for(tier,settings::QualityLevel::high);
+                for (const int path : {0, 1, 2}) {
+                    if (path == 2 && tier != settings::ShaderQuality::compatibility) continue;
+                    scene.clear_chunks();
+                    if (path == 0) expect(scene.upload_chunk(water), "Water chunk upload failed");
+                    scene.set_retail_sea_color(path == 2
+                        ? std::optional<std::array<std::uint8_t,3>>{{40U,54U,64U}} : std::nullopt);
+                    const auto selected_draws = path == 1
+                        ? std::span<const render::WorldModelDraw>{draws} : std::span<const render::WorldModelDraw>{};
+                    for (const double distance : {0.0, 32.0, 64.0, 96.0}) {
+                        const double height = 32.0;
+                        camera.eye = {264.5-distance,264.5,239.0-height};
+                        camera.yaw_degrees = 180;
+                        camera.pitch_degrees = std::atan2(height,distance)*180.0/3.141592653589793;
+                        bx::mtxLookAt(view.data(),
+                            {static_cast<float>(camera.eye[0]),264.5F,static_cast<float>(camera.eye[2])},
+                            {264.5F,264.5F,239.0F}, distance == 0 ? bx::Vec3{0,-1,0} : bx::Vec3{0,0,-1},
+                            bx::Handedness::Right);
+                        bx::mtxOrtho(projection.data(),-4,4,-4,4,.1F,300,0,
+                            bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+                        // The sea is 0.6 below the authored bed. Aim at its
+                        // actual surface so its horizontal distance is identical.
+                        if (path == 2) {
+                            camera.eye[2] += .6;
+                            bx::mtxLookAt(view.data(),
+                                {static_cast<float>(camera.eye[0]),264.5F,static_cast<float>(camera.eye[2])},
+                                {264.5F,264.5F,239.6F}, distance == 0 ? bx::Vec3{0,-1,0} : bx::Vec3{0,0,-1},
+                                bx::Handedness::Right);
+                        }
+                        scene.set_fog_color({64,64,64});
+                        const auto dark = capture(selected_draws,false);
+                        scene.set_fog_color({192,192,192});
+                        const auto light = capture(selected_draws,false);
+                        if (path == 0)
+                            expect(scene.last_frame_stats().chunks_submitted == 1U,
+                                   "Fog strength fixture must render the actual terrain chunk");
+                        const auto expected = 128.0 * distance * distance / (128.0 * 128.0);
+                        for (std::size_t channel{}; channel < 3U; ++channel) {
+                            const auto actual = static_cast<int>(light[center+channel])-dark[center+channel];
+                            expect(std::abs(actual-expected) <= 2.0,
+                                "Classic squared fog contrast mismatch: tier="+
+                                std::string{render::quality_profile_name(tier)}+" path="+std::to_string(path)+
+                                " distance="+std::to_string(distance)+" expected="+std::to_string(expected)+
+                                " actual="+std::to_string(actual));
+                        }
+                    }
+                }
+                // The authored floor must hide the uniform sea and retain a
+                // visible red/blue tile grid on every quality setting.
+                scene.clear_chunks();
+                expect(scene.upload_chunk(water), "Water pattern upload failed");
+                scene.set_retail_sea_color(std::array<std::uint8_t,3>{40U,54U,64U});
+                camera.eye = {264,264,207}; camera.pitch_degrees = 90;
+                bx::mtxLookAt(view.data(),{264,264,207},{264,264,239},{0,-1,0},bx::Handedness::Right);
+                bx::mtxOrtho(projection.data(),-7,7,-7,7,.1F,100,0,
+                    bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+                scene.set_fog_color({128,128,128});
+                const auto pattern = capture({},false);
+                std::size_t red{}, blue{};
+                for (std::size_t y=64; y<size-64; ++y) for (std::size_t x=64; x<size-64; ++x) {
+                    const auto pixel = (y*size+x)*4;
+                    red += pattern[pixel] > pattern[pixel+2] + 12;
+                    blue += pattern[pixel+2] > pattern[pixel] + 12;
+                }
+                expect(red > 10000U && blue > 10000U,
+                       "Classic authored water colors were replaced by uniform water");
+                save("classic-water-"+std::string{render::quality_profile_name(tier)},pattern);
+            }
+            scene.clear_chunks();
+            scene.set_retail_sea_color(std::nullopt);
+            camera.classic075_fog = false; camera.fog_distance = 256;
+            camera.eye = {256,256,100}; camera.yaw_degrees = 0; camera.pitch_degrees = 0;
+            profile = render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
+            expect(scene.set_world_model_mesh(0,surface),std::string{scene.last_error()});
+            std::cout << "Classic water grid and squared fog at 0/32/64/96 passed for terrain, models, sea" << std::endl;
+        }
+
         // draw_sea: one 2000-block quad just under the bed, lit by sea_frag
         // (normal up, AO and edge from the neutral cell, grain repeated 2000x,
         // per-fragment fog, then x1.01). Looking straight down at an empty
@@ -389,6 +481,117 @@ int main(int argc, char** argv) {
             scene.set_retail_sea_color(std::nullopt);
             camera.eye=saved_eye;
             std::cout << "retail sea passed" << std::endl;
+        }
+        // A fully fogged chunk must disappear into the chosen sky's horizon,
+        // including when the selected sky texture is a very different color.
+        {
+            camera.classic075_fog = true;
+            camera.fog_distance = 128;
+            camera.eye = {256,256,235};
+            scene.set_fog_color({128,128,128});
+            expect(scene.set_skydome("Classic_B.txt"), std::string{scene.last_error()});
+            bx::mtxLookAt(view.data(),{256,256,235},{300,256,235},{0,0,-1},bx::Handedness::Right);
+            bx::mtxProj(projection.data(),100,1,.1F,1024,bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+            for (const auto tier : {settings::ShaderQuality::compatibility,settings::ShaderQuality::low,
+                                   settings::ShaderQuality::medium,settings::ShaderQuality::high,settings::ShaderQuality::ultra}) {
+                profile=render::profile_for(tier,settings::QualityLevel::high);
+                const auto sky=capture({},false);
+                expect(sky[center]==128 && sky[center+1]==128 && sky[center+2]==128,
+                       "Classic sky horizon must match the opaque fog at the visibility cutoff");
+                const auto top=static_cast<std::size_t>(size / 2)*4;
+                expect(sky[top]!=128 || sky[top+1]!=128 || sky[top+2]!=128,
+                       "Classic horizon fog must retain the selected upper sky");
+            }
+            camera.classic075_fog = false;
+            const auto ordinary=capture({},false);
+            expect(ordinary[center]!=128 || ordinary[center+1]!=128 || ordinary[center+2]!=128,
+                   "The fog horizon override must only apply to 0.75");
+            std::cout << "Classic sky/fog seam and upper sky passed at every shader tier" << std::endl;
+        }
+        // Switching from an authored retail environment to Classic and back
+        // must restore the original fog, terrain brightness and bloom inputs.
+        // Keep opaque geometry across the image so animated sky/cloud UVs do
+        // not make this comparison depend on how quickly the GPU runs.
+        {
+            expect(scene.set_world_model_mesh(0,surface),std::string{scene.last_error()});
+            camera.eye={256,256,96}; camera.yaw_degrees=0; camera.pitch_degrees=90;
+            camera.fog_distance=192;
+            bx::mtxLookAt(view.data(),{256,256,96},{256,256,128},{0,-1,0},bx::Handedness::Right);
+            bx::mtxOrtho(projection.data(),-12,12,-12,12,.1F,300,0,
+                bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+            const auto authored = world::resolve_map_atmosphere(config.asset_root,"WW1.txt");
+            for (const auto tier : {settings::ShaderQuality::compatibility,settings::ShaderQuality::low,
+                                   settings::ShaderQuality::medium,settings::ShaderQuality::high,settings::ShaderQuality::ultra}) {
+                profile=render::profile_for(tier,settings::QualityLevel::high);
+                const auto restore_retail = [&] {
+                    camera.classic075_fog=false; camera.fog_distance=192;
+                    scene.set_fog_color(authored.fog_color);
+                    expect(scene.set_skydome("WW1.txt"),std::string{scene.last_error()});
+                };
+                restore_retail();
+                const auto before=capture(draws,false);
+                camera.classic075_fog=true; camera.fog_distance=128;
+                scene.set_fog_color({128,128,128});
+                expect(scene.set_skydome("Classic_B.txt"),std::string{scene.last_error()});
+                static_cast<void>(capture(draws,false));
+                restore_retail();
+                const auto after=capture(draws,false);
+                expect(before==after,"Returning to retail retained Classic fog or terrain lighting");
+                expect(scene.atmosphere().bloom_threshold==authored.bloom_threshold &&
+                       scene.atmosphere().exposure==authored.exposure &&
+                       scene.atmosphere().sun_color==authored.sun_color &&
+                       scene.atmosphere().fog_color==authored.fog_color,
+                       "Returning to retail retained Classic atmosphere/postprocessing inputs");
+                save("retail-after-classic-"+std::string{render::quality_profile_name(tier)},after);
+            }
+            std::cout << "Authored retail -> Classic -> retail lighting/fog isolation passed" << std::endl;
+
+            // Classic_B is also Training's dome. A same-name selection must
+            // reset the prior map's normalization even though GPU sky assets
+            // are reused. The old fast path incorrectly retained +surface,
+            // and the frontend then skipped fitting the next map entirely.
+            const std::array<std::uint8_t,3> server_fog{27U,45U,83U};
+            const auto classic_base = world::resolve_map_atmosphere(config.asset_root,"Classic_B.txt");
+            const auto same_lighting = [](const world::MapAtmosphere& actual,
+                                          const world::MapAtmosphere& expected) {
+                return actual.key_intensity==expected.key_intensity &&
+                       actual.ambient_intensity==expected.ambient_intensity &&
+                       actual.exposure==expected.exposure &&
+                       actual.bloom_threshold==expected.bloom_threshold &&
+                       actual.source==expected.source;
+            };
+            for (const auto tier : {settings::ShaderQuality::compatibility,settings::ShaderQuality::low,
+                                   settings::ShaderQuality::medium,settings::ShaderQuality::high,settings::ShaderQuality::ultra}) {
+                profile=render::profile_for(tier,settings::QualityLevel::high);
+                scene.set_fog_color(server_fog);
+                expect(scene.set_skydome("Classic_B.txt"),std::string{scene.last_error()});
+                const auto before=capture(draws,false);
+                auto normalized=scene.atmosphere();
+                world::normalize_atmosphere_for_map(normalized,{.05F,.1F});
+                expect(normalized.source.ends_with("+surface") &&
+                       !same_lighting(normalized,classic_base),"Dark-map fit must change the sky baseline");
+                scene.set_atmosphere(normalized);
+                const auto dark_map=capture(draws,false);
+                if (tier!=settings::ShaderQuality::compatibility)
+                    expect(dark_map!=before,"Dark-map fixture must visibly alter enhanced terrain brightness");
+                expect(scene.set_skydome("Classic_B.txt"),std::string{scene.last_error()});
+                expect(same_lighting(scene.atmosphere(),classic_base) &&
+                       scene.atmosphere().fog_color==server_fog,
+                       "Same-dome map change retained previous lighting or replaced authoritative fog");
+                const auto restored=capture(draws,false);
+                expect(restored==before,"Same-dome return to retail retained previous-map brightness");
+                save("same-dome-retail-restored-"+std::string{render::quality_profile_name(tier)},restored);
+                // A second UGC map must fit from the cached sky baseline, not
+                // skip via the old +surface suffix or compound the dark fit.
+                auto next_map=scene.atmosphere();
+                if (!next_map.source.ends_with("+surface"))
+                    world::normalize_atmosphere_for_map(next_map,{.8F,.98F});
+                auto expected=classic_base;
+                world::normalize_atmosphere_for_map(expected,{.8F,.98F});
+                expect(same_lighting(next_map,expected),"Same-dome UGC change did not fit the new map's brightness");
+                scene.set_atmosphere(next_map);
+            }
+            std::cout << "Same-dome dark Classic/UGC -> retail and bright UGC atmosphere reset passed" << std::endl;
         }
         if (argc > 2 && std::string_view{argv[2]} != "-") {
             const auto map = world::VxlMap::load_file(argv[2]);

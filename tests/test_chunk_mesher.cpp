@@ -1,5 +1,6 @@
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/vxl_map.hpp"
+#include "classic_water_fixture.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -123,6 +124,65 @@ int main(int argc, char** argv) {
             const auto expected = (19U << 16U) | (11U << 8U) | 7U;
             expect(!recolored.vertices.empty() && recolored.vertices.front().abgr == expected,
                    "UGC water RGB must recolor transparent forced-bed voxels");
+        }
+
+        // Water colors must survive the entire Classic decode/mesh path, not
+        // only minimap sampling. Alpha is baked light, including an authored
+        // all-zero black tile; it does not mean 'use the uniform sea color'.
+        {
+            const auto bytes = battlespades::test::classic_water_bytes();
+            auto loaded = VxlMap::load(bytes, battlespades::world::VxlDecodeProfile::classic64);
+            expect(static_cast<bool>(loaded), "Classic water fixture must load");
+            expect(loaded.map->source_profile() == battlespades::world::VxlDecodeProfile::classic64 &&
+                   loaded.map->source_z_shift() == 176U,
+                   "Classic import must retain its resolved profile");
+            ChunkMesherConfig water_config;
+            water_config.bed_water_color = {7U, 11U, 19U, 255U};
+            const auto mesh = ChunkMesher{water_config}.mesh(*loaded.map, interior);
+            expect(mesh.face_count() == 256U, "Classic water must expose one top face per column");
+            for (std::size_t face{}; face < mesh.face_count(); ++face) {
+                const auto& first = mesh.vertices[face * 4U];
+                // Every top quad covers exactly one authored voxel. Its first
+                // corner is not necessarily the minimum, so inspect all four.
+                auto x = first.x, y = first.y;
+                for (std::size_t corner{}; corner < 4U; ++corner) {
+                    x = std::min(x, mesh.vertices[face * 4U + corner].x);
+                    y = std::min(y, mesh.vertices[face * 4U + corner].y);
+                }
+                const auto color = battlespades::test::classic_water_color(
+                    static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y));
+                const auto packed = (static_cast<std::uint32_t>(color.blue) << 16U) |
+                                    (static_cast<std::uint32_t>(color.green) << 8U) | color.red;
+                for (std::size_t corner{}; corner < 4U; ++corner) {
+                    const auto& vertex = mesh.vertices[face * 4U + corner];
+                    expect(vertex.z == 239.0F && vertex.abgr == packed,
+                           "Classic water grid must retain every authored RGB, including black");
+                }
+            }
+            // The same maximum z produces the same offset for retail. It must
+            // not activate Classic sky/fog or change retail's uniform water.
+            loaded = VxlMap::load(bytes, battlespades::world::VxlDecodeProfile::retail);
+            expect(static_cast<bool>(loaded) && loaded.map->source_z_shift() == 176U &&
+                   loaded.map->source_profile() == battlespades::world::VxlDecodeProfile::retail,
+                   "Retail and Classic can share offset176 without sharing a source profile");
+            const auto retail_mesh = ChunkMesher{water_config}.mesh(*loaded.map, interior);
+            for (const auto& vertex : retail_mesh.vertices)
+                expect(vertex.abgr == ((19U << 16U) | (11U << 8U) | 7U),
+                       "Explicit retail64 must retain its uniform fallback bed");
+        }
+        {
+            auto loaded = VxlMap::load(battlespades::test::classic_water_bytes(true),
+                                      battlespades::world::VxlDecodeProfile::automatic);
+            expect(static_cast<bool>(loaded) && loaded.map->synthetic_bed(0U, 0U) &&
+                   !loaded.map->synthetic_bed(2U, 2U),
+                   "Only an empty Classic column should receive a synthetic water bed");
+            expect(loaded.map->source_profile() == battlespades::world::VxlDecodeProfile::classic64,
+                   "Automatic import must expose its resolved source profile");
+            expect(loaded.map->set_voxel(0U, 0U, 239U, {0U, 0U, 0U, 0U}) &&
+                   !loaded.map->synthetic_bed(0U, 0U),
+                   "An explicit black replacement must stop using the fallback water color");
+            expect(!loaded.map->synthetic_bed(512U, 0U) && !loaded.map->synthetic_bed(0U, 512U),
+                   "Synthetic bed lookup must reject coordinates outside the map");
         }
 
         // Determinism: identical input produces identical buffers.

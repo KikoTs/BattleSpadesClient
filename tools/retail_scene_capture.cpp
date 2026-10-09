@@ -13,6 +13,7 @@
 //       [ambient=r,g,b] [ambient_intensity=f] [tier=compatibility|low|...]
 //       [backend=direct3d11] [shaders=<bin root>] [sky=x,y,z]
 //       [classic075=1] (original horizontal fog, clamped to 128 blocks)
+//       [checkpoint=x,y,z] [checkpoint_color=r,g,b] (existing base entity)
 //       [explosion_tool=57 effect_position=x,y,z effect_ticks=12]
 //       [effect_color=r,g,b] [effect_gravity=1] [effect_collision=1]
 //       [sticky_fragments=1] (include the attached model breakup for tool 57)
@@ -280,6 +281,28 @@ int main(int argc, char** argv) {
             camera.sky_anchor = std::array<double, 3U>{sky[0], sky[1], sky[2]};
         }
 
+        std::vector<render::WorldModelDraw> entity_draws;
+        if (args.contains("checkpoint")) {
+            const auto position = numbers(args["checkpoint"], 3U);
+            const auto tint = numbers(get("checkpoint_color", "48,160,240"), 3U);
+            const auto* definition = world::find_entity_definition(1U);
+            expect(definition && !definition->parts.empty(), "Base entity model is missing");
+            world::LocalEntity base;
+            base.type = 1U;
+            base.position = {position[0],position[1],position[2]};
+            for (std::size_t part=0; part<definition->parts.size(); ++part) {
+                const auto& piece = definition->parts[part];
+                std::string error;
+                auto model = world::Kv6Model::load_file(config.asset_root / "kv6" / piece.kv6, &error);
+                expect(model.has_value(), error);
+                model->offset_pivots(piece.pivot_offset);
+                world::apply_entity_team_material(*model, base.type,
+                    {static_cast<std::uint8_t>(tint[0]),static_cast<std::uint8_t>(tint[1]),static_cast<std::uint8_t>(tint[2]),255});
+                const auto slot = render::WorldRenderer::entity_slot_base + static_cast<std::uint32_t>(part);
+                expect(scene.set_world_model_mesh(slot, model->mesh()), std::string{scene.last_error()});
+                entity_draws.push_back({slot,world::entity_presentation_transform(base,*definition,piece)});
+            }
+        }
         world::ParticleSystem particles;
         if (args.contains("explosion_tool")) {
             expect(args.contains("effect_position"), "effect_position= required for explosion");
@@ -342,7 +365,7 @@ int main(int argc, char** argv) {
         // Two frames: the first uploads resources and settles the skydome.
         for (int pass = 0; pass < 3; ++pass) {
             expect(ui.begin_frame(), std::string{ui.last_error()});
-            expect(scene.submit(camera, config.drawable_extent, {}, {},
+            expect(scene.submit(camera, config.drawable_extent, {}, entity_draws,
                                 particles.instances(), particles.batches()),
                    std::string{scene.last_error()});
             for (const auto id : {render::backdrop_clear_view_id, render::world_view_id,

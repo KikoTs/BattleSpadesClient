@@ -4,15 +4,18 @@
 #include "battlespades/network/protocol168_runtime.hpp"
 #include "battlespades/network/protocol168_terrain.hpp"
 #include "battlespades/network/protocol168_tool_actions.hpp"
+#include "battlespades/network/protocol168_weapons.hpp"
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/world/classic_combat.hpp"
 #include "battlespades/world/classic_corpse.hpp"
 #include "battlespades/world/classic_environment.hpp"
 #include "battlespades/world/classic_movement.hpp"
+#include "battlespades/world/minimap_overview.hpp"
 #include "battlespades/world/classic_weapons.hpp"
 #include "battlespades/world/player_inventory.hpp"
 #include "battlespades/world/retail_view_model.hpp"
 #include "battlespades/world/tutorial_session.hpp"
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <filesystem>
@@ -78,7 +81,9 @@ bootstrap(network::ClassicProtocolSession& session,
           bool territory_mode = false,
           network::ClassicPackets* events = nullptr,
           bool hidden_objectives = false,
-          const network::ClassicPackets& before_state = {}) {
+          const network::ClassicPackets& before_state = {},
+          std::uint8_t local_id = 0,
+          std::array<std::string_view, 2> team_names = {"Blue", "Green"}) {
     uLongf count = compressBound(static_cast<uLong>(raw.size()));
     std::vector<std::byte> zipped(count);
     check(compress2(reinterpret_cast<Bytef*>(zipped.data()),
@@ -106,11 +111,12 @@ bootstrap(network::ClassicProtocolSession& session,
     for (const auto& packet : before_state)
         check(session.ingest(packet).error.empty(), "deferred bootstrap player");
     Packet state{15};
-    state.byte(0);
+    state.byte(local_id);
     for (int n = 0; n < 9; ++n)
         state.byte(128);
-    for (int n = 0; n < 20; ++n)
-        state.byte(0);
+    for (const auto name : team_names)
+        for (std::size_t n = 0; n < 10; ++n)
+            state.byte(n < name.size() ? static_cast<std::uint8_t>(name[n]) : 0U);
     state.byte(territory_mode ? 1 : 0);
     if (territory_mode) {
         state.byte(3);
@@ -435,18 +441,20 @@ void objective_tests(const std::vector<std::byte>& raw) {
         show.byte(0);
         show.vector(80, 90, 50);
         const auto shown = hidden.ingest(show.bytes);
-        check(shown.error.empty() && shown.events.size() == 1 &&
-                  runtime_packet_is<MinimapZonePacket>(shown.events.front()),
-              "hidden base can become visible through the existing zone component");
+        check(shown.error.empty() && shown.events.size() == 2 &&
+                  runtime_packet_is<MinimapZonePacket>(shown.events.front()) &&
+                  runtime_packet_is<CreateEntityPacket>(shown.events.back()),
+              "hidden base reappears with its existing zone and checkpoint entity");
         Packet hide{11};
         hide.byte(2);
         hide.byte(0);
         hide.vector(
             std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), 128);
         const auto removed = hidden.ingest(hide.bytes);
-        check(removed.error.empty() && removed.events.size() == 1 &&
-                  runtime_packet_is<MinimapZoneClearPacket>(removed.events.front()),
-              "hiding a visible base clears its existing marker");
+        check(removed.error.empty() && removed.events.size() == 2 &&
+                  runtime_packet_is<DestroyEntityPacket>(removed.events.front()) &&
+                  runtime_packet_is<MinimapZoneClearPacket>(removed.events.back()),
+              "hiding a visible base removes both model and marker");
         show.bytes[1] = std::byte{0};
         hide.bytes[1] = std::byte{0};
         const auto flag = hidden.ingest(show.bytes);
@@ -471,16 +479,46 @@ void objective_tests(const std::vector<std::byte>& raw) {
     }
     ClassicProtocolSession ctf{GameProtocol::classic075};
     ClassicPackets events;
-    static_cast<void>(bootstrap(ctf, raw, false, &events));
-    unsigned intel{}, bases{};
+    const auto ctf_boot = bootstrap(ctf, raw, false, &events);
+    world::TutorialSessionConfig base_config;
+    base_config.network_authoritative = true;
+    base_config.classic_protocol = 3;
+    world::TutorialWorldSession base_scene{ctf_boot->map, base_config};
+    const auto apply_entities = [&](const ClassicPackets& packets) {
+        for (const auto& bytes : packets) {
+            const auto decoded = decode_runtime_packet(bytes);
+            if (!decoded) continue;
+            if (const auto* create = std::get_if<CreateEntityPacket>(&*decoded.packet)) {
+                world::LocalEntity entity;
+                entity.id = create->entity_id;
+                entity.type = create->type;
+                entity.team = create->state;
+                entity.face = create->face;
+                entity.position = {create->position[0],create->position[1],create->position[2]};
+                check(base_scene.apply_server_entity(entity), "adapted objective reaches the existing entity lifecycle");
+            } else if (const auto* remove = std::get_if<DestroyEntityPacket>(&*decoded.packet)) {
+                static_cast<void>(base_scene.destroy_server_entity(remove->entity_id));
+            }
+        }
+    };
+    unsigned intel{}, bases{}, base_entities{};
     for (const auto& bytes : events) {
         const auto decoded = decode_runtime_packet(bytes);
         check(decoded && !std::holds_alternative<MinimapBillboardPacket>(*decoded.packet),
               "objectives never add duplicate or custom billboards");
         if (const auto* entity = std::get_if<CreateEntityPacket>(&*decoded.packet)) {
-            check(entity->type == 16,
-                  "CTF uses existing intel entity, never a fabricated base entity");
-            ++intel;
+            if (entity->type == 16) ++intel;
+            else {
+                check(entity->type == 1 && entity->face == 4 && entity->entity_id >= 60002 &&
+                          entity->state >= 2 && entity->has_explicit_color(),
+                      "base uses the existing upright, team-coloured checkpoint entity");
+                const auto* definition = world::find_entity_definition(entity->type);
+                check(definition && !definition->wire_safe && !definition->parts.empty() && definition->parts.front().kv6 == "cp.kv6",
+                      "internal Classic base must not make retail BASE wire-safe");
+                check(!ctf.accepts_client_action(bytes), "adapted base entity is never an outgoing Classic packet");
+                check(!frontend::minimap_entity_style(entity->type), "base entity does not duplicate the existing zone marker");
+                ++base_entities;
+            }
         }
         if (const auto* zone = std::get_if<MinimapZonePacket>(&*decoded.packet)) {
             check(zone->key == 1 && zone->icon_id == 6 && zone->color[0] == 128,
@@ -488,7 +526,22 @@ void objective_tests(const std::vector<std::byte>& raw) {
             ++bases;
         }
     }
-    check(intel == 2 && bases == 2, "one native marker per objective");
+    check(intel == 2 && bases == 2 && base_entities == 2, "two physical bases and one native marker per objective");
+    apply_entities(events);
+    Packet base_move{11}; base_move.byte(2); base_move.byte(1); base_move.vector(42,58,60);
+    const auto moved_base = ctf.ingest(base_move.bytes);
+    check(moved_base.error.empty(), "scripted CTF base move accepted");
+    apply_entities(moved_base.events);
+    const auto base = std::ranges::find(base_scene.entities(), 60002U, &world::LocalEntity::id);
+    check(base_scene.entities().size() == 4 && base != base_scene.entities().end() &&
+              base->position.x == 42 && base->position.y == 58 && base->position.z == 236 && base->team == 2,
+          "moving a CTF base replaces its model without leaving a stale duplicate or changing its fixed team");
+    base_scene.apply_classic_correction({42,58,233.75}, false);
+    base_scene.set_server_health(37);
+    static_cast<void>(base_scene.spend_server_confirmed_blocks(43));
+    for (int n=0; n<30; ++n) base_scene.tick();
+    check(base_scene.health() == 37 && base_scene.blocks_remaining() == 7,
+          "a visible base never grants supplies before the server authorizes Restock");
     const auto heartbeat = ctf.ingest(std::array{std::byte{2}});
     check(heartbeat.error.empty() && heartbeat.events.size() == 1 &&
               static_cast<bool>(decode_world_update_weapon_rows(heartbeat.events.front())),
@@ -497,14 +550,14 @@ void objective_tests(const std::vector<std::byte>& raw) {
     Packet pickup{24};
     pickup.byte(0);
     auto picked = ctf.ingest(pickup.bytes);
-    check(picked.error.empty() && picked.events.size() == 2,
-          "pickup removes ground intel and attaches carried intel");
+    check(picked.error.empty() && picked.events.size() == 4,
+          "pickup removes ground intel, attaches carried intel and announces the event");
     Packet drop{25};
     drop.byte(0);
     drop.vector(22, 33, 59);
     auto dropped = ctf.ingest(drop.bytes);
-    check(dropped.error.empty() && dropped.events.size() == 2, "drop restores one intel entity");
-    check(static_cast<bool>(decode_tool_action_packet(dropped.events.back())),
+    check(dropped.error.empty() && dropped.events.size() == 4, "drop restores one intel entity and announces it");
+    check(static_cast<bool>(decode_tool_action_packet(dropped.events[1])),
           "drop uses the existing pickup lifecycle");
 
     ClassicProtocolSession tc{GameProtocol::classic076};
@@ -557,6 +610,11 @@ void objective_tests(const std::vector<std::byte>& raw) {
     apply(complete.events);
     check(hud.territory_bases().bases[0]->controlled_by == frontend::hud_layout::Team::team2,
           "TC capture changes native HUD ownership");
+    check(std::ranges::any_of(complete.events, [](const auto& bytes) {
+        const auto decoded = decode_runtime_packet(bytes);
+        const auto* entity = decoded ? std::get_if<CreateEntityPacket>(&*decoded.packet) : nullptr;
+        return entity && entity->entity_id == 60000 && entity->type == 1 && entity->state == 3 && entity->face == 4;
+    }), "TC capture also replaces the checkpoint with the new owner's team material");
     Packet moved{11};
     moved.byte(0);
     moved.byte(0);
@@ -835,7 +893,8 @@ void classic_weapon_timing_parity_tests() {
         builder.replace_loadout(std::array<std::uint8_t,2>{5,4},5);
         builder.set_primary(true);
         builder.tick(0.1);
-        check(builder.take_actions().size() == 1, "single block starts placement cooldown");
+        check(builder.take_actions().size() == 1, "single block requests placement");
+        builder.classic_block_placed(); // The fixture's simulated send succeeded.
         builder.set_primary(false);
         builder.set_secondary(true);
         builder.tick(0.1);
@@ -1000,6 +1059,65 @@ void shovel_dig_tests(const std::vector<std::byte>& raw) {
 }
 
 void gameplay_tests(const std::vector<std::byte>& raw) {
+    for (auto protocol : {network::GameProtocol::classic075, network::GameProtocol::classic076}) {
+        network::ClassicProtocolSession adapter{protocol};
+        const auto boot = bootstrap(adapter, raw, false, nullptr, false, {}, 7);
+        check(boot->local_player_id == 7, "nonzero recipient fixture");
+        const std::array refill_wire{std::byte{26}, std::byte{0}};
+        const auto refill = adapter.ingest(refill_wire);
+        check(refill.error.empty() && refill.events.size() == 3, "private restock decodes for a nonzero local slot");
+        for (std::size_t n = 0; n < 2; ++n) {
+            const auto decoded = network::decode_weapon_packet(refill.events[n]);
+            const auto* restock = decoded ? std::get_if<network::RestockPacket>(&*decoded.packet) : nullptr;
+            check(restock && restock->player_id == 7, "Restock's unused zero byte must not target player zero");
+        }
+        world::TutorialSessionConfig supply_config;
+        supply_config.network_authoritative = true;
+        supply_config.classic_protocol = static_cast<std::uint8_t>(protocol);
+        supply_config.initial_class_id = 5;
+        supply_config.initial_loadout = {4,5,6,31};
+        supply_config.initial_tool = 31;
+        supply_config.initial_position = {250.5,250.5,233.75};
+        world::TutorialWorldSession supplies{boot->map, supply_config};
+        supplies.set_server_health(37);
+        static_cast<void>(supplies.spend_server_confirmed_blocks(43));
+        supplies.classic_reload_completed(4,11);
+        supplies.set_primary_held(true);
+        for (int n=0; n<30; ++n) supplies.tick();
+        supplies.set_primary_held(false);
+        supplies.tick();
+        check(supplies.selected_ammo()->magazine == 2 && supplies.health() == 37 && supplies.blocks_remaining() == 7,
+              "base-refill fixture has depleted consumables");
+        for (const auto& packet : refill.events) {
+            if (const auto decoded = network::decode_weapon_packet(packet); decoded) {
+                if (const auto* restock = std::get_if<network::RestockPacket>(&*decoded.packet)) {
+                    if (restock->type == 0) supplies.restock_ammunition();
+                    if (restock->type == 5) supplies.queue_classic_block_restock();
+                }
+            } else if (const auto runtime = network::decode_runtime_packet(packet); runtime) {
+                if (const auto* hp = std::get_if<network::SetHpPacket>(&*runtime.packet))
+                    supplies.set_server_health(hp->health);
+            }
+        }
+        supplies.finish_classic_packet_batch();
+        check(supplies.health() == 100 && supplies.blocks_remaining() == 50 && supplies.selected_ammo()->magazine == 3,
+              "base Restock fully restores HP, blocks and grenades for a nonzero local slot");
+        const auto rifle_reserve = protocol == network::GameProtocol::classic075 ? 50 : 48;
+        check(supplies.equip_inventory_slot(2) && supplies.selected_ammo()->magazine == 4 && supplies.selected_ammo()->reserve == rifle_reserve,
+              "base Restock fills rifle reserve and preserves the magazine, matching the server");
+        check(supplies.request_reload() == world::WeaponStateResult::accepted,
+              "base reload fixture starts a partially loaded rifle reload");
+        supplies.restock_ammunition();
+        check(supplies.selected_ammo()->reloading && supplies.selected_ammo()->magazine == 4,
+              "base refill does not interrupt an active server reload");
+        static_cast<void>(supplies.take_weapon_actions());
+        supplies.set_primary_held(true);
+        supplies.tick();
+        const auto reloading_actions = supplies.take_weapon_actions();
+        check(std::ranges::none_of(reloading_actions, [](const auto& action) {
+                  return action.kind == world::WeaponActionKind::hitscan;
+              }), "base refill cannot allow firing during a rifle reload");
+    }
     auto loaded = network::load_classic_vxl(raw);
     check(static_cast<bool>(loaded), "fixture VXL");
     auto& map = *loaded.map;
@@ -1021,6 +1139,20 @@ void gameplay_tests(const std::vector<std::byte>& raw) {
     interactive.set_primary_held(false);
     check(std::abs(interactive.pitch() + 2.864788975654116) < 1e-6,
           "interactive 075 rifle applies original 0.05 radian kick, not retail recoil");
+    static_cast<void>(interactive.spend_server_confirmed_blocks(30));
+    check(interactive.blocks_remaining() == 20, "refill fixture spends blocks");
+    // aloha infiblocks: Restock, SetHP, WeaponReload, then BlockLine. Like
+    // ZeroSpades, replenish the wallet after the packet batch's build debit.
+    interactive.queue_classic_block_restock();
+    interactive.restock_ammunition();
+    interactive.classic_reload_completed(9, 17);
+    static_cast<void>(interactive.spend_server_confirmed_blocks(3));
+    interactive.finish_classic_packet_batch();
+    check(interactive.blocks_remaining() == 50 && interactive.selected_ammo()->magazine == 9 &&
+          interactive.selected_ammo()->reserve == 17, "script refill wins over its trailing line without overriding restored ammo");
+    static_cast<void>(interactive.spend_server_confirmed_blocks(1));
+    interactive.finish_classic_packet_batch();
+    check(interactive.blocks_remaining() == 49, "restock is one-shot, not locally invented infinite blocks");
     for (const auto protocol : {3, 4}) {
         for (const auto tool : {6, 38, 37}) {
             auto reload_config = config;
@@ -1351,6 +1483,124 @@ void water_movement_tests(const std::vector<std::byte>& raw) {
     builder.position.z = 232.7;
     const auto below = world::classic_build_target(map, builder, {});
     check(below && below->z == 235, "can place below feet after jumping clear of the block");
+    world::ClassicBlockPlacement pending;
+    builder.position.z = 233.6;
+    builder.airborne = true;
+    check(!pending.request(map, builder, {}), "overlapping airborne click is deferred");
+    check(!pending.update(map, builder, {}, true), "pending placement never intersects player");
+    builder.position.z = 232.7;
+    builder.orientation = {1, 0, 0};
+    const auto placed = pending.update(map, builder, {}, true);
+    check(placed && placed->z == 235 && placed->x == 250 && placed->y == 250,
+          "early jump click builds its original cell as soon as feet clear, even after looking away");
+    check(!pending.update(map, builder, {}, true), "deferred placement is emitted once");
+    for (const bool enabled : {false, true}) {
+        builder.position.z = 233.6; builder.orientation = {0,0,1}; builder.airborne = true;
+        static_cast<void>(pending.request(map, builder, {}));
+        builder.position.z = 232.7; builder.airborne = !enabled;
+        check(!pending.update(map, builder, {}, enabled), "landing or leaving the tool cancels a queued build");
+    }
+
+    auto ledge = std::make_shared<world::VxlMap>(map);
+    check(ledge->set_voxel(251, 250, 235, {70, 80, 90, 255}), "step-up camera fixture");
+    world::TutorialWorldSession climber{ledge, config};
+    climber.set_action_held(world::TutorialAction::forward, true);
+    bool climbed{};
+    for (int n = 0; n < 120; ++n) {
+        const auto before = climber.eye_position();
+        climber.tick();
+        if (climber.player().climb_timer > 0) {
+            check(std::abs(climber.eye_position()[2] - before[2]) < 0.2,
+                  "one-block collision climb must not snap the camera");
+            check(climber.eye_position()[2] > climber.player().position.z + 0.9,
+                  "Classic eye retains its old height at the start of a step");
+            climbed = true;
+            break;
+        }
+    }
+    check(climbed, "camera fixture reaches a step");
+    climber.set_action_held(world::TutorialAction::forward, false);
+    // Let the player finish settling onto the ledge. Another collision climb
+    // can occur while the leading corner is still crossing the edge.
+    for (int n=0; n<60; ++n) climber.tick();
+    check(std::abs(climber.eye_position()[2] - climber.player().position.z) < 1e-6,
+          "Classic eye settles to the physical position after climbing");
+}
+
+void classic_notice_tests(const std::vector<std::byte>& raw) {
+    using namespace network;
+    const auto messages = [](const ClassicIngest& result) {
+        check(result.error.empty() && result.wire.empty(), "notices must never send server actions");
+        std::vector<ChatMessagePacket> chats;
+        for (const auto& bytes : result.events) {
+            const auto decoded = decode_runtime_packet(bytes);
+            if (decoded) {
+                if (const auto* message = std::get_if<ChatMessagePacket>(&*decoded.packet))
+                    chats.push_back(*message);
+            }
+        }
+        return chats;
+    };
+    for (const auto protocol : {GameProtocol::classic075, GameProtocol::classic076}) {
+        ClassicProtocolSession session{protocol};
+        const auto boot = bootstrap(session, raw, false, nullptr, false, {}, 0, {"Azure", "Gold"});
+        check(!boot->initial_info.enable_deathcam, "Classic never opts into retail killer deathcam");
+        check(session.ingest(spawn(0).bytes).error.empty(), "notice local player");
+        check(session.ingest(spawn(1).bytes).error.empty(), "notice remote player");
+        const auto chat = [&](std::uint8_t id, std::uint8_t type, std::string_view value) {
+            Packet p{17}; p.byte(id); p.byte(type); p.text(value);
+            return messages(session.ingest(p.bytes));
+        };
+        for (std::uint8_t type = 3; type <= 6; ++type) {
+            const auto result = chat(1, type, "Apocalypse in 10 seconds!");
+            check(result.size() == 2 && result[0].player_id == 255 && result[0].chat_type == 2 &&
+                      result[1].chat_type == 3 && result[1].value == "Apocalypse in 10 seconds!",
+                  "server alert types retain exact script text in chat and existing HUD");
+        }
+        for (const auto prefix : {"C% ", "N% ", "%% ", "!% "}) {
+            const auto result = chat(255, 2, std::string{prefix} + "Server notice");
+            check(result.size() == 2 && result[1].chat_type == 3 && result[1].value == "Server notice",
+                  "legacy server alert prefixes route to native HUD without protocol decoration");
+        }
+        const auto player = chat(1, 0, "C% this is player chat");
+        check(player.size() == 1 && player[0].player_id == 1 && player[0].chat_type == 0 &&
+                  player[0].value == "C% this is player chat",
+              "player text cannot inject a server alert");
+        for (const auto id : {32U, 35U, 250U, 255U}) {
+            const auto server = chat(static_cast<std::uint8_t>(id), 1, "The intel has returned to the heavens");
+            check(server.size() == 1 && server[0].player_id == 255 && server[0].chat_type == 1 &&
+                      server[0].value == "The intel has returned to the heavens",
+                  "missing-sender script messages remain visible with their native lane and exact text");
+        }
+        Packet pickup{24}; pickup.byte(0);
+        const auto picked = messages(session.ingest(pickup.bytes));
+        check(picked.size() == 2 && picked[0].value == "Test picked up Gold's intel" &&
+                  picked[1].value == "You picked up Gold's intel" && picked[1].chat_type == 3,
+              "intel pickup uses the real server team name in native chat and center notice");
+        Packet drop{25}; drop.byte(0); drop.vector(22, 33, 59);
+        const auto dropped = messages(session.ingest(drop.bytes));
+        check(dropped.size() == 2 && dropped[0].value == "Test dropped Gold's intel",
+              "server intel drop emits the existing UI notice");
+        Packet capture{23}; capture.byte(1); capture.byte(0);
+        const auto captured = messages(session.ingest(capture.bytes));
+        check(captured.size() == 2 && captured[1].value == "Test captured Azure's intel",
+              "remote capture preserves player and custom team names");
+        capture.bytes.back() = std::byte{1};
+        const auto winning = messages(session.ingest(capture.bytes));
+        check(winning.size() == 3 && winning[2].value == "Gold captured the final intel.",
+              "winning capture never hardcodes Blue/Green team names");
+    }
+}
+
+void classic_water_color_test() {
+    std::vector<std::byte> raw;
+    for (int n=0; n<512*512; ++n)
+        for (const auto byte : {0,63,63,0,149,93,17,128}) raw.push_back(static_cast<std::byte>(byte));
+    const auto loaded = network::load_classic_vxl(raw);
+    check(static_cast<bool>(loaded), "authored Classic water loads");
+    const auto rgba = world::build_minimap_overview_rgba(*loaded.map);
+    check(rgba[0] == 17 && rgba[1] == 93 && rgba[2] == 149 && rgba[3] == 255,
+          "Classic minimap retains the VXL water color instead of retail's black collision bed");
 }
 } // namespace
 int main() {
@@ -1359,6 +1609,7 @@ int main() {
         protocol_tests(raw);
         territory_state_padding_tests(raw);
         objective_tests(raw);
+        classic_notice_tests(raw);
         stabilization_tests(raw);
         gameplay_tests(raw);
         shovel_dig_tests(raw);
@@ -1366,6 +1617,7 @@ int main() {
         classic_spread_stream_tests(raw);
         grenade_tests(raw);
         water_movement_tests(raw);
+        classic_water_color_test();
         std::cout << "Classic codec, movement, weapons, combat and naming passed\n";
         return 0;
     } catch (const std::exception& e) {

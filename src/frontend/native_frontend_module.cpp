@@ -1903,6 +1903,7 @@ struct NativeFrontendModule::Impl final {
     network::GameProtocol match_protocol{network::GameProtocol::retail168};
     world::ClassicCombat classic_combat;
     std::optional<world::VoxelCell> classic_line_start;
+    world::ClassicBlockPlacement classic_block_placement;
     std::array<double, 128> classic_remote_shot_delay{};
     std::array<double, 128> classic_remote_reload_delay{};
     core::DeferredCleanupQueue::Reservation match_connection_cleanup;
@@ -2596,7 +2597,14 @@ struct NativeFrontendModule::Impl final {
      * identical and there is only one place that can get the lifetime wrong.
      */
     std::map<std::uint64_t, std::uint32_t> entity_part_slots;
-    std::map<std::uint64_t, std::string> entity_part_appearances;
+    struct EntityPartAppearance final {
+        std::string cosmetic;
+        std::uint8_t type{}, team{}, ugc_item{};
+        bool has_color{};
+        std::array<std::uint8_t, 3U> color{};
+        bool operator==(const EntityPartAppearance&) const = default;
+    };
+    std::map<std::uint64_t, EntityPartAppearance> entity_part_appearances;
     /**
      * Minimum render-space Y per uploaded entity part.
      *
@@ -7244,6 +7252,8 @@ struct NativeFrontendModule::Impl final {
         if (audio == nullptr) {
             return;
         }
+        if (voice == world::ClassVoice::death && !applied_settings.main.death_voices)
+            return;
         const auto slot = static_cast<std::size_t>(voice);
         auto& state = selection[slot < selection.size() ? slot : 0U];
         const auto stem = world::choose_voice_line(
@@ -9429,6 +9439,9 @@ struct NativeFrontendModule::Impl final {
         case SettingsRowId::fallback_music:
             applied_settings.main.fallback_music = draft.main.fallback_music;
             sync_fallback_music();
+            return true;
+        case SettingsRowId::death_voices:
+            applied_settings.main.death_voices = draft.main.death_voices;
             return true;
         case SettingsRowId::show_skins:
         case SettingsRowId::show_other_skins:
@@ -13862,6 +13875,7 @@ struct NativeFrontendModule::Impl final {
         classic_random_skydome.clear();
         classic_combat.reset();
         classic_line_start.reset();
+        classic_block_placement.cancel();
         classic_remote_shot_delay.fill(0);
         classic_remote_reload_delay.fill(0);
         const auto mode = resolve_protocol168_mode(bootstrap->initial_info.mode_key,
@@ -14950,7 +14964,10 @@ struct NativeFrontendModule::Impl final {
                     } else if (restock->type == 3U) {
                         tutorial_session->restock_from_ammo_crate();
                     } else if (restock->type == 5U) {
-                        tutorial_session->restock_blocks();
+                        if (network::is_classic_protocol(match_protocol))
+                            tutorial_session->queue_classic_block_restock();
+                        else
+                            tutorial_session->restock_blocks();
                     } else if (restock->type == 6U) {
                         // Character.restock updates the resource immediately;
                         // the following WorldUpdate remains authoritative.
@@ -16282,6 +16299,7 @@ struct NativeFrontendModule::Impl final {
                 }
             }
         }
+        if (tutorial_session) tutorial_session->finish_classic_packet_batch();
     }
 
     [[nodiscard]] std::optional<DeathCameraTarget>
@@ -16442,7 +16460,9 @@ struct NativeFrontendModule::Impl final {
         }
         const auto& player = tutorial_session->player();
         if (network::is_classic_protocol(match_protocol)) {
-            const auto cell = world::classic_build_target(tutorial_session->map(), player, classic_hit_targets());
+            const auto eye = tutorial_session->eye_position();
+            const auto cell = world::classic_build_target(tutorial_session->map(), player,
+                classic_hit_targets(), false, world::Vec3{eye[0], eye[1], eye[2]});
             if (!cell) return {};
             world::BlockTarget result;
             result.cell = world::BlockTargetCell{static_cast<std::int16_t>(cell->x),
@@ -17574,11 +17594,26 @@ struct NativeFrontendModule::Impl final {
     void send_classic_weapon_actions(std::span<const world::WeaponAction> actions) {
         if (!match_connection || !tutorial_session || !local_player_id || !tutorial_session->alive()) return;
         const auto& player = tutorial_session->player();
+        const auto eye_array = tutorial_session->eye_position();
+        const world::Vec3 eye{eye_array[0], eye_array[1], eye_array[2]};
         const auto targets = classic_hit_targets();
         const auto cell_array = [](world::VoxelCell c) {
             return std::array<std::int32_t,3>{static_cast<std::int32_t>(c.x), static_cast<std::int32_t>(c.y), static_cast<std::int32_t>(c.z)};
         };
-        const auto send = [&](const auto& bytes) { if (!bytes.empty() && !match_connection->send_classic(bytes)) settings_warning = "Could not queue classic action"; };
+        const auto send = [&](const auto& bytes) {
+            if (bytes.empty()) return false;
+            if (match_connection->send_classic(bytes)) return true;
+            settings_warning = "Could not queue classic action";
+            return false;
+        };
+        const bool can_place = screen() == FrontendScreen::tutorial_world &&
+            tutorial_session->selected_tool_id() == 5 && tutorial_session->blocks_remaining() > 0 &&
+            !(tutorial_session->movement_flags() & 128U) && !(tutorial_session->action_flags() & 2U);
+        bool placed{};
+        if (const auto pending = classic_block_placement.update(tutorial_session->map(), player, targets, can_place, eye)) {
+            placed = send(network::classic_block_packet(*local_player_id, 0, cell_array(*pending)));
+            if (placed) tutorial_session->classic_block_placed();
+        }
         for (const auto& action : actions) {
             if (action.kind == world::WeaponActionKind::color_pick && match_initial_info.enable_colour_picker) {
                 if (const auto color = tutorial_session->looked_at_block_color(128.0))
@@ -17588,7 +17623,7 @@ struct NativeFrontendModule::Impl final {
             if (action.kind == world::WeaponActionKind::hitscan || action.kind == world::WeaponActionKind::melee) {
                 auto result = classic_combat.attack(tutorial_session->map(), player, targets, action,
                     static_cast<std::uint8_t>(match_protocol), tutorial_session->zoom_target() > 0,
-                    static_cast<double>(monotonic_milliseconds()) / 1000.0);
+                    static_cast<double>(monotonic_milliseconds()) / 1000.0, eye);
                 if (live_terrain_replica) {
                     for (const auto& damage : result.damage)
                         live_terrain_replica->set_classic_block_damage(damage.cell,damage.remaining,damage.original);
@@ -17599,11 +17634,11 @@ struct NativeFrontendModule::Impl final {
                     remember_predicted_terrain_hit(*local_player_id,impact.cell,latest_world_loop);
                 }
                 for (const auto& tracer : result.tracers) {
-                    const auto delta=world::Vec3{tracer.endpoint.x-player.position.x,tracer.endpoint.y-player.position.y,tracer.endpoint.z-player.position.z};
-                    present_corpse_hit(player.position,tracer.direction,
+                    const auto delta=world::Vec3{tracer.endpoint.x-eye.x,tracer.endpoint.y-eye.y,tracer.endpoint.z-eye.z};
+                    present_corpse_hit(eye,tracer.direction,
                         std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z),action.tool_id,result.tracers.size(),action.seed);
                     const auto pack=[](world::Vec3 v){return std::array<float,3>{static_cast<float>(v.x),static_cast<float>(v.y),static_cast<float>(v.z)};};
-                    if(const auto launch=world::plan_tracer_launch(retail_look_active(),pack(player.position),
+                    if(const auto launch=world::plan_tracer_launch(retail_look_active(),pack(eye),
                         pack(tracer.direction),local_muzzle_point(),pack(tracer.endpoint)))
                         spawn_tracer(action.tool_id,launch->start,launch->end);
                 }
@@ -17627,18 +17662,24 @@ struct NativeFrontendModule::Impl final {
                 }
                 if (result.destroy) send(network::classic_block_packet(*local_player_id, result.block_action, cell_array(*result.destroy)));
             } else if (action.kind == world::WeaponActionKind::oriented_item && action.tool_id == 31) {
-                const auto& p=player.position;const auto& f=player.orientation;const auto& v=player.velocity;
+                const auto& p=eye;const auto& f=player.orientation;const auto& v=player.velocity;
                 send(network::classic_grenade_packet(*local_player_id, static_cast<float>(action.value),
                     {static_cast<float>(p.x+f.x*0.1),static_cast<float>(p.y+f.y*0.1),static_cast<float>(p.z+f.z*0.1)},
                     {static_cast<float>(v.x+f.x),static_cast<float>(v.y+f.y),static_cast<float>(v.z+f.z)}));
             } else if (action.kind == world::WeaponActionKind::reload_started) {
                 static_cast<void>(match_connection->send(network::encode_packet(network::WeaponReloadPacket{*local_player_id,action.tool_id,false})));
             } else if (action.kind == world::WeaponActionKind::block_line_begin) {
-                auto target=world::classic_build_target(tutorial_session->map(),player,targets);
-                if (action.secondary) classic_line_start=target;
-                else if (target && tutorial_session->blocks_remaining()>0) send(network::classic_block_packet(*local_player_id,0,cell_array(*target)));
+                if (action.secondary) {
+                    classic_block_placement.cancel();
+                    classic_line_start = world::classic_build_target(tutorial_session->map(), player, targets, false, eye);
+                } else if (can_place && !placed) {
+                    if (const auto target = classic_block_placement.request(tutorial_session->map(), player, targets, eye)) {
+                        placed = send(network::classic_block_packet(*local_player_id, 0, cell_array(*target)));
+                        if (placed) tutorial_session->classic_block_placed();
+                    }
+                }
             } else if (action.kind == world::WeaponActionKind::block_line_commit) {
-                const auto target=world::classic_build_target(tutorial_session->map(),player,targets);
+                const auto target=world::classic_build_target(tutorial_session->map(),player,targets,false,eye);
                 if (target && classic_line_start && tutorial_session->blocks_remaining()>0) {
                     network::BlockLinePacket line;
                     const auto start=cell_array(*classic_line_start),end=cell_array(*target);
@@ -21748,6 +21789,7 @@ struct NativeFrontendModule::Impl final {
         }
         classic_line_start.reset();
         map_transition_armed = false;
+        classic_block_placement.cancel();
         live_map_generation = 0U;
         same_peer_loading_route_pending = false;
         map_transition_reconnecting = false;
@@ -22092,7 +22134,12 @@ struct NativeFrontendModule::Impl final {
         minimap_map_revision = derived_world->map_revision;
         minimap_texture_upload_pending = true;
         map_surface_brightness = derived_world->surface_brightness;
-        classic_environment_map = classic_environment_map || shared_map->source_z_shift() == 176U;
+        // A retail 64-high map can have the SAME 176-block offset as Classic.
+        // Only the decoded format (offline) or negotiated protocol (online)
+        // authorizes personal Classic sky/fog; native servers own their sky.
+        classic_environment_map = settings::classic_appearance_allowed(
+            static_cast<std::uint8_t>(match_protocol), network_match,
+            shared_map->source_profile() == world::VxlDecodeProfile::classic64);
         if (classic_environment_map) {
             classic_offline_fog = world_renderer.atmosphere().fog_color;
             classic_random_skydome = world::choose_classic_skydome(*shared_map,
@@ -24111,7 +24158,10 @@ struct NativeFrontendModule::Impl final {
             const auto* cosmetic=(entity.type==11U||entity.type==12U) ? equipped_cosmetic(entity.owner,"tombstone") : equipped_cosmetic(entity.owner,"entity:"+std::to_string(entity.type));
             if(!cosmetic&&entity.owner>=128U&&(!network_match||applied_settings.main.show_other_skins))
                 cosmetic=local_equipped_cosmetic("entity:"+std::to_string(entity.type));
-            const auto appearance=cosmetic ? cosmetic->id : std::string{};
+            // An existing slot also needs a fresh mesh after objective
+            // ownership/colour changes, even when its cosmetic is unchanged.
+            const EntityPartAppearance appearance{cosmetic ? cosmetic->id : std::string{},
+                entity.type, entity.team, entity.ugc_item_id, entity.has_color, entity.color};
             for (std::size_t part = 0U; part < model_parts.size(); ++part) {
                 const auto key = entity_part_key(entity.id, part);
                 const auto existing_slot=entity_part_slots.find(key);
@@ -28589,6 +28639,13 @@ struct NativeFrontendModule::Impl final {
             drawable_extent.height == 0U || match_results.visible()) {
             return;
         }
+        const auto label_protocol = static_cast<std::uint8_t>(match_protocol);
+        const auto* label_observer = local_player_id.has_value()
+                                         ? tutorial_roster.player(*local_player_id) : nullptr;
+        const auto observer_team = label_observer ? label_observer->team : std::uint8_t{};
+        if (death_camera.active() &&
+            !protocol_player_name_visible(label_protocol, observer_team, observer_team, true))
+            return;
         const auto eye_array = death_camera.active()
                                    ? [&]() {
                                          const auto pose = death_camera.pose();
@@ -28638,7 +28695,8 @@ struct NativeFrontendModule::Impl final {
                 aimed_name = player.name;
                 aimed_team = player.team;
             }
-            if (nearest_hit.has_value()) {
+            if (nearest_hit.has_value() &&
+                protocol_player_name_visible(label_protocol, observer_team, aimed_team, false)) {
                 constexpr double width{360.0};
                 constexpr double height{20.0};
                 const auto* local = local_player_id.has_value()
@@ -31971,6 +32029,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         const auto attack_events = impl_->tutorial_session->take_attack_events();
         const auto weapon_actions = impl_->tutorial_session->take_weapon_actions();
         const bool local_alive = impl_->tutorial_session->alive() && !impl_->death_camera.active();
+        if (!local_alive) impl_->classic_block_placement.cancel();
         // A KillAction may arrive after this life queued a local shot but before
         // the presentation phase drains it. Never transmit or sonify that stale
         // action, and in particular never reopen a loop cancelled by death.

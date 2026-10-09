@@ -2185,6 +2185,8 @@
     "CLASSIC_FOG_GREEN": "Fog green",
     "CLASSIC_FOG_BLUE": "Fog blue",
     "CLASSIC_FOG_DESCRIPTION": "Legacy VXL maps only: use server fog, match the sky, or mix red, green and blue below. Fog distance stays unchanged. Cancel restores your previous colors.",
-    "CLASSIC_FOG_GRAY": "Classic gray (default)"
+    "CLASSIC_FOG_GRAY": "Classic gray (default)",
+    "DEATH_VOICES": "Death voices",
+    "DEATH_VOICES_DESCRIPTION": "Play death cries for yourself and other players. Other combat sounds are unchanged."
   }
 }

@@ -267,9 +267,11 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes, VxlDecodeProfile pr
     map.solid_bits_.assign((voxel_count + 7U) / 8U, 0U);
     map.colors_.assign(voxel_count, 0U);
     map.implicit_bits_.assign((voxel_count + 7U) / 8U, 0U);
+    map.synthetic_bed_bits_.assign((area + 7U) / 8U, 0U);
     map.surfaces_.assign(area, no_surface);
     map.chunk_solids_.assign(std::size_t{(width / 16U) * (depth / 16U) * (height / 16U)}, 0U);
     map.source_edge_ = edge;
+    map.source_profile_ = profile;
     // Some canonical 240-high columns legally reference sentinel z=240 in
     // the fourth span-header byte. The server clamps their legacy-map shift
     // to zero. Unsigned `239 - 240` wrapped to UINT_MAX here, moving every
@@ -359,10 +361,16 @@ VxlLoadResult VxlMap::load(std::span<const std::byte> bytes, VxlDecodeProfile pr
     // Retail always installs a collision bed, including empty water columns.
     // vxl.pyd sub_10029900 (map finaliser 0x1002A380) sets every z=239 cell
     // solid AND overwrites its colour with one map-wide value, so authored
-    // z=239 colours are intentionally discarded here as well.
+    // z=239 colours are intentionally discarded for retail. Classic's z=63
+    // is authored water, also used verbatim by the other clients' minimaps.
     for (std::uint32_t y{}; y < depth; ++y) {
         for (std::uint32_t x{}; x < width; ++x) {
+            if (profile == VxlDecodeProfile::classic64 && map.solid(x, y, height - 1U))
+                continue;
             map.put(x, y, height - 1U, 0U);
+            const auto column = static_cast<std::size_t>(y) * width + x;
+            map.synthetic_bed_bits_[column >> 3U] |=
+                static_cast<std::uint8_t>(1U << (column & 7U));
         }
     }
     // The finaliser runs the chroma-marker cleanup right after the bed.
@@ -538,6 +546,12 @@ void VxlMap::write_rgb(std::uint32_t x, std::uint32_t y, std::uint32_t z,
              static_cast<std::uint32_t>(color_value.blue);
 }
 
+bool VxlMap::synthetic_bed(std::uint32_t x, std::uint32_t y) const noexcept {
+    const auto column = static_cast<std::size_t>(y) * width + x;
+    return x < width && y < depth && (column >> 3U) < synthetic_bed_bits_.size() &&
+           (synthetic_bed_bits_[column >> 3U] & (1U << (column & 7U))) != 0U;
+}
+
 bool VxlMap::set_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z,
                        VxlColor color_value) noexcept {
     if (x >= width || y >= depth || z >= height) {
@@ -550,6 +564,11 @@ bool VxlMap::set_voxel(std::uint32_t x, std::uint32_t y, std::uint32_t z,
         (alpha_byte << 24U) | (static_cast<std::uint32_t>(color_value.red) << 16U) |
             (static_cast<std::uint32_t>(color_value.green) << 8U) |
             static_cast<std::uint32_t>(color_value.blue));
+    if (z == height - 1U) {
+        const auto column = static_cast<std::size_t>(y) * width + x;
+        synthetic_bed_bits_[column >> 3U] &=
+            static_cast<std::uint8_t>(~(1U << (column & 7U)));
+    }
     const auto key = static_cast<std::uint32_t>(index(x, y, z));
     damaged_.erase(key);
     user_health_.erase(key);

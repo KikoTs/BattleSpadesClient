@@ -506,7 +506,7 @@ void main()
     // mesher's self-illumination strength, and terrain is opaque regardless.
     vec3 final_rgb = mix(lit, fog_rgb, fog);
     // sea_frag: "bump it up a little bit" after the fog mix.
-    if (u_modelOpacity.w > 0.5)
+    if (u_modelOpacity.w > 0.5 && u_cameraPosition.w < 0.5)
     {
         final_rgb *= 1.01;
     }

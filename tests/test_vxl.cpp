@@ -3,9 +3,11 @@
 
 #include <array>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <span>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -124,6 +126,18 @@ int main() {
         expect(loaded.map->solid_voxels() > 512ULL * 512ULL,
                "Training must contain terrain above the forced floor");
         expect(loaded.map->solid(0U, 0U, 239U), "retail floor must cover every column");
+        expect(loaded.map->source_profile() == battlespades::world::VxlDecodeProfile::retail,
+               "Training must retain its retail source semantics");
+        for (const auto name : {"20thCenturyTown.vxl", "WW1.vxl"}) {
+            const auto stock = battlespades::world::VxlMap::load_file(
+                std::filesystem::path{AOS_TRAINING_VXL}.parent_path() / name);
+            expect(static_cast<bool>(stock), stock.error.c_str());
+            expect(stock.map->source_profile() == battlespades::world::VxlDecodeProfile::retail,
+                   "64-high stock maps must not activate Classic sky/fog preferences");
+            if (std::string_view{name} == "20thCenturyTown.vxl")
+                expect(stock.map->source_z_shift() == 176U,
+                       "20thCenturyTown exercises retail's ambiguous Classic-sized z offset");
+        }
         std::cout << "Training.vxl: solids=" << loaded.map->solid_voxels()
                   << " z_shift=" << loaded.map->source_z_shift() << '\n';
         return 0;

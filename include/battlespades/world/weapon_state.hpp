@@ -48,13 +48,13 @@ public:
     [[nodiscard]] WeaponStateResult finish_reload(std::uint8_t tool_id) noexcept;
     /** Cancel Character's single global reload state across the old loadout. */
     void cancel_reload() noexcept;
-    /** Full spawn reset: every tool back to its initial magazine and reserve. */
+    /** Retail resets ammunition; Classic fills reserve/grenades and preserves the magazine/reload. */
     void restock_ammunition() noexcept;
     /**
      * Partial top-up from an ammo crate. Returns true if anything moved.
      *
      * Deliberately distinct from `restock_ammunition()` rather than a flag on
-     * it: retail's crate is a PARTIAL top-up while spawn is a full reset, and
+     * it: retail's crate is a PARTIAL top-up while retail restock is a full reset, and
      * the two are selected by different network paths. Collapsing them into one
      * method would force the later Restock(69) handler to pick a behaviour it
      * has no business choosing.

@@ -2148,6 +2148,8 @@
     "CLASSIC_FOG_GREEN": "Mgła: zielony",
     "CLASSIC_FOG_BLUE": "Mgła: niebieski",
     "CLASSIC_FOG_DESCRIPTION": "Stare mapy VXL: kolor serwera, nieba lub własny RGB. Odległość bez zmian. Anuluj przywraca poprzednie kolory.",
-    "CLASSIC_FOG_GRAY": "Klasyczna szarość (domyślna)"
+    "CLASSIC_FOG_GRAY": "Klasyczna szarość (domyślna)",
+    "DEATH_VOICES": "Okrzyki śmierci",
+    "DEATH_VOICES_DESCRIPTION": "Odtwarza okrzyki śmierci twojej postaci i innych graczy. Pozostałe dźwięki walki pozostają bez zmian."
   }
 }

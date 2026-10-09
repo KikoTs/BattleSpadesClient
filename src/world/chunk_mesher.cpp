@@ -494,8 +494,7 @@ ChunkMesh ChunkMesher::mesh(const VxlMap& map, ChunkKey key) const {
                     continue;
                 }
                 const auto stored = map.color(x, y, z);
-                const bool empty_bed = z == VxlMap::height - 1U && stored.has_value() &&
-                    stored->red == 0U && stored->green == 0U && stored->blue == 0U && stored->alpha == 0U;
+                const bool empty_bed = z == VxlMap::height - 1U && map.synthetic_bed(x, y);
                 // Alpha is baked light, not opacity. A dark authored block
                 // keeps its RGB; only the synthetic empty water bed uses the fallback.
                 auto base = stored.has_value() && !empty_bed ? *stored : config_.bed_water_color;

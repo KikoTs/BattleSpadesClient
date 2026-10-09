@@ -604,6 +604,9 @@ struct WorldRenderer::Impl final {
                                     default_fog_color[2U] / 255.0F,
                                     1.0F};
     std::string skydome_name;
+    // Immutable sky-only lighting for this resident dome. Per-map brightness
+    // normalization belongs to atmosphere, never to the reusable GPU assets.
+    world::MapAtmosphere skydome_base_atmosphere;
     std::chrono::steady_clock::time_point skydome_clock{std::chrono::steady_clock::now()};
     struct SkydomeSlot final {
         bgfx::VertexBufferHandle vertices{bgfx::kInvalidHandle};
@@ -1402,12 +1405,16 @@ bool WorldRenderer::set_skydome(std::string_view definition_name) {
     if (!safe_asset_basename(definition_name, ".txt")) {
         return impl_->fail("unsafe skydome definition name");
     }
-    if (impl_->skydome_name == definition_name && !impl_->skydome_slots.empty()) {
-        impl_->last_error.clear();
-        return true;
-    }
-
     try {
+        if (impl_->skydome_name == definition_name && !impl_->skydome_slots.empty()) {
+            // Different maps can share a sky (Classic_B and retail Training,
+            // for example). Reuse its buffers/textures, but discard the last
+            // map's +surface lighting/exposure/bloom fit without new disk I/O.
+            impl_->atmosphere = impl_->skydome_base_atmosphere;
+            impl_->atmosphere.fog_color = impl_->fog_bytes;
+            impl_->last_error.clear();
+            return true;
+        }
         const auto stem = std::filesystem::path{definition_name}.stem();
         const auto directory = impl_->asset_root / "mesh" / stem;
         const auto definition_path = directory / definition_name;
@@ -1554,7 +1561,8 @@ bool WorldRenderer::set_skydome(std::string_view definition_name) {
         // leaves the previous meshes resident. A server-supplied fog colour
         // that already arrived stays authoritative over the derived one.
         const auto previous_fog = impl_->fog_bytes;
-        impl_->atmosphere = world::resolve_map_atmosphere(impl_->asset_root, definition_name);
+        impl_->skydome_base_atmosphere = world::resolve_map_atmosphere(impl_->asset_root, definition_name);
+        impl_->atmosphere = impl_->skydome_base_atmosphere;
         impl_->atmosphere.fog_color = previous_fog;
         impl_->last_error.clear();
         return true;
@@ -1583,7 +1591,7 @@ void WorldRenderer::set_retail_fog_color(std::array<std::uint8_t, 3U> color) noe
 std::array<std::uint8_t, 3U> retail_sea_color_for(const world::VxlMap& map,
                                                    world::VxlColor bed_water_color) noexcept {
     auto bed = map.color(0U, 0U, world::VxlMap::height - 1U).value_or(bed_water_color);
-    if (bed.red == 0U && bed.green == 0U && bed.blue == 0U && bed.alpha == 0U) {
+    if (map.synthetic_bed(0U, 0U)) {
         bed = bed_water_color;
     }
     return {bed.red, bed.green, bed.blue};
@@ -1962,6 +1970,11 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     bgfx::setViewTransform(world_view_id, view.data(), projection.data());
     bgfx::touch(world_view_id);
 
+    const std::array<float, 4U> camera_uniform{eye.x, eye.y, eye.z, camera.classic075_fog ? 1.0F : 0.0F};
+    const std::array<float, 4U> fog_uniform{active_fog[0U] / 255.0F,
+                                         active_fog[1U] / 255.0F,
+                                         active_fog[2U] / 255.0F,
+                                         static_cast<float>(camera.fog_distance)};
     if (!impl_->skydome_slots.empty()) {
         std::array<float, 16U> sky_transform{};
         // GameScene.draw passes the camera as SkyDome.draw(x, -z, y) and the
@@ -1986,12 +1999,14 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         const auto retail_time = retail_skydome_time(elapsed_seconds);
         for (const auto& slot : impl_->skydome_slots) {
             const std::array<float, 4U> uv_time{
-                slot.uv_speed[0U], slot.uv_speed[1U], retail_time, 0.0F};
+                slot.uv_speed[0U], slot.uv_speed[1U], retail_time, camera.classic075_fog ? 1.0F : 0.0F};
             bgfx::setTransform(sky_transform.data());
             bgfx::setVertexBuffer(0U, slot.vertices);
             bgfx::setTexture(0U, impl_->skydome_sampler, slot.texture,
                              impl_->world_sampler(BGFX_SAMPLER_NONE));
             bgfx::setUniform(impl_->skydome_uv_time, uv_time.data());
+            bgfx::setUniform(impl_->camera_uniform, camera_uniform.data());
+            bgfx::setUniform(impl_->fog_uniform, fog_uniform.data());
             // The exporter deliberately uses negative scale so the camera
             // sees the triangle stream from inside. No culling matches the
             // retail GL pass and keeps sparse billboard layers visible.
@@ -2007,12 +2022,6 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     std::array<float, 16U> view_projection{};
     bx::mtxMul(view_projection.data(), view.data(), projection.data());
     const auto planes = frustum_planes(view_projection);
-
-    const std::array<float, 4U> camera_uniform{eye.x, eye.y, eye.z, camera.classic075_fog ? 1.0F : 0.0F};
-    const std::array<float, 4U> fog_uniform{active_fog[0U] / 255.0F,
-                                            active_fog[1U] / 255.0F,
-                                            active_fog[2U] / 255.0F,
-                                            static_cast<float>(camera.fog_distance)};
 
     // Terrain shading mode. KV6 models, effect cubes and the viewmodel bake
     // their own face shade at mesh time, so they pass through unlit; only the

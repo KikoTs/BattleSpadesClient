@@ -90,14 +90,15 @@ ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
                                           const WeaponAction& action,
                                           std::uint8_t protocol,
                                           bool aiming,
-                                          double seconds) {
+                                          double seconds,
+                                          std::optional<Vec3> view_eye) {
     ClassicAttackResult result;
     const bool melee = action.kind == WeaponActionKind::melee;
     const auto rules = classic_weapon_rules(protocol, action.tool_id);
     if (!melee && !rules)
         return result;
     result.damage = expire(seconds);
-    const auto eye = player.position;
+    const auto eye = view_eye.value_or(player.position);
     Vec3 start = eye;
     if (!melee) {
         start.x += player.orientation.x * 0.01;
@@ -121,7 +122,13 @@ ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
             break;
         const Vec3 ray{pellet[0] / length, pellet[1] / length, pellet[2] / length};
         auto terrain = trace_first_solid(map, floats(start), floats(ray), melee ? 32.0F : 256.0F);
+        // CastRay2 traces farther than the playable fog radius. Both original
+        // clients gate block damage by horizontal distance, not ray length.
+        if (!melee && terrain &&
+            std::hypot(terrain->position[0] - start.x, terrain->position[1] - start.y) > 128.0)
+            terrain.reset();
         std::optional<ClassicHit> target;
+        unsigned hit_parts{};
         double closest = std::numeric_limits<double>::infinity();
         for (const auto& t : targets) {
             const auto diff = sub(t.position, start);
@@ -151,6 +158,8 @@ ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
             const auto consider = [&](double distance, std::uint8_t part) {
                 if (distance >= 0 && (distance < closest ||
                                       ((part == 0 || part == 1) && target && target->part == 2))) {
+                    if (!target || target->player != t.id) hit_parts = 0;
+                    hit_parts |= 1U << part;
                     closest = distance;
                     target = ClassicHit{t.id, part};
                 }
@@ -186,6 +195,12 @@ ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
                                        start.z + ray.z * distance}});
         }
         if (target && (!terrain || closest < terrain->distance)) {
+            // ZeroSpades keeps the accepted body flags for this player. A ray
+            // crossing a nearer leg after the torso must still report torso
+            // damage; `closest` remains the actual first surface contact.
+            if (!melee)
+                target->part = (hit_parts & 1U) ? 0 : (hit_parts & 2U) ? 1 :
+                               (hit_parts & 4U) ? 2 : 3;
             target->position = {start.x + ray.x * closest, start.y + ray.y * closest,
                                 start.z + ray.z * closest};
             result.hits.push_back(*target);
@@ -258,8 +273,11 @@ std::vector<ClassicBlockDamage> ClassicCombat::expire(double seconds) {
 
 std::optional<VoxelCell> classic_build_target(const VxlMap& map,
                                               const PlayerMovementState& p,
-                                              std::span<const ClassicHitTarget> targets) {
-    const auto hit = trace_first_solid(map, floats(p.position), floats(p.orientation), 12);
+                                              std::span<const ClassicHitTarget> targets,
+                                              bool allow_local_overlap,
+                                              std::optional<Vec3> view_eye) {
+    const auto eye = view_eye.value_or(p.position);
+    const auto hit = trace_first_solid(map, floats(eye), floats(p.orientation), 12);
     if (!hit)
         return {};
     const auto x = static_cast<int>(hit->cell.x) + hit->normal[0],
@@ -270,12 +288,48 @@ std::optional<VoxelCell> classic_build_target(const VxlMap& map,
     VoxelCell cell{static_cast<std::uint32_t>(x),
                    static_cast<std::uint32_t>(y),
                    static_cast<std::uint32_t>(z)};
-    if (chebyshev(sub({x + 0.5, y + 0.5, z + 0.5}, p.position)) >= 3 ||
-        map.solid(cell.x, cell.y, cell.z) || overlap(cell, p.position, p.crouch))
+    if (chebyshev(sub({x + 0.5, y + 0.5, z + 0.5}, eye)) >= 3 ||
+        map.solid(cell.x, cell.y, cell.z) ||
+        (!allow_local_overlap && overlap(cell, p.position, p.crouch)))
         return {};
     for (const auto& target : targets)
         if (overlap(cell, target.position, target.crouched))
             return {};
+    return cell;
+}
+
+std::optional<VoxelCell> ClassicBlockPlacement::request(
+    const VxlMap& map, const PlayerMovementState& player, std::span<const ClassicHitTarget> others,
+    std::optional<Vec3> eye) {
+    if (pending_) return {};
+    const auto cell = classic_build_target(map, player, others, true, eye);
+    if (!cell) return {};
+    if (!overlap(*cell, player.position, player.crouch)) return cell;
+    if (player.airborne) pending_ = cell;
+    return {};
+}
+
+std::optional<VoxelCell> ClassicBlockPlacement::update(
+    const VxlMap& map, const PlayerMovementState& player, std::span<const ClassicHitTarget> others,
+    bool enabled, std::optional<Vec3> eye) {
+    if (!enabled || !player.airborne) pending_.reset();
+    if (!pending_) return {};
+    const auto cell = *pending_;
+    // Do not retarget when the player looks away, extend build range or place
+    // inside another body. Revalidate support after any intervening map edit.
+    const bool supported = map.solid(cell.x - 1U, cell.y, cell.z) ||
+        map.solid(cell.x + 1U, cell.y, cell.z) || map.solid(cell.x, cell.y - 1U, cell.z) ||
+        map.solid(cell.x, cell.y + 1U, cell.z) || map.solid(cell.x, cell.y, cell.z - 1U) ||
+        map.solid(cell.x, cell.y, cell.z + 1U);
+    if (!supported || map.solid(cell.x, cell.y, cell.z) ||
+        chebyshev(sub({cell.x + 0.5, cell.y + 0.5, cell.z + 0.5}, eye.value_or(player.position))) >= 3) {
+        pending_.reset();
+        return {};
+    }
+    if (overlap(cell, player.position, player.crouch)) return {};
+    for (const auto& other : others)
+        if (overlap(cell, other.position, other.crouched)) return {};
+    pending_.reset();
     return cell;
 }
 

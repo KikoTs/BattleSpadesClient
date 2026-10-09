@@ -2185,6 +2185,8 @@
     "CLASSIC_FOG_GREEN": "霧：緑",
     "CLASSIC_FOG_BLUE": "霧：青",
     "CLASSIC_FOG_DESCRIPTION": "旧VXLマップ用。サーバーの色、空に合う色、またはRGBを選択します。霧の距離は変わりません。キャンセルで元の色に戻ります。",
-    "CLASSIC_FOG_GRAY": "クラシックグレー（標準）"
+    "CLASSIC_FOG_GRAY": "クラシックグレー（標準）",
+    "DEATH_VOICES": "死亡時の声",
+    "DEATH_VOICES_DESCRIPTION": "自分と他のプレイヤーが死亡したときの声を再生します。他の戦闘音には影響しません。"
   }
 }

@@ -28,6 +28,8 @@ struct MainSettings final {
     double music_volume{1.0};
     /** Play retail gameplay music when a server has not supplied music cues. */
     bool fallback_music{false};
+    /** Local and remote death cries; other combat audio stays independent. */
+    bool death_voices{true};
     /** Articulated local corpses in Classic modes; gravity applies in either mode. */
     bool ragdoll_corpses{true};
     /** Local blood droplets and temporary terrain stains in all game modes. */

@@ -2148,6 +2148,8 @@
     "CLASSIC_FOG_GREEN": "Neblina: verde",
     "CLASSIC_FOG_BLUE": "Neblina: azul",
     "CLASSIC_FOG_DESCRIPTION": "Mapas VXL antigos: cor do servidor, do céu ou RGB próprio. A distância não muda. Cancelar restaura as cores anteriores.",
-    "CLASSIC_FOG_GRAY": "Cinza clássico (padrão)"
+    "CLASSIC_FOG_GRAY": "Cinza clássico (padrão)",
+    "DEATH_VOICES": "Gritos de morte",
+    "DEATH_VOICES_DESCRIPTION": "Reproduz os gritos de morte do seu personagem e dos outros jogadores. Os demais sons de combate não mudam."
   }
 }

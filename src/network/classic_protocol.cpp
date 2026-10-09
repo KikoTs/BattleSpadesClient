@@ -520,6 +520,7 @@ void ClassicProtocolSession::state_packet(std::span<const std::byte> packet, Cla
     team_colors_ = {state.team1_color, state.team2_color};
     state.team1_name = r.string(10);
     state.team2_name = r.string(10);
+    team_names_ = {state.team1_name, state.team2_name};
     const auto mode = r.byte();
     if (mode > 1)
         throw std::runtime_error("Unknown classic game mode");
@@ -541,6 +542,8 @@ void ClassicProtocolSession::state_packet(std::span<const std::byte> packet, Cla
     info.classic = true;
     info.enable_minimap = true;
     info.enable_spectator = true;
+    // Classic deaths never enable retail repeated-killer tracking/zoom.
+    info.enable_deathcam = false;
     info.enable_colour_picker = true;
     info.enable_colour_palette = true;
     info.enable_numeric_hp = true;
@@ -669,7 +672,7 @@ void ClassicProtocolSession::objective_event(ClassicIngest& out,
     const auto entity_id = static_cast<std::uint16_t>(60000U + id);
     const bool intel = mode_ == 0 && id < 2;
     if (!location) {
-        if (intel && stored)
+        if ((intel && stored) || (!intel && objective_zones_[id]))
             event(out, DestroyEntityPacket{entity_id});
         if (const auto& old = objective_zones_[id]; old) {
             event(out, MinimapZoneClearPacket{old->minimum, old->maximum});
@@ -683,8 +686,11 @@ void ClassicProtocolSession::objective_event(ClassicIngest& out,
     const auto color = team >= 2 && team <= 3 ? team_colors_[team - 2]
                                               : std::array<std::uint8_t, 3>{200, 200, 200};
     if (!intel) {
-        // Match our existing CTF/TC server presentation: packet-43 zones own
-        // the minimap and world markers. No extra entities or custom billboards.
+        // Zones retain our existing minimap/world markers. The checkpoint is
+        // a separate local entity, as in the original CTF and TC clients.
+        // Recreate a moved/recoloured base: duplicate CreateEntity is ignored
+        // by the shared retail entity lifecycle.
+        if (objective_zones_[id]) event(out, DestroyEntityPacket{entity_id});
         MinimapZonePacket zone;
         zone.key = 1; // Shared visibility, with the actual server team colour.
         zone.color = color;
@@ -703,13 +709,15 @@ void ClassicProtocolSession::objective_event(ClassicIngest& out,
             event(out, MinimapZoneClearPacket{old->minimum, old->maximum});
         objective_zones_[id] = ObjectiveZone{zone.minimum, zone.maximum};
         event(out, zone);
-        return;
     }
     // Type 16 already provides the normal intel mesh, minimap icon and height
     // indicator. Adding a billboard here would duplicate its minimap marker.
     CreateEntityPacket entity;
     entity.entity_id = entity_id;
-    entity.type = 16;
+    // BASE(1) is deliberately NOT wire-safe for retail. These are internal
+    // adapter events only; Classic never transmits CreateEntity to a server.
+    entity.type = intel ? 16 : 1;
+    if (!intel) entity.face = 4;
     entity.position = position;
     entity.state = team;
     entity.player_id = 255;
@@ -720,6 +728,19 @@ void ClassicProtocolSession::objective_event(ClassicIngest& out,
 }
 
 void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, ClassicIngest& out) {
+    const auto announce_intel = [&](std::uint8_t id, std::string_view action) {
+        const auto& player = players_.at(id);
+        const auto team = player.record.team;
+        if (mode_ != 0 || !player.present || team < 2 || team > 3) return;
+        // These events are authoritative IntelPickup/Drop/Capture packets.
+        // Use the server's names (Babel and other scripts rename the teams).
+        const auto& enemy_name = team_names_[3U - team];
+        const std::string suffix = " " + std::string{action} + " " + enemy_name + "'s intel";
+        event(out, ChatMessagePacket{255, 2, player.record.name + suffix});
+        event(out, ChatMessagePacket{255, 3,
+                                    (id == local_id_ ? std::string{"You"} : player.record.name) + suffix});
+    };
+
     Reader r{packet};
     const auto kind = r.byte();
     switch (kind) {
@@ -984,8 +1005,32 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
         if (r.remaining() > 512)
             throw std::runtime_error("Classic chat too long");
         chat.value = r.string(r.remaining());
-        if (chat.chat_type > 2)
-            chat.chat_type = 2;
+        // OpenSpades/ZeroSpades treat absent senders as server-origin chat.
+        // Many scripts use slot 32/35 instead of 255. Forwarding that phantom
+        // player to the retail UI silently discarded the server's notice.
+        const bool from_player = chat.chat_type <= 1 && chat.player_id < players_.size() &&
+                                 players_[chat.player_id].present;
+        if (!from_player) {
+            chat.player_id = 255;
+            // The 0.75/0.76 alert extension uses types 3..6, and older scripts
+            // encode those same alerts as prefixes in ordinary system chat.
+            // Reuse the native big-message lane; never interpret player text
+            // as an alert or synthesize a Babel countdown/apocalypse locally.
+            bool alert = chat.chat_type >= 3 && chat.chat_type <= 6;
+            for (const auto prefix : {"C% ", "N% ", "%% ", "!% "}) {
+                if (chat.value.starts_with(prefix)) {
+                    chat.value.erase(0, 3);
+                    alert = true;
+                    break;
+                }
+            }
+            if (alert) {
+                event(out, ChatMessagePacket{255, 2, chat.value});
+                chat.chat_type = 3;
+            } else if (chat.chat_type > 2) {
+                chat.chat_type = 2;
+            }
+        }
         event(out, chat);
         break;
     }
@@ -1046,12 +1091,10 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             event(out, SetScorePacket{1, 0, id, scorer.score});
         }
         event(out, DropPickupPacket{world_loop_, id, 16, players_[id].record.position, {}});
-        if (winning)
-            event(out,
-                  ChatMessagePacket{255,
-                                    2,
-                                    team == 2 ? "Blue team captured the final intel."
-                                              : "Green team captured the final intel."});
+        announce_intel(id, "captured");
+        if (winning && team >= 2 && team <= 3)
+            event(out, ChatMessagePacket{255, 2,
+                                         team_names_[team - 2] + " captured the final intel."});
         break;
     }
     case 24: {
@@ -1064,6 +1107,7 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             event(out, DestroyEntityPacket{static_cast<std::uint16_t>(60000U + flag)});
         }
         event(out, PickPickupPacket{id, 16, false});
+        announce_intel(id, "picked up");
         break;
     }
     case 25: {
@@ -1081,15 +1125,18 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
         event(out,
               DropPickupPacket{
                   world_loop_, id, 16, position.value_or(players_[id].record.position), {}});
+        announce_intel(id, "dropped");
         break;
     }
     case 26: {
-        const auto id = r.byte();
+        r.byte(); // Unused recipient byte: piqueserver sends zero, even for slot 7.
         r.end();
-        event(out, RestockPacket{id, 0});
-        event(out, RestockPacket{id, 5});
-        if (id == local_id_)
-            event(out, SetHpPacket{100, 0, {}});
+        // This is a private response to the receiving client, not a broadcast
+        // about the encoded player. OpenSpades/ZeroSpades ignore this byte.
+        if (local_id_ == 255U) break;
+        event(out, RestockPacket{local_id_, 0});
+        event(out, RestockPacket{local_id_, 5});
+        event(out, SetHpPacket{100, 0, {}});
         break;
     }
     case 27: {

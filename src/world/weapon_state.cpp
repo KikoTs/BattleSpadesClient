@@ -151,11 +151,17 @@ void WeaponReplicationState::cancel_reload() noexcept {
 
 void WeaponReplicationState::restock_ammunition() noexcept {
     for (const auto tool_id : loadout_) {
+        if (classic_protocol_) {
+            // Classic bases replenish reserve without loading the magazine
+            // or interrupting the server-owned reload already in progress.
+            if (const auto rules = classic_weapon_rules(classic_protocol_, tool_id))
+                ammunition_[tool_id].reserve = rules->reserve;
+            else if (tool_id == 31)
+                ammunition_[tool_id] = {3, 0, false};
+            continue;
+        }
         const auto& definition = weapon_catalog()[tool_id];
         ammunition_[tool_id] = initial_ammo(definition);
-        if (auto rules = classic_weapon_rules(classic_protocol_, tool_id))
-            ammunition_[tool_id] = {rules->magazine, rules->reserve, false};
-        else if (classic_protocol_ && tool_id == 31) ammunition_[tool_id] = {3, 0, false};
     }
 }
 

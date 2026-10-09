@@ -137,6 +137,8 @@ public:
     /** Original spade charge clock, shared by presentation and the dig action. */
     [[nodiscard]] double classic_dig_progress() const noexcept;
     [[nodiscard]] bool classic_block_dragging() const noexcept { return classic_timing_.block_dragging; }
+    /** A queued underfoot placement starts its cooldown when it actually builds. */
+    void classic_block_placed() noexcept { classic_timing_.block = classic_timing_.time + 0.5; }
     [[nodiscard]] double current_accuracy() const noexcept;
     /**
      * Retail crosshair corner radius for the current weapon and projection.

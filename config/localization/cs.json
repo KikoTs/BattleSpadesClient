@@ -90,6 +90,8 @@
     "CLASSIC_FOG_GREEN": "Mlha: zelená",
     "CLASSIC_FOG_BLUE": "Mlha: modrá",
     "CLASSIC_FOG_DESCRIPTION": "Staré mapy VXL: barva serveru, oblohy nebo vlastní RGB. Vzdálenost se nemění. Zrušit obnoví předchozí barvy.",
-    "CLASSIC_FOG_GRAY": "Klasická šedá (výchozí)"
+    "CLASSIC_FOG_GRAY": "Klasická šedá (výchozí)",
+    "DEATH_VOICES": "Výkřiky při smrti",
+    "DEATH_VOICES_DESCRIPTION": "Přehrává výkřiky při smrti vaší postavy a ostatních hráčů. Ostatní zvuky boje se nemění."
   }
 }

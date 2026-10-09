@@ -400,6 +400,14 @@ void the_landmine_matches_the_alias_block() {
 }
 
 void entity_display_origins_match_retail_attachment_rules() {
+    auto base = at(70.0,71.0,100.0);
+    base.type = 1U;
+    base.face = 4U;
+    const auto* base_definition = find_entity_definition(1U);
+    const auto base_origin = entity_presentation_position(base,base_definition->parts.front());
+    expect(base_origin.x == 70 && base_origin.y == 71 && base_origin.z == 100,
+           "Classic checkpoint sits at the server's point without attached-item standoff");
+
     auto landmine = at(70.0, 71.0, 100.0);
     landmine.type = 9U;
     landmine.face = 4U;

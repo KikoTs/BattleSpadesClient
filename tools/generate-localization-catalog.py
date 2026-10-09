@@ -1737,6 +1737,48 @@ def source_directory(argument: Path) -> Path:
     return argument.parent if argument.is_file() else argument
 
 
+DEATH_VOICE_OVERLAYS = {'en': {'DEATH_VOICES': 'Death voices',
+        'DEATH_VOICES_DESCRIPTION': 'Play death cries for yourself and other players. Other combat sounds '
+                                    'are unchanged.'},
+ 'bg': {'DEATH_VOICES': 'Гласове при смърт',
+        'DEATH_VOICES_DESCRIPTION': 'Пуска предсмъртни викове за вас и другите играчи. Останалите бойни '
+                                    'звуци не се променят.'},
+ 'ru': {'DEATH_VOICES': 'Крики при смерти',
+        'DEATH_VOICES_DESCRIPTION': 'Включает предсмертные крики вашего персонажа и других игроков. '
+                                    'Остальные звуки боя не меняются.'},
+ 'uk': {'DEATH_VOICES': 'Крики під час смерті',
+        'DEATH_VOICES_DESCRIPTION': 'Відтворює передсмертні крики вашого персонажа та інших гравців. Інші '
+                                    'звуки бою не змінюються.'},
+ 'pl': {'DEATH_VOICES': 'Okrzyki śmierci',
+        'DEATH_VOICES_DESCRIPTION': 'Odtwarza okrzyki śmierci twojej postaci i innych graczy. Pozostałe '
+                                    'dźwięki walki pozostają bez zmian.'},
+ 'cs': {'DEATH_VOICES': 'Výkřiky při smrti',
+        'DEATH_VOICES_DESCRIPTION': 'Přehrává výkřiky při smrti vaší postavy a ostatních hráčů. Ostatní '
+                                    'zvuky boje se nemění.'},
+ 'de': {'DEATH_VOICES': 'Todesschreie',
+        'DEATH_VOICES_DESCRIPTION': 'Spielt Todesschreie deiner Figur und anderer Spieler ab. Andere '
+                                    'Kampfgeräusche bleiben unverändert.'},
+ 'fr': {'DEATH_VOICES': 'Cris de mort',
+        'DEATH_VOICES_DESCRIPTION': 'Joue les cris de mort de votre personnage et des autres joueurs. Les '
+                                    'autres sons de combat restent inchangés.'},
+ 'es': {'DEATH_VOICES': 'Gritos al morir',
+        'DEATH_VOICES_DESCRIPTION': 'Reproduce los gritos al morir de tu personaje y de otros jugadores. Los '
+                                    'demás sonidos de combate no cambian.'},
+ 'es-MX': {'DEATH_VOICES': 'Gritos al morir',
+           'DEATH_VOICES_DESCRIPTION': 'Reproduce los gritos al morir de tu personaje y de otros jugadores. '
+                                       'Los demás sonidos de combate no cambian.'},
+ 'pt-BR': {'DEATH_VOICES': 'Gritos de morte',
+           'DEATH_VOICES_DESCRIPTION': 'Reproduz os gritos de morte do seu personagem e dos outros '
+                                       'jogadores. Os demais sons de combate não mudam.'},
+ 'it': {'DEATH_VOICES': 'Urla di morte',
+        'DEATH_VOICES_DESCRIPTION': 'Riproduce le urla di morte del tuo personaggio e degli altri giocatori. '
+                                    'Gli altri suoni di combattimento restano invariati.'},
+ 'tr': {'DEATH_VOICES': 'Ölüm sesleri',
+        'DEATH_VOICES_DESCRIPTION': 'Kendi karakterinizin ve diğer oyuncuların ölüm çığlıklarını çalar. '
+                                    'Diğer savaş sesleri değişmez.'},
+ 'ja': {'DEATH_VOICES': '死亡時の声', 'DEATH_VOICES_DESCRIPTION': '自分と他のプレイヤーが死亡したときの声を再生します。他の戦闘音には影響しません。'}}
+
+
 def main() -> None:
     """Generate all configured language files and validate retail coverage."""
 
@@ -1791,6 +1833,7 @@ def main() -> None:
         strings.update(BLOOD_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(DISCORD_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(CLASSIC_APPEARANCE_OVERLAYS.get(locale, {}))
+        strings.update(DEATH_VOICE_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,

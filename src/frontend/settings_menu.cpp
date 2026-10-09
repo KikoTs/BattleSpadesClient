@@ -38,11 +38,12 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 19U> main_inventory{{
+constexpr std::array<SettingsRowId, 20U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
     SettingsRowId::fallback_music,
+    SettingsRowId::death_voices,
     SettingsRowId::invert_mouse,
     SettingsRowId::favorite_server,
     SettingsRowId::show_skins,
@@ -199,7 +200,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     }
     if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music ||
+        row == SettingsRowId::fallback_music || row == SettingsRowId::death_voices ||
         row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join ||
         row == SettingsRowId::favorite_server ||
@@ -238,6 +239,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "MASTER_VOLUME";
     case SettingsRowId::music_volume:
         return "MUSIC_VOLUME";
+    case SettingsRowId::death_voices: return "DEATH_VOICES";
     case SettingsRowId::fallback_music:
         return "FALLBACK_MUSIC";
     case SettingsRowId::ragdoll_corpses:
@@ -1134,6 +1136,7 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(master_volume);
         AOS_SETTINGS_ROW_NAME(music_volume);
         AOS_SETTINGS_ROW_NAME(fallback_music);
+        AOS_SETTINGS_ROW_NAME(death_voices);
         AOS_SETTINGS_ROW_NAME(ragdoll_corpses);
         AOS_SETTINGS_ROW_NAME(blood_marks);
         AOS_SETTINGS_ROW_NAME(classic_sky);
@@ -1655,6 +1658,8 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     const auto tooltip_target = hovered_ ? hovered_ : focused_;
     if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::fallback_music)) {
         result.tooltip_key = "FALLBACK_MUSIC_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::death_voices)) {
+        result.tooltip_key = "DEATH_VOICES_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::ragdoll_corpses)) {
         result.tooltip_key = "RAGDOLL_CORPSES_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::blood_marks)) {
@@ -1759,6 +1764,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         case SettingsRowId::show_other_skins:
         case SettingsRowId::weapon_motion:
         case SettingsRowId::fallback_music:
+        case SettingsRowId::death_voices:
         case SettingsRowId::blood_marks:
         case SettingsRowId::ragdoll_corpses:
         case SettingsRowId::discord_presence:
@@ -1768,6 +1774,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                             row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
                             row == SettingsRowId::ability_hints ? current.main.ability_hints :
                             row == SettingsRowId::fallback_music ? current.main.fallback_music :
+                            row == SettingsRowId::death_voices ? current.main.death_voices :
                             row == SettingsRowId::ragdoll_corpses ? current.main.ragdoll_corpses :
                             row == SettingsRowId::blood_marks ? current.main.blood_marks :
                             row == SettingsRowId::discord_presence ? current.main.discord_presence :
@@ -2439,6 +2446,8 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.weapon_motion ? -1 : 1);
     case SettingsRowId::ability_hints:
         return adjust_row(target.row, draft.main.ability_hints ? -1 : 1);
+    case SettingsRowId::death_voices:
+        return adjust_row(target.row, draft.main.death_voices ? -1 : 1);
     case SettingsRowId::fallback_music:
         return adjust_row(target.row, draft.main.fallback_music ? -1 : 1);
     case SettingsRowId::blood_marks:
@@ -2613,7 +2622,7 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
+        row == SettingsRowId::fallback_music || row == SettingsRowId::death_voices || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join) {
         auto main = before.main;
         switch (row) {
@@ -2673,6 +2682,9 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             break;
         case SettingsRowId::ability_hints:
             main.ability_hints = direction > 0;
+            break;
+        case SettingsRowId::death_voices:
+            main.death_voices = direction > 0;
             break;
         case SettingsRowId::fallback_music:
             main.fallback_music = direction > 0;
