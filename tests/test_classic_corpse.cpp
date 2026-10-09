@@ -452,7 +452,11 @@ void terrain_holds_and_releases_it() {
     wall(map, 310, 313, 310, 313, 3);
     C ledge{{312, 312, ground - 3 - 2.25}, 0, {0, 3, 0}, 3, true};
     Watch ledge_watch{ledge};
-    for (int tick = 0; tick < 900; ++tick) {
+    // Allow ten seconds for the fall and the final limb motion to settle.
+    // GCC and MSVC take slightly different contact paths: the GCC release
+    // build settles at about 8.2 seconds. Keep checking every collision and
+    // joint limit throughout instead of requiring the same sleep tick.
+    for (int tick = 0; tick < 1200; ++tick) {
         ledge.tick(dt, map);
         ledge_watch.check(ledge, dt, map, "off a ledge");
     }
