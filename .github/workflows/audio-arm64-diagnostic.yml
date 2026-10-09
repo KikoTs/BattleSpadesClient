@@ -1,0 +1,68 @@
+name: Diagnose Windows ARM64 audio
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audio:
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build isolated probe against the released audio library
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          . .github/ci/ci.ps1
+          Enter-MsvcEnvironment -Arch arm64
+          New-Item -ItemType Directory -Force out/audio-diagnostic/include/AL | Out-Null
+          gh release download v0.3.0-beta.2 -p '*windows-arm64.zip' -D out/audio-diagnostic
+          $zip = Get-ChildItem out/audio-diagnostic/*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName out/audio-diagnostic/package
+          $bin = (Get-ChildItem out/audio-diagnostic/package -Directory | Select-Object -First 1).FullName
+          Copy-Item "$bin/*.dll" out/audio-diagnostic/
+          foreach ($header in @('al.h','alc.h')) {
+            Invoke-WebRequest "https://raw.githubusercontent.com/kcat/openal-soft/1.25.0/include/AL/$header" -OutFile "out/audio-diagnostic/include/AL/$header"
+          }
+          $exports = & dumpbin.exe /nologo /exports out/audio-diagnostic/OpenAL32.dll | ForEach-Object {
+            if ($_ -match '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+(\w+)') { $Matches[1] }
+          }
+          @('LIBRARY OpenAL32','EXPORTS') + $exports | Set-Content out/audio-diagnostic/OpenAL32.def
+          & lib.exe /nologo /def:out/audio-diagnostic/OpenAL32.def /machine:arm64 /out:out/audio-diagnostic/OpenAL32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Import library generation failed' }
+          & cl.exe /nologo /std:c++20 /EHsc /O2 /Zi /MD /Iinclude /Iout/audio-diagnostic/include tests/test_spatial_audio.cpp out/audio-diagnostic/OpenAL32.lib /Foout/audio-diagnostic/probe.obj /Fdout/audio-diagnostic/probe.pdb /Feout/audio-diagnostic/audio_probe.exe /link /DEBUG
+          if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed' }
+      - name: Capture audio shutdown if it stalls
+        shell: pwsh
+        env:
+          ALSOFT_DRIVERS: "null"
+          ALSOFT_LOGLEVEL: "3"
+        run: |
+          Invoke-WebRequest https://download.sysinternals.com/files/Procdump.zip -OutFile out/audio-diagnostic/procdump.zip
+          Expand-Archive out/audio-diagnostic/procdump.zip out/audio-diagnostic/procdump
+          $probeDir = (Resolve-Path out/audio-diagnostic).Path
+          $probe = Start-Process "$probeDir/audio_probe.exe" -WorkingDirectory $probeDir -WindowStyle Hidden -PassThru -RedirectStandardOutput "$probeDir/stdout.log" -RedirectStandardError "$probeDir/stderr.log"
+          if (-not $probe.WaitForExit(10000)) {
+            & "$probeDir/procdump/procdump64a.exe" -accepteula -ma $probe.Id "$probeDir/shutdown.dmp"
+            Stop-Process -Id $probe.Id -Force
+            Get-Content "$probeDir/stdout.log", "$probeDir/stderr.log"
+            throw 'Audio cleanup stalled; diagnostic dump captured'
+          }
+          Get-Content "$probeDir/stdout.log", "$probeDir/stderr.log"
+          if ($probe.ExitCode -ne 0) { throw "Audio probe failed: $($probe.ExitCode)" }
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-arm64-audio-diagnostic
+          path: |
+            out/audio-diagnostic/*.dmp
+            out/audio-diagnostic/*.log
+            out/audio-diagnostic/*.dll
+            out/audio-diagnostic/*.exe
+            out/audio-diagnostic/*.pdb
+          retention-days: 7
