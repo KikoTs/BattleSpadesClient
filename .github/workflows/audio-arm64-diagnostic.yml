@@ -37,6 +37,7 @@ jobs:
           & cl.exe /nologo /std:c++20 /EHsc /O2 /Zi /MD /Iinclude /Iout/audio-diagnostic/include tests/test_spatial_audio.cpp out/audio-diagnostic/OpenAL32.lib /Foout/audio-diagnostic/probe.obj /Fdout/audio-diagnostic/probe.pdb /Feout/audio-diagnostic/audio_probe.exe /link /DEBUG
           if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed' }
       - name: Capture audio shutdown if it stalls
+        continue-on-error: true
         shell: pwsh
         env:
           ALSOFT_DRIVERS: "null"
@@ -54,6 +55,32 @@ jobs:
           }
           Get-Content "$probeDir/stdout.log", "$probeDir/stderr.log"
           if ($probe.ExitCode -ne 0) { throw "Audio probe failed: $($probe.ExitCode)" }
+      - name: Rebuild the same library without C++ modules and check cleanup
+        shell: pwsh
+        env:
+          ALSOFT_DRIVERS: "null"
+          ALSOFT_LOGLEVEL: "3"
+        run: |
+          . .github/ci/ci.ps1
+          Enter-MsvcEnvironment -Arch arm64
+          Invoke-WebRequest https://github.com/kcat/openal-soft/archive/refs/tags/1.25.0.tar.gz -OutFile out/audio-diagnostic/openal.tar.gz
+          $hash = (Get-FileHash out/audio-diagnostic/openal.tar.gz -Algorithm SHA512).Hash
+          if ($hash -ne '33cdc03198c4fdbd6c67bae460328d8f910baf0a522891735590df140ef727a5d7a1acc64826128994700e7d75c75c938b20483858575ff4e0ebc3f120a9e206') { throw 'OpenAL source checksum mismatch' }
+          tar -xf out/audio-diagnostic/openal.tar.gz -C out/audio-diagnostic
+          cmake -S out/audio-diagnostic/openal-soft-1.25.0 -B out/audio-diagnostic/rebuild -G Ninja -DCMAKE_BUILD_TYPE=Release -DALSOFT_ENABLE_MODULES=OFF -DALSOFT_CPUEXT_NEON=ON -DALSOFT_EXAMPLES=OFF -DALSOFT_UTILS=OFF -DALSOFT_NO_CONFIG_UTIL=ON
+          if ($LASTEXITCODE -ne 0) { throw 'OpenAL configure failed' }
+          cmake --build out/audio-diagnostic/rebuild --target OpenAL --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'OpenAL build failed' }
+          Copy-Item out/audio-diagnostic/rebuild/OpenAL32.dll out/audio-diagnostic/OpenAL32.dll -Force
+          $probeDir = (Resolve-Path out/audio-diagnostic).Path
+          $probe = Start-Process "$probeDir/audio_probe.exe" -WorkingDirectory $probeDir -WindowStyle Hidden -PassThru -RedirectStandardOutput "$probeDir/rebuilt-stdout.log" -RedirectStandardError "$probeDir/rebuilt-stderr.log"
+          if (-not $probe.WaitForExit(10000)) {
+            & "$probeDir/procdump/procdump64a.exe" -accepteula -ma $probe.Id "$probeDir/rebuilt-shutdown.dmp"
+            Stop-Process -Id $probe.Id -Force
+            throw 'Rebuilt OpenAL still stalls'
+          }
+          Get-Content "$probeDir/rebuilt-stdout.log", "$probeDir/rebuilt-stderr.log"
+          if ($probe.ExitCode -ne 0) { throw "Rebuilt audio probe failed: $($probe.ExitCode)" }
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
