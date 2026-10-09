@@ -18,7 +18,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           . .github/ci/ci.ps1
-          Enter-MsvcEnvironment -Arch arm64
+          Enter-MsvcEnvironment -Arch arm64 -ToolsetVersion 14.51
           New-Item -ItemType Directory -Force out/audio-diagnostic/include/AL | Out-Null
           gh release download v0.3.0-beta.2 -p '*windows-arm64.zip' -D out/audio-diagnostic
           $zip = Get-ChildItem out/audio-diagnostic/*.zip | Select-Object -First 1

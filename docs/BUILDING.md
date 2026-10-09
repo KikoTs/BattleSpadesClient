@@ -49,6 +49,18 @@ Notes:
   without `steam_api64.dll` and friends play through the AoSPlay relay. The
   32-bit Steam bridge (`BattleSpadesSteamBridge32.exe`) is still included; it
   runs under the built-in x86 emulation.
+  The ARM64 compiler and native dependency overlay use **MSVC 14.44 / v143**.
+  Install that ARM64 toolset when building locally and activate it with
+  `VsDevCmd.bat -arch=arm64 -host_arch=arm64 -vcvars_ver=14.44`.
+  MSVC 14.51 produced an OpenAL 1.25.0 destructor return path that looped
+  during context cleanup, including in the published beta.2 library. Native
+  ARM64 probes passed rendering but hung at shutdown with that library; the
+  optimized 14.44 build passes rendering and frees its context/device.
+  OpenAL modules are disabled in this overlay; release optimization and NEON
+  stay enabled. The regular audio smoke test includes cleanup and a 30-second
+  timeout. The manual `audio-arm64-diagnostic.yml` workflow compares the
+  beta.2 library with an optimized 14.44 rebuild and captures a dump for the
+  old hang. Its expected baseline failure is separate from the release gate.
 * macOS needs Xcode 26 (libc++ 20) for `std::jthread`/`std::stop_token`.
   The job fails with the list of installed Xcodes if the image ever drops
   26.3; update the path in the workflow.
