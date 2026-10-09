@@ -566,6 +566,29 @@ has the same base 0.75 gun values, but its crouched spread, recoil application,
 vertical-look movement scaling and shotgun block damage differ from this
 ZeroSpades baseline. Those two clients are not interchangeable parity targets.
 
+## Beta 0.3.0-beta.2 validation
+
+0.75 uses a maximum 128-block horizontal view distance and the squared horizontal
+fog curve (`Resources/Shaders/OpenGL/Fog.vs` in the reference). The protocol rule
+applies to Compatibility and enhanced lighting alike; lower user distances remain
+valid. Neither 0.76 nor protocol 168 receives this new cap. Classic fog defaults to
+gray, with explicit server, sky and RGB overrides in Settings.
+
+Charged shovel presentation reads the runtime's actual dig deadline instead of
+starting at the impact. It uses the full authored spade pose curve for wind-up,
+contact and recovery; the short primary swing and wire action cadence are separate.
+Block dragging re-evaluates held input after placement cooldown, and the outgoing
+secondary bit follows the accepted drag state used by server line validation.
+
+The GPU regression reproduces the pre-fix zero-direction disabled-light corruption
+and verifies the fix on D3D11, D3D12, Vulkan and OpenGL. It also checks all five
+shader tiers, tier/effect switching, 0.75 gray fog at the visibility boundary,
+terrain/model lighting and viewmodel camera rotations. Real generated Classic VXL
+captures exercise Compatibility and Medium on all four APIs. Metal and ESSL
+variants compile; no Metal hardware visual run is claimed. The loopback
+piqueserver fixture now requires an accepted `on_line_build` event in addition to
+its existing combat, movement and map-rotation checks.
+
 ## Reference provenance and licensing
 
 Protocol layouts and original gameplay behavior were checked against:

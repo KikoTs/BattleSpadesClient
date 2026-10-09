@@ -424,6 +424,24 @@ template <typename Value, typename Parser>
     }
 
     if (state.section == Section::main) {
+        if (key == "classic_sky" || key == "classic_fog") {
+            if (!state.remember(line, key)) return false;
+            const auto parsed = parse_string(value);
+            if (!parsed || (key == "classic_sky" ? classic_sky_option(*parsed) == nullptr
+                                                 : !valid_classic_fog(*parsed)))
+                return state.fail(line, "invalid Classic atmosphere preference");
+            (key == "classic_sky" ? state.candidate.main.classic_sky
+                                  : state.candidate.main.classic_fog) = *parsed;
+            return true;
+        }
+        if (key == "classic_fog_red" || key == "classic_fog_green" || key == "classic_fog_blue") {
+            if (!state.remember(line, key)) return false;
+            const auto parsed = parse_unsigned(value);
+            if (!parsed || *parsed > 255U) return state.fail(line, "fog channel must be 0..255");
+            const auto channel = key == "classic_fog_red" ? 0U : key == "classic_fog_green" ? 1U : 2U;
+            state.candidate.main.classic_fog_color[channel] = static_cast<std::uint8_t>(*parsed);
+            return true;
+        }
         if (key == "audio_device") {
             if (!state.remember(line, key)) return false;
             const auto parsed = parse_string(value);
@@ -678,6 +696,11 @@ template <typename Value, typename Parser>
            << "blood_marks = " << (settings.main.blood_marks ? "true" : "false") << "\n"
            << "discord_presence = " << (settings.main.discord_presence ? "true" : "false") << "\n"
            << "discord_join = " << (settings.main.discord_join ? "true" : "false") << "\n"
+           << "classic_sky = " << std::quoted(settings.main.classic_sky) << "\n"
+           << "classic_fog = " << std::quoted(settings.main.classic_fog) << "\n"
+           << "classic_fog_red = " << static_cast<unsigned>(settings.main.classic_fog_color[0U]) << "\n"
+           << "classic_fog_green = " << static_cast<unsigned>(settings.main.classic_fog_color[1U]) << "\n"
+           << "classic_fog_blue = " << static_cast<unsigned>(settings.main.classic_fog_color[2U]) << "\n"
            << "audio_device = " << std::quoted(settings.main.audio_device) << "\n"
            << "# Legacy mirror of [graphics] window_mode for older builds; ignored here.\n"
            << "fullscreen = " << (is_fullscreen(settings.graphics.window_mode) ? "true" : "false")

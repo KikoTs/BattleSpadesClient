@@ -2164,6 +2164,27 @@
     "DISCORD_PRESENCE": "Activité Discord",
     "DISCORD_PRESENCE_DESCRIPTION": "Affiche le serveur, la carte, le mode et le nombre de joueurs sur Discord. Nécessite l'application de bureau Discord. Les adresses des serveurs privés sont masquées.",
     "DISCORD_JOIN": "Rejoindre via Discord",
-    "DISCORD_JOIN_DESCRIPTION": "Autorise à rejoindre la partie via Discord et partage un bouton pour les serveurs publics sans mot de passe. Les adresses privées et les identifiants ne sont jamais partagés."
+    "DISCORD_JOIN_DESCRIPTION": "Autorise à rejoindre la partie via Discord et partage un bouton pour les serveurs publics sans mot de passe. Les adresses privées et les identifiants ne sont jamais partagés.",
+    "INVENTORY": "Inventaire",
+    "INVENTORY_DISCOVERY_HINT": "Skins, niveaux et statistiques",
+    "CLASSIC_SKY": "Ciel Classic",
+    "CLASSIC_SKY_DEFAULT": "Ciel de la carte",
+    "CLASSIC_SKY_RANDOM": "Aléatoire (couleurs)",
+    "CLASSIC_SKY_CLEAR": "Dégagé",
+    "CLASSIC_SKY_OVERCAST": "Couvert",
+    "CLASSIC_SKY_DESERT": "Désert",
+    "CLASSIC_SKY_SUNSET": "Coucher de soleil",
+    "CLASSIC_SKY_NIGHT": "Nuit",
+    "CLASSIC_SKY_SNOW": "Neige",
+    "CLASSIC_SKY_DESCRIPTION": "Ciel des anciennes cartes VXL. Le choix aléatoire suit les couleurs du terrain une fois par carte. Apparence locale uniquement.",
+    "CLASSIC_FOG": "Couleur du brouillard",
+    "CLASSIC_FOG_SERVER": "Serveur / carte",
+    "CLASSIC_FOG_SKY": "Selon le ciel",
+    "CLASSIC_FOG_CUSTOM": "RVB personnalisé",
+    "CLASSIC_FOG_RED": "Brouillard : rouge",
+    "CLASSIC_FOG_GREEN": "Brouillard : vert",
+    "CLASSIC_FOG_BLUE": "Brouillard : bleu",
+    "CLASSIC_FOG_DESCRIPTION": "Anciennes cartes VXL : couleur du serveur, du ciel ou RVB personnalisé. Distance inchangée. Annuler restaure les couleurs précédentes.",
+    "CLASSIC_FOG_GRAY": "Gris classique (par défaut)"
   }
 }

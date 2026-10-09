@@ -98,14 +98,14 @@ def main():
                 subprocess.run([str(executable), str(args.port), "--rotation"], check=True, timeout=45)
                 events = [json.loads(line) for line in (root / "events.jsonl").read_text(encoding="utf-8").splitlines()]
                 kinds = {event["event"] for event in events}
-                required = {"hit", "kill", "build", "remove", "grenade", "color", "jump"}
+                required = {"hit", "kill", "build", "line", "remove", "grenade", "color", "jump"}
                 if "hack" in kinds or not required <= kinds:
                     raise RuntimeError(f"Missing accepted actions or hack report: {events}")
                 if not any(event["event"] == "build" and event["color"] == [224,80,32] for event in events):
                     raise RuntimeError("Server did not build with the selected palette color")
                 if sum(event["event"] == "jump" and event["player"] == 0 for event in events) != 1:
                     raise RuntimeError("Held SPACE must result in exactly one server jump")
-                print("Accepted hit, kill, colored build, dig, grenade and reload; no corrections or hack reports.")
+                print("Accepted hit, kill, colored build, block line, dig, grenade and reload; no corrections or hack reports.")
             except Exception:
                 print((root / "server.log").read_text(encoding="utf-8", errors="replace"), file=sys.stderr)
                 raise

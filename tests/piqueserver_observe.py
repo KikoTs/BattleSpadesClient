@@ -42,6 +42,10 @@ def apply_script(protocol, connection, config):
             emit("color", self, color=color)
             return super().on_color_set(color)
 
+        def on_line_build(self, points):
+            emit("line", self, cells=list(points))
+            return super().on_line_build(points)
+
         def on_animation_update(self, jump, crouch, sneak, sprint):
             if jump:
                 emit("jump", self)

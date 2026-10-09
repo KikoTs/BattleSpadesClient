@@ -23,6 +23,7 @@ button.primary:disabled { decorator:none; color:#aaa681; }
 .progress-heading h2 { font-size:21dp; color:#eada63; }
 .progress-heading span { font-size:12dp; }
 #xp-track { height:5dp; background-color:#535e20; margin-bottom:9dp; }
+.progress-hint { position:absolute; left:36dp; top:60dp; width:708dp; height:13dp; margin:0; font-size:9dp; line-height:13dp; text-align:center; color:#d9d3a6; }
 #xp-fill { height:5dp; width:0; background-color:#94b539; }
 .sections { display:flex; height:30dp; margin-bottom:9dp; }
 .sections button { flex:1; margin-right:3dp; font-size:15dp; }

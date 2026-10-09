@@ -95,7 +95,7 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 14U,
+    expect(view.rows.size() == 19U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
@@ -110,6 +110,11 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::ability_hints,
         SettingsRowId::ragdoll_corpses,
         SettingsRowId::blood_marks,
+        SettingsRowId::classic_sky,
+        SettingsRowId::classic_fog,
+        SettingsRowId::classic_fog_red,
+        SettingsRowId::classic_fog_green,
+        SettingsRowId::classic_fog_blue,
         SettingsRowId::discord_presence,
         SettingsRowId::discord_join,
     };
@@ -1097,6 +1102,35 @@ void in_game_done_and_menu_key_return_to_the_game_cancel_to_the_escape_menu() {
     }
 }
 
+void classic_atmosphere_previews_and_custom_fog_controls() {
+    SettingsSession session;
+    SettingsMenuModel menu{session, full_environment()};
+    expect(!row(menu.presentation(), SettingsRowId::classic_fog_red).enabled,
+           "RGB controls must wait for Custom fog");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::classic_sky)), "sky reachable");
+    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "sky changes");
+    expect(session.draft().main.classic_sky == "random", "random follows default");
+    auto effects = menu.take_effects();
+    expect(find_effect<SettingsPreviewEffect>(effects) != nullptr, "sky previews live");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::classic_fog)), "fog reachable");
+    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "fog matches sky");
+    expect(session.draft().main.classic_fog == "server", "server fog remains available");
+    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "sky fog choice");
+    expect(session.draft().main.classic_fog == "sky", "sky fog choice");
+    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "custom fog choice");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::classic_fog_red)), "custom RGB enabled");
+    const auto before = session.draft().main.classic_fog_color;
+    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "RGB changes");
+    expect(session.draft().main.classic_fog_color[0U] == before[0U] + 1U &&
+           session.draft().main.classic_fog_color[1U] == before[1U], "red preserves other channels");
+    const auto channel = row(menu.presentation(), SettingsRowId::classic_fog_red).control_bounds;
+    const Point middle{channel.x + channel.width / 2, channel.y + channel.height / 2};
+    menu.pointer_press(middle);
+    menu.pointer_release(middle);
+    expect(session.draft().main.classic_fog_color[0U] >= 120U &&
+           session.draft().main.classic_fog_color[0U] <= 135U, "fog slider pointer selects midpoint");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -1106,6 +1140,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"classic_atmosphere_previews_and_custom_fog_controls", classic_atmosphere_previews_and_custom_fog_controls},
         {"skin_preferences_are_reachable_live_and_cancelable",skin_preferences_are_reachable_live_and_cancelable},
         {"main_inventory_and_geometry_match_retail", main_inventory_and_geometry_match_retail},
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",

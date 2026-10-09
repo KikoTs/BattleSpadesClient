@@ -455,12 +455,13 @@ RetailToolHold retail_tool_hold(std::uint8_t tool_id, bool main_character) noexc
 
 RetailModelPose evaluate_retail_tool_animation(std::uint8_t tool_id,
                                                double seconds_since_primary,
-                                               bool main_character) noexcept {
+                                               bool main_character,
+                                               double duration_override) noexcept {
     const auto* weapon = find_weapon_definition(tool_id);
     if (weapon == nullptr) {
         return {};
     }
-    const double length = animation_length(*weapon);
+    const double length = duration_override > 0.0 ? duration_override : animation_length(*weapon);
     switch (retail_tool_animation_family(tool_id)) {
     case RetailToolAnimationFamily::weapon_shoot:
         return weapon_shoot_animation(seconds_since_primary, length);
@@ -584,7 +585,7 @@ evaluate_weapon_view_model(const WeaponViewModelInput& input) noexcept {
     // They are not KV6 pivots: the same translation also anchors the hands.
     const auto hold = retail_tool_hold(input.tool_id, true);
     const auto animation =
-        evaluate_retail_tool_animation(input.tool_id, input.seconds_since_primary, true);
+        evaluate_retail_tool_animation(input.tool_id, input.seconds_since_primary, true, input.animation_duration);
     for (std::size_t index{}; index < result.tool_parts.size(); ++index) {
         result.tool_parts[index] = add(hold.parts[index], animation);
     }

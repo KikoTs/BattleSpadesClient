@@ -337,7 +337,9 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.discord_presence = false;
     settings.main.discord_join = false;
     settings.main.blood_marks = true;
-    settings.main.blood_marks = true;
+    settings.main.classic_sky = "random";
+    settings.main.classic_fog = "custom";
+    settings.main.classic_fog_color = {17U, 148U, 255U};
     settings.graphics.resolution = {1'680U, 1'050U};
     settings.graphics.graphics_api = GraphicsApi::vulkan;
     settings.graphics.antialiasing = Antialiasing::samples_4;
@@ -537,6 +539,32 @@ void local_skin_visibility_preserves_independent_preferences() {
     expect(preferences.skins_visible(true)&&!preferences.skins_visible(false), "master toggle preserves mine-only choice");
 }
 
+void classic_appearance_settings_validate_and_restore() {
+    TemporaryDirectory temporary;
+    const auto path = temporary.path("classic.toml");
+    write_text(path, "[main]\nclassic_sky = \"../../untrusted\"\n");
+    expect(!static_cast<bool>(TomlSettingsStore{path}.load()), "sky paths are never accepted");
+    write_text(path, "[main]\nclassic_fog_red = 256\n");
+    expect(!static_cast<bool>(TomlSettingsStore{path}.load()), "fog must not wrap invalid channels");
+    write_text(path, "[main]\nshow_skins = true\n");
+    const auto old = TomlSettingsStore{path}.load();
+    expect(static_cast<bool>(old) && old.settings.main.classic_sky == "server" &&
+           old.settings.main.classic_fog == "gray", "old installations receive the default gray Classic fog");
+    auto invalid = old.settings;
+    invalid.main.classic_sky = "broken";
+    invalid.main.classic_fog = "broken";
+    expect(!static_cast<bool>(battlespades::settings::validate_settings(invalid)), "invalid modes rejected");
+    expect(battlespades::settings::normalize_settings(invalid) == old.settings, "invalid modes normalize safely");
+    battlespades::settings::SettingsSession session{old.settings};
+    auto main = session.draft().main;
+    main.classic_sky = "night";
+    main.classic_fog = "custom";
+    main.classic_fog_color = {12U, 34U, 56U};
+    session.set_main(main);
+    session.cancel();
+    expect(session.draft() == old.settings, "cancel restores every atmosphere preference");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -546,6 +574,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"classic_appearance_settings_validate_and_restore", classic_appearance_settings_validate_and_restore},
         {"local_skin_visibility_preserves_independent_preferences",local_skin_visibility_preserves_independent_preferences},
         {"retail_defaults_cover_every_recovered_option",
          retail_defaults_cover_every_recovered_option},

@@ -108,6 +108,27 @@
     "DISCORD_JOIN": "Присъединяване чрез Discord",
     "DISCORD_JOIN_DESCRIPTION": "Позволява присъединяване към играта чрез Discord и споделя бутон за публични сървъри без парола. Частни адреси и данни за вход никога не се споделят.",
     "BLOOD_MARKS": "Следи от кръв",
-    "BLOOD_MARKS_DESCRIPTION": "Визуални капки и временни петна по блоковете в Classic и Standard. Остават 20–32 секунди; не променят играта."
+    "BLOOD_MARKS_DESCRIPTION": "Визуални капки и временни петна по блоковете в Classic и Standard. Остават 20–32 секунди; не променят играта.",
+    "INVENTORY": "Инвентар",
+    "INVENTORY_DISCOVERY_HINT": "Скинове, нива и статистики",
+    "CLASSIC_SKY": "Класическо небе",
+    "CLASSIC_SKY_DEFAULT": "Според картата",
+    "CLASSIC_SKY_RANDOM": "Случайно (по цветове)",
+    "CLASSIC_SKY_CLEAR": "Ясно",
+    "CLASSIC_SKY_OVERCAST": "Облачно",
+    "CLASSIC_SKY_DESERT": "Пустиня",
+    "CLASSIC_SKY_SUNSET": "Залез",
+    "CLASSIC_SKY_NIGHT": "Нощ",
+    "CLASSIC_SKY_SNOW": "Сняг",
+    "CLASSIC_SKY_DESCRIPTION": "Небе за старите VXL карти. Случайният избор се съобразява с цветовете на терена веднъж на карта. Само локален изглед.",
+    "CLASSIC_FOG": "Цвят на мъглата",
+    "CLASSIC_FOG_SERVER": "Сървър / карта",
+    "CLASSIC_FOG_SKY": "Според небето",
+    "CLASSIC_FOG_CUSTOM": "Собствен RGB",
+    "CLASSIC_FOG_RED": "Мъгла: червено",
+    "CLASSIC_FOG_GREEN": "Мъгла: зелено",
+    "CLASSIC_FOG_BLUE": "Мъгла: синьо",
+    "CLASSIC_FOG_DESCRIPTION": "За стари VXL карти: мъгла от сървъра, според небето или собствен RGB цвят. Дистанцията не се променя. Отказ връща предишните цветове.",
+    "CLASSIC_FOG_GRAY": "Класическо сиво (по подразбиране)"
   }
 }

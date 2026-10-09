@@ -329,6 +329,7 @@ public:
     /** Seconds since the last primary use; drives the recoil animation. */
     [[nodiscard]] double seconds_since_primary() const noexcept;
     [[nodiscard]] double seconds_since_weapon_animation() const noexcept;
+    [[nodiscard]] double weapon_animation_duration() const noexcept;
     /**
      * Retail pullout timer: 0.5 s on every tool switch, decaying to zero;
      * the viewmodel rises from below while it runs.

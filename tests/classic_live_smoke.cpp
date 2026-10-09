@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     auto previous_protocol = GameProtocol::automatic;
     auto probe_ready_at = deadline;
     std::chrono::steady_clock::time_point spawned_at{}, next_tick{};
-    bool shot{}, reloaded{}, colored{}, built{}, dug{}, grenade{}, color_confirmed{},
+    bool shot{}, reloaded{}, colored{}, built{}, line_built{}, dug{}, grenade{}, color_confirmed{},
         score_confirmed{};
     unsigned corrections{}, reloads{};
     unsigned live_updates{};
@@ -207,6 +207,7 @@ int main(int argc, char** argv) {
             if (elapsed >= 8 && elapsed < 10) {
                 motion.tool = 5;
                 motion.orientation = {0.6F, 0, 0.8F};
+                if (elapsed >= 8.8 && elapsed < 9.3) motion.actions = 2;
             }
             if (elapsed >= 10 && elapsed < 12) {
                 motion.tool = 4;
@@ -256,6 +257,12 @@ int main(int argc, char** argv) {
                 static_cast<void>(connection.send(
                     encode_packet(SetColorPacket{boot->local_player_id, 0xE05020})));
                 colored = true;
+            }
+            if (elapsed > 9.35 && !line_built) {
+                const int x=static_cast<int>(p.position.x)+1, y=static_cast<int>(p.position.y)+1;
+                static_cast<void>(connection.send_classic(classic_line_packet(boot->local_player_id,
+                    {x,y,235},{x,y+1,235})));
+                line_built = true;
             }
             if (elapsed > 11.2 && !dug) {
                 p.orientation = {0.6, 0, 0.8};

@@ -99,6 +99,7 @@ add_library(
         world/player_movement.cpp
     world/classic_movement.cpp
     world/classic_combat.cpp
+    world/classic_environment.cpp
         world/retail_inventory.cpp
         world/retail_character_pose.cpp
         world/retail_view_model.cpp

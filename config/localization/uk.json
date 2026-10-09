@@ -69,6 +69,27 @@
     "DISCORD_PRESENCE": "Активність у Discord",
     "DISCORD_PRESENCE_DESCRIPTION": "Показує сервер, карту, режим і кількість гравців у Discord. Потрібен настільний застосунок Discord. Адреси приватних серверів приховано.",
     "DISCORD_JOIN": "Приєднання через Discord",
-    "DISCORD_JOIN_DESCRIPTION": "Дозволяє приєднуватися до гри через Discord і показує кнопку для публічних серверів без пароля. Приватні адреси та дані для входу ніколи не передаються."
+    "DISCORD_JOIN_DESCRIPTION": "Дозволяє приєднуватися до гри через Discord і показує кнопку для публічних серверів без пароля. Приватні адреси та дані для входу ніколи не передаються.",
+    "INVENTORY": "Інвентар",
+    "INVENTORY_DISCOVERY_HINT": "Скіни, рівні та статистика",
+    "CLASSIC_SKY": "Небо Classic",
+    "CLASSIC_SKY_DEFAULT": "За картою",
+    "CLASSIC_SKY_RANDOM": "Випадково (кольори)",
+    "CLASSIC_SKY_CLEAR": "Ясно",
+    "CLASSIC_SKY_OVERCAST": "Хмарно",
+    "CLASSIC_SKY_DESERT": "Пустеля",
+    "CLASSIC_SKY_SUNSET": "Захід сонця",
+    "CLASSIC_SKY_NIGHT": "Ніч",
+    "CLASSIC_SKY_SNOW": "Сніг",
+    "CLASSIC_SKY_DESCRIPTION": "Небо старих карт VXL. Випадковий вибір за кольорами рельєфу раз на карту. Лише локальний вигляд.",
+    "CLASSIC_FOG": "Колір туману Classic",
+    "CLASSIC_FOG_SERVER": "Сервер / карта",
+    "CLASSIC_FOG_SKY": "За небом",
+    "CLASSIC_FOG_CUSTOM": "Власний RGB",
+    "CLASSIC_FOG_RED": "Туман: червоний",
+    "CLASSIC_FOG_GREEN": "Туман: зелений",
+    "CLASSIC_FOG_BLUE": "Туман: синій",
+    "CLASSIC_FOG_DESCRIPTION": "Старі карти VXL: колір сервера, неба або власний RGB. Дальність не змінюється. Скасування відновлює попередні кольори.",
+    "CLASSIC_FOG_GRAY": "Класичний сірий (типово)"
   }
 }

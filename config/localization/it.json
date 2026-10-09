@@ -2127,6 +2127,27 @@
     "DISCORD_PRESENCE": "Attività su Discord",
     "DISCORD_PRESENCE_DESCRIPTION": "Mostra server, mappa, modalità e numero di giocatori su Discord. Richiede l'app desktop di Discord. Gli indirizzi dei server privati sono nascosti.",
     "DISCORD_JOIN": "Unisciti tramite Discord",
-    "DISCORD_JOIN_DESCRIPTION": "Consente di unirsi alla partita tramite Discord e condivide un pulsante per i server pubblici senza password. Gli indirizzi privati e le credenziali non vengono mai condivisi."
+    "DISCORD_JOIN_DESCRIPTION": "Consente di unirsi alla partita tramite Discord e condivide un pulsante per i server pubblici senza password. Gli indirizzi privati e le credenziali non vengono mai condivisi.",
+    "INVENTORY": "Inventario",
+    "INVENTORY_DISCOVERY_HINT": "Skin, livelli e statistiche",
+    "CLASSIC_SKY": "Cielo Classic",
+    "CLASSIC_SKY_DEFAULT": "Predefinito mappa",
+    "CLASSIC_SKY_RANDOM": "Casuale (colori mappa)",
+    "CLASSIC_SKY_CLEAR": "Sereno",
+    "CLASSIC_SKY_OVERCAST": "Nuvoloso",
+    "CLASSIC_SKY_DESERT": "Deserto",
+    "CLASSIC_SKY_SUNSET": "Tramonto",
+    "CLASSIC_SKY_NIGHT": "Notte",
+    "CLASSIC_SKY_SNOW": "Neve",
+    "CLASSIC_SKY_DESCRIPTION": "Cielo delle vecchie mappe VXL. Casuale sceglie in base ai colori del terreno una volta per mappa. Solo aspetto locale.",
+    "CLASSIC_FOG": "Colore nebbia Classic",
+    "CLASSIC_FOG_SERVER": "Server / mappa",
+    "CLASSIC_FOG_SKY": "Come il cielo",
+    "CLASSIC_FOG_CUSTOM": "RGB personale",
+    "CLASSIC_FOG_RED": "Nebbia: rosso",
+    "CLASSIC_FOG_GREEN": "Nebbia: verde",
+    "CLASSIC_FOG_BLUE": "Nebbia: blu",
+    "CLASSIC_FOG_DESCRIPTION": "Vecchie mappe VXL: colore del server, del cielo o RGB personale. Distanza invariata. Annulla ripristina i colori precedenti.",
+    "CLASSIC_FOG_GRAY": "Grigio classico (predefinito)"
   }
 }

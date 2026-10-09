@@ -155,6 +155,7 @@
 #include "battlespades/world/tutorial_session.hpp"
 #include "battlespades/world/ugc_prefab_control.hpp"
 #include "battlespades/world/vxl_map.hpp"
+#include "battlespades/world/classic_environment.hpp"
 #include "battlespades/world/voxel_raycast.hpp"
 #include "battlespades/world/weapon_catalog.hpp"
 #include "battlespades/world/weapon_fire_sound.hpp"
@@ -2065,6 +2066,9 @@ struct NativeFrontendModule::Impl final {
     world::MapSurfaceBrightness map_surface_brightness;
     /** Exact packet-51 name retained for client-side ambient fallback. */
     std::string live_skydome_name{"Classic_B.txt"};
+    bool classic_environment_map{};
+    std::string classic_random_skydome;
+    std::array<std::uint8_t, 3U> classic_offline_fog{};
     std::optional<world::ClassSelection> pending_class_selection;
     std::unique_ptr<network::Protocol168TerrainReplica> live_terrain_replica;
     /** Packet-30 slices remain invisible until the authoritative packet-29 edge. */
@@ -9325,7 +9329,11 @@ struct NativeFrontendModule::Impl final {
         }
         if (success) {
             apply_cosmetic_preferences(value.main);
+            const bool sky_changed = applied_settings.main.classic_sky != value.main.classic_sky;
+            const bool fog_changed = applied_settings.main.classic_fog != value.main.classic_fog ||
+                                     applied_settings.main.classic_fog_color != value.main.classic_fog_color;
             applied_settings = value;
+            if (sky_changed || fog_changed) refresh_classic_appearance(sky_changed);
             if(!value.main.blood_marks) blood_marks.clear();
             sync_fallback_music();
             if (tutorial_session != nullptr) {
@@ -9394,6 +9402,18 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] bool apply_live_preview(SettingsRowId source,
                                           const settings::ClientSettings& draft) {
         switch (source) {
+        case SettingsRowId::classic_sky:
+        case SettingsRowId::classic_fog:
+        case SettingsRowId::classic_fog_red:
+        case SettingsRowId::classic_fog_green:
+        case SettingsRowId::classic_fog_blue: {
+            const bool sky_changed = applied_settings.main.classic_sky != draft.main.classic_sky;
+            applied_settings.main.classic_sky = draft.main.classic_sky;
+            applied_settings.main.classic_fog = draft.main.classic_fog;
+            applied_settings.main.classic_fog_color = draft.main.classic_fog_color;
+            refresh_classic_appearance(sky_changed);
+            return true;
+        }
         case SettingsRowId::discord_presence:
         case SettingsRowId::discord_join:
             applied_settings.main.discord_presence = draft.main.discord_presence;
@@ -9550,6 +9570,11 @@ struct NativeFrontendModule::Impl final {
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsPreviewEffect>) {
                         switch (payload.source) {
+                        case SettingsRowId::classic_sky:
+                        case SettingsRowId::classic_fog:
+                        case SettingsRowId::classic_fog_red:
+                        case SettingsRowId::classic_fog_green:
+                        case SettingsRowId::classic_fog_blue:
                         case SettingsRowId::discord_presence:
                         case SettingsRowId::discord_join:
                         case SettingsRowId::blood_marks:
@@ -9574,6 +9599,7 @@ struct NativeFrontendModule::Impl final {
                     } else if constexpr (std::is_same_v<Payload, SettingsDefaultsCommand>) {
                         if (payload.tab == settings::SettingsTab::main) {
                             apply_cosmetic_preferences(payload.draft.main);
+                            static_cast<void>(apply_live_preview(SettingsRowId::classic_sky, payload.draft));
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::language, payload.draft));
                             static_cast<void>(
@@ -12782,6 +12808,43 @@ struct NativeFrontendModule::Impl final {
         world_renderer.set_retail_lighting(retail_lighting);
     }
 
+    [[nodiscard]] std::string_view classic_selected_skydome(std::string_view fallback) const {
+        if (!classic_environment_map) return fallback;
+        const auto* option = settings::classic_sky_option(applied_settings.main.classic_sky);
+        if (!option || option->id == "server") return fallback;
+        if (option->id == "random")
+            return classic_random_skydome.empty() ? fallback : std::string_view{classic_random_skydome};
+        return option->skydome;
+    }
+
+    void apply_classic_fog() {
+        if (!classic_environment_map || !world_renderer.is_initialized()) return;
+        auto color = (network_match || network::is_classic_protocol(match_protocol))
+                         ? match_state_info.fog_color : classic_offline_fog;
+        if (applied_settings.main.classic_fog == "gray") color = {128U, 128U, 128U};
+        if (applied_settings.main.classic_fog == "sky") color = world_renderer.atmosphere().horizon_color;
+        if (applied_settings.main.classic_fog == "custom") color = applied_settings.main.classic_fog_color;
+        world_renderer.set_fog_color(color);
+        world_renderer.set_retail_fog_color(color);
+    }
+
+    void refresh_classic_appearance(bool sky_changed) {
+        if (!classic_environment_map || !world_renderer.is_initialized()) return;
+        if (sky_changed) {
+            if (network_match) {
+                if (!apply_live_map_environment(live_skydome_name))
+                    settings_warning = "Classic sky could not be loaded: " + std::string{world_renderer.last_error()};
+            } else {
+                const auto selected = classic_selected_skydome(live_skydome_name);
+                if (!world_renderer.set_skydome(selected)) {
+                    settings_warning = "Classic sky could not be loaded: " + std::string{world_renderer.last_error()};
+                    static_cast<void>(world_renderer.set_skydome(live_skydome_name));
+                }
+            }
+        }
+        apply_classic_fog();
+    }
+
     [[nodiscard]] bool apply_live_map_environment(std::string_view server_skydome) {
         apply_retail_state_lighting();
         world_renderer.set_retail_fog_color(match_state_info.fog_color);
@@ -12789,11 +12852,16 @@ struct NativeFrontendModule::Impl final {
         // Retail process_packet_skybox_data uses the server's dome name. The
         // local official-map table is only a fallback for an empty or
         // unloadable name (P2-15).
-        std::string selected_skydome{server_skydome};
+        std::string selected_skydome{classic_selected_skydome(server_skydome)};
         // Decision D2: StateData fog is authoritative in every shader tier.
         // set_skydome preserves the installed fog, so seed it first.
         world_renderer.set_fog_color(match_state_info.fog_color);
         bool dome_ready = !selected_skydome.empty() && world_renderer.set_skydome(selected_skydome);
+        if (!dome_ready && classic_environment_map && selected_skydome != server_skydome) {
+            selected_skydome = server_skydome;
+            dome_ready = world_renderer.set_skydome(selected_skydome);
+            settings_warning = "Selected Classic sky is unavailable; using the map default.";
+        }
         if (!dome_ready && live_official_environment.has_value()) {
             selected_skydome = std::string{live_official_environment->skydome};
             dome_ready = world_renderer.set_skydome(selected_skydome);
@@ -12812,6 +12880,7 @@ struct NativeFrontendModule::Impl final {
         } else {
             fit_ugc_atmosphere_to_map();
         }
+        apply_classic_fog();
         return true;
     }
 
@@ -13789,6 +13858,8 @@ struct NativeFrontendModule::Impl final {
         // prediction and may be absent for direct-connect or stale after a
         // same-endpoint map rotation.
         match_protocol = bootstrap->protocol;
+        classic_environment_map = network::is_classic_protocol(match_protocol);
+        classic_random_skydome.clear();
         classic_combat.reset();
         classic_line_start.reset();
         classic_remote_shot_delay.fill(0);
@@ -15587,6 +15658,7 @@ struct NativeFrontendModule::Impl final {
                     // win over even a locally authored official atmosphere.
                     match_state_info.fog_color = fog->color;
                     world_renderer.set_fog_color(fog->color);
+                    apply_classic_fog();
                 } else if (const auto* batch =
                                std::get_if<network::InitialUgcBatchPacket>(&*decoded.packet);
                            batch != nullptr) {
@@ -16174,6 +16246,7 @@ struct NativeFrontendModule::Impl final {
                     // from the already-resident skydome and must not reload its
                     // textures on an otherwise small state refresh.
                     apply_retail_state_lighting();
+                    apply_classic_fog();
                     refresh_pause_menu();
                     if (tutorial_session != nullptr) {
                         static_cast<void>(sync_roster_players());
@@ -17576,6 +17649,8 @@ struct NativeFrontendModule::Impl final {
                 classic_line_start.reset();
             }
         }
+        if (tutorial_session->selected_tool_id() != 5 || !(tutorial_session->action_flags() & 2U))
+            classic_line_start.reset();
     }
 
     void send_live_weapon_actions(std::span<const world::WeaponAction> actions) {
@@ -21711,6 +21786,9 @@ struct NativeFrontendModule::Impl final {
         interpolation_scene = {};
         live_official_environment.reset();
         map_surface_brightness = {};
+        classic_environment_map = false;
+        classic_random_skydome.clear();
+        classic_offline_fog = {};
         live_skydome_name = "Classic_B.txt";
         server_minimap_billboards.clear();
         server_minimap_zones.clear();
@@ -22014,6 +22092,13 @@ struct NativeFrontendModule::Impl final {
         minimap_map_revision = derived_world->map_revision;
         minimap_texture_upload_pending = true;
         map_surface_brightness = derived_world->surface_brightness;
+        classic_environment_map = classic_environment_map || shared_map->source_z_shift() == 176U;
+        if (classic_environment_map) {
+            classic_offline_fog = world_renderer.atmosphere().fog_color;
+            classic_random_skydome = world::choose_classic_skydome(*shared_map,
+                static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+            refresh_classic_appearance(true);
+        }
         fit_ugc_atmosphere_to_map();
         if (world_renderer.is_initialized()) {
             const auto emissive_palette = world::emissive_palette_for(tutorial_map_name);
@@ -27153,13 +27238,14 @@ struct NativeFrontendModule::Impl final {
         sway.x += sucker_shake[0U];
         sway.y += sucker_shake[1U];
         sway.z += sucker_shake[2U];
-        const auto input =
+        auto input =
             world::compose_weapon_view_model_input(*uploaded_sandbox_tool,
                                                    tutorial_session->seconds_since_weapon_animation(),
                                                    tutorial_session->weapon_action_sequence(),
                                                    sway,
                                                    tutorial_session->pullout_remaining(),
                                                    tutorial_session->weapon_mechanism_phase());
+        input.animation_duration = tutorial_session->weapon_animation_duration();
         const auto pose = world::evaluate_weapon_view_model(input);
         const auto tool_matrix = [&](const world::RetailModelPose& part_pose) {
             Mat4 tool = mat_scale(static_cast<float>(pose.model_scale));
@@ -29354,8 +29440,9 @@ struct NativeFrontendModule::Impl final {
             camera.eye = {256.0, 256.0, 96.0};
             camera.yaw_degrees = 0.0;
             camera.pitch_degrees = 18.0;
-            camera.fog_distance = static_cast<double>(
-                static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
+            camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
+                static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             if (!world_renderer.submit(camera, {extent.width, extent.height})) {
                 last_error =
                     "world pipeline warmup failed: " + std::string{world_renderer.last_error()};
@@ -29387,8 +29474,9 @@ struct NativeFrontendModule::Impl final {
             camera.yaw_degrees = 90.0;
             camera.pitch_degrees = 0.0;
             camera.sky_anchor = std::array<double, 3U>{256.0, 256.0, 0.0};
-            camera.fog_distance = static_cast<double>(
-                static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
+            camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
+                static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             if (!world_renderer.submit(camera, {extent.width, extent.height})) {
                 last_error =
                     "menu world backdrop failed: " + std::string{world_renderer.last_error()};
@@ -29485,8 +29573,9 @@ struct NativeFrontendModule::Impl final {
             // sight images are laid out for it.
             camera.view_model_fov_y_degrees =
                 world::zoom_fov_y_degrees(tutorial_session->zoom_level());
-            camera.fog_distance = static_cast<double>(
-                static_cast<std::uint16_t>(applied_settings.graphics.draw_distance));
+            camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
+                static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             const auto tool_draws = (result_camera.has_value() ||
                                      ugc_prefab_control.active())
                                         ? std::vector<render::ViewModelDraw>{}
@@ -29750,6 +29839,8 @@ struct NativeFrontendModule::Impl final {
         }
         if (action == MainMenuAction::player_profile) {
             player_profile_menu.reload(resolved_player_account_id);
+            static_cast<void>(player_profile_menu.select_tab(PlayerProfileTab::inventory));
+            if (!inventory_menu.loaded) dispatch_inventory_action(InventoryAction::refresh);
             dispatch_profile_request();
             static_cast<void>(navigation.push(FrontendScreen::player_profile));
             return;

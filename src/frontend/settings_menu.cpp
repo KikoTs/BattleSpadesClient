@@ -38,7 +38,7 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 14U> main_inventory{{
+constexpr std::array<SettingsRowId, 19U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
@@ -51,6 +51,12 @@ constexpr std::array<SettingsRowId, 14U> main_inventory{{
     SettingsRowId::ability_hints,
     SettingsRowId::ragdoll_corpses,
     SettingsRowId::blood_marks,
+    SettingsRowId::classic_sky,
+    SettingsRowId::classic_fog,
+    SettingsRowId::classic_fog_red,
+    SettingsRowId::classic_fog_green,
+    SettingsRowId::classic_fog_blue,
+
     SettingsRowId::discord_presence,
     SettingsRowId::discord_join,
 }};
@@ -164,9 +170,17 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
            row == SettingsRowId::inventory_slots;
 }
 
+[[nodiscard]] constexpr bool is_fog_channel(SettingsRowId row) noexcept {
+    return row == SettingsRowId::classic_fog_red || row == SettingsRowId::classic_fog_green ||
+           row == SettingsRowId::classic_fog_blue;
+}
+[[nodiscard]] constexpr std::size_t fog_channel(SettingsRowId row) noexcept {
+    return row == SettingsRowId::classic_fog_red ? 0U : row == SettingsRowId::classic_fog_green ? 1U : 2U;
+}
+
 [[nodiscard]] constexpr bool is_pointer_slider(SettingsRowId row) noexcept {
     return row == SettingsRowId::master_volume || row == SettingsRowId::music_volume ||
-           row == SettingsRowId::mouse_sensitivity;
+           row == SettingsRowId::mouse_sensitivity || is_fog_channel(row);
 }
 
 [[nodiscard]] constexpr std::int32_t height_for(SettingsRowId row) noexcept {
@@ -177,7 +191,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     if (is_category(row)) {
         return SettingsRowKind::category;
     }
-    if (row == SettingsRowId::master_volume || row == SettingsRowId::music_volume) {
+    if (row == SettingsRowId::master_volume || row == SettingsRowId::music_volume || is_fog_channel(row)) {
         return SettingsRowKind::stepped_slider;
     }
     if (row == SettingsRowId::mouse_sensitivity) {
@@ -194,7 +208,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         row == SettingsRowId::anisotropic_filtering) {
         return SettingsRowKind::toggle;
     }
-    if (row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
+    if (row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog ||
+        row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::window_mode || row == SettingsRowId::resolution ||
         row == SettingsRowId::graphics_api || row == SettingsRowId::antialiasing ||
         row == SettingsRowId::effect_quality || row == SettingsRowId::draw_distance ||
@@ -229,6 +244,12 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "RAGDOLL_CORPSES";
     case SettingsRowId::blood_marks:
         return "BLOOD_MARKS";
+    case SettingsRowId::classic_sky: return "CLASSIC_SKY";
+    case SettingsRowId::classic_fog: return "CLASSIC_FOG";
+    case SettingsRowId::classic_fog_red: return "CLASSIC_FOG_RED";
+    case SettingsRowId::classic_fog_green: return "CLASSIC_FOG_GREEN";
+    case SettingsRowId::classic_fog_blue: return "CLASSIC_FOG_BLUE";
+
     case SettingsRowId::discord_presence:
         return "DISCORD_PRESENCE";
     case SettingsRowId::discord_join:
@@ -1115,6 +1136,12 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(fallback_music);
         AOS_SETTINGS_ROW_NAME(ragdoll_corpses);
         AOS_SETTINGS_ROW_NAME(blood_marks);
+        AOS_SETTINGS_ROW_NAME(classic_sky);
+        AOS_SETTINGS_ROW_NAME(classic_fog);
+        AOS_SETTINGS_ROW_NAME(classic_fog_red);
+        AOS_SETTINGS_ROW_NAME(classic_fog_green);
+        AOS_SETTINGS_ROW_NAME(classic_fog_blue);
+
         AOS_SETTINGS_ROW_NAME(discord_presence);
         AOS_SETTINGS_ROW_NAME(discord_join);
         AOS_SETTINGS_ROW_NAME(window_mode);
@@ -1597,6 +1624,7 @@ bool SettingsMenuModel::target_enabled(SettingsMenuTarget target) const {
             .has_value()) {
         return false;
     }
+    if (is_fog_channel(target.row) && session_->draft().main.classic_fog != "custom") return false;
     if (target.row == SettingsRowId::resolution &&
         session_->draft().graphics.window_mode == settings::WindowMode::borderless) {
         // Borderless covers the desktop at the display's own mode; the
@@ -1636,6 +1664,12 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::discord_join)) {
         result.tooltip_key = "DISCORD_JOIN_DESCRIPTION";
     }
+    if (tooltip_target && tooltip_target->kind == SettingsTargetKind::row) {
+        if (tooltip_target->row == SettingsRowId::classic_sky)
+            result.tooltip_key = "CLASSIC_SKY_DESCRIPTION";
+        if (tooltip_target->row == SettingsRowId::classic_fog || is_fog_channel(tooltip_target->row))
+            result.tooltip_key = "CLASSIC_FOG_DESCRIPTION";
+    }
     result.focused = focused_;
     result.hovered = hovered_;
 
@@ -1667,6 +1701,30 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         item.enabled = target_enabled(target);
 
         switch (row) {
+        case SettingsRowId::classic_sky: {
+            for (const auto& option : settings::classic_sky_options) {
+                if (option.id == current.main.classic_sky) item.choice_index = item.choices.size();
+                item.choices.emplace_back(option.label);
+            }
+            item.choice_count = item.choices.size();
+            item.value_text = item.choices[item.choice_index];
+            break;
+        }
+        case SettingsRowId::classic_fog: {
+            for (std::size_t i{}; i < settings::classic_fog_options.size(); ++i) {
+                if (settings::classic_fog_options[i] == current.main.classic_fog) item.choice_index = i;
+                item.choices.emplace_back(settings::classic_fog_labels[i]);
+            }
+            item.choice_count = item.choices.size();
+            item.value_text = item.choices[item.choice_index];
+            break;
+        }
+        case SettingsRowId::classic_fog_red:
+        case SettingsRowId::classic_fog_green:
+        case SettingsRowId::classic_fog_blue:
+            item.scalar_value = current.main.classic_fog_color[fog_channel(row)] / 255.0;
+            item.value_text = std::to_string(current.main.classic_fog_color[fog_channel(row)]);
+            break;
         case SettingsRowId::language: {
             const auto found = std::ranges::find(environment_.languages,
                                                  current.main.language,
@@ -2549,7 +2607,8 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         return true;
     }
 
-    if (row == SettingsRowId::language || row == SettingsRowId::master_volume ||
+    if (row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog || is_fog_channel(row) ||
+        row == SettingsRowId::language || row == SettingsRowId::master_volume ||
         row == SettingsRowId::music_volume ||
         row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
@@ -2558,6 +2617,25 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join) {
         auto main = before.main;
         switch (row) {
+        case SettingsRowId::classic_sky: {
+            const auto* option = settings::classic_sky_option(main.classic_sky);
+            const auto index = option ? static_cast<std::size_t>(option - settings::classic_sky_options.data()) : 0U;
+            main.classic_sky = settings::classic_sky_options[shifted_index(index, settings::classic_sky_options.size(), direction)].id;
+            break;
+        }
+        case SettingsRowId::classic_fog: {
+            const auto found = std::ranges::find(settings::classic_fog_options, main.classic_fog);
+            const auto index = found == settings::classic_fog_options.end() ? 0U : static_cast<std::size_t>(found - settings::classic_fog_options.begin());
+            main.classic_fog = settings::classic_fog_options[shifted_index(index, settings::classic_fog_options.size(), direction)];
+            break;
+        }
+        case SettingsRowId::classic_fog_red:
+        case SettingsRowId::classic_fog_green:
+        case SettingsRowId::classic_fog_blue: {
+            auto& channel = main.classic_fog_color[fog_channel(row)];
+            channel = static_cast<std::uint8_t>(std::clamp(static_cast<int>(channel) + (direction < 0 ? -1 : 1), 0, 255));
+            break;
+        }
         case SettingsRowId::language: {
             if (environment_.languages.empty()) return false;
             const auto found = std::ranges::find(environment_.languages,
@@ -2766,8 +2844,9 @@ bool SettingsMenuModel::set_slider_from_pointer(SettingsRowId row,
             geometry.bar_right <= geometry.bar_left) {
             return false;
         }
-        value = snapped_volume(static_cast<double>(point.x - geometry.bar_left) /
-                               static_cast<double>(geometry.bar_right - geometry.bar_left));
+        value = static_cast<double>(point.x - geometry.bar_left) /
+                static_cast<double>(geometry.bar_right - geometry.bar_left);
+        value = is_fog_channel(row) ? std::clamp(value, 0.0, 1.0) : snapped_volume(value);
     }
     const auto before = session_->draft();
 
@@ -2778,6 +2857,10 @@ bool SettingsMenuModel::set_slider_from_pointer(SettingsRowId row,
         } else {
             main.music_volume = value;
         }
+        session_->set_main(main);
+    } else if (is_fog_channel(row)) {
+        auto main = before.main;
+        main.classic_fog_color[fog_channel(row)] = static_cast<std::uint8_t>(std::lround(value * 255.0));
         session_->set_main(main);
     } else if (row == SettingsRowId::mouse_sensitivity) {
         auto controls = before.controls;
@@ -2802,6 +2885,7 @@ void SettingsMenuModel::emit_preview(SettingsRowId source) {
 }
 
 bool SettingsMenuModel::step_volume(SettingsRowId row, std::int32_t direction) {
+    if (is_fog_channel(row)) return adjust_row(row, direction);
     if (row != SettingsRowId::master_volume && row != SettingsRowId::music_volume) {
         return false;
     }

@@ -69,6 +69,27 @@
     "DISCORD_PRESENCE": "Aktivita na Discordu",
     "DISCORD_PRESENCE_DESCRIPTION": "Zobrazuje server, mapu, režim a počet hráčů na Discordu. Vyžaduje aplikaci Discord pro počítač. Adresy soukromých serverů jsou skryté.",
     "DISCORD_JOIN": "Připojení přes Discord",
-    "DISCORD_JOIN_DESCRIPTION": "Umožňuje připojení ke hře přes Discord a sdílí tlačítko pro veřejné servery bez hesla. Soukromé adresy a přihlašovací údaje se nikdy nesdílejí."
+    "DISCORD_JOIN_DESCRIPTION": "Umožňuje připojení ke hře přes Discord a sdílí tlačítko pro veřejné servery bez hesla. Soukromé adresy a přihlašovací údaje se nikdy nesdílejí.",
+    "INVENTORY": "Inventář",
+    "INVENTORY_DISCOVERY_HINT": "Skiny, úrovně a statistiky",
+    "CLASSIC_SKY": "Obloha Classic",
+    "CLASSIC_SKY_DEFAULT": "Podle mapy",
+    "CLASSIC_SKY_RANDOM": "Náhodně (barvy mapy)",
+    "CLASSIC_SKY_CLEAR": "Jasno",
+    "CLASSIC_SKY_OVERCAST": "Zataženo",
+    "CLASSIC_SKY_DESERT": "Poušť",
+    "CLASSIC_SKY_SUNSET": "Západ slunce",
+    "CLASSIC_SKY_NIGHT": "Noc",
+    "CLASSIC_SKY_SNOW": "Sníh",
+    "CLASSIC_SKY_DESCRIPTION": "Obloha starých map VXL. Náhodný výběr podle barev terénu jednou za mapu. Pouze místní vzhled.",
+    "CLASSIC_FOG": "Barva mlhy Classic",
+    "CLASSIC_FOG_SERVER": "Server / mapa",
+    "CLASSIC_FOG_SKY": "Podle oblohy",
+    "CLASSIC_FOG_CUSTOM": "Vlastní RGB",
+    "CLASSIC_FOG_RED": "Mlha: červená",
+    "CLASSIC_FOG_GREEN": "Mlha: zelená",
+    "CLASSIC_FOG_BLUE": "Mlha: modrá",
+    "CLASSIC_FOG_DESCRIPTION": "Staré mapy VXL: barva serveru, oblohy nebo vlastní RGB. Vzdálenost se nemění. Zrušit obnoví předchozí barvy.",
+    "CLASSIC_FOG_GRAY": "Klasická šedá (výchozí)"
   }
 }

@@ -293,6 +293,17 @@ int main(int argc, char** argv) {
         }
         camera.yaw_degrees=0; camera.pitch_degrees=0;
         std::cout << "12 viewmodel camera rotations passed" << std::endl;
+        // Classic has no second sun. A zero direction for its disabled light
+        // must be indistinguishable from any other direction, on every API.
+        retail.back_light_color = {0,0,0};
+        scene.set_retail_lighting(retail);
+        const auto disabled_light_reference = capture(draws,false,held_draws);
+        retail.back_light_direction = {0,0,0};
+        scene.set_retail_lighting(retail);
+        expect(capture(draws,false,held_draws) == disabled_light_reference,
+               "Zero-length disabled Classic light corrupts terrain or held model");
+        retail.back_light_direction = {1,0,0};
+        scene.set_retail_lighting(retail);
         // Cycle every tier/effect combination without remeshing, then restore Legacy.
         auto surface=plane(4);
         for (auto& vertex:surface.vertices) {
@@ -321,6 +332,25 @@ int main(int argc, char** argv) {
                "Legacy fog did not preserve the server color");
         camera.fog_distance=256;
         std::cout << "15 tier/effect combinations, presentation reset, and fog authority passed" << std::endl;
+
+        // A visible plane 160 blocks away in XY must be completely fogged
+        // in 0.75, even under enhanced lighting with a different sky horizon.
+        camera.classic075_fog=true;
+        camera.fog_distance=128;
+        camera.eye={96,256,96};
+        scene.set_fog_color({128,128,128});
+        for (const auto tier : {settings::ShaderQuality::compatibility,settings::ShaderQuality::low,
+                               settings::ShaderQuality::medium,settings::ShaderQuality::high,settings::ShaderQuality::ultra}) {
+            profile=render::profile_for(tier,settings::QualityLevel::high);
+            const auto pixels=capture(draws,false);
+            expect(pixels[center]==128 && pixels[center+1]==128 && pixels[center+2]==128,
+                   "0.75 visibility limit or fog color changed with shader quality");
+        }
+        camera.classic075_fog=false;
+        camera.fog_distance=256;
+        camera.eye={256,256,100};
+        profile=render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
+        std::cout << "0.75 gray fog boundary passed at every shader tier" << std::endl;
 
         // draw_sea: one 2000-block quad just under the bed, lit by sea_frag
         // (normal up, AO and edge from the neutral cell, grain repeated 2000x,

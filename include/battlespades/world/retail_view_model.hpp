@@ -43,6 +43,8 @@ struct WeaponViewModelInput final {
     double sway_z{};
     /** 0..1 accumulated mechanism rotation, currently Minigun AnimRoll. */
     double mechanism_phase{};
+    /** Optional presentation duration; Classic charged digging needs a full swing. */
+    double animation_duration{};
 };
 
 /**
@@ -184,7 +186,8 @@ struct RetailToolHold final {
  * drops the animations retail only starts on the local placing/cooking path.
  */
 [[nodiscard]] RetailModelPose evaluate_retail_tool_animation(
-    std::uint8_t tool_id, double seconds_since_primary, bool main_character) noexcept;
+    std::uint8_t tool_id, double seconds_since_primary, bool main_character,
+    double duration_override = 0.0) noexcept;
 
 /**
  * Evaluate the recovered BlockTool, SpadeTool/DiggingTool, Weapon animation,

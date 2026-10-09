@@ -12,6 +12,7 @@
 //       [light=r,g,b] [light_dir=x,y,z] [back=r,g,b] [back_dir=x,y,z]
 //       [ambient=r,g,b] [ambient_intensity=f] [tier=compatibility|low|...]
 //       [backend=direct3d11] [shaders=<bin root>] [sky=x,y,z]
+//       [classic075=1] (original horizontal fog, clamped to 128 blocks)
 //       [explosion_tool=57 effect_position=x,y,z effect_ticks=12]
 //       [effect_color=r,g,b] [effect_gravity=1] [effect_collision=1]
 //       [sticky_fragments=1] (include the attached model breakup for tool 57)
@@ -127,6 +128,7 @@ int main(int argc, char** argv) {
         config.multisample_samples = 0U;
         config.texture_quality = render::TextureQualityTier::medium;
         expect(ui.initialize(config), std::string{ui.last_error()});
+        expect(ui.active_backend() == config.backend, "Requested graphics API was not selected");
 
         render::WorldRenderer scene;
         expect(scene.initialize(config.shader_root, config.asset_root, config.texture_quality),
@@ -271,6 +273,8 @@ int main(int argc, char** argv) {
         camera.pitch_degrees = std::atan2(ori[2], horizontal) * degrees;
         camera.fov_y_degrees = std::stod(get("fov", "75"));
         camera.fog_distance = std::stod(get("fog_distance", "192"));
+        camera.classic075_fog = get("classic075", "0") == "1";
+        if (camera.classic075_fog) camera.fog_distance = std::min(camera.fog_distance, 128.0);
         if (args.contains("sky")) {
             const auto sky = numbers(args["sky"], 3U);
             camera.sky_anchor = std::array<double, 3U>{sky[0], sky[1], sky[2]};

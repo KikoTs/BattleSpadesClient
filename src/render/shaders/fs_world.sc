@@ -71,6 +71,14 @@ uniform vec4 u_upAxis;
 // terrain, which carries the same light in its vertex bake / volume probe.
 uniform vec4 u_modelLight;
 
+// Classic supplies no back light; its unused direction is (0,0,0).
+// normalize(0), including an opposite light/view half-vector, is undefined
+// across APIs and can poison even a light multiplied by zero intensity.
+vec3 safe_direction(vec3 value)
+{
+    return value * inversesqrt(max(dot(value, value), 0.00000001));
+}
+
 vec3 retail_calculate_lighting(vec3 albedo, vec3 light_direction,
                                vec3 half_vector, vec3 light_color,
                                vec3 normal, float directional_influence)
@@ -124,14 +132,14 @@ void main()
             {
                 retail_normal = -retail_normal;
             }
-            vec3 light0 = normalize(u_retailLight0Direction.xyz);
-            vec3 light1 = normalize(u_retailLight1Direction.xyz);
-            vec3 eye = normalize(u_retailViewDirection.xyz);
+            vec3 light0 = safe_direction(u_retailLight0Direction.xyz);
+            vec3 light1 = safe_direction(u_retailLight1Direction.xyz);
+            vec3 eye = safe_direction(u_retailViewDirection.xyz);
             vec3 dir0 = retail_calculate_lighting(
-                albedo, light0, normalize(light0 + eye),
+                albedo, light0, safe_direction(light0 + eye),
                 u_retailLight0Color.rgb, retail_normal, v_retail_meta.z);
             vec3 dir1 = retail_calculate_lighting(
-                albedo, light1, normalize(light1 + eye),
+                albedo, light1, safe_direction(light1 + eye),
                 u_retailLight1Color.rgb, retail_normal, v_retail_meta.z);
             vec3 ambient = u_retailAmbient.rgb * u_retailAmbient.a;
             vec3 combined = clamp(ambient + dir0 + dir1,
@@ -154,9 +162,9 @@ void main()
             // model_frag.py: KV6 normals, wrapped diffuse, exponent-5 specular.
             // GameScene.draw binds each light's color as both diffuse and specular.
             vec3 n = normalize(vec3(normal.x, -normal.z, normal.y));
-            vec3 l0 = normalize(u_retailLight0Direction.xyz);
-            vec3 l1 = normalize(u_retailLight1Direction.xyz);
-            vec3 eye = normalize(u_retailViewDirection.xyz);
+            vec3 l0 = safe_direction(u_retailLight0Direction.xyz);
+            vec3 l1 = safe_direction(u_retailLight1Direction.xyz);
+            vec3 eye = safe_direction(u_retailViewDirection.xyz);
             vec3 light = (0.75 + 0.25 * dot(n, l0) +
                 0.2 * pow(max(0.0, dot(n, normalize(l0 + eye))), 5.0)) * u_retailLight0Color.rgb;
             light += (0.75 + 0.25 * dot(n, l1) +
@@ -455,7 +463,14 @@ void main()
 
     float fog;
     vec3 fog_rgb;
-    if (u_lightParams.x < 1.5)
+    if (u_cameraPosition.w > 0.5)
+    {
+        // Original 0.75/ZeroSpades visibility is squared horizontal distance.
+        // This protocol rule is independent of sky, lighting and quality.
+        fog = clamp(dot(offset.xy, offset.xy) / (u_fogParams.w * u_fogParams.w), 0.0, 1.0);
+        fog_rgb = u_fogParams.rgb;
+    }
+    else if (u_lightParams.x < 1.5)
     {
         // The preserved client configures GL_LINEAR fog with START at half
         // draw distance and END at draw distance. Legacy must retain that

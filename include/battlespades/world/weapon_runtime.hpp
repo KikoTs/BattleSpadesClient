@@ -134,6 +134,9 @@ public:
     [[nodiscard]] double charge_fraction() const noexcept;
     /** Active hold duration for grenade/viewmodel presentation, or -1. */
     [[nodiscard]] double interaction_elapsed() const noexcept;
+    /** Original spade charge clock, shared by presentation and the dig action. */
+    [[nodiscard]] double classic_dig_progress() const noexcept;
+    [[nodiscard]] bool classic_block_dragging() const noexcept { return classic_timing_.block_dragging; }
     [[nodiscard]] double current_accuracy() const noexcept;
     /**
      * Retail crosshair corner radius for the current weapon and projection.
@@ -185,7 +188,7 @@ private:
     std::uint8_t classic_protocol_{};
     struct ClassicTiming {
         double time{}, gun{}, spade{}, dig{}, block{}, grenade{};
-        bool shooting{}, digging{};
+        bool shooting{}, digging{}, block_dragging{};
     } classic_timing_;
     void process_edges(const WeaponDefinition& weapon) noexcept;
     void process_held(const WeaponDefinition& weapon, double dt) noexcept;

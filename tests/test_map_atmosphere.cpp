@@ -1,5 +1,9 @@
 #include "battlespades/render/skydome_animation.hpp"
 #include "battlespades/world/map_atmosphere.hpp"
+#include "battlespades/world/classic_environment.hpp"
+#include "battlespades/world/vxl_map.hpp"
+#include "battlespades/settings/classic_appearance.hpp"
+#include <set>
 
 #include <algorithm>
 #include <array>
@@ -424,8 +428,44 @@ void surface_brightness_fits_ugc_lighting() {
            "no measurement, no change");
 }
 
+void classic_random_sky_matches_surface_colors() {
+    std::vector<std::byte> bytes;
+    for (std::size_t column{}; column < static_cast<std::size_t>(VxlMap::width) * VxlMap::depth; ++column)
+        for (const auto value : {0, 1, 0, 0}) bytes.push_back(static_cast<std::byte>(value));
+    auto loaded = VxlMap::load(bytes);
+    expect(static_cast<bool>(loaded), "empty map fixture");
+    auto& map = *loaded.map;
+    expect(choose_classic_skydome(map, 0U) == "User_Grassland.txt", "empty/ocean map uses safe sky");
+    const std::array colors{VxlColor{230, 235, 240}, VxlColor{70, 130, 60},
+                            VxlColor{190, 150, 80}, VxlColor{25, 25, 30}};
+    const std::array<std::set<std::string_view>, 4U> families{{
+        {"ArcticBase.txt", "Classic_B.txt"}, {"User_Grassland.txt", "Classic.txt", "MayanJungle.txt"},
+        {"Egypt.txt", "Colosseum.txt", "Frontier.txt"}, {"SecretBase_Night.txt", "BranCastle.txt", "WW1.txt"}}};
+    for (std::size_t family{}; family < colors.size(); ++family) {
+        for (std::uint32_t y = 4U; y < 128U; y += 8U)
+            for (std::uint32_t x = 4U; x < 128U; x += 8U)
+                expect(map.set_voxel(x, y, 200U, colors[family]), "palette sample installed");
+        std::set<std::string_view> seen;
+        for (std::uint64_t seed{}; seed < 32U; ++seed) {
+            const auto sky = choose_classic_skydome(map, seed);
+            expect(families[family].contains(sky), "random sky must respect the land palette despite ocean");
+            expect(choose_classic_skydome(map, seed) == sky, "same map/seed must be stable");
+            seen.insert(sky);
+        }
+        expect(seen.size() > 1U, "matching families still offer random variation");
+    }
+    for (const auto& option : battlespades::settings::classic_sky_options) {
+        if (option.skydome.empty()) continue;
+        MapAtmosphere atmosphere;
+        std::string error;
+        expect(derive_map_atmosphere(asset_root(), option.skydome, atmosphere, error),
+               "every selectable sky must load installed assets: " + error);
+    }
+}
+
 int main() {
     try {
+        classic_random_sky_matches_surface_colors();
         surface_brightness_fits_ugc_lighting();
         skydome_time_matches_retail_draw_counter();
         every_shipped_dome_derives();

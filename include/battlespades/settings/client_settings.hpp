@@ -1,5 +1,7 @@
 #pragma once
 
+#include "battlespades/settings/classic_appearance.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -30,6 +32,10 @@ struct MainSettings final {
     bool ragdoll_corpses{true};
     /** Local blood droplets and temporary terrain stains in all game modes. */
     bool blood_marks{false};
+    /** Local atmosphere overrides for legacy Classic VXL maps only. */
+    std::string classic_sky{"server"};
+    std::string classic_fog{"gray"};
+    std::array<std::uint8_t, 3U> classic_fog_color{128U, 128U, 128U};
     /** Share current server/map/mode with the locally running Discord client. */
     bool discord_presence{true};
     /** Public, password-free servers only; no private addresses or credentials. */

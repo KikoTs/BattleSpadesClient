@@ -1,9 +1,10 @@
 <rml><head><title>Inventory</title><link type="text/rcss" href="inventory.rcss"/></head>
 <body><div id="frame">
-<div class="heading"><h1>PLAYER PROFILE</h1><span>YOUR COLLECTION</span></div>
+<div class="heading"><h1>INVENTORY</h1><span>SKINS, LEVELS &amp; REWARDS</span></div>
 <div class="profile-tabs"><button action="profile:0">PLAYER STATS</button><button action="profile:1">GAME MODES</button><button action="profile:2">CLASSES</button><button action="profile:3">EQUIPMENT</button><button class="active">INVENTORY</button></div>
 <div class="progress-heading"><h2 id="level">ACCOUNT LEVEL 1</h2><span id="xp">0 XP</span><span id="crate-count">0 CRATES</span></div>
 <div id="xp-track"><div id="xp-fill"></div></div>
+<p class="progress-hint">Earn XP in supported servers, level up for crates, then equip your skins below.</p>
 <div class="sections"><button id="section0" action="section:0">COLLECTION</button><button id="section1" action="section:1">SUPPLY CRATES</button><button id="section2" action="section:2">HISTORY</button><button id="section3" action="section:3">SKIN PACKS</button></div>
 <div id="content"></div>
 <div class="footer"><button action="back">BACK</button><p id="status"></p><button action="refresh">REFRESH</button></div>

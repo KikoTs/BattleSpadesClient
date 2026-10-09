@@ -120,7 +120,7 @@ MainMenuModel::MainMenuModel()
               menu_widget(6U, retail_text_button(269, 295, 262, 58)),
               MainMenuAction::player_profile,
               MainMenuControlKind::text_button,
-              "PLAYER_PROFILE",
+              "INVENTORY",
               {},
           },
           MainMenuControl{

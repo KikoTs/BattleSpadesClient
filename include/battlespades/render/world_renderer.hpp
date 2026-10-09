@@ -48,6 +48,8 @@ struct WorldCamera final {
     double near_plane{0.1};
     /** Radial fog end; the retail Draw Distance setting in blocks. */
     double fog_distance{192.0};
+    /** AoS 0.75 uses squared horizontal distance, regardless of lighting tier. */
+    bool classic075_fog{};
     /**
      * Map position the authored skydome is centred on; unset follows the eye.
      *

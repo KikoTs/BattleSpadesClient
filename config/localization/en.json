@@ -2164,6 +2164,27 @@
     "DISCORD_JOIN": "Discord joining",
     "DISCORD_JOIN_DESCRIPTION": "Allow Discord Join Game and share a join button for public servers without a password. Private addresses and login credentials are never shared.",
     "BLOOD_MARKS": "Lingering blood",
-    "BLOOD_MARKS_DESCRIPTION": "Visual blood droplets and temporary stains on blocks in Classic and Standard. Lasts 20–32 seconds; does not change gameplay."
+    "BLOOD_MARKS_DESCRIPTION": "Visual blood droplets and temporary stains on blocks in Classic and Standard. Lasts 20–32 seconds; does not change gameplay.",
+    "INVENTORY": "Inventory",
+    "INVENTORY_DISCOVERY_HINT": "Skins, levels & player stats",
+    "CLASSIC_SKY": "Classic sky",
+    "CLASSIC_SKY_DEFAULT": "Map default",
+    "CLASSIC_SKY_RANDOM": "Random (map colors)",
+    "CLASSIC_SKY_CLEAR": "Clear",
+    "CLASSIC_SKY_OVERCAST": "Overcast",
+    "CLASSIC_SKY_DESERT": "Desert",
+    "CLASSIC_SKY_SUNSET": "Sunset",
+    "CLASSIC_SKY_NIGHT": "Night",
+    "CLASSIC_SKY_SNOW": "Snow",
+    "CLASSIC_SKY_DESCRIPTION": "Sky for legacy VXL maps. Random picks a sky from the terrain colors once per map. Local appearance only.",
+    "CLASSIC_FOG": "Classic fog color",
+    "CLASSIC_FOG_SERVER": "Server / map",
+    "CLASSIC_FOG_SKY": "Match sky",
+    "CLASSIC_FOG_CUSTOM": "Custom RGB",
+    "CLASSIC_FOG_RED": "Fog red",
+    "CLASSIC_FOG_GREEN": "Fog green",
+    "CLASSIC_FOG_BLUE": "Fog blue",
+    "CLASSIC_FOG_DESCRIPTION": "Legacy VXL maps only: use server fog, match the sky, or mix red, green and blue below. Fog distance stays unchanged. Cancel restores your previous colors.",
+    "CLASSIC_FOG_GRAY": "Classic gray (default)"
   }
 }

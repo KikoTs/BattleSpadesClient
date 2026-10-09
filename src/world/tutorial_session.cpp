@@ -2748,14 +2748,35 @@ int TutorialWorldSession::targets_destroyed() const noexcept {
     return static_cast<int>(std::count(target_down_.begin(), target_down_.end(), true));
 }
 
+double TutorialWorldSession::weapon_animation_duration() const noexcept {
+    return config_.classic_protocol && selected_tool_id() == 4 &&
+           (classic_secondary_animation_ || sandbox_inventory_.weapons().classic_dig_progress() >= 0.0)
+               ? 1.0 : 0.0;
+}
+
 double TutorialWorldSession::seconds_since_weapon_animation() const noexcept {
     if (!config_.classic_protocol || selected_tool_id() != 4) return seconds_since_primary();
     const auto& spade = weapon_catalog()[4];
     const double native_length = spade.retail.use.shoot_interval.value_or(spade.fire_interval);
+    const double dig = sandbox_inventory_.weapons().classic_dig_progress();
+    // AnimUseSpade reaches contact 0.3 seconds before its end. Drive the
+    // wind-up from the SAME one-second deadline as the wire action, then
+    // recover from contact; never start a fresh swing after removing blocks.
+    constexpr double dig_length = 1.0;
+    constexpr double contact = dig_length - 0.3;
+    constexpr double recovery = 0.15;
+    if (classic_secondary_animation_ && since_primary_ < recovery)
+        return contact + (dig_length - contact) * since_primary_ / recovery;
+    if (dig >= 0.0) {
+        const bool repeating = classic_secondary_animation_ && since_primary_ < 1.0;
+        const double progress = repeating ? std::clamp((dig - recovery) / (1.0 - recovery), 0.0, 1.0) : dig;
+        return std::max(0.000001, progress * contact);
+    }
+    if (classic_secondary_animation_) return 1.0e9;
     // Keep the authored spade swing, but fit its full cycle into the original
     // 0.2s primary / 1s dig cadence. Skip retail's sign-flipped start frame.
     return std::max(since_primary_, 0.000001) * native_length /
-           (classic_secondary_animation_ ? 1.0 : 0.2);
+           0.2;
 }
 
 double TutorialWorldSession::seconds_since_primary() const noexcept {
@@ -4218,6 +4239,14 @@ std::uint8_t TutorialWorldSession::action_flags() const noexcept {
         flags |= 0x80U;
     if (config_.classic_protocol) {
         const auto selected = selected_tool_id();
+        // Server line validation records the position on this secondary edge.
+        // Publish the tool's accepted drag, including presses held through
+        // cooldown, instead of the raw mouse state. RMB suppresses LMB.
+        if (selected == 5) {
+            flags &= static_cast<std::uint8_t>(~3U);
+            if (sandbox_inventory_.weapons().classic_block_dragging()) flags |= 2U;
+            else if (!secondary_held_ && (primary_held_ || primary_tick_held_)) flags |= 1U;
+        }
         const auto* ammo = selected ? sandbox_inventory_.ammo(*selected) : nullptr;
         if (ammo && ammo->reloading && selected != 37) flags &= static_cast<std::uint8_t>(~1U);
         if (sent_held(TutorialAction::sprint)) flags &= static_cast<std::uint8_t>(~1U);

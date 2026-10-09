@@ -182,6 +182,7 @@ void append_text_button(ui::DrawList& list,
 
     // Pressed TextButton artwork does not move; only its content drops 2 px.
     const auto pressed_offset = state == WidgetVisualState::pressed ? 2.0 : 0.0;
+    const bool inventory = control.action == MainMenuAction::player_profile;
     list.push(TextDrawCommand{
         std::string{control.localization_key},
         std::string{main_menu_assets::button_font},
@@ -189,10 +190,10 @@ void append_text_button(ui::DrawList& list,
             button.x + horizontal_text_inset,
             button.y + vertical_text_inset + pressed_offset,
             button.width - horizontal_text_inset * 2.0,
-            button.height - vertical_text_inset * 2.0,
+            inventory ? 29.0 : button.height - vertical_text_inset * 2.0,
         },
         DrawSpace::design_pixels,
-        36.0,
+        inventory ? 30.0 : 36.0,
         2.0,
         2U,
         HorizontalTextAlignment::center,
@@ -369,6 +370,15 @@ ui::DrawList MainMenuPresentation::build(const MainMenuModel& menu,
                      ui::TextureAnchor::center,
                      source_scale));
 
+    const auto& inventory_control = controls[5U];
+    const auto inventory_rect = to_design_rect(inventory_control.widget.bounds);
+    const auto pressed_offset = menu.visual_state(inventory_control.widget.id) == WidgetVisualState::pressed ? 2.0 : 0.0;
+    list.push(TextDrawCommand{
+        "INVENTORY_DISCOVERY_HINT", std::string{main_menu_assets::welcome_font},
+        {inventory_rect.x + 12.0, inventory_rect.y + 34.0 + pressed_offset, inventory_rect.width - 24.0, 18.0},
+        DrawSpace::design_pixels, 14.0, 1.0, 1U, HorizontalTextAlignment::center,
+        VerticalTextAlignment::retail_center, TextTransform::preserve, TextFit::shrink_to_fit,
+        ColorModulation{button_text_color, 1'000U, 1'000U}});
     return list;
 }
 

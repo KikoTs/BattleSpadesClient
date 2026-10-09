@@ -2127,6 +2127,27 @@
     "DISCORD_PRESENCE": "Discord etkinliği",
     "DISCORD_PRESENCE_DESCRIPTION": "Sunucu, harita, mod ve oyuncu sayısını Discord'da gösterir. Discord masaüstü uygulaması gerekir. Özel sunucu adresleri gizlenir.",
     "DISCORD_JOIN": "Discord üzerinden katılma",
-    "DISCORD_JOIN_DESCRIPTION": "Discord üzerinden oyuna katılmaya izin verir ve şifresiz herkese açık sunucular için katıl düğmesi paylaşır. Özel adresler ve giriş bilgileri asla paylaşılmaz."
+    "DISCORD_JOIN_DESCRIPTION": "Discord üzerinden oyuna katılmaya izin verir ve şifresiz herkese açık sunucular için katıl düğmesi paylaşır. Özel adresler ve giriş bilgileri asla paylaşılmaz.",
+    "INVENTORY": "Envanter",
+    "INVENTORY_DISCOVERY_HINT": "Görünümler, seviye ve istatistik",
+    "CLASSIC_SKY": "Classic gökyüzü",
+    "CLASSIC_SKY_DEFAULT": "Harita varsayılanı",
+    "CLASSIC_SKY_RANDOM": "Rastgele (harita rengi)",
+    "CLASSIC_SKY_CLEAR": "Açık",
+    "CLASSIC_SKY_OVERCAST": "Bulutlu",
+    "CLASSIC_SKY_DESERT": "Çöl",
+    "CLASSIC_SKY_SUNSET": "Gün batımı",
+    "CLASSIC_SKY_NIGHT": "Gece",
+    "CLASSIC_SKY_SNOW": "Kar",
+    "CLASSIC_SKY_DESCRIPTION": "Eski VXL haritalarının gökyüzü. Rastgele seçim arazi renklerine göre harita başına bir kez yapılır. Yalnızca yerel görünüm.",
+    "CLASSIC_FOG": "Classic sis rengi",
+    "CLASSIC_FOG_SERVER": "Sunucu / harita",
+    "CLASSIC_FOG_SKY": "Gökyüzüne göre",
+    "CLASSIC_FOG_CUSTOM": "Özel RGB",
+    "CLASSIC_FOG_RED": "Sis: kırmızı",
+    "CLASSIC_FOG_GREEN": "Sis: yeşil",
+    "CLASSIC_FOG_BLUE": "Sis: mavi",
+    "CLASSIC_FOG_DESCRIPTION": "Eski VXL haritaları: sunucu rengi, gökyüzü veya özel RGB. Sis mesafesi değişmez. İptal önceki renkleri geri getirir.",
+    "CLASSIC_FOG_GRAY": "Klasik gri (varsayılan)"
   }
 }

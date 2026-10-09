@@ -2127,6 +2127,27 @@
     "DISCORD_PRESENCE": "Aktywność na Discordzie",
     "DISCORD_PRESENCE_DESCRIPTION": "Pokazuje serwer, mapę, tryb i liczbę graczy na Discordzie. Wymaga aplikacji Discord na komputer. Adresy prywatnych serwerów są ukryte.",
     "DISCORD_JOIN": "Dołączanie przez Discord",
-    "DISCORD_JOIN_DESCRIPTION": "Pozwala dołączać do gry przez Discord i udostępnia przycisk dla publicznych serwerów bez hasła. Prywatne adresy i dane logowania nigdy nie są udostępniane."
+    "DISCORD_JOIN_DESCRIPTION": "Pozwala dołączać do gry przez Discord i udostępnia przycisk dla publicznych serwerów bez hasła. Prywatne adresy i dane logowania nigdy nie są udostępniane.",
+    "INVENTORY": "Ekwipunek",
+    "INVENTORY_DISCOVERY_HINT": "Skórki, poziomy i statystyki",
+    "CLASSIC_SKY": "Niebo Classic",
+    "CLASSIC_SKY_DEFAULT": "Domyślne mapy",
+    "CLASSIC_SKY_RANDOM": "Losowe (kolory mapy)",
+    "CLASSIC_SKY_CLEAR": "Pogodne",
+    "CLASSIC_SKY_OVERCAST": "Pochmurne",
+    "CLASSIC_SKY_DESERT": "Pustynia",
+    "CLASSIC_SKY_SUNSET": "Zachód słońca",
+    "CLASSIC_SKY_NIGHT": "Noc",
+    "CLASSIC_SKY_SNOW": "Śnieg",
+    "CLASSIC_SKY_DESCRIPTION": "Niebo starych map VXL. Losowanie według kolorów terenu raz na mapę. Tylko lokalny wygląd.",
+    "CLASSIC_FOG": "Kolor mgły Classic",
+    "CLASSIC_FOG_SERVER": "Serwer / mapa",
+    "CLASSIC_FOG_SKY": "Według nieba",
+    "CLASSIC_FOG_CUSTOM": "Własny RGB",
+    "CLASSIC_FOG_RED": "Mgła: czerwony",
+    "CLASSIC_FOG_GREEN": "Mgła: zielony",
+    "CLASSIC_FOG_BLUE": "Mgła: niebieski",
+    "CLASSIC_FOG_DESCRIPTION": "Stare mapy VXL: kolor serwera, nieba lub własny RGB. Odległość bez zmian. Anuluj przywraca poprzednie kolory.",
+    "CLASSIC_FOG_GRAY": "Klasyczna szarość (domyślna)"
   }
 }

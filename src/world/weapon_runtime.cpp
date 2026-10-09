@@ -151,14 +151,19 @@ void WeaponRuntime::tick_classic(double dt) noexcept {
             emit(WeaponActionKind::melee, weapon, true);
             timing.dig = now + 1.0;
         }
-    } else if (*selected == 5 && !context_.sprinting) {
+    } else if (*selected == 5) {
         if (custom_pressed_) emit(WeaponActionKind::color_pick, weapon);
-        if (secondary_pressed_ && now >= timing.block) emit(WeaponActionKind::block_line_begin, weapon, true);
-        if (secondary_released_ && now >= timing.block) {
+        // ZeroSpades re-evaluates held input after the placement cooldown.
+        // A physical press during that half-second must not be lost forever.
+        const bool dragging = secondary_held_ && !context_.sprinting && now >= timing.block;
+        if (dragging && !timing.block_dragging)
+            emit(WeaponActionKind::block_line_begin, weapon, true);
+        if (!secondary_held_ && timing.block_dragging && !context_.sprinting) {
             emit(WeaponActionKind::block_line_commit, weapon, true);
             timing.block = now + 0.5;
         }
-        if (primary_held_ && !secondary_held_ && now >= timing.block) { emit(WeaponActionKind::block_line_begin, weapon); timing.block = now + 0.5; }
+        timing.block_dragging = dragging;
+        if (primary_held_ && !secondary_held_ && !context_.sprinting && now >= timing.block) { emit(WeaponActionKind::block_line_begin, weapon); timing.block = now + 0.5; }
     } else if (*selected == 31) {
         if (primary_pressed_ && now >= timing.grenade && replication_.ammo(31)->magazine && !context_.sprinting) {
             interaction_active_ = true; interaction_elapsed_ = 0;
@@ -353,6 +358,7 @@ void WeaponRuntime::on_unset() noexcept {
 
 void WeaponRuntime::cancel_interaction() noexcept {
     classic_timing_.shooting = classic_timing_.digging = false;
+    classic_timing_.block_dragging = false;
     if (block_sucker_state_ != 0U) {
         if (const auto selected = replication_.selected_tool(); selected.has_value()) {
             emit(WeaponActionKind::block_sucker_state,
@@ -1120,6 +1126,12 @@ double WeaponRuntime::charge_fraction() const noexcept {
 
 double WeaponRuntime::interaction_elapsed() const noexcept {
     return interaction_active_ ? interaction_elapsed_ : -1.0;
+}
+
+double WeaponRuntime::classic_dig_progress() const noexcept {
+    if (!classic_protocol_ || replication_.selected_tool() != 4 ||
+        !secondary_held_ || primary_held_ || !classic_timing_.digging) return -1.0;
+    return std::clamp(1.0 - (classic_timing_.dig - classic_timing_.time), 0.0, 1.0);
 }
 
 double WeaponRuntime::current_accuracy() const noexcept {

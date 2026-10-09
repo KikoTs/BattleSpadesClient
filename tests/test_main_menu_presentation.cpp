@@ -104,7 +104,7 @@ void retail_menu_text_centers_the_ftgl_metric_span_not_line_height() {
         expect(text->vertical_alignment == VerticalTextAlignment::retail_center,
                "retail menu text must use text.py ascender/negative-descender centering");
     }
-    expect(text_count == 6U,
+    expect(text_count == 7U,
            "the complete main menu text set must remain covered by metric-centering characterization");
 }
 

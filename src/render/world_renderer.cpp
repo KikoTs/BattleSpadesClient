@@ -2008,7 +2008,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     bx::mtxMul(view_projection.data(), view.data(), projection.data());
     const auto planes = frustum_planes(view_projection);
 
-    const std::array<float, 4U> camera_uniform{eye.x, eye.y, eye.z, 0.0F};
+    const std::array<float, 4U> camera_uniform{eye.x, eye.y, eye.z, camera.classic075_fog ? 1.0F : 0.0F};
     const std::array<float, 4U> fog_uniform{active_fog[0U] / 255.0F,
                                             active_fog[1U] / 255.0F,
                                             active_fog[2U] / 255.0F,
@@ -2463,7 +2463,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
         const float nearest_y = std::clamp(eye.y, slot.minimum[1U], slot.maximum[1U]) - eye.y;
         const float nearest_z = std::clamp(eye.z, slot.minimum[2U], slot.maximum[2U]) - eye.z;
         const float nearest_squared =
-            nearest_x * nearest_x + nearest_y * nearest_y + nearest_z * nearest_z;
+            nearest_x * nearest_x + nearest_y * nearest_y + (camera.classic075_fog ? 0.0F : nearest_z * nearest_z);
         if (nearest_squared > fog_limit * fog_limit) {
             continue;
         }
@@ -2643,7 +2643,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                 const float dy = wy - eye.y;
                 const float dz = wz - eye.z;
                 const float ahead = dx * forward.x + dy * forward.y + dz * forward.z;
-                const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+                const float distance = std::sqrt(dx * dx + dy * dy + (camera.classic075_fog ? 0.0F : dz * dz));
                 if (std::isfinite(distance) &&
                     (ahead < -radius || (fog_limit > 0.0F && distance - radius > fog_limit))) {
                     continue;

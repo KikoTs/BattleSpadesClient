@@ -48,7 +48,7 @@ resolve_player_name_plate_geometry(const ui::PlayerNamePlateDrawRequest& request
  */
 class MainMenuPresentation final {
 public:
-    static constexpr std::size_t command_count{32U};
+    static constexpr std::size_t command_count{33U};
 
     [[nodiscard]] ui::DrawList build(const MainMenuModel& menu,
                                      const MainMenuPresentationContext& context) const;

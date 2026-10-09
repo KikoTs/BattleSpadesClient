@@ -2164,6 +2164,27 @@
     "DISCORD_PRESENCE": "Discordのアクティビティ",
     "DISCORD_PRESENCE_DESCRIPTION": "サーバー、マップ、モード、プレイヤー数をDiscordに表示します。Discordのデスクトップアプリが必要です。非公開サーバーのアドレスは表示されません。",
     "DISCORD_JOIN": "Discordから参加",
-    "DISCORD_JOIN_DESCRIPTION": "Discordからのゲーム参加を許可し、パスワードのない公開サーバーの参加ボタンを共有します。非公開のアドレスやログイン情報は共有されません。"
+    "DISCORD_JOIN_DESCRIPTION": "Discordからのゲーム参加を許可し、パスワードのない公開サーバーの参加ボタンを共有します。非公開のアドレスやログイン情報は共有されません。",
+    "INVENTORY": "インベントリ",
+    "INVENTORY_DISCOVERY_HINT": "スキン・レベル・戦績",
+    "CLASSIC_SKY": "Classicの空",
+    "CLASSIC_SKY_DEFAULT": "マップの既定",
+    "CLASSIC_SKY_RANDOM": "ランダム（地形の色）",
+    "CLASSIC_SKY_CLEAR": "晴れ",
+    "CLASSIC_SKY_OVERCAST": "曇り",
+    "CLASSIC_SKY_DESERT": "砂漠",
+    "CLASSIC_SKY_SUNSET": "夕焼け",
+    "CLASSIC_SKY_NIGHT": "夜",
+    "CLASSIC_SKY_SNOW": "雪",
+    "CLASSIC_SKY_DESCRIPTION": "旧VXLマップの空を変更します。ランダムは地形の色を基にマップごとに一度選択します。自分の画面のみ変更します。",
+    "CLASSIC_FOG": "Classicの霧の色",
+    "CLASSIC_FOG_SERVER": "サーバー／マップ",
+    "CLASSIC_FOG_SKY": "空に合わせる",
+    "CLASSIC_FOG_CUSTOM": "RGB指定",
+    "CLASSIC_FOG_RED": "霧：赤",
+    "CLASSIC_FOG_GREEN": "霧：緑",
+    "CLASSIC_FOG_BLUE": "霧：青",
+    "CLASSIC_FOG_DESCRIPTION": "旧VXLマップ用。サーバーの色、空に合う色、またはRGBを選択します。霧の距離は変わりません。キャンセルで元の色に戻ります。",
+    "CLASSIC_FOG_GRAY": "クラシックグレー（標準）"
   }
 }

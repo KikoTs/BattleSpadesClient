@@ -358,7 +358,24 @@ void append_range_bar(ui::DrawList& list,
     const auto segment_count = static_cast<std::size_t>(std::ceil(track_width / stride));
     const auto filled = static_cast<std::size_t>(
         std::ceil(row.scalar_value * static_cast<double>(segment_count)));
+    const auto bar_tint = row.label_key == "CLASSIC_FOG_RED" ? ColorRgba8{235U, 105U, 100U, 255U}
+                        : row.label_key == "CLASSIC_FOG_GREEN" ? ColorRgba8{115U, 210U, 100U, 255U}
+                        : row.label_key == "CLASSIC_FOG_BLUE" ? ColorRgba8{105U, 155U, 240U, 255U}
+                        : white;
+    const bool fog_channel = row.label_key == "CLASSIC_FOG_RED" ||
+                             row.label_key == "CLASSIC_FOG_GREEN" || row.label_key == "CLASSIC_FOG_BLUE";
     for (std::size_t index = 0U; index < segment_count; ++index) {
+        if (fog_channel) {
+            auto tint = bar_tint;
+            if (index >= filled || disabled(row.visual_state)) {
+                tint.red = static_cast<std::uint8_t>(tint.red / 3U);
+                tint.green = static_cast<std::uint8_t>(tint.green / 3U);
+                tint.blue = static_cast<std::uint8_t>(tint.blue / 3U);
+            }
+            append_solid(list, {track_x + stride * static_cast<double>(index),
+                               control.y + option_spacing, bar_width, arrow_size}, tint);
+            continue;
+        }
         list.push(sprite(volume_bar,
                          DrawRect{track_x + stride * static_cast<double>(index),
                                   control.y + option_spacing,
@@ -368,7 +385,7 @@ void append_range_bar(ui::DrawList& list,
                          TextureFilter::nearest,
                          TextureAnchor::center,
                          settings_source_scale,
-                         full_color(white, index < filled ? std::uint16_t{1'000U}
+                         full_color(bar_tint, index < filled ? std::uint16_t{1'000U}
                                                          : std::uint16_t{500U})));
     }
 }
@@ -978,7 +995,8 @@ void append_settings(ui::DrawList& list,
                    HorizontalTextAlignment::center,
                     VerticalTextAlignment::retail_center,
                    TextTransform::preserve,
-                   TextFit::shrink_to_fit));
+                   TextFit::shrink_to_fit,
+                   (tooltip_key == "CLASSIC_SKY_DESCRIPTION" || tooltip_key == "CLASSIC_FOG_DESCRIPTION") ? 2U : 1U));
     if (default_enabled) {
         append_text_button(list, layout.defaults_button, snapshot.defaults_button);
     }

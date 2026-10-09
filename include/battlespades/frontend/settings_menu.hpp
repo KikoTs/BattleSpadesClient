@@ -24,6 +24,12 @@ enum class SettingsRowId : std::uint8_t {
     fallback_music,
     ragdoll_corpses,
     blood_marks,
+    classic_sky,
+    classic_fog,
+    classic_fog_red,
+    classic_fog_green,
+    classic_fog_blue,
+
     invert_mouse,
     favorite_server,
     show_skins,

@@ -2164,6 +2164,27 @@
     "DISCORD_PRESENCE": "Discord-Aktivität",
     "DISCORD_PRESENCE_DESCRIPTION": "Zeigt Server, Karte, Modus und Spielerzahl in Discord. Erfordert die Discord-Desktop-App. Private Serveradressen bleiben verborgen.",
     "DISCORD_JOIN": "Über Discord beitreten",
-    "DISCORD_JOIN_DESCRIPTION": "Erlaubt den Spielbeitritt über Discord und teilt eine Beitrittsschaltfläche für öffentliche Server ohne Passwort. Private Adressen und Zugangsdaten werden niemals geteilt."
+    "DISCORD_JOIN_DESCRIPTION": "Erlaubt den Spielbeitritt über Discord und teilt eine Beitrittsschaltfläche für öffentliche Server ohne Passwort. Private Adressen und Zugangsdaten werden niemals geteilt.",
+    "INVENTORY": "Inventar",
+    "INVENTORY_DISCOVERY_HINT": "Skins, Level & Statistiken",
+    "CLASSIC_SKY": "Classic-Himmel",
+    "CLASSIC_SKY_DEFAULT": "Kartenstandard",
+    "CLASSIC_SKY_RANDOM": "Zufall (Kartenfarben)",
+    "CLASSIC_SKY_CLEAR": "Klar",
+    "CLASSIC_SKY_OVERCAST": "Bewölkt",
+    "CLASSIC_SKY_DESERT": "Wüste",
+    "CLASSIC_SKY_SUNSET": "Sonnenuntergang",
+    "CLASSIC_SKY_NIGHT": "Nacht",
+    "CLASSIC_SKY_SNOW": "Schnee",
+    "CLASSIC_SKY_DESCRIPTION": "Himmel für alte VXL-Karten. Zufall wählt einmal pro Karte anhand der Geländefarben. Nur lokale Darstellung.",
+    "CLASSIC_FOG": "Classic-Nebelfarbe",
+    "CLASSIC_FOG_SERVER": "Server / Karte",
+    "CLASSIC_FOG_SKY": "Passend zum Himmel",
+    "CLASSIC_FOG_CUSTOM": "Eigenes RGB",
+    "CLASSIC_FOG_RED": "Nebel: Rot",
+    "CLASSIC_FOG_GREEN": "Nebel: Grün",
+    "CLASSIC_FOG_BLUE": "Nebel: Blau",
+    "CLASSIC_FOG_DESCRIPTION": "Für alte VXL-Karten: Serverfarbe, Himmelfarbe oder eigenes RGB. Die Nebeldistanz bleibt gleich. Abbrechen stellt die vorherigen Farben wieder her.",
+    "CLASSIC_FOG_GRAY": "Klassisches Grau (Standard)"
   }
 }

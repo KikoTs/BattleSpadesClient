@@ -7,6 +7,7 @@
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/world/classic_combat.hpp"
 #include "battlespades/world/classic_corpse.hpp"
+#include "battlespades/world/classic_environment.hpp"
 #include "battlespades/world/classic_movement.hpp"
 #include "battlespades/world/classic_weapons.hpp"
 #include "battlespades/world/player_inventory.hpp"
@@ -828,7 +829,42 @@ void classic_weapon_timing_parity_tests() {
         digger.set_secondary(true);
         check(dig_frames(14).empty(), "input cancellation cannot carry the previous dig charge");
         check(dig_frames(8).size() == 1, "digging resumes normally after input cancellation");
+
+        world::WeaponRuntime builder;
+        builder.set_classic_protocol(static_cast<std::uint8_t>(protocol));
+        builder.replace_loadout(std::array<std::uint8_t,2>{5,4},5);
+        builder.set_primary(true);
+        builder.tick(0.1);
+        check(builder.take_actions().size() == 1, "single block starts placement cooldown");
+        builder.set_primary(false);
+        builder.set_secondary(true);
+        builder.tick(0.1);
+        check(builder.take_actions().empty() && !builder.classic_block_dragging(), "drag waits for placement cooldown");
+        for (int frame=0; frame<6; ++frame) builder.tick(0.1);
+        const auto begin = builder.take_actions();
+        check(begin.size() == 1 && begin[0].kind == WeaponActionKind::block_line_begin && begin[0].secondary &&
+              builder.classic_block_dragging(), "held right-click starts a line after cooldown without another press");
+        builder.set_secondary(false);
+        builder.tick(0.1);
+        const auto line = builder.take_actions();
+        check(line.size() == 1 && line[0].kind == WeaponActionKind::block_line_commit && !builder.classic_block_dragging(),
+              "release commits exactly one Classic line");
+        builder.set_secondary(true);
+        builder.tick(0.1);
+        builder.set_secondary(false);
+        builder.tick(0.1);
+        check(builder.take_actions().empty(), "a tap entirely within cooldown cannot commit a stale line");
+        for(int frame=0;frame<6;++frame) builder.tick(0.1);
+        builder.set_secondary(true);
+        builder.tick(0.1);
+        static_cast<void>(builder.take_actions());
+        builder.cancel_interaction();
+        builder.tick(0.1);
+        check(!builder.classic_block_dragging() && builder.take_actions().empty(), "menu/tool cancellation never commits a drag");
     }
+    check(world::protocol_fog_distance(3,192) == 128 && world::protocol_fog_distance(3,90) == 90 &&
+          world::protocol_fog_distance(4,192) == 192 && world::protocol_fog_distance(168,192) == 192,
+          "only 0.75 caps the user's render distance at 128 blocks");
 }
 
 void classic_spread_stream_tests(const std::vector<std::byte>& raw) {
@@ -903,16 +939,25 @@ void shovel_dig_tests(const std::vector<std::byte>& raw) {
         world::TutorialWorldSession session{map, config};
         session.set_secondary_held(true);
         for (int frame = 0; frame < 12; ++frame) session.tick();
+        const auto windup = world::evaluate_retail_tool_animation(4, session.seconds_since_weapon_animation(), true,
+                                                                 session.weapon_animation_duration());
+        check(windup.orientation_degrees.x != 0 && session.take_weapon_actions().empty(),
+              "dig winds up while charging, before any terrain action");
         session.set_secondary_held(false);
         for (int frame = 0; frame < 60; ++frame) session.tick();
         check(session.take_weapon_actions().empty(), "tapping right-click cancels the charged dig");
         session.set_secondary_held(true);
         for (int frame = 0; frame < 59; ++frame) session.tick();
         check(session.take_weapon_actions().empty(), "dig must charge for one second before removing blocks");
+        check(session.seconds_since_weapon_animation() > 0.6 && session.seconds_since_weapon_animation() < 0.71,
+              "dig approaches contact at the end of the charge");
         for (int frame = 0; frame < 3; ++frame) session.tick();
         const auto actions = session.take_weapon_actions();
         check(actions.size() == 1 && actions[0].kind == world::WeaponActionKind::melee && actions[0].secondary,
               "held right-click emits exactly one charged shovel dig");
+        check(session.weapon_animation_duration() == 1.0 &&
+              session.seconds_since_weapon_animation() >= 0.7 && session.seconds_since_weapon_animation() < 1.0,
+              "terrain action starts recovery from contact, not a delayed wind-up");
         world::ClassicCombat combat;
         const auto dig = combat.attack(*map, session.player(), {}, actions[0],
                                       config.classic_protocol, false, 1.1);
