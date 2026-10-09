@@ -647,19 +647,20 @@ template <typename Value, typename Parser>
 
 [[nodiscard]] std::string serialize(const ClientSettings& settings) {
     const auto decimal = [](double value) {
-        std::array<char, 64U> buffer{};
-        const auto converted = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
-        if (converted.ec == std::errc{}) {
-            return std::string{buffer.data(), converted.ptr};
+        // Floating-point to_chars requires macOS 13.3. Settings are saved
+        // infrequently, so find the shortest round-tripping precision with
+        // the locale-independent streams available on every supported OS.
+        std::string text;
+        for (int precision = 1; precision <= std::numeric_limits<double>::max_digits10; ++precision) {
+            std::ostringstream output;
+            output.imbue(std::locale::classic());
+            output << std::setprecision(precision) << value;
+            text = output.str();
+            if (parse_double(text) == value) {
+                break;
+            }
         }
-
-        // This path is not expected for a finite normalized setting, but keep
-        // serialization total if a standard-library implementation declines
-        // floating-point to_chars.
-        std::ostringstream fallback;
-        fallback.imbue(std::locale::classic());
-        fallback << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
-        return fallback.str();
+        return text;
     };
 
     const auto& g = settings.graphics;
