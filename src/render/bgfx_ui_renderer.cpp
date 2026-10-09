@@ -225,7 +225,8 @@ void upload_rgba8(bgfx::TextureHandle texture, std::span<const std::uint8_t> pix
                     for (auto xx = x * extent.width / next.width; xx < (x + 1U) * extent.width / next.width; ++xx) {
                         const auto p = (static_cast<std::size_t>(yy) * extent.width + xx) * 4U;
                         alpha += pixels[p + 3U];
-                        for (std::size_t c{}; c < 3U; ++c) rgb[c] += pixels[p + c] * pixels[p + 3U];
+                        for (std::size_t c{}; c < 3U; ++c)
+                            rgb[c] += static_cast<std::uint32_t>(pixels[p + c]) * pixels[p + 3U];
                         ++count;
                     }
                 }

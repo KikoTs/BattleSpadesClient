@@ -772,7 +772,7 @@ public:
         // The master performs two bounded Valve requests before issuing a
         // session. Do not time out at the ordinary five-second API budget.
         auto response = request(link_existing ? "/api/auth/steam/link" : "/api/auth/steam/ticket",
-                                "POST", payload, linking_token, std::chrono::seconds{20});
+                                "POST", std::optional<Json>{payload}, linking_token, std::chrono::seconds{20});
         wipe(linking_token);
         wipe(ticket);
         wipe(payload["ticket"].get_ref<std::string&>());
@@ -798,7 +798,7 @@ public:
             return error("invalid_recovery", "Enter the Steam ID and recovery code from your backup file.");
         }
         Json payload{{"client", "launcher"}, {"steam_id", steam_id}, {"recovery_code", code}};
-        auto response = request("/api/auth/steam/recover", "POST", payload, {});
+        auto response = request("/api/auth/steam/recover", "POST", std::optional<Json>{payload}, {});
         wipe(code);
         wipe(payload["recovery_code"].get_ref<std::string&>());
         if (response) {

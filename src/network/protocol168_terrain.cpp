@@ -1126,7 +1126,7 @@ void Protocol168TerrainReplica::set_classic_block_damage(world::VoxelCell cell, 
         // Use the existing native damage shader/mesh colours, without locally
         // deleting a block while the legacy server is still validating it.
         static_cast<void>(map_->set_damaged_block(cell.x,cell.y,cell.z,
-            map_->initial_health(cell.x,cell.y,cell.z)*std::max(1,remaining)/100.0F,original));
+            map_->initial_health(cell.x,cell.y,cell.z)*static_cast<float>(std::max(1,remaining))/100.0F,original));
     }
     TerrainApplyResult changed;
     changed.changed_cells.push_back(cell);

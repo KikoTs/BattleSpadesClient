@@ -32,7 +32,7 @@ std::vector<std::uint8_t> normalize_workshop_preview(std::span<const std::uint8_
     const auto scale=std::min({1.0,640.0/width,360.0/height});
     const auto target_width=std::max(1,static_cast<int>(width*scale));
     const auto target_height=std::max(1,static_cast<int>(height*scale));
-    std::vector<std::uint8_t> resized(static_cast<std::size_t>(target_width)*target_height*4U);
+    std::vector<std::uint8_t> resized(static_cast<std::size_t>(target_width)*static_cast<std::size_t>(target_height)*4U);
     if (!stbir_resize_uint8_linear(decoded.get(),width,height,0,resized.data(),target_width,target_height,0,STBIR_RGBA)) return {};
     std::vector<std::uint8_t> canvas(640U*360U*3U);
     constexpr std::uint8_t background[]{25,26,20};

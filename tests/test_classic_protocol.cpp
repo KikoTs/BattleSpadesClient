@@ -114,7 +114,7 @@ bootstrap(network::ClassicProtocolSession& session,
     if (territory_mode) {
         state.byte(3);
         for (int n = 0; n < 3; ++n) {
-            state.vector(40.5F + n * 100, 60.5F, 59);
+            state.vector(40.5F + static_cast<float>(n) * 100.0F, 60.5F, 59);
             state.byte(static_cast<std::uint8_t>(n));
         }
     } else {
@@ -128,7 +128,7 @@ bootstrap(network::ClassicProtocolSession& session,
                              std::numeric_limits<float>::infinity(),
                              128);
             else
-                state.vector(40.5F + n * 100, 60.5F, 59);
+                state.vector(40.5F + static_cast<float>(n) * 100.0F, 60.5F, 59);
         }
     }
     auto result = session.ingest(state.bytes);

@@ -26,7 +26,8 @@ inline std::string classic_decode_text(std::string_view value) {
         0x2219, 0xb7,   0x221a, 0x207f, 0xb2,   0x25a0, 0xa0,
     };
     std::string text;
-    for (unsigned char byte : value) {
+    for (char character : value) {
+        const auto byte = static_cast<unsigned char>(character);
         if (byte < 128) {
             if (byte >= 32 || byte == '\n')
                 text.push_back(static_cast<char>(byte));
@@ -47,8 +48,8 @@ inline std::string classic_decode_text(std::string_view value) {
 inline std::string classic_encode_text(std::string_view value, std::size_t max_bytes) {
     auto text = core::utf8_code_point_prefix(value, max_bytes);
     bool non_ascii{};
-    for (unsigned char c : text)
-        if (c >= 128)
+    for (char c : text)
+        if (static_cast<unsigned char>(c) >= 128)
             non_ascii = true;
     const auto budget = max_bytes - (non_ascii && max_bytes ? 1 : 0);
     if (text.size() > budget)

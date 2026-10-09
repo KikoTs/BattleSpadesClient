@@ -71,23 +71,26 @@ public:
         if (select(static_cast<int>(socket_ + 1), &readable, nullptr, nullptr, &wait) <= 0) return {};
         std::array<char, 128> bytes{};
         Length length{sizeof(source)};
-        const auto size = recvfrom(socket_, bytes.data(), static_cast<int>(bytes.size()), 0,
+        const auto size = recvfrom(socket_, bytes.data(), static_cast<BufferLength>(bytes.size()), 0,
                                    reinterpret_cast<sockaddr*>(&source), &length);
         return size > 0 ? std::string{bytes.data(), static_cast<std::size_t>(size)} : std::string{};
     }
     void send(std::string_view bytes, const sockaddr_in& to) const {
-        expect(sendto(socket_, bytes.data(), static_cast<int>(bytes.size()), 0,
-                      reinterpret_cast<const sockaddr*>(&to), sizeof(to)) == static_cast<int>(bytes.size()),
+        const auto sent = sendto(socket_, bytes.data(), static_cast<BufferLength>(bytes.size()), 0,
+                                 reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+        expect(sent >= 0 && static_cast<std::size_t>(sent) == bytes.size(),
                "send fixture response");
     }
 private:
 #if defined(_WIN32)
     using Socket = SOCKET;
     using Length = int;
+    using BufferLength = int;
     static constexpr Socket invalid{INVALID_SOCKET};
 #else
     using Socket = int;
     using Length = socklen_t;
+    using BufferLength = std::size_t;
     static constexpr Socket invalid{-1};
 #endif
     Socket socket_{invalid};

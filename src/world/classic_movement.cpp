@@ -31,7 +31,8 @@ step_classic_grenade(Vec3& position, Vec3& velocity, const VxlMap& map, double t
             return false;
         if (z >= 64)
             return true;
-        return map.solid(x, y, (z == 63 ? 62 : z) + 176);
+        return map.solid(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
+                         static_cast<std::uint32_t>((z == 63 ? 62 : z) + 176));
     };
     double impact{};
     if (clip(cell[0], cell[1], cell[2])) {

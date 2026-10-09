@@ -784,8 +784,8 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
                     std::string_view{id}=="period"?std::to_string(value.filters.days):value.filters.tag);
             }
             workshop_document->GetElementById("workshop-cancel")->SetProperty("visibility",value.busy?"visible":"hidden");
-            const auto update_html=[](Rml::Element* element,std::string& previous,const std::string& html) {
-                if (html!=previous) { element->SetInnerRML(html); previous=html; return true; }
+            const auto update_html=[](Rml::Element* element,std::string& previous_html,const std::string& html) {
+                if (html!=previous_html) { element->SetInnerRML(html); previous_html=html; return true; }
                 return false;
             };
             std::string html;
