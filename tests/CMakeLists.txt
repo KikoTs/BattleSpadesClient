@@ -13,6 +13,12 @@ aos_enable_strict_warnings(aos_core_tests)
 
 add_test(NAME aos_core_tests COMMAND aos_core_tests)
 
+add_executable(aos_discord_presence_tests test_discord_presence.cpp)
+target_link_libraries(aos_discord_presence_tests PRIVATE BattleSpades::DiscordPresence nlohmann_json::nlohmann_json)
+aos_enable_strict_warnings(aos_discord_presence_tests)
+add_test(NAME aos_discord_presence_tests COMMAND aos_discord_presence_tests)
+set_tests_properties(aos_discord_presence_tests PROPERTIES TIMEOUT 20)
+
 add_executable(aos_demo_stream_tests test_demo_stream.cpp)
 target_link_libraries(aos_demo_stream_tests PRIVATE BattleSpades::Demo)
 aos_enable_strict_warnings(aos_demo_stream_tests)
@@ -965,6 +971,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         add_test(NAME aos_hosted_results_http_tests COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/test_hosted_results_http.py" "$<TARGET_FILE:aos_revival_identity_tests>")
         set_tests_properties(aos_hosted_results_http_tests PROPERTIES TIMEOUT 60)
+        add_test(NAME aos_steam_identity_http_tests COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_steam_identity_http.py" "$<TARGET_FILE:aos_revival_identity_tests>")
+        set_tests_properties(aos_steam_identity_http_tests PROPERTIES TIMEOUT 45)
         add_test(NAME aos_workshop_http_tests COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/test_workshop_http.py" "$<TARGET_FILE:aos_revival_identity_tests>")
     endif()
@@ -988,6 +997,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     target_link_libraries(aos_steam_connect_tests PRIVATE BattleSpades::NativeSteam)
     aos_enable_strict_warnings(aos_steam_connect_tests)
     add_test(NAME aos_steam_connect_tests COMMAND aos_steam_connect_tests)
+    add_executable(aos_steam_auth_ticket_tests test_steam_auth_tickets.cpp)
+    target_link_libraries(aos_steam_auth_ticket_tests PRIVATE BattleSpades::NativeSteam)
+    aos_enable_strict_warnings(aos_steam_auth_ticket_tests)
+    add_test(NAME aos_steam_auth_ticket_tests COMMAND aos_steam_auth_ticket_tests)
     add_executable(aos_steam_overlay_tests test_steam_overlay.cpp)
     target_link_libraries(aos_steam_overlay_tests PRIVATE BattleSpades::NativeSteam)
     aos_enable_strict_warnings(aos_steam_overlay_tests)

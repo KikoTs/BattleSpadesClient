@@ -38,7 +38,15 @@ void append_unique(std::vector<std::uint8_t>& output, std::uint16_t raw) {
 /** set_common_loadout_items: BLOCK first, the rest appended, 22 only on request. */
 void append_common(std::vector<std::uint8_t>& loadout, const ClassDefinition& definition,
                    const ClassSelectionRules& rules, bool add_flareblock) {
-    const auto common = definition.item_groups[static_cast<std::size_t>(ClassItemGroup::common)];
+    const auto group = static_cast<std::uint8_t>(ClassItemGroup::common);
+    const auto override = rules.loadout_overrides.find({definition.class_id, group});
+    std::vector<std::uint16_t> common;
+    if (override != rules.loadout_overrides.end()) {
+        common.assign(override->second.begin(), override->second.end());
+    } else {
+        const auto defaults = definition.item_groups[group];
+        common.assign(defaults.begin(), defaults.end());
+    }
     for (const auto item : common) {
         if (rules.tool_disabled(item)) continue;
         if (item == flare_block_tool && !add_flareblock) continue;
@@ -69,6 +77,15 @@ class_row_options(std::uint8_t class_id, std::size_t group, const ClassSelection
     std::vector<std::uint16_t> result;
     const auto* definition = find_class_definition(class_id);
     if (definition == nullptr || group >= 4U) return result;
+    const auto override = rules.loadout_overrides.find({class_id, static_cast<std::uint8_t>(group)});
+    if (override != rules.loadout_overrides.end()) {
+        // An empty replacement deliberately removes the row. Never fall back
+        // to stock weapons or saved choices the server no longer offers.
+        for (const auto item : override->second) {
+            if (!rules.tool_disabled(item)) result.push_back(item);
+        }
+        return result;
+    }
     for (const auto item : definition->item_groups[group]) {
         if (!rules.tool_disabled(item)) result.push_back(item);
     }

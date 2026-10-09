@@ -51,6 +51,8 @@ struct SavedClassLoadout final {
  */
 struct ClassSelectionRules final {
     std::vector<std::uint8_t> disabled_tools;
+    /** InitialInfo replacements, keyed by (class id, CLASS_ITEMS group). */
+    std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::uint8_t>> loadout_overrides;
     /** manager.is_in_mafia_mode(): no flare/prefab tool, 0 default constructs. */
     bool mafia{};
     /** game_mode == UGC: 0 default constructs. */

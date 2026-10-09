@@ -4208,6 +4208,8 @@ std::uint8_t TutorialWorldSession::action_flags() const noexcept {
         flags |= 0x01U;
     if (secondary_held_)
         flags |= 0x02U;
+    if (config_.classic_protocol && selected_tool_id() == 4 && (flags & 0x01U))
+        flags &= static_cast<std::uint8_t>(~0x02U);
     if (zoomed_)
         flags |= 0x04U;
     if (machine_gun_.deployed())

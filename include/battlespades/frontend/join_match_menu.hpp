@@ -160,6 +160,7 @@ struct ServerBrowserEntry final {
     /** The listing says the server asks for a password; drawn as a padlock. */
     bool password_protected{};
     network::GameProtocol protocol{network::GameProtocol::retail168};
+    bool ping_known{true};
 
     [[nodiscard]] std::string identifier() const;
 };

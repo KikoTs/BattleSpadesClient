@@ -26,6 +26,10 @@ struct RevivalAccount final {
     std::string identity_type{};
     bool ranked_eligible{};
     bool offline{};
+    /** Provider names are presentation only; public_id/SteamID identify the account. */
+    std::string steam_id{};
+    std::string registered_name{};
+    std::string display_name{};
 };
 
 struct RevivalAuthResult final {
@@ -34,6 +38,8 @@ struct RevivalAuthResult final {
     std::string error_code{};
     std::string error{};
     long http_status{};
+    std::filesystem::path recovery_backup_path{};
+    std::string recovery_backup_error{};
 
     RevivalAuthResult() = default;
     explicit RevivalAuthResult(std::optional<RevivalAccount> selected_account)
@@ -110,6 +116,8 @@ struct RevivalIdentityConfig final {
     bool offline{};
     std::string offline_profile{"Player"};
     bool allow_environment_override{true};
+    /** Empty selects the user's Documents/BattleSpades directory. */
+    std::filesystem::path recovery_directory{};
 };
 
 struct RevivalWorkshopFile final {
@@ -175,6 +183,13 @@ public:
     [[nodiscard]] RevivalAuthResult register_account(std::string username,
                                                      std::string password);
     [[nodiscard]] RevivalAuthResult guest_login();
+    /** Exchange a fresh Steam WebAPI ticket; never infer identity from a nickname. */
+    [[nodiscard]] RevivalAuthResult steam_login(std::uint32_t app_id,
+                                                std::string ticket_hex,
+                                                std::string expected_steam_id,
+                                                bool link_existing = false);
+    [[nodiscard]] RevivalAuthResult recover_steam_account(std::string steam_id,
+                                                          std::string recovery_code);
     [[nodiscard]] RevivalAuthResult logout();
     [[nodiscard]] RevivalTicketResult game_ticket(std::string server_id);
     /** Account-scoped, credential-free reports survive disposable host folders. */

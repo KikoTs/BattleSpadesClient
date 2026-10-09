@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <random>
 
 namespace battlespades::world {
 namespace {
@@ -54,7 +55,34 @@ bool overlap(VoxelCell cell, Vec3 eye, bool crouch) {
            eye.y - 0.45 < cell.y + 1.0 && eye.z + (crouch ? 1.35 : 2.25) > cell.z &&
            eye.z - 0.45 < cell.z + 1.0;
 }
+
+std::array<std::uint64_t, 2> fresh_spread_seed() {
+    // Observed shots can construct short-lived combat queries. Seed the source
+    // once per thread, rather than asking the OS for entropy on every shot.
+    static thread_local auto source = [] {
+        std::random_device entropy;
+        std::seed_seq seed{entropy(), entropy(), entropy(), entropy()};
+        return std::mt19937_64{seed};
+    }();
+    return {source(), source()};
+}
 } // namespace
+
+ClassicCombat::ClassicCombat() : ClassicCombat{fresh_spread_seed()} {}
+
+ClassicCombat::ClassicCombat(std::array<std::uint64_t, 2> seed) noexcept : random_{seed} {
+    if (random_.state[0] == 0) random_.state[0] = 0x9E3779B97F4A7C15ULL;
+    if (random_.state[1] == 0) random_.state[1] = 0xBF58476D1CE4E5B9ULL;
+}
+
+ClassicCombat::SpreadRandom::result_type ClassicCombat::SpreadRandom::operator()() noexcept {
+    auto x = state[0];
+    const auto y = state[1];
+    state[0] = y;
+    x ^= x << 23U;
+    state[1] = x ^ y ^ (x >> 17U) ^ (y >> 26U);
+    return state[1] + y;
+}
 
 ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
                                           const PlayerMovementState& player,
@@ -76,26 +104,22 @@ ClassicAttackResult ClassicCombat::attack(const VxlMap& map,
         start.y += player.orientation.y * 0.01;
         start.z += player.orientation.z * 0.01;
     }
-    Vec3 pellet = player.orientation;
-    std::uint32_t random = static_cast<std::uint32_t>(action.seed) + 0x9E3779B9U;
-    const auto sample = [&]() {
-        random ^= random << 13U;
-        random ^= random >> 17U;
-        random ^= random << 5U;
-        return static_cast<int>(random & 32767U);
-    };
+    auto pellet = floats(player.orientation);
+    std::uniform_int_distribution<int> sample{0, 32767};
     for (int n = 0; n < (melee ? 1 : rules->pellets); ++n) {
         if (!melee) {
-            double spread = rules->spread * (aiming ? 0.5 : 1.0) *
-                            (player.crouch && action.tool_id != 37 ? 0.5 : 1.0);
-            pellet.x += (sample() - sample()) / 16383.0 * spread;
-            pellet.y += (sample() - sample()) / 16383.0 * spread;
-            pellet.z += (sample() - sample()) / 16383.0 * spread;
+            float spread = static_cast<float>(rules->spread);
+            if (aiming) spread *= 0.5F;
+            if (player.crouch && action.tool_id != 37) spread *= 0.5F;
+            for (auto& component : pellet) {
+                const int first = sample(random_), second = sample(random_);
+                component += static_cast<float>(first - second) / 16383.0F * spread;
+            }
         }
-        const double length = std::sqrt(dot(pellet, pellet));
+        const float length = std::sqrt(pellet[0] * pellet[0] + pellet[1] * pellet[1] + pellet[2] * pellet[2]);
         if (length < 1e-9)
             break;
-        const Vec3 ray{pellet.x / length, pellet.y / length, pellet.z / length};
+        const Vec3 ray{pellet[0] / length, pellet[1] / length, pellet[2] / length};
         auto terrain = trace_first_solid(map, floats(start), floats(ray), melee ? 32.0F : 256.0F);
         std::optional<ClassicHit> target;
         double closest = std::numeric_limits<double>::infinity();

@@ -346,6 +346,34 @@ void spectator_defaults_do_not_replace_the_saved_playing_loadout() {
     }
 }
 
+void server_loadout_overrides_replace_rows_without_leaking_between_matches() {
+    using battlespades::world::class_row_options;
+    ClassSelectionRules rules;
+    rules.saved[0U].loadout = {8U};
+    rules.loadout_overrides[{std::uint8_t{0U}, std::uint8_t{1U}}] = {61U, 60U};
+    rules.loadout_overrides[{std::uint8_t{0U}, std::uint8_t{0U}}] = {};
+    rules.loadout_overrides[{std::uint8_t{0U}, std::uint8_t{5U}}] = {5U, 30U};
+    expect(class_row_options(0U, 1U, rules) == std::vector<std::uint16_t>{61U, 60U},
+           "server replacement order includes weapons outside the stock class row");
+    expect(class_row_options(0U, 0U, rules).empty(),
+           "an explicitly empty server replacement removes the row");
+    constexpr std::array<std::uint8_t, 1U> advertised{0U};
+    ClassSelectionMenuModel menu;
+    menu.configure(advertised, 2U, 0U, rules);
+    const auto selection = menu.selection();
+    expect(contains(selection.loadout, 61U) && !contains(selection.loadout, 8U),
+           "a saved weapon absent from the replacement falls back to its first item");
+    expect(contains(selection.loadout, 5U) && contains(selection.loadout, 30U) &&
+               !contains(selection.loadout, 25U),
+           "common tools also follow the server replacement");
+    rules.disabled_tools = {61U};
+    expect(class_row_options(0U, 1U, rules) == std::vector<std::uint16_t>{60U},
+           "disabled tools remain excluded from server replacements");
+    menu.configure(advertised, 2U, 0U, {});
+    expect(std::ranges::equal(menu.row_options(1U), std::vector<std::uint16_t>{8U, 60U}),
+           "joining another server restores stock rows without global table mutation");
+}
+
 void map_prefab_icons_resolve_like_get_prefab_image() {
     ClassSelectionRules rules;
     rules.map_prefabs = {"London_Taxi"};
@@ -373,6 +401,7 @@ int main() {
         map_prefabs_join_the_constructs_table();
         the_menu_restores_and_reports_saved_loadouts();
         spectator_defaults_do_not_replace_the_saved_playing_loadout();
+        server_loadout_overrides_replace_rows_without_leaking_between_matches();
         map_prefab_icons_resolve_like_get_prefab_image();
     } catch (const std::exception& error) {
         std::cerr << "class loadout store test failed: " << error.what() << '\n';

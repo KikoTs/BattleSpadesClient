@@ -420,7 +420,7 @@ void append_server_table(ui::DrawList& list,
                                 players_label(server),
                                 server.map,
                                 server.mode,
-                                std::to_string(server.ping_milliseconds)};
+                                server.ping_known ? std::to_string(server.ping_milliseconds) : "—"};
         x = table_x;
         const auto highlighted = selected == row || hovered == row;
         const auto highlight_opacity = selected == row ? std::uint16_t{392U} : std::uint16_t{196U};

@@ -459,7 +459,8 @@ template <typename Value, typename Parser>
         }
         if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
             key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints" ||
-            key == "fallback_music" || key == "ragdoll_corpses" || key == "blood_marks") {
+            key == "fallback_music" || key == "ragdoll_corpses" || key == "blood_marks" ||
+            key == "discord_presence" || key == "discord_join") {
             if (!state.remember(line, key)) {
                 return false;
             }
@@ -483,6 +484,10 @@ template <typename Value, typename Parser>
                 state.candidate.main.blood_marks = *parsed;
             } else if (key == "ragdoll_corpses") {
                 state.candidate.main.ragdoll_corpses = *parsed;
+            } else if (key == "discord_presence") {
+                state.candidate.main.discord_presence = *parsed;
+            } else if (key == "discord_join") {
+                state.candidate.main.discord_join = *parsed;
             } else {
                 state.candidate.main.invert_mouse = *parsed;
             }
@@ -670,6 +675,8 @@ template <typename Value, typename Parser>
            << "fallback_music = " << (settings.main.fallback_music ? "true" : "false") << "\n"
            << "ragdoll_corpses = " << (settings.main.ragdoll_corpses ? "true" : "false") << "\n"
            << "blood_marks = " << (settings.main.blood_marks ? "true" : "false") << "\n"
+           << "discord_presence = " << (settings.main.discord_presence ? "true" : "false") << "\n"
+           << "discord_join = " << (settings.main.discord_join ? "true" : "false") << "\n"
            << "audio_device = " << std::quoted(settings.main.audio_device) << "\n"
            << "# Legacy mirror of [graphics] window_mode for older builds; ignored here.\n"
            << "fullscreen = " << (is_fullscreen(settings.graphics.window_mode) ? "true" : "false")

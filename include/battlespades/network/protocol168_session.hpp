@@ -10,9 +10,11 @@
 #include <cstdint>
 #include <array>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace battlespades::network {
@@ -175,6 +177,10 @@ struct Protocol168InitialInfo final {
     std::vector<float> movement_speed_multipliers;
     /** Initial UGC terrain palette rows in retail RGB/Z-threshold order. */
     std::vector<std::array<std::uint8_t, 4U>> ground_colors;
+    /** Retail (class id, loadout slot) -> allowed tool ids; replaces that row. */
+    std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::uint8_t>> loadout_overrides;
+    /** Retail loading-screen rule identifiers and their server-selected values. */
+    std::vector<std::pair<std::string, std::string>> custom_game_rules;
     std::uint8_t ugc_mode{};
     world::FlightProfile flight_profile;
 };

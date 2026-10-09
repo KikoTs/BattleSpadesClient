@@ -95,7 +95,7 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 12U,
+    expect(view.rows.size() == 14U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
@@ -110,6 +110,8 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::ability_hints,
         SettingsRowId::ragdoll_corpses,
         SettingsRowId::blood_marks,
+        SettingsRowId::discord_presence,
+        SettingsRowId::discord_join,
     };
     expect(view.rows.size() >= expected.size() &&
                !row(view, SettingsRowId::ability_hints).value_text.empty(),
@@ -847,6 +849,39 @@ void fallback_music_previews_cancels_and_commits() {
     expect(session.committed().main.blood_marks,"blood preference persists on Done");
 }
 
+void discord_preferences_preview_cancel_and_commit() {
+    auto environment = full_environment();
+    environment.context = SettingsMenuContext::in_game;
+    SettingsSession session;
+    SettingsMenuModel menu{session, environment};
+    expect(session.draft().main.discord_presence && session.draft().main.discord_join,
+           "Discord preferences default on; a configured application ID controls availability");
+    for (const auto id : {SettingsRowId::discord_presence, SettingsRowId::discord_join}) {
+        expect(menu.set_focus(SettingsMenuTarget::for_row(id)) && row(menu.presentation(), id).visible,
+               "Discord settings use the existing scrollable menu in game");
+        expect(menu.presentation().tooltip_key == (id == SettingsRowId::discord_presence
+                   ? "DISCORD_PRESENCE_DESCRIPTION" : "DISCORD_JOIN_DESCRIPTION"),
+               "Each Discord setting explains its privacy behavior");
+        expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}), "Discord setting toggles");
+        const auto effects = menu.take_effects();
+        const auto* preview = find_effect<SettingsPreviewEffect>(effects);
+        expect(preview && preview->source == id, "Discord changes preview without restarting the game");
+    }
+    expect(!session.draft().main.discord_presence && !session.draft().main.discord_join, "Independent settings are staged");
+    menu.activate_cancel();
+    expect(session.draft().main.discord_presence && session.draft().main.discord_join, "Cancel restores Discord preferences");
+    static_cast<void>(menu.take_effects());
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::discord_join)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    static_cast<void>(menu.take_effects());
+    menu.activate_done();
+    const auto effects = menu.take_effects();
+    const auto* commit = find_effect<SettingsCommitCommand>(effects);
+    expect(commit && commit->changed && !commit->restart_required && !commit->display_changed &&
+               session.committed().main.discord_presence && !session.committed().main.discord_join,
+           "Done persists joining independently of activity sharing");
+}
+
 void skin_preferences_are_reachable_live_and_cancelable() {
     auto environment=full_environment();
     environment.context=SettingsMenuContext::in_game;
@@ -1076,6 +1111,7 @@ int main() {
         {"graphics_capabilities_and_wheel_scrolling_are_deterministic",
          graphics_capabilities_and_wheel_scrolling_are_deterministic},
         {"fallback_music_previews_cancels_and_commits", fallback_music_previews_cancels_and_commits},
+        {"discord_preferences_preview_cancel_and_commit", discord_preferences_preview_cancel_and_commit},
         {"native_graphics_rows_edit_presets_and_report_why_they_are_unavailable",
          native_graphics_rows_edit_presets_and_report_why_they_are_unavailable},
         {"window_mode_row_cycles_and_greys_out_resolution_when_borderless",

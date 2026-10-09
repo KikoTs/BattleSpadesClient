@@ -18,6 +18,21 @@ target_include_directories(
 target_link_libraries(aos_core PUBLIC BattleSpades::BuildOptions)
 aos_enable_strict_warnings(aos_core)
 
+set(AOS_DISCORD_APPLICATION_ID "1557497536602701824" CACHE STRING "Public Discord application ID for Rich Presence")
+if(AOS_DISCORD_APPLICATION_ID AND NOT AOS_DISCORD_APPLICATION_ID MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "AOS_DISCORD_APPLICATION_ID must contain decimal digits only")
+endif()
+find_package(Threads REQUIRED)
+add_library(aos_discord_presence STATIC platform/discord_presence.cpp)
+add_library(BattleSpades::DiscordPresence ALIAS aos_discord_presence)
+target_include_directories(aos_discord_presence PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(aos_discord_presence PUBLIC BattleSpades::BuildOptions PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
+target_compile_definitions(aos_discord_presence PRIVATE AOS_DISCORD_APPLICATION_ID="${AOS_DISCORD_APPLICATION_ID}")
+aos_enable_strict_warnings(aos_discord_presence)
+add_executable(aos_discord_presence_probe "${PROJECT_SOURCE_DIR}/tools/discord_presence_probe.cpp")
+target_link_libraries(aos_discord_presence_probe PRIVATE BattleSpades::DiscordPresence)
+aos_enable_strict_warnings(aos_discord_presence_probe)
+
 add_library(aos_demo STATIC network/demo_stream.cpp)
 add_library(BattleSpades::Demo ALIAS aos_demo)
 target_include_directories(aos_demo PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -515,6 +530,10 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
         add_executable(aos_steam_server_list_probe "${PROJECT_SOURCE_DIR}/tools/steam_server_list_probe.cpp")
         target_link_libraries(aos_steam_server_list_probe PRIVATE BattleSpades::SteamNet)
         aos_enable_strict_warnings(aos_steam_server_list_probe)
+        # Manual callback verification; never registered in CI (requires Steam).
+        add_executable(aos_steam_auth_probe "${PROJECT_SOURCE_DIR}/tools/steam_auth_probe.cpp")
+        target_link_libraries(aos_steam_auth_probe PRIVATE BattleSpades::SteamNet BattleSpades::NetworkEnet unofficial::enet::enet)
+        aos_enable_strict_warnings(aos_steam_auth_probe)
 
         # Lists this account's Workshop subscriptions (and, with --download,
         # fetches them into a scratch directory) without the game.
@@ -576,7 +595,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     if(WIN32)
         # The vcpkg ENet static target does not propagate its platform libs.
-        target_link_libraries(aos_network_enet PUBLIC ws2_32 winmm crypt32)
+        target_link_libraries(aos_network_enet PUBLIC ws2_32 winmm crypt32 shell32 ole32 advapi32 uuid)
     endif()
     aos_enable_strict_warnings(aos_network_enet)
 
@@ -861,6 +880,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             frontend/native_frontend_module.cpp
     )
     add_library(BattleSpades::FrontendNative ALIAS aos_frontend_native)
+    target_link_libraries(aos_frontend_native PRIVATE BattleSpades::DiscordPresence)
     target_include_directories(
         aos_frontend_native
         PUBLIC

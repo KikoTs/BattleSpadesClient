@@ -183,6 +183,10 @@ public:
 private:
     void tick_classic(double dt) noexcept;
     std::uint8_t classic_protocol_{};
+    struct ClassicTiming {
+        double time{}, gun{}, spade{}, dig{}, block{}, grenade{};
+        bool shooting{}, digging{};
+    } classic_timing_;
     void process_edges(const WeaponDefinition& weapon) noexcept;
     void process_held(const WeaponDefinition& weapon, double dt) noexcept;
     void update_minigun_motor(const WeaponDefinition& weapon, double dt,

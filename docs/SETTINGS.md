@@ -40,6 +40,11 @@ The Main tab contains every recovered retail row plus the external language sele
 | Show skins | `main.show_skins` | boolean; `true` | live local filter for character, weapon, world-object and death skins, including pack sounds |
 | Show other players' skins | `main.show_other_skins` | boolean; `true` | live remote-only filter; own equipped appearance stays visible when Show skins is on |
 | Weapon movement | `main.weapon_motion` | boolean; `true` | live toggle for running sway, falling lift and scripted sprint poses; firing, reloads and ADS remain animated |
+| Discord activity | `main.discord_presence` | boolean; `true` | shares server/map/mode/count through the local Discord app when a valid application ID is configured; disabling clears presence |
+| Discord joining | `main.discord_join` | boolean; `true` | permits safe Join Game events and join buttons for public, password-free IPv4 servers; no private addresses or credentials |
+
+Discord options follow the existing live preview, Cancel and Done behavior.
+See [Discord Rich Presence](DISCORD_PRESENCE.md) for application setup and joining limits.
 
 The three presentation preferences are available during matches. Turning skins
 off does not modify equipment, crate awards, inventory previews or what other

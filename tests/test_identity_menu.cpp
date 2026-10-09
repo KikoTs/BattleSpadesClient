@@ -61,10 +61,15 @@ void pointer_routes_login_register_steam_guest_and_recovery() {
     expect(model.pointer_release(Point{400 * 8, 468 * 8}) ==
                IdentityAction::steam,
            "Steam button should select the native Steam identity when available");
-    model.pointer_press(Point{400 * 8, 516 * 8});
-    expect(model.pointer_release(Point{400 * 8, 516 * 8}) ==
+    model.pointer_press(Point{332 * 8, 516 * 8});
+    expect(model.pointer_release(Point{332 * 8, 516 * 8}) ==
                IdentityAction::guest,
            "wide secondary button should submit signed guest");
+    model.show_recovery_form();
+    expect(model.append_text("76561198000000001"), "recovery form accepts a SteamID rather than a display name");
+    model.focus_next();
+    expect(model.append_text("AOS-TEST-CODE") && model.phase() == IdentityMenuPhase::recovery_form,
+           "recovery form accepts the backup credential in its masked field");
 
     model.show_recovery_code("AOS-AAAAAA-BBBBBB-CCCCCC-DDDDDD");
     expect(model.phase() == IdentityMenuPhase::recovery_code,
@@ -166,6 +171,27 @@ void steam_button_is_deterministic_across_attach_states() {
 
 } // namespace
 
+void steam_link_choice_preserves_identity_and_requires_explicit_action() {
+    IdentityMenuModel model;
+    model.set_steam_available(true);
+    model.show_steam_link("ExistingPlayer");
+    expect(model.phase() == IdentityMenuPhase::steam_link, "linking has its own confirmation phase");
+    expect(!model.append_text("ignored"), "link confirmation must not accept hidden credentials");
+    model.pointer_press(Point{332 * 8, 420 * 8});
+    expect(model.pointer_release(Point{332 * 8, 420 * 8}) == IdentityAction::link_steam,
+           "linking is a distinct explicit action");
+    model.pointer_press(Point{468 * 8, 420 * 8});
+    expect(model.pointer_release(Point{468 * 8, 420 * 8}) == IdentityAction::keep_account,
+           "players can retain their account without linking or switching");
+    model.set_steam_state(IdentitySteamState::connecting);
+    expect(!model.controls()[0].widget.state.enabled && model.controls()[1].widget.state.enabled,
+           "Steam failure cannot disable keeping the existing account");
+    model.reset_form();
+    expect(model.controls()[0].action == IdentityAction::login &&
+           model.controls()[1].action == IdentityAction::register_account,
+           "returning to sign-in must not retain a link action");
+}
+
 int main() {
     try {
         form_never_exposes_clear_password_to_rendering();
@@ -174,6 +200,7 @@ int main() {
         steam_button_is_deterministic_across_attach_states();
         presentation_uses_original_menu_assets();
         presentation_reserves_non_overlapping_text_bands();
+        steam_link_choice_preserves_identity_and_requires_explicit_action();
         std::cout << "identity menu tests passed\n";
         return 0;
     } catch (const std::exception& error) {

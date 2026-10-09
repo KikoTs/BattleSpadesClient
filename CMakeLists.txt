@@ -2,14 +2,14 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     BattleSpadesClient
-    VERSION 0.2.1
+    VERSION 0.3.0
     DESCRIPTION "Native Ace of Spades-compatible client"
     LANGUAGES CXX
 )
 
 # CMake versions are numeric. The public release label carries the beta tag
 # and matches the BattleSpades server's VERSION format.
-set(AOS_RELEASE_VERSION "${PROJECT_VERSION}-beta.8")
+set(AOS_RELEASE_VERSION "${PROJECT_VERSION}-beta.1")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

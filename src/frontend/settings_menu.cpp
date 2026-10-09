@@ -38,7 +38,7 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 12U> main_inventory{{
+constexpr std::array<SettingsRowId, 14U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
@@ -51,6 +51,8 @@ constexpr std::array<SettingsRowId, 12U> main_inventory{{
     SettingsRowId::ability_hints,
     SettingsRowId::ragdoll_corpses,
     SettingsRowId::blood_marks,
+    SettingsRowId::discord_presence,
+    SettingsRowId::discord_join,
 }};
 
 constexpr std::array<SettingsRowId, 39U> controls_inventory{{
@@ -185,6 +187,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
         row == SettingsRowId::fallback_music ||
         row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
+        row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join ||
         row == SettingsRowId::favorite_server ||
         row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader ||
         row == SettingsRowId::low_latency || row == SettingsRowId::show_fps ||
@@ -226,6 +229,10 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "RAGDOLL_CORPSES";
     case SettingsRowId::blood_marks:
         return "BLOOD_MARKS";
+    case SettingsRowId::discord_presence:
+        return "DISCORD_PRESENCE";
+    case SettingsRowId::discord_join:
+        return "DISCORD_JOIN";
     case SettingsRowId::window_mode:
         return "WINDOW_MODE";
     case SettingsRowId::invert_mouse:
@@ -1108,6 +1115,8 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(fallback_music);
         AOS_SETTINGS_ROW_NAME(ragdoll_corpses);
         AOS_SETTINGS_ROW_NAME(blood_marks);
+        AOS_SETTINGS_ROW_NAME(discord_presence);
+        AOS_SETTINGS_ROW_NAME(discord_join);
         AOS_SETTINGS_ROW_NAME(window_mode);
         AOS_SETTINGS_ROW_NAME(invert_mouse);
         AOS_SETTINGS_ROW_NAME(show_skins);
@@ -1622,6 +1631,10 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         result.tooltip_key = "RAGDOLL_CORPSES_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::blood_marks)) {
         result.tooltip_key = "BLOOD_MARKS_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::discord_presence)) {
+        result.tooltip_key = "DISCORD_PRESENCE_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::discord_join)) {
+        result.tooltip_key = "DISCORD_JOIN_DESCRIPTION";
     }
     result.focused = focused_;
     result.hovered = hovered_;
@@ -1690,6 +1703,8 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         case SettingsRowId::fallback_music:
         case SettingsRowId::blood_marks:
         case SettingsRowId::ragdoll_corpses:
+        case SettingsRowId::discord_presence:
+        case SettingsRowId::discord_join:
         case SettingsRowId::ability_hints: {
             const bool on = row == SettingsRowId::show_skins ? current.main.show_skins :
                             row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
@@ -1697,6 +1712,8 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                             row == SettingsRowId::fallback_music ? current.main.fallback_music :
                             row == SettingsRowId::ragdoll_corpses ? current.main.ragdoll_corpses :
                             row == SettingsRowId::blood_marks ? current.main.blood_marks :
+                            row == SettingsRowId::discord_presence ? current.main.discord_presence :
+                            row == SettingsRowId::discord_join ? current.main.discord_join :
                             current.main.weapon_motion;
             item.choice_index = on ? 1U : 0U;
             item.choice_count = 2U;
@@ -2370,6 +2387,10 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.blood_marks ? -1 : 1);
     case SettingsRowId::ragdoll_corpses:
         return adjust_row(target.row, draft.main.ragdoll_corpses ? -1 : 1);
+    case SettingsRowId::discord_presence:
+        return adjust_row(target.row, draft.main.discord_presence ? -1 : 1);
+    case SettingsRowId::discord_join:
+        return adjust_row(target.row, draft.main.discord_join ? -1 : 1);
     case SettingsRowId::favorite_server:
         return adjust_row(target.row, favorite_server_ ? -1 : 1);
     case SettingsRowId::window_mode: {
@@ -2533,7 +2554,8 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks) {
+        row == SettingsRowId::fallback_music || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
+        row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join) {
         auto main = before.main;
         switch (row) {
         case SettingsRowId::language: {
@@ -2582,6 +2604,12 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
             break;
         case SettingsRowId::ragdoll_corpses:
             main.ragdoll_corpses = direction > 0;
+            break;
+        case SettingsRowId::discord_presence:
+            main.discord_presence = direction > 0;
+            break;
+        case SettingsRowId::discord_join:
+            main.discord_join = direction > 0;
             break;
         default:
             break;

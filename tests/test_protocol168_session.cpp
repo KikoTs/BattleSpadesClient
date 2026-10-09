@@ -1,5 +1,6 @@
 #include "battlespades/network/protocol168_session.hpp"
 #include "battlespades/network/live_protocol168_connection.hpp"
+#include "fixtures/agex_initial_info.hpp"
 
 #include <enet/enet.h>
 
@@ -97,10 +98,10 @@ std::vector<std::byte> initial_info(
     for (const auto value : {59U, 58U, 55U, 238U, 5U, 85U, 156U, 255U}) {
         packet.push_back(static_cast<std::byte>(value));
     }
-    packet.push_back(std::byte{}); // ground color terminator
+    packet.push_back(std::byte{}); // loadout override count
     packet.push_back(std::byte{1U}); // allow shooting while carrying intel
     packet.push_back(friendly_fire ? std::byte{1U} : std::byte{});
-    packet.push_back(std::byte{}); // padding
+    packet.push_back(std::byte{}); // custom game rule count
     packet.push_back(std::byte{}); // corpse explosions
     packet.push_back(std::byte{7U}); // UGC/mode mirror
     return packet;
@@ -236,6 +237,86 @@ void native_steam_ticket_and_xor_sequence_are_exact() {
         encode_protocol168_client_datagram(validation, config.steam_ticket);
     expect(info_result.outbound_datagrams.front() == expected_validation,
            "every post-ticket client packet must use the retail repeating XOR key");
+}
+
+void retail_initial_info_decodes_nonempty_loadouts_and_rules() {
+    using namespace battlespades::network;
+    auto packet = initial_info();
+    packet.resize(packet.size() - 6U); // Replace the empty dictionary/rules tail.
+    // Original shared.packet.InitialInfo.generate() golden bytes for
+    // {(5, 6): [7, 8], (3, 0): [9]}. These are class/slot pairs, not nested maps.
+    for (const auto value : {2U, 5U, 6U, 2U, 7U, 8U, 3U, 0U, 1U, 9U,
+                            1U, 0U, 2U}) {
+        packet.push_back(static_cast<std::byte>(value));
+    }
+    string(packet, "RULE_BLOCKS");
+    string(packet, "OFF");
+    string(packet, "RULE_TIME");
+    string(packet, "90");
+    packet.insert(packet.end(), {std::byte{}, std::byte{7U}});
+    std::string error;
+    auto info = decode_protocol168_initial_info(packet, error);
+    expect(info && error.empty() && info->loadout_overrides.size() == 2U &&
+               info->loadout_overrides.at({5U, 6U}) == std::vector<std::uint8_t>{7U, 8U} &&
+               info->loadout_overrides.at({3U, 0U}) == std::vector<std::uint8_t>{9U},
+           "retail loadout dictionary keys and counted tool lists must be preserved");
+    const std::vector<std::pair<std::string, std::string>> rules{
+        {"RULE_BLOCKS", "OFF"}, {"RULE_TIME", "90"}};
+    expect(info->custom_game_rules == rules && info->allow_shooting_holding_intel &&
+               !info->friendly_fire && info->ugc_mode == 7U,
+           "custom rule string pairs must not shift later combat/UGC flags");
+    for (std::size_t size{}; size < packet.size(); ++size) {
+        expect(!decode_protocol168_initial_info(std::span{packet}.first(size), error),
+               "every truncation of a variable InitialInfo collection must fail closed");
+    }
+    // Empty replacement rows are meaningful, and Python dictionaries retain
+    // the last value when a duplicate key appears on the wire.
+    auto duplicate = initial_info();
+    duplicate.resize(duplicate.size() - 6U);
+    for (const auto value : {2U, 1U, 2U, 1U, 9U, 1U, 2U, 0U, 1U, 0U, 0U, 0U, 7U})
+        duplicate.push_back(static_cast<std::byte>(value));
+    info = decode_protocol168_initial_info(duplicate, error);
+    expect(info && info->loadout_overrides.size() == 1U &&
+               info->loadout_overrides.at({1U, 2U}).empty(),
+           "an empty override must replace the earlier row just like retail's dictionary");
+
+    auto excessive = initial_info();
+    excessive.resize(excessive.size() - 3U);
+    excessive.push_back(std::byte{1U});
+    string(excessive, "RULE");
+    string(excessive, std::string(4097U, 'x'));
+    excessive.insert(excessive.end(), {std::byte{}, std::byte{7U}});
+    expect(!decode_protocol168_initial_info(excessive, error),
+           "individual custom rule strings must remain bounded");
+}
+
+void public_retail_initial_info_completes_authentication() {
+    using namespace battlespades::network;
+    std::vector<std::byte> wire;
+    for (const auto value : protocol168_fixtures::agex1_initial_info)
+        wire.push_back(static_cast<std::byte>(value));
+    std::string error;
+    const auto plain = decode_protocol168_server_datagram(wire, error);
+    expect(plain && plain->size() == 326U, "inflate the exact public retail InitialInfo capture");
+    const auto info = decode_protocol168_initial_info(*plain, error);
+    expect(info && info->map_name == "Invasion" && info->server_name == "FUCKJ AGE X #1" &&
+               info->loadout_overrides.size() == 15U && info->custom_game_rules.empty() &&
+               info->loadout_overrides.at({0U, 1U}) == std::vector<std::uint8_t>{8U, 60U, 61U} &&
+               info->loadout_overrides.at({12U, 0U}) == std::vector<std::uint8_t>{0U, 34U} &&
+               info->loadout_overrides.at({12U, 3U}) == std::vector<std::uint8_t>{68U} &&
+               info->ground_colors.size() == 2U && !info->friendly_fire &&
+               !info->allow_shooting_holding_intel && info->ugc_mode == 6U &&
+               info->flight_profile.drain[1U] == 75.0,
+           "nonempty stock loadout overrides must not be mistaken for a flight extension");
+    Protocol168Session session;
+    static_cast<void>(session.connected());
+    const auto result = session.ingest(wire);
+    expect(result.accepted && result.outbound_datagrams.size() == 1U &&
+               session.phase() == Protocol168SessionPhase::awaiting_map_start,
+           "the authenticated public response must advance to map validation");
+    for (std::size_t size{}; size < plain->size(); ++size)
+        expect(!decode_protocol168_initial_info(std::span{*plain}.first(size), error),
+               "every truncated public response must fail without reading beyond its payload");
 }
 
 void initial_info_retains_disabled_hud_presentation_flags() {
@@ -864,6 +945,8 @@ int main() {
     try {
         offline_ticket_and_initial_sequence_are_exact();
         native_steam_ticket_and_xor_sequence_are_exact();
+        retail_initial_info_decodes_nonempty_loadouts_and_rules();
+        public_retail_initial_info_completes_authentication();
         flight_profile_is_negotiated_bounded_and_separate_from_the_ticket();
         initial_info_retains_disabled_hud_presentation_flags();
         initial_info_retains_bounded_loading_metadata();

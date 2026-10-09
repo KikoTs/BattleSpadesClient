@@ -172,6 +172,53 @@ loopback_server(ENetAddress& address) {
     return server;
 }
 
+void live_ticket_preserves_explicit_extension_policy() {
+    for (const bool negotiate : {false, true}) {
+        ENetAddress address{};
+        const auto server = loopback_server(address);
+        LiveProtocol168Connection connection;
+        Protocol168SessionConfig session;
+        session.auto_join = false;
+        session.negotiate_flight_profile = negotiate;
+        session.steam_ticket = {std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
+        EnetProtocol168Config transport{"127.0.0.1", address.port, 5'000U};
+        transport.protocol = GameProtocol::retail168;
+        expect(connection.start(transport, session), "start extension-policy client");
+
+        std::vector<std::byte> expected{
+            std::byte{0x30U}, std::byte{105U}, std::byte{3U}, std::byte{},
+            std::byte{}, std::byte{}, std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
+        if (negotiate) {
+            expected.insert(expected.end(), {std::byte{'B'}, std::byte{'S'},
+                                            std::byte{'C'}, std::byte{'F'}, std::byte{2U}});
+        }
+        bool received{};
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!received && std::chrono::steady_clock::now() < deadline) {
+            ENetEvent event{};
+            expect(enet_host_service(server.get(), &event, 5U) >= 0,
+                   "service extension-policy server");
+            if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                expect(event.data == 168U, "extension policy keeps the retail ENet version");
+            } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                const std::unique_ptr<ENetPacket, decltype(&enet_packet_destroy)> packet{
+                    event.packet, &enet_packet_destroy};
+                const std::vector<std::byte> actual{
+                    reinterpret_cast<const std::byte*>(packet->data),
+                    reinterpret_cast<const std::byte*>(packet->data + packet->dataLength)};
+                expect(event.channelID == 0U &&
+                           (packet->flags & ENET_PACKET_FLAG_RELIABLE) != 0U,
+                       "retail authentication stays reliable on channel zero");
+                expect(actual == expected,
+                       "live transport must preserve exact stock or explicitly opted-in BSCF ticket bytes");
+                received = true;
+            }
+        }
+        expect(received, "loopback server must receive the authentication packet");
+        connection.stop();
+    }
+}
+
 void unanswered_connect_times_out_after_five_seconds_as_error_timeout() {
     expect(EnetProtocol168Config{}.connect_timeout_ms == 5'000U &&
                EnetProtocol168Config{}.timeout_ms == 30'000U,
@@ -291,6 +338,7 @@ int main() {
         recovery_requires_map_change_evidence();
         cancellation_signal_is_nonblocking_and_owner_can_restart();
         live_queue_bounds_memory_without_losing_order_or_capacity();
+        live_ticket_preserves_explicit_extension_policy();
         unanswered_connect_times_out_after_five_seconds_as_error_timeout();
         connected_handshake_without_progress_times_out();
         only_clock_sync_and_client_data_are_unsequenced();

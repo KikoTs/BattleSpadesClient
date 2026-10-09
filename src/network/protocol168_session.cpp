@@ -308,19 +308,45 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
         }
         info.ground_colors.push_back(row);
     }
-    // Shared.packet appends one list terminator after the counted rows.
-    if (!reader.skip(1U)) {
-        error = "truncated InitialInfo ground-color terminator";
+    // Retail follows ground colors with a counted dictionary, not a list
+    // terminator. Each (class, slot) key has its own counted tool-id list.
+    const auto override_count = reader.u8();
+    if (!override_count.has_value()) {
+        error = "truncated InitialInfo loadout overrides";
         return std::nullopt;
+    }
+    for (std::size_t index{}; index < *override_count; ++index) {
+        const auto class_id = reader.u8();
+        const auto slot_id = reader.u8();
+        std::vector<std::uint8_t> tools;
+        if (!class_id || !slot_id || !read_counted(tools)) {
+            error = "truncated InitialInfo loadout override row";
+            return std::nullopt;
+        }
+        // Match the original Python dictionary's last-value-wins behavior.
+        info.loadout_overrides.insert_or_assign(std::pair{*class_id, *slot_id}, std::move(tools));
     }
     const auto allow_shooting_holding_intel = reader.u8();
     const auto friendly_fire = reader.u8();
-    const auto padding = reader.u8();
+    const auto custom_rule_count = reader.u8();
+    if (!custom_rule_count.has_value()) {
+        error = "truncated InitialInfo custom game rules";
+        return std::nullopt;
+    }
+    info.custom_game_rules.reserve(*custom_rule_count);
+    for (std::size_t index{}; index < *custom_rule_count; ++index) {
+        auto name = reader.string(4096U);
+        auto value = reader.string(4096U);
+        if (!name || !value) {
+            error = "malformed InitialInfo custom game rule";
+            return std::nullopt;
+        }
+        info.custom_game_rules.emplace_back(std::move(*name), std::move(*value));
+    }
     const auto enable_corpse_explosion = reader.u8();
-    static_cast<void>(padding);
     static_cast<void>(enable_corpse_explosion);
     if (!allow_shooting_holding_intel.has_value() ||
-        !friendly_fire.has_value() || !padding.has_value() ||
+        !friendly_fire.has_value() ||
         !enable_corpse_explosion.has_value()) {
         error = "truncated InitialInfo combat flags";
         return std::nullopt;

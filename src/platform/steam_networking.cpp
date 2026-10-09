@@ -3,6 +3,7 @@
 #include "battlespades/core/diagnostics.hpp"
 #include "battlespades/platform/steam_achievements.generated.hpp"
 #include "battlespades/platform/steam_registration_windows.hpp"
+#include "steam_auth_ticket_state.hpp"
 
 #include <steam/steam_api.h>
 
@@ -17,7 +18,6 @@
 #include <mutex>
 #include <optional>
 #include <set>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -173,6 +173,10 @@ struct SteamApi final {
     bool(S_CALLTYPE* connection_info)(ISteamNetworkingSockets*, HSteamNetConnection,
                                       SteamNetConnectionInfo_t*){};
     uint64(S_CALLTYPE* steam_id)(ISteamUser*){};
+    HAuthTicket(S_CALLTYPE* web_api_ticket)(ISteamUser*, const char*){};
+    HAuthTicket(S_CALLTYPE* session_ticket)(ISteamUser*, void*, int, uint32*,
+                                          const SteamNetworkingIdentity*){};
+    void(S_CALLTYPE* cancel_auth_ticket)(ISteamUser*, HAuthTicket){};
     const char*(S_CALLTYPE* persona_name)(ISteamFriends*){};
     bool(S_CALLTYPE* set_rich_presence)(ISteamFriends*, const char*, const char*){};
     void(S_CALLTYPE* clear_rich_presence)(ISteamFriends*){};
@@ -211,6 +215,7 @@ struct SteamApi final {
     // Optional: an older redistributable lacks some, and only the feature
     // that needs one degrades (see load_optional_steam_api).
     ISteamUtils*(S_CALLTYPE* steam_utils)(){};
+    AppId_t(S_CALLTYPE* current_app_id)(ISteamUtils*){};
     bool(S_CALLTYPE* overlay_enabled)(ISteamUtils*){};
     void(S_CALLTYPE* invite_dialog_connect)(ISteamFriends*, const char*){};
     void(S_CALLTYPE* invite_dialog_lobby)(ISteamFriends*, uint64){};
@@ -439,6 +444,12 @@ void announce_app_id(const std::string& app_id) noexcept {
     // Join, invite and launch-argument support. A library without them still
     // carries matches; only these features are unavailable.
     const std::array optional_bindings{
+        Binding{"SteamAPI_ISteamUser_GetAuthTicketForWebApi",
+                reinterpret_cast<void**>(&api.web_api_ticket)},
+        Binding{"SteamAPI_ISteamUser_GetAuthSessionTicket",
+                reinterpret_cast<void**>(&api.session_ticket)},
+        Binding{"SteamAPI_ISteamUser_CancelAuthTicket",
+                reinterpret_cast<void**>(&api.cancel_auth_ticket)},
         Binding{"SteamAPI_SteamUtils_v010", reinterpret_cast<void**>(&api.steam_utils)},
         // Steam's game server list (what the original game browsed).
         Binding{"SteamAPI_SteamMatchmakingServers_v002",
@@ -458,6 +469,7 @@ void announce_app_id(const std::string& app_id) noexcept {
         Binding{"SteamAPI_SteamUtils_v011", reinterpret_cast<void**>(&api.steam_utils)},
         Binding{"SteamAPI_ISteamUtils_IsOverlayEnabled",
                 reinterpret_cast<void**>(&api.overlay_enabled)},
+        Binding{"SteamAPI_ISteamUtils_GetAppID", reinterpret_cast<void**>(&api.current_app_id)},
         Binding{"SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialogConnectString",
                 reinterpret_cast<void**>(&api.invite_dialog_connect)},
         Binding{"SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialog",
@@ -580,6 +592,7 @@ struct SteamNetworkingRuntime::Impl final {
     std::atomic<std::uint64_t> steam_id{};
     /** The id Steam accepted, which is the fallback when the first was refused. */
     std::atomic<std::uint32_t> attached_app_id{};
+    bool auth_context_verified{};
     std::string persona;
     std::string relay_detail;
     std::atomic_bool relay_available{};
@@ -591,6 +604,36 @@ struct SteamNetworkingRuntime::Impl final {
     bool overlay_reported{};
     HSteamPipe pipe{};
     std::string error;
+
+    std::mutex auth_mutex;
+    detail::SteamAuthTicketState auth_tickets;
+
+    [[nodiscard]] bool dispatch_auth_callback(const CallbackMsg_t& message) {
+        if (message.m_pubParam == nullptr) return false;
+        if (message.m_iCallback == GetTicketForWebApiResponse_t::k_iCallback) {
+            if (message.m_cubParam < static_cast<int>(sizeof(GetTicketForWebApiResponse_t))) return true;
+            GetTicketForWebApiResponse_t result{};
+            std::memcpy(&result, message.m_pubParam, sizeof(result));
+            const bool valid = result.m_eResult == k_EResultOK && result.m_cubTicket > 0 &&
+                               result.m_cubTicket <= GetTicketForWebApiResponse_t::k_nCubTicketMaxLength;
+            const auto bytes = valid ? std::span<const std::byte>{
+                reinterpret_cast<const std::byte*>(result.m_rgubTicket),
+                static_cast<std::size_t>(result.m_cubTicket)} : std::span<const std::byte>{};
+            const std::scoped_lock lock{auth_mutex};
+            auth_tickets.complete(result.m_hAuthTicket, detail::SteamTicketKind::web_api, valid, bytes);
+            return true;
+        }
+        if (message.m_iCallback == GetAuthSessionTicketResponse_t::k_iCallback) {
+            if (message.m_cubParam < static_cast<int>(sizeof(GetAuthSessionTicketResponse_t))) return true;
+            GetAuthSessionTicketResponse_t result{};
+            std::memcpy(&result, message.m_pubParam, sizeof(result));
+            const std::scoped_lock lock{auth_mutex};
+            auth_tickets.complete(result.m_hAuthTicket, detail::SteamTicketKind::session,
+                                  result.m_eResult == k_EResultOK);
+            return true;
+        }
+        return false;
+    }
 
     /** Serviced on the pump thread: message forwarding for every live tunnel. */
     std::mutex services_mutex;
@@ -744,7 +787,8 @@ struct SteamNetworkingRuntime::Impl final {
         api.dispatch_run_frame(pipe);
         CallbackMsg_t message{};
         while (api.dispatch_next(pipe, &message)) {
-            if (dispatch_join_callback(message) || dispatch_overlay_callback(message)) {
+            if (dispatch_join_callback(message) || dispatch_overlay_callback(message) ||
+                dispatch_auth_callback(message)) {
                 // Handled; freed below like every other message.
             } else if (message.m_iCallback == SteamNetConnectionStatusChangedCallback_t::k_iCallback &&
                 message.m_pubParam != nullptr) {
@@ -869,6 +913,14 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
     impl->api.manual_dispatch_init();
     impl->pipe = impl->api.steam_pipe();
     impl->attached_app_id.store(static_cast<std::uint32_t>(std::stoul(app_id)));
+    // An app id requested through environment/configuration is not proof of
+    // the active Steam context. Authentication must label the app Steam owns.
+    if (impl->api.steam_utils != nullptr && impl->api.current_app_id != nullptr) {
+        if (auto* const utils = impl->api.steam_utils(); utils != nullptr) {
+            impl->attached_app_id.store(impl->api.current_app_id(utils));
+            impl->auth_context_verified = impl->attached_app_id.load() != 0U;
+        }
+    }
     impl->steam_id.store(impl->api.steam_id(impl->api.user()));
     if (const auto* const name = impl->api.persona_name(impl->api.friends()); name != nullptr) {
         impl->persona = name;
@@ -882,7 +934,7 @@ bool SteamNetworkingRuntime::start(SteamNetworkingRuntimeConfig config, std::str
     }
     impl->ready.store(true);
     impl_ = std::move(impl);
-    core::diagnostic("steam", "runtime ready: app=" + app_id + " id=" +
+    core::diagnostic("steam", "runtime ready: app=" + std::to_string(impl_->attached_app_id.load()) + " id=" +
                                   std::to_string(impl_->steam_id.load()) + " relays=" +
                                   (impl_->relay_available.load() ? "ready" : "unavailable"));
     // The first question when Shift+Tab does nothing: did the overlay reach
@@ -898,6 +950,12 @@ void SteamNetworkingRuntime::stop() noexcept {
     if (impl_ == nullptr) return;
     impl_->pump.request_stop();
     if (impl_->pump.joinable()) impl_->pump.join();
+    if (impl_->api.cancel_auth_ticket != nullptr) {
+        for (const auto& [handle, entry] : impl_->auth_tickets.entries()) {
+            static_cast<void>(entry);
+            impl_->api.cancel_auth_ticket(impl_->api.user(), handle);
+        }
+    }
     // A server list request holds a pointer to our response object.
     cancel_internet_server_query();
     if (impl_->api.shutdown != nullptr) impl_->api.shutdown();
@@ -926,6 +984,85 @@ std::string SteamNetworkingRuntime::persona_name() const {
 
 std::uint32_t SteamNetworkingRuntime::app_id() const noexcept {
     return impl_ == nullptr ? 0U : impl_->attached_app_id.load();
+}
+
+std::uint32_t SteamNetworkingRuntime::begin_web_api_ticket(std::string& error) {
+    error.clear();
+    if (!ready() || impl_->api.web_api_ticket == nullptr || impl_->api.cancel_auth_ticket == nullptr ||
+        !impl_->auth_context_verified) {
+        error = "Steam Web API authentication is unavailable";
+        return 0U;
+    }
+    const std::scoped_lock lock{impl_->auth_mutex};
+    if (impl_->auth_tickets.full()) {
+        error = "Too many Steam authentication requests are active";
+        return 0U;
+    }
+    const auto handle = impl_->api.web_api_ticket(impl_->api.user(), "aosplay");
+    if (!impl_->auth_tickets.begin(handle, detail::SteamTicketKind::web_api,
+                                   app_id(), steam_id())) {
+        if (handle != k_HAuthTicketInvalid) impl_->api.cancel_auth_ticket(impl_->api.user(), handle);
+        error = "Steam could not start Web API authentication";
+        return 0U;
+    }
+    return handle;
+}
+
+std::uint32_t SteamNetworkingRuntime::begin_session_ticket(std::string& error) {
+    error.clear();
+    if (!ready() || app_id() != 224540U || !impl_->auth_context_verified) {
+        error = "This server requires a Steam account that owns Ace of Spades (224540)";
+        return 0U;
+    }
+    if (impl_->api.session_ticket == nullptr || impl_->api.cancel_auth_ticket == nullptr) {
+        error = "Steam game-server authentication is unavailable";
+        return 0U;
+    }
+    const std::scoped_lock lock{impl_->auth_mutex};
+    if (impl_->auth_tickets.full()) {
+        error = "Too many Steam authentication requests are active";
+        return 0U;
+    }
+    std::array<std::byte, detail::SteamAuthTicketState::maximum_session_bytes> bytes{};
+    uint32 size{};
+    // Legacy servers predate remote-identity binding. Their ticket wrapper is
+    // exactly SteamID LE + unmodified raw ticket, with a 2048-byte hex bound.
+    const auto handle = impl_->api.session_ticket(impl_->api.user(), bytes.data(),
+                                                 static_cast<int>(bytes.size()), &size, nullptr);
+    if (size > bytes.size() || !impl_->auth_tickets.begin(handle, detail::SteamTicketKind::session,
+            app_id(), steam_id(), std::span<const std::byte>{bytes.data(),
+                std::min(static_cast<std::size_t>(size), bytes.size())})) {
+        if (handle != k_HAuthTicketInvalid) impl_->api.cancel_auth_ticket(impl_->api.user(), handle);
+        error = "Steam could not issue a retail game-server ticket";
+        return 0U;
+    }
+    return handle;
+}
+
+std::optional<SteamWebApiTicket> SteamNetworkingRuntime::take_web_api_ticket(std::uint32_t handle) {
+    if (!ready()) return std::nullopt;
+    const std::scoped_lock lock{impl_->auth_mutex};
+    auto result = impl_->auth_tickets.take(handle, detail::SteamTicketKind::web_api);
+    if (!result) return std::nullopt;
+    return SteamWebApiTicket{handle, result->app_id, result->steam_id,
+                             std::move(result->hex), std::move(result->error)};
+}
+
+std::optional<SteamSessionTicket> SteamNetworkingRuntime::take_session_ticket(std::uint32_t handle) {
+    if (!ready()) return std::nullopt;
+    const std::scoped_lock lock{impl_->auth_mutex};
+    auto result = impl_->auth_tickets.take(handle, detail::SteamTicketKind::session);
+    if (!result) return std::nullopt;
+    SteamSessionTicket ticket{handle, result->app_id, result->steam_id, {}, std::move(result->error)};
+    ticket.wire_bytes.reserve(result->hex.size());
+    for (const auto value : result->hex) ticket.wire_bytes.push_back(static_cast<std::byte>(value));
+    return ticket;
+}
+
+void SteamNetworkingRuntime::cancel_auth_ticket(std::uint32_t handle) noexcept {
+    if (!ready() || handle == 0U) return;
+    const std::scoped_lock lock{impl_->auth_mutex};
+    if (impl_->auth_tickets.cancel(handle)) impl_->api.cancel_auth_ticket(impl_->api.user(), handle);
 }
 
 bool SteamNetworkingRuntime::tracking_enabled() const noexcept {

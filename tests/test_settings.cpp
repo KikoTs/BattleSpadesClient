@@ -334,6 +334,8 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.weapon_motion = false;
     settings.main.fallback_music = true;
     settings.main.ragdoll_corpses = false;
+    settings.main.discord_presence = false;
+    settings.main.discord_join = false;
     settings.main.blood_marks = true;
     settings.main.blood_marks = true;
     settings.graphics.resolution = {1'680U, 1'050U};

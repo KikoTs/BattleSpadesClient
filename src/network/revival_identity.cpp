@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -27,8 +28,12 @@
 #define NOMINMAX
 #include <windows.h>
 #include <wincrypt.h>
+#include <shlobj.h>
+#include <sddl.h>
 #else
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 namespace battlespades::network {
@@ -151,6 +156,9 @@ void initialize_libraries() {
     account.identity_type = json_string(value, "identity_type");
     account.ranked_eligible = json_bool(value, "ranked_eligible");
     account.offline = json_bool(value, "offline");
+    account.steam_id = json_string(value, "steam_id");
+    account.registered_name = json_string(value, "registered_name");
+    account.display_name = json_string(value, "display_name");
     if (account.nickname.empty() || account.nickname.front() == '~') {
         return std::nullopt;
     }
@@ -166,6 +174,9 @@ void initialize_libraries() {
         {"identity_type", account.identity_type},
         {"ranked_eligible", account.ranked_eligible},
         {"offline", account.offline},
+        {"steam_id", account.steam_id},
+        {"registered_name", account.registered_name},
+        {"display_name", account.display_name},
     };
 }
 
@@ -325,6 +336,51 @@ unprotect_secret(std::string_view protected_value) {
     if (!value.has_value() || value->empty()) return std::nullopt;
     return std::filesystem::path{*value};
 #endif
+}
+
+[[nodiscard]] std::filesystem::path recovery_directory() {
+#if defined(_WIN32)
+    PWSTR documents{};
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents))) {
+        const auto result = std::filesystem::path{documents} / L"BattleSpades";
+        CoTaskMemFree(documents);
+        return result;
+    }
+#endif
+    if (const auto home = environment_directory("HOME")) return *home / "Documents" / "BattleSpades";
+    return {};
+}
+
+/** Exclusive, owner-readable backup: never replace an existing account's file. */
+[[nodiscard]] bool write_private_backup(const std::filesystem::path& path, std::string_view data) {
+#if defined(_WIN32)
+    PSECURITY_DESCRIPTOR descriptor{};
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;;FA;;;SY)(A;;FA;;;OW)", SDDL_REVISION_1, &descriptor, nullptr)) return false;
+    SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor, FALSE};
+    const auto file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, &attributes, CREATE_NEW,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
+    LocalFree(descriptor);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD written{};
+    const auto ok = WriteFile(file, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) &&
+                    written == data.size() && FlushFileBuffers(file);
+    CloseHandle(file);
+#else
+    const auto file = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+    if (file < 0) return false;
+    std::size_t written{};
+    while (written < data.size()) {
+        const auto count = ::write(file, data.data() + written, data.size() - written);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        written += static_cast<std::size_t>(count);
+    }
+    const auto ok = written == data.size() && ::fsync(file) == 0;
+    ::close(file);
+#endif
+    if (!ok) { std::error_code ignored; std::filesystem::remove(path, ignored); }
+    return ok;
 }
 
 } // namespace
@@ -684,6 +740,74 @@ public:
             return offline_guest(public_key, complete.error);
         }
         return accept_session(complete);
+    }
+
+    [[nodiscard]] RevivalAuthResult steam_login(std::uint32_t app_id, std::string ticket,
+                                                std::string expected_steam_id, bool link_existing) {
+        if (config.offline) {
+            wipe(ticket);
+            return error("offline_mode", "Online account requests are disabled for this offline profile.");
+        }
+        if ((app_id != 224540U && app_id != 480U) || ticket.empty() || ticket.size() > 5'120U ||
+            ticket.size() % 2U != 0U || expected_steam_id.size() != 17U ||
+            !std::all_of(expected_steam_id.begin(), expected_steam_id.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }) ||
+            !std::all_of(ticket.begin(), ticket.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
+            wipe(ticket);
+            return error("invalid_steam_ticket", "Steam could not provide a valid sign-in ticket.");
+        }
+        Json payload{{"client", "launcher"}, {"app_id", app_id}, {"ticket", ticket}};
+        std::string linking_token;
+        std::string linking_account;
+        if (link_existing) {
+            std::scoped_lock lock{mutex};
+            if (!account || account->offline || access_token.empty() ||
+                (!account->steam_id.empty() && account->steam_id != expected_steam_id)) {
+                wipe(ticket);
+                wipe(payload["ticket"].get_ref<std::string&>());
+                return error("authentication_required", "Sign in to the account you want to keep before linking Steam.");
+            }
+            linking_token = access_token;
+            linking_account = account->public_id;
+        }
+        // The master performs two bounded Valve requests before issuing a
+        // session. Do not time out at the ordinary five-second API budget.
+        auto response = request(link_existing ? "/api/auth/steam/link" : "/api/auth/steam/ticket",
+                                "POST", payload, linking_token, std::chrono::seconds{20});
+        wipe(linking_token);
+        wipe(ticket);
+        wipe(payload["ticket"].get_ref<std::string&>());
+        if (response) {
+            const auto body = parse_json(response);
+            const auto found = body && body->contains("account") ? account_from_json((*body)["account"]) : std::nullopt;
+            if (!found || found->steam_id != expected_steam_id || found->identity_type != "steam" ||
+                (link_existing && found->public_id != linking_account))
+                return error("steam_identity_mismatch", "Steam sign-in returned a different account. Please try again.");
+        }
+        std::scoped_lock lock{mutex};
+        return accept_session(response);
+    }
+
+    [[nodiscard]] RevivalAuthResult recover_steam_account(std::string steam_id, std::string code) {
+        if (config.offline) {
+            wipe(code);
+            return error("offline_mode", "Online account requests are disabled for this offline profile.");
+        }
+        if (steam_id.size() != 17U || !std::all_of(steam_id.begin(), steam_id.end(),
+                [](unsigned char c) { return c >= '0' && c <= '9'; }) || code.empty() || code.size() > 256U) {
+            wipe(code);
+            return error("invalid_recovery", "Enter the Steam ID and recovery code from your backup file.");
+        }
+        Json payload{{"client", "launcher"}, {"steam_id", steam_id}, {"recovery_code", code}};
+        auto response = request("/api/auth/steam/recover", "POST", payload, {});
+        wipe(code);
+        wipe(payload["recovery_code"].get_ref<std::string&>());
+        if (response) {
+            const auto body = parse_json(response);
+            const auto found = body && body->contains("account") ? account_from_json((*body)["account"]) : std::nullopt;
+            if (!found || found->steam_id != steam_id) return error("steam_identity_mismatch", "Account recovery returned a different identity.");
+        }
+        std::scoped_lock lock{mutex};
+        return accept_session(response);
     }
 
     [[nodiscard]] RevivalAuthResult logout() {
@@ -1400,14 +1524,17 @@ private:
                          "AoSPlay did not return a launcher session.",
                          response.status);
         }
-        if (!store_secret(
+        const bool session_protected = store_secret(
                 "access_token",
                 std::span<const unsigned char>{
                     reinterpret_cast<const unsigned char*>(token.data()),
-                    token.size()})) {
-            wipe(token);
-            return error("state_write_failed",
-                         "Could not protect the launcher session.");
+                    token.size()});
+        if (!session_protected) {
+            // Recovery has already rotated the server-side code. Never discard
+            // its only replacement because local credential protection failed,
+            // and never pair the new account with a previous persisted token.
+            auto& secrets = state["secrets"];
+            if (secrets.is_object()) secrets.erase("access_token");
         }
         wipe(access_token);
         access_token = std::move(token);
@@ -1418,15 +1545,88 @@ private:
             session != body->end() && session->is_object()) {
             state["session_expires_at"] = json_string(*session, "expires_at");
         }
-        if (!save()) {
-            clear_session();
-            return error("state_write_failed",
-                         "Could not save the protected launcher session.");
-        }
         RevivalAuthResult result{account};
+        if (!session_protected)
+            result.recovery_backup_error = "Signed in for this session, but your login could not be protected for next time. Keep your recovery code.";
         result.recovery_code = json_string(*body, "recovery_code");
+        const auto recovery_key = "recovery_" + identity_scope_key(config.api_base + ":" + account->public_id);
+        const auto recovery_version = json_string(*body, "recovery_code_version");
+        const auto saved_version = json_string(state, recovery_key + "_version");
+        const bool verified_backup = !recovery_version.empty() && recovery_version == saved_version;
+        if (result.recovery_code.empty() && !account->steam_id.empty() && !verified_backup) {
+            // Recovery on another PC invalidates the old code. Do not label
+            // an unverifiable local copy as a usable current backup.
+            auto& secrets = state["secrets"];
+            if (secrets.is_object()) secrets.erase(recovery_key);
+            state.erase(recovery_key + "_version");
+            state.erase(recovery_key + "_file");
+        }
+        // A failed Documents write can be retried on the next login from the
+        // protected local copy, without invalidating the server's recovery code.
+        if (result.recovery_code.empty() && verified_backup) {
+            const auto previous_file = json_string(state, recovery_key + "_file");
+            std::error_code file_error;
+            const std::filesystem::path previous_path{std::u8string{
+                reinterpret_cast<const char8_t*>(previous_file.data()), previous_file.size()}};
+            if (previous_file.empty() || !std::filesystem::is_regular_file(previous_path, file_error)) {
+                if (auto stored = secret(recovery_key); stored && !stored->empty()) {
+                    result.recovery_code.assign(reinterpret_cast<const char*>(stored->data()), stored->size());
+                    sodium_memzero(stored->data(), stored->size());
+                }
+            }
+        }
+        if (!result.recovery_code.empty()) {
+            // A replacement must not inherit the previous code's secret or
+            // file receipt if protecting/exporting the new value fails.
+            auto& secrets = state["secrets"];
+            if (secrets.is_object()) secrets.erase(recovery_key);
+            state.erase(recovery_key + "_file");
+            state[recovery_key + "_version"] = recovery_version;
+            if (!store_secret(recovery_key, std::span<const unsigned char>{
+                    reinterpret_cast<const unsigned char*>(result.recovery_code.data()), result.recovery_code.size()}))
+                result.recovery_backup_error = "Could not protect a second copy of your recovery code.";
+            export_recovery_backup(result);
+            if (!result.recovery_backup_path.empty()) state[recovery_key + "_file"] = utf8_name(result.recovery_backup_path);
+        }
+        if (!save()) {
+            // Keep the valid session and show the recovery code even when the
+            // disk is full. Clearing both here strands a newly created account.
+            result.recovery_backup_error = "Your account is signed in, but its local session could not be saved. Keep your recovery code.";
+        }
         result.http_status = response.status;
         return result;
+    }
+
+    void export_recovery_backup(RevivalAuthResult& result) {
+        const auto directory = config.recovery_directory.empty() ? recovery_directory() : config.recovery_directory;
+        std::error_code ec;
+        if (directory.empty() || std::filesystem::is_symlink(directory, ec)) {
+            result.recovery_backup_error = "Could not save a recovery file. Copy this code to a safe place.";
+            return;
+        }
+        ec.clear();
+        std::filesystem::create_directories(directory, ec);
+        if (ec) {
+            result.recovery_backup_error = "Could not create the recovery folder. Copy this code to a safe place.";
+            return;
+        }
+        std::array<unsigned char, 8> suffix{};
+        randombytes_buf(suffix.data(), suffix.size());
+        std::array<char, 17> hex{};
+        sodium_bin2hex(hex.data(), hex.size(), suffix.data(), suffix.size());
+        const auto path = directory / ("Account-" + identity_scope_key(config.api_base + ":" + account->public_id) + "-" + hex.data() + ".txt");
+        // No display name is used as a path or account lookup key.
+        const auto instructions = account->steam_id.empty()
+            ? "Use your registered username and this code on the account recovery page.\n"
+            : "In BattleSpades choose Recover Steam account. Enter this Steam ID and recovery code.\n";
+        auto contents = std::string{"BattleSpades account recovery backup\nKeep this file private. Anyone with this code can recover this account.\n\n"} +
+            "Service: " + config.api_base + "\nAccount ID: " + account->public_id +
+            "\nRegistered name: " + (account->registered_name.empty() ? account->nickname : account->registered_name) +
+            "\nSteam ID: " + account->steam_id + "\nRecovery code: " + result.recovery_code + "\n\n" + instructions +
+            "Using recovery replaces the code; keep the newly saved backup. Signing in normally does not replace it.\n";
+        if (write_private_backup(path, contents)) result.recovery_backup_path = path;
+        else result.recovery_backup_error = "Could not save a recovery file. Copy this code to a safe place.";
+        wipe(contents);
     }
 
     [[nodiscard]] RevivalAuthResult offline_guest(
@@ -1589,22 +1789,19 @@ private:
         std::filesystem::create_directories(parent, error_code);
         if (error_code) return false;
         state["version"] = 1;
-        const auto serialized = state.dump(2);
-        if (serialized.size() > state_size_limit) return false;
+        auto serialized = state.dump(2);
+        if (serialized.size() > state_size_limit) { wipe(serialized); return false; }
+        std::array<unsigned char, 8> suffix{};
+        randombytes_buf(suffix.data(), suffix.size());
+        std::array<char, 17> hex{};
+        sodium_bin2hex(hex.data(), hex.size(), suffix.data(), suffix.size());
         auto temporary = config.state_path;
-        temporary += ".tmp";
-        {
-            std::ofstream output{
-                temporary, std::ios::binary | std::ios::trunc};
-            if (!output) return false;
-            output.write(serialized.data(),
-                         static_cast<std::streamsize>(serialized.size()));
-            output.flush();
-            if (!output) return false;
-        }
-#if !defined(_WIN32)
-        static_cast<void>(chmod(temporary.string().c_str(), S_IRUSR | S_IWUSR));
-#endif
+        temporary += std::string{"."} + hex.data() + ".tmp";
+        // Restrict access at creation, before any secret bytes are written.
+        // Exclusive creation also avoids following a stale .tmp symlink.
+        const bool written = write_private_backup(temporary, serialized);
+        wipe(serialized);
+        if (!written) return false;
 #if defined(_WIN32)
         const auto moved = MoveFileExW(
             temporary.c_str(),
@@ -1617,7 +1814,9 @@ private:
         return true;
 #else
         std::filesystem::rename(temporary, config.state_path, error_code);
-        return !error_code;
+        if (!error_code) return true;
+        std::filesystem::remove(temporary, error_code);
+        return false;
 #endif
     }
 
@@ -1672,6 +1871,15 @@ RevivalAuthResult RevivalIdentityService::register_account(
 
 RevivalAuthResult RevivalIdentityService::guest_login() {
     return impl_->guest_login();
+}
+
+RevivalAuthResult RevivalIdentityService::steam_login(std::uint32_t app_id, std::string ticket_hex,
+                                                      std::string expected_steam_id, bool link_existing) {
+    return impl_->steam_login(app_id, std::move(ticket_hex), std::move(expected_steam_id), link_existing);
+}
+
+RevivalAuthResult RevivalIdentityService::recover_steam_account(std::string steam_id, std::string recovery_code) {
+    return impl_->recover_steam_account(std::move(steam_id), std::move(recovery_code));
 }
 
 RevivalAuthResult RevivalIdentityService::logout() {

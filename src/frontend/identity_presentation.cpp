@@ -153,7 +153,11 @@ void append_field(ui::DrawList& list,
                      ColorRgba8{17U, 20U, 15U, 255U},
                      1'000U,
                      940U));
-    if (value.empty()) value = label == "USERNAME" ? "Player name" : "Password";
+    if (value.empty()) {
+        if (label == "STEAM ID") value = "17-digit Steam ID";
+        else if (label == "RECOVERY CODE") value = "Code from your backup file";
+        else value = label == "USERNAME" ? "Player name" : "Password";
+    }
     list.push(text(std::move(value),
                    DrawRect{bounds.x + 10.0, bounds.y + 2.0,
                             bounds.width - 20.0, bounds.height - 4.0},
@@ -216,23 +220,30 @@ ui::DrawList IdentityPresentation::build(
                        DrawRect{252.0, 319.0, 296.0, 36.0},
                        19.0,
                        white));
-        list.push(text("This is the only password-reset method. Store it outside the game folder.",
+        list.push(text(model.status().empty() ? "Keep this code private. It restores access to your account." : std::string{model.status()},
                        DrawRect{265.0, 365.0, 270.0, 64.0},
                        14.0,
                        white,
                        HorizontalTextAlignment::center,
                        3U));
     } else {
+        if (model.phase() == IdentityMenuPhase::steam_link) {
+            list.push(text("KEEP YOUR EXISTING PROGRESS", DrawRect{250.0, 271.0, 300.0, 28.0}, 20.0, warm_text));
+            list.push(text(std::string{model.link_account_name()}, DrawRect{265.0, 303.0, 270.0, 27.0}, 20.0, white));
+            list.push(text("Link this account to Steam to keep your progress, inventory and registered name.",
+                           DrawRect{262.0, 337.0, 276.0, 55.0}, 15.0, white, HorizontalTextAlignment::center, 3U));
+        } else {
         append_field(list,
                      draw_rect(model.username_bounds()),
-                     "USERNAME",
+                     model.phase() == IdentityMenuPhase::recovery_form ? "STEAM ID" : "USERNAME",
                      std::string{model.username()},
                      model.focused_field() == IdentityField::username);
         append_field(list,
                      draw_rect(model.password_bounds()),
-                     "PASSWORD",
+                     model.phase() == IdentityMenuPhase::recovery_form ? "RECOVERY CODE" : "PASSWORD",
                      model.masked_password(),
                      model.focused_field() == IdentityField::password);
+        }
         const auto message = !model.error().empty() ? model.error() : model.status();
         if (!message.empty()) {
             list.push(text(std::string{message},
@@ -241,6 +252,10 @@ ui::DrawList IdentityPresentation::build(
                            model.error().empty() ? warm_text : error_text,
                            HorizontalTextAlignment::center,
                            2U));
+        } else if (model.phase() == IdentityMenuPhase::steam_link) {
+            list.push(text("A separate Steam profile has its own progress.",
+                           DrawRect{255.0, 502.0, 290.0, 44.0}, 14.0, warm_text,
+                           HorizontalTextAlignment::center, 2U));
         } else {
             list.push(text("SIGN IN, REGISTER, OR PLAY AS GUEST",
                            DrawRect{255.0, 548.0, 290.0, 24.0},

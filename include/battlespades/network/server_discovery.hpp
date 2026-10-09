@@ -73,6 +73,8 @@ struct DiscoveredServer final {
     std::uint64_t steam_host_id_spacewar{};
     /** The relay host ids come from a dedicated server, not a player's own match. */
     bool dedicated_relay_host{};
+    /** False when no local measurement is available; the numeric value is ignored. */
+    bool ping_known{true};
 };
 
 struct DiscoveryResult final {
@@ -168,6 +170,17 @@ struct LanDiscoveryConfig final {
 
 [[nodiscard]] DiscoveryResult discover_public_servers(const PublicDiscoveryConfig& config = {},
                                                        std::stop_token stop = {});
+/**
+ * Measure Classic 0.75/0.76 rows with raw UDP HELLO/HI on their game ports.
+ * One batch deadline (not one timeout per server), at most 512 unique targets.
+ * Public Classic lists use numeric IPv4; DNS rows remain unknown so a stalled
+ * resolver cannot delay discovery. Call on a worker, never on the render thread.
+ * Unanswered/unsupported targets retain their listing with ping_known = false.
+ */
+void measure_classic_server_pings(
+    std::span<DiscoveredServer> servers,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds{900},
+    std::stop_token stop = {});
 [[nodiscard]] DiscoveryResult discover_lan_servers(const LanDiscoveryConfig& config = {});
 [[nodiscard]] DiscoveryResult probe_lan_server(
     const ServerEndpoint& endpoint,

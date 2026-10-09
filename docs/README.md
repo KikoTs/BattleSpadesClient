@@ -28,6 +28,8 @@ the current source, retained executable, package or live service.
 | Offline profiles, custom masters and click-to-join | [Launch options](LAUNCH_OPTIONS.md) |
 | Match recording and spectator playback | [Demos](DEMOS.md) |
 | Steam networking and Workshop maps | [Steam networking](STEAM_NETWORKING.md), [Steam Workshop](STEAM_WORKSHOP.md) |
+| Automatic Steam sign-in, account names and backup codes | [Steam identity](STEAM_IDENTITY.md) |
+| Discord activity and safe game invites | [Discord Rich Presence](DISCORD_PRESENCE.md) |
 | Licence, legal notice, security, contributing | [LICENSING](../LICENSING.md), [LEGAL](../LEGAL.md), [SECURITY](../SECURITY.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 
 [Account progression, inventory and crates](ACCOUNT_PROGRESSION_INVENTORY_CRATES.md)

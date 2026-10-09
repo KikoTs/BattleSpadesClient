@@ -106,6 +106,7 @@
 #include "battlespades/frontend/ugc_status_presentation.hpp"
 #include "battlespades/platform/relay_host_tunnel.hpp"
 #include "battlespades/platform/native_steam_client.hpp"
+#include "battlespades/platform/discord_presence.hpp"
 #include "battlespades/platform/steam_connect.hpp"
 #include "battlespades/platform/steam_overlay.hpp"
 #include "battlespades/platform/window_port.hpp"
@@ -1711,6 +1712,11 @@ struct NativeFrontendModule::Impl final {
     std::optional<ServerBrowserRefreshRequest> pending_browser_refresh;
     /** Map and mode of the match in progress, for the friends list. */
     std::string steam_presence_match;
+    platform::DiscordPresence discord_presence;
+    std::optional<platform::DiscordPresenceConfig> discord_presence_config;
+    std::chrono::steady_clock::time_point discord_presence_next{};
+    std::string discord_presence_endpoint;
+    std::int64_t discord_presence_started{};
     /** Friends' Steam matches gathered for the refresh now in flight. */
     std::vector<platform::SteamFriendMatch> pending_friend_matches;
     /**
@@ -1770,10 +1776,28 @@ struct NativeFrontendModule::Impl final {
         register_account,
         guest,
         logout,
+        steam,
+        recover_steam,
     };
     std::shared_ptr<network::RevivalIdentityService> identity_service;
     std::unique_ptr<platform::NativeSteamClient> native_steam;
     std::uint32_t active_steam_ticket{};
+    bool active_steam_ticket_modern{};
+    struct PendingSteamTransport final {
+        ServerConnectRequest request;
+        std::uint32_t timeout_ms{};
+        std::string wire_name;
+        std::uint32_t handle{};
+        std::chrono::steady_clock::time_point deadline;
+    };
+    std::optional<PendingSteamTransport> pending_steam_transport;
+    std::uint32_t steam_identity_ticket{};
+    std::uint64_t steam_identity_subject{};
+    std::chrono::steady_clock::time_point steam_identity_deadline{};
+    bool steam_auto_pending{};
+    bool steam_identity_automatic{};
+    bool steam_identity_linking{};
+    std::chrono::steady_clock::time_point steam_auto_deadline{};
     std::unique_ptr<network::RevivalSocialClient> social_client;
     struct SocialJoinOutcome final {
         std::uint64_t generation{};
@@ -3216,7 +3240,11 @@ struct NativeFrontendModule::Impl final {
             social_client->status(std::chrono::steady_clock::now()).closing) {
             initialize_social_client();
         }
-        config.player_name = account.nickname;
+        config.player_name = account.display_name.empty() ? account.nickname : account.display_name;
+        config.player_name = core::utf8_code_point_prefix(config.player_name, 15U);
+        for (std::size_t points = 15U; config.player_name.size() > 31U && points > 0U;)
+            config.player_name = core::utf8_code_point_prefix(config.player_name, --points);
+        config.player_account_id = 0U;
         resolved_player_account_id = 0U;
         if (!account.offline && !account.legacy_id.empty()) {
             std::uint64_t parsed{};
@@ -4433,7 +4461,58 @@ struct NativeFrontendModule::Impl final {
         ServerConnectRequest dedicated{endpoint.identifier(), endpoint.host,
                                        endpoint.port, {}, {}, {}, false, {}, false};
         dedicated.password = target.password;
+        dedicated.protocol = endpoint.protocol;
         begin_match_loading(dedicated);
+    }
+
+    void pump_discord_presence() {
+        const auto& preferences = settings_session.draft().main;
+        const platform::DiscordPresenceConfig presence_config{preferences.discord_presence, preferences.discord_join, {}};
+        if (discord_presence_config != presence_config) {
+            discord_presence.configure(presence_config);
+            discord_presence_config = presence_config;
+        }
+        if (const auto join = discord_presence.poll_join_request(); join && preferences.discord_join) {
+            // RPC supplies only a validated address, never launch arguments or
+            // admission credentials. Reuse the existing leave/join flow.
+            queue_steam_join(platform::SteamJoinTarget{platform::SteamJoinTargetKind::endpoint, 0U, *join, {}}, "Discord");
+        }
+        // Offline profiles can still use Direct Connect. Their Steam pump is
+        // disabled, so endpoint invites must also drain through this path.
+        if (config.offline) consume_pending_steam_join();
+        const auto now = std::chrono::steady_clock::now();
+        if (now < discord_presence_next) return;
+        discord_presence_next = now + std::chrono::seconds{1};
+        if (!network_match || !active_match_request || !match_connection || !preferences.discord_presence) {
+            discord_presence.clear();
+            discord_presence_endpoint.clear();
+            return;
+        }
+        const auto& request = *active_match_request;
+        const auto endpoint = request.host + ":" + std::to_string(request.port);
+        if (discord_presence_endpoint != endpoint) {
+            discord_presence_endpoint = endpoint;
+            discord_presence_started = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        }
+        platform::DiscordPresenceActivity activity;
+        activity.server_name = match_initial_info.server_name;
+        activity.map = match_initial_info.map_name;
+        activity.mode = localized_text(match_initial_info.mode_name);
+        activity.endpoint = request.steam_host_id == 0U ? endpoint : std::string{};
+        activity.protocol = static_cast<int>(match_protocol);
+        activity.players = static_cast<int>(tutorial_roster.present_players().size());
+        activity.password_protected = !request.password.empty() || !sent_server_password.empty();
+        for (const auto& server : server_browser.servers()) {
+            if (server.address == request.host && server.game_port == request.port) {
+                activity.maximum_players = static_cast<int>(server.maximum_players);
+                activity.password_protected = activity.password_protected || server.password_protected;
+                if (activity.server_name.empty()) activity.server_name = server.name;
+                break;
+            }
+        }
+        activity.started_at = discord_presence_started;
+        discord_presence.update(activity);
     }
 
     /** The Steam button follows the retail runtime; see IdentitySteamState. */
@@ -4460,7 +4539,7 @@ struct NativeFrontendModule::Impl final {
         }
         // Pending only on the first attempt: a retry every few seconds while
         // Steam is closed must not flash the button in and out.
-        auto steam_ready = state == NativeSteamState::ready;
+        auto steam_ready = false;
 #if defined(AOS_HAS_STEAM_NETWORKING)
         steam_ready = steam_ready || steam_runtime.ready();
 #endif
@@ -5261,10 +5340,22 @@ struct NativeFrontendModule::Impl final {
                 std::async(std::launch::async, [service] { return service->guest_login(); });
             break;
         case IdentityOperation::logout:
+            steam_auto_pending = false;
             identity_menu.reset_form();
             identity_menu.set_busy(true, "Signing out...");
             identity_worker =
                 std::async(std::launch::async, [service] { return service->logout(); });
+            break;
+        case IdentityOperation::steam:
+            if (!begin_steam_identity()) return;
+            break;
+        case IdentityOperation::recover_steam:
+            identity_menu.set_busy(true, "Recovering your account...");
+            identity_worker = std::async(std::launch::async,
+                [service, id = std::move(username), code = std::move(password)]() mutable {
+                    return service->recover_steam_account(std::move(id), std::move(code));
+                });
+            identity_menu.clear_password();
             break;
         case IdentityOperation::none:
             return;
@@ -5272,46 +5363,59 @@ struct NativeFrontendModule::Impl final {
         identity_operation = operation;
     }
 
-    /**
-     * A Steam account for this player, from the retail bridge or the runtime.
-     *
-     * The bridge speaks for the retail application and is preferred, but it
-     * exists only on Windows; the transport's runtime knows the same persona and
-     * id everywhere, so a Mac player is no longer told Steam is unavailable
-     * while their friends list is working.
-     */
-    [[nodiscard]] std::optional<network::RevivalAccount> steam_account() const {
-        std::string persona;
-        std::uint64_t steam_id{};
-        if (native_steam != nullptr && native_steam->ready() &&
-            native_steam->identity() != nullptr) {
-            persona = native_steam->identity()->persona_name;
-            steam_id = native_steam->identity()->steam_id;
-        }
+    void cancel_steam_identity_ticket() {
 #if defined(AOS_HAS_STEAM_NETWORKING)
-        if (steam_id == 0U && steam_runtime.ready()) {
-            persona = steam_runtime.persona_name();
-            steam_id = steam_runtime.steam_id();
+        if (steam_identity_ticket != 0U) steam_runtime.cancel_auth_ticket(steam_identity_ticket);
+#endif
+        steam_identity_ticket = 0U;
+    }
+
+    [[nodiscard]] bool begin_steam_identity() {
+        steam_identity_automatic = steam_auto_pending;
+        steam_auto_pending = false;
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (steam_runtime.ready()) {
+            std::string error;
+            steam_identity_subject = steam_runtime.steam_id();
+            steam_identity_ticket = steam_runtime.begin_web_api_ticket(error);
+            if (steam_identity_ticket != 0U) {
+                steam_identity_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{8};
+                identity_menu.set_busy(true, "Signing in securely through Steam...");
+                return true;
+            }
+            steam_identity_failed(error.empty() ? "Steam sign-in is unavailable. Use your account or play as guest." : error);
+            return false;
         }
 #endif
-        if (steam_id == 0U) return std::nullopt;
-        // Protocol 168 carries a short name, and a persona may be long, or
-        // emoji, so it is cut on a code point rather than mid-character.
-        auto nickname = core::utf8_code_point_prefix(persona, 15U);
-        while (nickname.size() > 31U) {
-            const auto count = std::max<std::size_t>(1U, nickname.size() / 4U);
-            nickname = core::utf8_code_point_prefix(nickname, count - 1U);
+        steam_identity_failed("Steam is unavailable. Start Steam, sign in to your account, or play as guest.");
+        return false;
+    }
+
+    void steam_identity_failed(std::string message) {
+        cancel_steam_identity_ticket();
+        identity_operation = IdentityOperation::none;
+        identity_menu.set_error(std::move(message));
+        const bool automatic = std::exchange(steam_identity_automatic, false);
+        const auto cached = identity_service->cached_account();
+        // Service rollout/outage must not strand an already signed-in Steam
+        // account. Never silently select a different account as a fallback.
+        if (automatic && cached && cached->identity_type == "steam" &&
+            cached->steam_id == std::to_string(steam_identity_subject) &&
+            identity_service->has_online_session()) {
+            launch_identity_operation(IdentityOperation::refresh);
         }
-        if (nickname.empty()) nickname = "SteamPlayer";
-        network::RevivalAccount account;
-        account.public_id = "steam:" + std::to_string(steam_id);
-        account.legacy_id = std::to_string(steam_id);
-        account.nickname = std::move(nickname);
-        account.account_type = "steam";
-        account.identity_type = "steam";
-        account.ranked_eligible = true;
-        account.offline = false;
-        return account;
+        static_cast<void>(window.set_text_input_enabled(true));
+    }
+
+    void bootstrap_saved_identity() {
+        if (const auto cached = identity_service->cached_account(); cached.has_value()) {
+            if (identity_service->has_online_session()) launch_identity_operation(IdentityOperation::refresh);
+            else if (cached->offline) {
+                apply_identity(*cached);
+                request_main_menu_after_identity();
+            }
+        }
+        static_cast<void>(window.set_text_input_enabled(true));
     }
 
     void begin_identity_bootstrap() {
@@ -5323,53 +5427,98 @@ struct NativeFrontendModule::Impl final {
             launch_identity_operation(IdentityOperation::guest);
             return;
         }
-        if (const auto cached = identity_service->cached_account(); cached.has_value()) {
-            if (identity_service->has_online_session()) {
-                launch_identity_operation(IdentityOperation::refresh);
-            } else if (cached->offline) {
-                apply_identity(*cached);
-                request_main_menu_after_identity();
-            } else {
-                static_cast<void>(window.set_text_input_enabled(true));
+        // Verify a saved profile before offering an explicit Steam link.
+        // Never silently replace its session with a different Steam account.
+        if (const auto cached = identity_service->cached_account();
+            cached && !cached->offline && cached->steam_id.empty() && identity_service->has_online_session()) {
+            steam_auto_pending = false;
+            bootstrap_saved_identity();
+            return;
+        }
+        steam_identity_linking = false;
+        // Give Steam its initial attach window, while keeping guest/account
+        // buttons usable. A manual choice cancels this automatic preference.
+        steam_auto_pending = true;
+        steam_auto_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{4};
+        identity_menu.set_busy(false, "Checking Steam. You can also sign in or play as guest.");
+        static_cast<void>(window.set_text_input_enabled(true));
+    }
+
+    void pump_steam_identity() {
+        if (steam_auto_pending && identity_operation == IdentityOperation::none) {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+            if (steam_runtime.ready()) {
+                launch_identity_operation(IdentityOperation::steam);
+            } else
+#endif
+            if (std::chrono::steady_clock::now() >= steam_auto_deadline) {
+                steam_auto_pending = false;
+                identity_menu.set_busy(false);
+                bootstrap_saved_identity();
             }
-        } else if (const auto account = steam_account(); account.has_value()) {
-            // Steam already says who this player is, so a first run has nothing
-            // to ask them. Anyone who wants a different identity can sign out
-            // and use the form.
-            core::diagnostic("identity", "signing in as " + account->nickname +
-                                             " because Steam is authorized and no profile "
-                                             "is stored");
-            apply_identity(*account);
-            request_main_menu_after_identity();
-        } else {
-            static_cast<void>(window.set_text_input_enabled(true));
+        }
+        if (identity_operation != IdentityOperation::steam || steam_identity_ticket == 0U || identity_worker.valid()) return;
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (auto ticket = steam_runtime.take_web_api_ticket(steam_identity_ticket)) {
+            if (!ticket->error.empty() || ticket->steam_id != steam_identity_subject) {
+                // A changed live Steam subject must never refresh the old one.
+                if (ticket->steam_id != steam_identity_subject) steam_identity_automatic = false;
+                steam_identity_failed(ticket->error.empty() ? "Your Steam account changed. Please sign in again." : ticket->error);
+                return;
+            }
+            identity_worker = std::async(std::launch::async,
+                [service = identity_service, ticket = std::move(*ticket), linking = steam_identity_linking]() mutable {
+                    return service->steam_login(ticket.app_id, std::move(ticket.ticket_hex), std::to_string(ticket.steam_id), linking);
+                });
+            return;
+        }
+#endif
+        if (std::chrono::steady_clock::now() >= steam_identity_deadline) {
+            steam_identity_failed("Steam sign-in timed out. Try again, sign in to your account, or play as guest.");
         }
     }
 
+    [[nodiscard]] bool offer_steam_link() {
+        const auto account = identity_service->cached_account();
+        if (!account || account->offline || !account->steam_id.empty() ||
+            !identity_service->has_online_session() || !identity_menu.steam_available()) return false;
+        identity_menu.show_steam_link(account->registered_name.empty() ? account->nickname : account->registered_name);
+        static_cast<void>(window.set_text_input_enabled(false));
+        return true;
+    }
+
     void submit_identity(IdentityAction action) {
+        steam_auto_pending = false;
         switch (action) {
         case IdentityAction::login:
-            launch_identity_operation(IdentityOperation::login);
+            launch_identity_operation(identity_menu.phase() == IdentityMenuPhase::recovery_form
+                ? IdentityOperation::recover_steam : IdentityOperation::login);
             break;
         case IdentityAction::register_account:
-            launch_identity_operation(IdentityOperation::register_account);
+            if (identity_menu.phase() == IdentityMenuPhase::recovery_form) identity_menu.reset_form();
+            else launch_identity_operation(IdentityOperation::register_account);
             break;
         case IdentityAction::steam:
-            if (const auto account = steam_account(); account.has_value()) {
-                apply_identity(*account);
-                identity_menu.reset_form();
-                request_main_menu_after_identity();
-            } else {
-                identity_menu.set_error(
-                    native_steam != nullptr && !native_steam->last_error().empty()
-                        ? std::string{native_steam->last_error()}
-                        : "Steam is unavailable. Start Steam and try again.");
-            }
+            steam_identity_linking = false;
+            launch_identity_operation(IdentityOperation::steam);
+            break;
+        case IdentityAction::link_steam:
+            steam_identity_linking = true;
+            launch_identity_operation(IdentityOperation::steam);
+            break;
+        case IdentityAction::keep_account:
+            identity_menu.reset_form();
+            request_main_menu_after_identity();
             break;
         case IdentityAction::guest:
             launch_identity_operation(IdentityOperation::guest);
             break;
+        case IdentityAction::recover_steam:
+            identity_menu.show_recovery_form();
+            static_cast<void>(window.set_text_input_enabled(true));
+            break;
         case IdentityAction::acknowledge_recovery:
+            if (offer_steam_link()) break;
             identity_menu.reset_form();
             request_main_menu_after_identity();
             break;
@@ -5397,16 +5546,25 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         const auto operation = identity_operation;
+        if (operation == IdentityOperation::steam) cancel_steam_identity_ticket();
         identity_operation = IdentityOperation::none;
         network::RevivalAuthResult outcome;
         try {
             outcome = identity_worker.get();
         } catch (const std::exception& exception) {
+            if (operation == IdentityOperation::steam) {
+                steam_identity_failed(std::string{"Steam sign-in failed: "} + exception.what());
+                return;
+            }
             identity_menu.set_error(
                 std::string{"Authentication failed safely: "} + exception.what());
             static_cast<void>(window.set_text_input_enabled(true));
             return;
         } catch (...) {
+            if (operation == IdentityOperation::steam) {
+                steam_identity_failed("Steam sign-in failed. Sign in to your account or play as guest.");
+                return;
+            }
             identity_menu.set_error("Authentication failed safely.");
             static_cast<void>(window.set_text_input_enabled(true));
             return;
@@ -5430,17 +5588,28 @@ struct NativeFrontendModule::Impl final {
             return;
         }
         if (!outcome) {
+            if (operation == IdentityOperation::steam) {
+                steam_identity_failed(outcome.error.empty() ? "Steam sign-in failed." : outcome.error);
+                return;
+            }
             identity_menu.set_error(outcome.error.empty() ? "Authentication failed."
                                                           : outcome.error);
             static_cast<void>(window.set_text_input_enabled(true));
             return;
         }
         apply_identity(*outcome.account);
-        if (operation == IdentityOperation::register_account && !outcome.recovery_code.empty()) {
-            identity_menu.show_recovery_code(std::move(outcome.recovery_code));
+        steam_identity_automatic = false;
+        steam_identity_linking = false;
+        if (!outcome.recovery_backup_error.empty()) settings_warning = outcome.recovery_backup_error;
+        if (!outcome.recovery_code.empty()) {
+            const auto saved = outcome.recovery_backup_path.u8string();
+            const auto message = saved.empty() ? outcome.recovery_backup_error :
+                "Saved to " + std::string{reinterpret_cast<const char*>(saved.data()), saved.size()};
+            identity_menu.show_recovery_code(std::move(outcome.recovery_code), message);
             static_cast<void>(window.set_text_input_enabled(false));
             return;
         }
+        if (offer_steam_link()) return;
         identity_menu.reset_form();
         request_main_menu_after_identity();
     }
@@ -9225,6 +9394,11 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] bool apply_live_preview(SettingsRowId source,
                                           const settings::ClientSettings& draft) {
         switch (source) {
+        case SettingsRowId::discord_presence:
+        case SettingsRowId::discord_join:
+            applied_settings.main.discord_presence = draft.main.discord_presence;
+            applied_settings.main.discord_join = draft.main.discord_join;
+            return true;
         case SettingsRowId::blood_marks:
             applied_settings.main.blood_marks = draft.main.blood_marks;
             if(!draft.main.blood_marks) blood_marks.clear();
@@ -9376,6 +9550,8 @@ struct NativeFrontendModule::Impl final {
                         }
                     } else if constexpr (std::is_same_v<Payload, SettingsPreviewEffect>) {
                         switch (payload.source) {
+                        case SettingsRowId::discord_presence:
+                        case SettingsRowId::discord_join:
                         case SettingsRowId::blood_marks:
                         case SettingsRowId::ragdoll_corpses:
                         case SettingsRowId::fallback_music:
@@ -9524,12 +9700,12 @@ struct NativeFrontendModule::Impl final {
     }
 
     /**
-     * InitialInfo.custom_game_rules for the loader. The Protocol 168 packet
-     * this client reads carries none, so a custom match's rules come from
-     * the Match Lobby that started it: the explicit deviations from the
-     * playlist defaults, exactly what the host's server was launched with.
+     * Prefer the connected server's retail custom rules. Locally hosted
+     * matches can also supply them through their Match Lobby.
      */
-    [[nodiscard]] std::vector<std::pair<std::string, std::string>> custom_match_rules() const {
+    [[nodiscard]] std::vector<std::pair<std::string, std::string>> custom_match_rules(
+        const network::Protocol168InitialInfo& info) const {
+        if (!info.custom_game_rules.empty()) return info.custom_game_rules;
         if (social_client == nullptr) return {};
         const auto snapshot = social_client->snapshot();
         if (!snapshot.lobby.has_value() || snapshot.lobby->lobby_type == "ugc" ||
@@ -11654,6 +11830,7 @@ struct NativeFrontendModule::Impl final {
         entry.game_port = source.game.port;
         entry.query_port = source.query_port == 0U ? source.game.port : source.query_port;
         entry.ping_milliseconds = source.ping_milliseconds;
+        entry.ping_known = source.ping_known;
         entry.map = source.map;
         entry.mode = mode.title_key;
         entry.mode_id = mode.code;
@@ -11951,6 +12128,7 @@ struct NativeFrontendModule::Impl final {
                     });
                     discovery = network::merge_discovered_servers(network::discover_public_servers(web), classic.get());
                 }
+                network::measure_classic_server_pings(discovery.servers);
                 return BrowserRefreshOutcome{request, std::move(discovery)};
             });
     }
@@ -12023,6 +12201,7 @@ struct NativeFrontendModule::Impl final {
                 entry.mode = "TDM_TITLE";
                 entry.mode_id = "tdm";
                 entry.region = "steam";
+                entry.ping_known = false;
                 // Presence carries no population, and inventing one would read
                 // as a real count. The row exists to be joined, not compared.
                 entry.players = 0U;
@@ -12064,6 +12243,9 @@ struct NativeFrontendModule::Impl final {
     }
 
     void retire_match_connection(bool keep_steam_tunnel = false) {
+        cancel_steam_transport_tickets();
+        discord_presence.clear();
+        discord_presence_endpoint.clear();
         // A Steam join opens its tunnel before the loader starts, so retiring
         // "the previous connection" on the way in must not close the tunnel the
         // new connection is about to dial: that ended every relayed join with
@@ -12085,13 +12267,75 @@ struct NativeFrontendModule::Impl final {
             [connection = std::move(match_connection)] { connection->stop(); }});
     }
 
+    void cancel_steam_transport_tickets() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (pending_steam_transport) steam_runtime.cancel_auth_ticket(pending_steam_transport->handle);
+        if (active_steam_ticket_modern && active_steam_ticket != 0U) steam_runtime.cancel_auth_ticket(active_steam_ticket);
+#endif
+        pending_steam_transport.reset();
+        if (!active_steam_ticket_modern && native_steam && active_steam_ticket != 0U)
+            static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
+        active_steam_ticket = 0U;
+        active_steam_ticket_modern = false;
+    }
+
     [[nodiscard]] bool start_match_transport(const ServerConnectRequest& request,
                                              std::uint32_t timeout_ms,
                                              std::string wire_name) {
-        if (native_steam != nullptr && active_steam_ticket != 0U) {
-            static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
-            active_steam_ticket = 0U;
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        // Steam ticket callbacks are asynchronous. Keep them off the loading
+        // renderer and never substitute a Spacewar ticket for retail ownership.
+        auto ticket_protocol = request.protocol;
+        network::ServerEndpoint ticket_endpoint;
+        std::string ticket_error;
+        if (network::parse_server_endpoint(request.identifier, ticket_endpoint, ticket_error) &&
+            network::is_classic_protocol(ticket_endpoint.protocol)) ticket_protocol = ticket_endpoint.protocol;
+        if (request.identity_ticket || request.steam_host_id != 0U) ticket_protocol = network::GameProtocol::retail168;
+        if (config.play_demo_path.empty() && ticket_protocol == network::GameProtocol::retail168 &&
+            steam_runtime.ready() && steam_runtime.app_id() == 224540U) {
+            retire_match_connection(request_uses_steam_tunnel(request));
+            std::string error;
+            if (const auto handle = steam_runtime.begin_session_ticket(error); handle != 0U) {
+                pending_steam_transport = PendingSteamTransport{request, timeout_ms, std::move(wire_name), handle,
+                    std::chrono::steady_clock::now() + std::chrono::seconds{8}};
+                return true;
+            }
+            settings_warning = error;
         }
+#endif
+        return start_match_transport_ready(request, timeout_ms, std::move(wire_name));
+    }
+
+    void pump_steam_transport() {
+#if defined(AOS_HAS_STEAM_NETWORKING)
+        if (!pending_steam_transport) return;
+        auto ticket = steam_runtime.take_session_ticket(pending_steam_transport->handle);
+        if (!ticket && std::chrono::steady_clock::now() < pending_steam_transport->deadline) return;
+        auto pending = std::move(*pending_steam_transport);
+        pending_steam_transport.reset();
+        if (!active_match_request || pending.request.identifier != active_match_request->identifier) {
+            steam_runtime.cancel_auth_ticket(pending.handle);
+            return;
+        }
+        if (!ticket || !ticket->error.empty() || ticket->app_id != 224540U || ticket->steam_id != steam_runtime.steam_id()) {
+            steam_runtime.cancel_auth_ticket(pending.handle);
+            settings_warning = ticket && !ticket->error.empty() ? ticket->error : "Steam server authentication timed out. Try joining again.";
+            match_loading.fail(settings_warning);
+            return;
+        }
+        if (!start_match_transport_ready(pending.request, pending.timeout_ms, std::move(pending.wire_name),
+                                        pending.handle, std::move(ticket->wire_bytes))) {
+            steam_runtime.cancel_auth_ticket(pending.handle);
+            match_loading.fail(settings_warning.empty() ? "Could not connect to the server." : settings_warning);
+        }
+#endif
+    }
+
+    [[nodiscard]] bool start_match_transport_ready(const ServerConnectRequest& request,
+                                             std::uint32_t timeout_ms,
+                                             std::string wire_name,
+                                             std::uint32_t prepared_handle = 0U,
+                                             std::vector<std::byte> prepared_ticket = {}) {
         retire_match_connection(request_uses_steam_tunnel(request));
         auto cleanup = connection_cleanup.try_reserve();
         if (!cleanup) {
@@ -12110,6 +12354,11 @@ struct NativeFrontendModule::Impl final {
         enforce_developer_access();
         network::Protocol168SessionConfig session;
         session.player_name = std::move(wire_name);
+        // Packet 105 stays byte-for-byte retail on unknown/public Steam-list
+        // peers. Only identified native hosts receive our capability trailer.
+        session.negotiate_flight_profile = request.identity_ticket || request.steam_host_id != 0U ||
+            (owned_local_server && owned_local_server->running() && request.port == owned_local_server->port() &&
+             (request.host == "127.0.0.1" || request.host == "localhost"));
         // send_map_validation: crc32 of the local stock map, so an unchanged
         // map can skip the full MapSync download.
         session.local_map_directory = config.asset_root / "maps";
@@ -12130,7 +12379,11 @@ struct NativeFrontendModule::Impl final {
         if (network::parse_server_endpoint(request.identifier, protocol_endpoint, protocol_error) &&
             network::is_classic_protocol(protocol_endpoint.protocol)) protocol = protocol_endpoint.protocol;
         if (request.identity_ticket || request.steam_host_id != 0U) protocol = network::GameProtocol::retail168;
-        if (protocol == network::GameProtocol::retail168 && native_steam != nullptr && native_steam->ready()) {
+        if (prepared_handle != 0U && protocol == network::GameProtocol::retail168) {
+            active_steam_ticket = prepared_handle;
+            active_steam_ticket_modern = true;
+            session.steam_ticket = std::move(prepared_ticket);
+        } else if (protocol == network::GameProtocol::retail168 && native_steam != nullptr && native_steam->ready()) {
             if (auto ticket = native_steam->session_ticket(); ticket.has_value()) {
                 active_steam_ticket = ticket->handle;
                 session.steam_ticket = std::move(ticket->wire_bytes);
@@ -12181,10 +12434,7 @@ struct NativeFrontendModule::Impl final {
         const bool transport_started = match_connection->start(
             transport,
             std::move(session));
-        if (!transport_started && native_steam != nullptr && active_steam_ticket != 0U) {
-            static_cast<void>(native_steam->cancel_ticket(active_steam_ticket));
-            active_steam_ticket = 0U;
-        }
+        if (!transport_started) cancel_steam_transport_tickets();
         if (transport_started) publish_dedicated_presence(request, host, port);
         return transport_started;
     }
@@ -12445,7 +12695,7 @@ struct NativeFrontendModule::Impl final {
                 "The official server did not publish its next map in time");
             return;
         }
-        if (match_connection != nullptr || pending_match_identity.has_value() ||
+        if (match_connection != nullptr || pending_match_identity.has_value() || pending_steam_transport.has_value() ||
             now < map_transition_retry_at) {
             return;
         }
@@ -13440,7 +13690,7 @@ struct NativeFrontendModule::Impl final {
             if (network::is_classic_protocol(status.protocol))
                 match_loading.set_classic_scoring(mode.code == "tc");
             match_loading.set_infographic_captions(info.mode_infographic_text);
-            match_loading.set_custom_game_rules(custom_match_rules());
+            match_loading.set_custom_game_rules(custom_match_rules(info));
             shown_loading_initial_info = true;
         }
         const auto& progress = status.loading;
@@ -13554,7 +13804,7 @@ struct NativeFrontendModule::Impl final {
                 match_loading.set_classic_scoring(mode.code == "tc");
             if (mode.code == "ugc") apply_ugc_loader_preview();
             match_loading.set_infographic_captions(bootstrap->initial_info.mode_infographic_text);
-            match_loading.set_custom_game_rules(custom_match_rules());
+            match_loading.set_custom_game_rules(custom_match_rules(bootstrap->initial_info));
             shown_loading_initial_info = true;
         }
         // The network thirds are complete; the world build fills the last one.
@@ -20753,6 +21003,7 @@ struct NativeFrontendModule::Impl final {
     [[nodiscard]] world::ClassSelectionRules class_selection_rules() const {
         world::ClassSelectionRules rules;
         rules.disabled_tools = match_initial_info.disabled_tools;
+        rules.loadout_overrides = match_initial_info.loadout_overrides;
         rules.mafia = match_initial_info.texture_skin == "mafia";
         rules.ugc = match_initial_info.map_is_ugc() || match_state_info.mode_type == 12U;
         // process_packet_state_data: StateData.prefabs is prefab_manager.map_prefabs.
@@ -30119,6 +30370,8 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         const PerformanceScope services_performance{"frontend_services", std::chrono::microseconds{4'000}};
         impl_->navigation.tick();
         impl_->create_match_page_shell.tick();
+        impl_->pump_steam_identity();
+        impl_->pump_discord_presence();
         impl_->pump_identity_operation();
         impl_->pump_hosted_results();
         impl_->pump_identity_navigation();
@@ -30137,6 +30390,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
         impl_->pump_steam_lobby();
         impl_->pump_steam_integration();
         impl_->pump_match_identity();
+        impl_->pump_steam_transport();
         impl_->pump_join_ticket_refresh();
         impl_->pump_match_connection();
         impl_->enforce_developer_access();
@@ -30840,14 +31094,27 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 break;
             }
             if (impl_->screen() == FrontendScreen::identity && !event.repeated) {
-                if (event.scancode == scancode_backspace) {
+                constexpr std::uint32_t identity_paste_scancode = 25U;
+#if defined(__APPLE__)
+                constexpr std::uint16_t identity_paste_modifier = 0x0C00U;
+#else
+                constexpr std::uint16_t identity_paste_modifier = control_modifier_mask;
+#endif
+                if (event.scancode == identity_paste_scancode &&
+                    (event.modifiers & identity_paste_modifier) != 0U &&
+                    (event.modifiers & 0x0300U) == 0U) {
+                    auto pasted = impl_->window.clipboard_text();
+                    static_cast<void>(impl_->identity_menu.append_text(pasted));
+                    std::fill(pasted.begin(), pasted.end(), '\0');
+                } else if (event.scancode == scancode_backspace) {
                     static_cast<void>(impl_->identity_menu.erase_code_point());
                 } else if (event.scancode == scancode_tab) {
                     impl_->identity_menu.focus_next();
                 } else if ((event.scancode == scancode_return ||
                             event.scancode == scancode_keypad_enter) &&
-                           impl_->identity_menu.phase() == IdentityMenuPhase::form) {
-                    impl_->submit_identity(IdentityAction::login);
+                           impl_->identity_menu.phase() != IdentityMenuPhase::recovery_code) {
+                    impl_->submit_identity(impl_->identity_menu.phase() == IdentityMenuPhase::steam_link
+                        ? IdentityAction::link_steam : IdentityAction::login);
                 } else if ((event.scancode == scancode_return ||
                             event.scancode == scancode_keypad_enter) &&
                            impl_->identity_menu.phase() == IdentityMenuPhase::recovery_code) {
@@ -32152,12 +32419,10 @@ void NativeFrontendModule::stop() noexcept {
     if (impl_->social_join_worker.joinable()) {
         impl_->social_join_worker.request_stop();
     }
+    impl_->cancel_steam_transport_tickets();
+    impl_->cancel_steam_identity_ticket();
+    impl_->discord_presence.clear();
     if (impl_->native_steam != nullptr) {
-        if (impl_->active_steam_ticket != 0U) {
-            static_cast<void>(
-                impl_->native_steam->cancel_ticket(impl_->active_steam_ticket));
-            impl_->active_steam_ticket = 0U;
-        }
         impl_->native_steam->stop();
     }
     impl_->teardown_tutorial();

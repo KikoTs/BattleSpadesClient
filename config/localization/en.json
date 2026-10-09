@@ -2159,6 +2159,10 @@
     "ARENA": "Arena",
     "ARENA_DESCRIPTION": "Eliminate all enemies to win the round!",
     "LOAD_FAILED": "Loading failed",
+    "DISCORD_PRESENCE": "Discord activity",
+    "DISCORD_PRESENCE_DESCRIPTION": "Show your server, map, mode and player count on Discord. Requires the Discord desktop app. Private server addresses are hidden.",
+    "DISCORD_JOIN": "Discord joining",
+    "DISCORD_JOIN_DESCRIPTION": "Allow Discord Join Game and share a join button for public servers without a password. Private addresses and login credentials are never shared.",
     "BLOOD_MARKS": "Lingering blood",
     "BLOOD_MARKS_DESCRIPTION": "Visual blood droplets and temporary stains on blocks in Classic and Standard. Lasts 20–32 seconds; does not change gameplay."
   }

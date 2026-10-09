@@ -92,7 +92,9 @@ WeaponRuntime::WeaponRuntime(std::uint32_t random_seed) noexcept
     : random_state_(random_seed == 0U ? 0xA05B168U : random_seed) {}
 
 void WeaponRuntime::set_classic_protocol(std::uint8_t protocol) noexcept {
-    classic_protocol_ = protocol == 3 || protocol == 4 ? protocol : 0;
+    protocol = protocol == 3 || protocol == 4 ? protocol : 0;
+    if (classic_protocol_ != protocol) classic_timing_ = {};
+    classic_protocol_ = protocol;
     replication_.set_classic_protocol(classic_protocol_);
 }
 
@@ -114,40 +116,51 @@ void WeaponRuntime::classic_reload_completed(std::uint8_t magazine, std::uint8_t
 }
 
 void WeaponRuntime::tick_classic(double dt) noexcept {
-    cooldown_ = std::max(0.0, cooldown_ - dt);
-    secondary_cooldown_ = std::max(0.0, secondary_cooldown_ - dt);
+    auto& timing = classic_timing_;
+    const double now = timing.time;
     reload_remaining_ = std::max(0.0, reload_remaining_ - dt);
     const auto selected = replication_.selected_tool();
-    if (!selected) return;
+    if (!selected) { timing.time += dt; return; }
     const auto& weapon = weapon_catalog()[*selected];
+    bool shooting{}, digging{};
     if (const auto rules = classic_weapon_rules(classic_protocol_, *selected)) {
         const auto* ammo = replication_.ammo(*selected);
-        if (primary_held_ && !context_.sprinting && (!ammo->reloading || *selected == 37) && cooldown_ <= 1e-9) {
+        shooting = primary_held_ && !context_.sprinting && (!ammo->reloading || *selected == 37);
+        if (shooting && !timing.shooting) timing.gun = std::max(timing.gun, now);
+        if (shooting && now + 1e-9 >= timing.gun) {
             if (replication_.observe_shot(*selected) == WeaponStateResult::accepted) {
                 reload_remaining_ = 0;
                 actions_.push_back({WeaponActionKind::hitscan, *selected, next_seed(), rules->pellets, false, 0, false, rules->spread});
-                cooldown_ = rules->interval;
+                // ZeroSpades advances the previous deadline, retaining cadence
+                // across uneven frames; at most one shot is emitted per update.
+                timing.gun += rules->interval;
             } else if (!dry_fire_latched_) {
                 emit(WeaponActionKind::dry_fire, weapon);
                 dry_fire_latched_ = true;
             }
         }
     } else if (*selected == 4) {
-        if (secondary_held_) {
-            // Digging's first removal happens one second after pressing RMB.
-            if (secondary_pressed_) secondary_cooldown_ = 1.0;
-            if (secondary_cooldown_ <= 1e-9) { emit(WeaponActionKind::melee, weapon, true); secondary_cooldown_ = 1.0; }
-        } else if (primary_held_ && cooldown_ <= 1e-9) { emit(WeaponActionKind::melee, weapon); cooldown_ = 0.2; }
+        // Player::SetWeaponInput suppresses secondary while primary is down.
+        // Returning to RMB after a primary attack starts a fresh charge.
+        digging = secondary_held_ && !primary_held_;
+        if (digging && !timing.digging) timing.dig = now + 1.0;
+        if (primary_held_ && now > timing.spade) {
+            emit(WeaponActionKind::melee, weapon);
+            timing.spade = now + 0.2;
+        } else if (digging && now > timing.dig) {
+            emit(WeaponActionKind::melee, weapon, true);
+            timing.dig = now + 1.0;
+        }
     } else if (*selected == 5 && !context_.sprinting) {
         if (custom_pressed_) emit(WeaponActionKind::color_pick, weapon);
-        if (secondary_pressed_) emit(WeaponActionKind::block_line_begin, weapon, true);
-        if (secondary_released_ && cooldown_ <= 1e-9) {
+        if (secondary_pressed_ && now >= timing.block) emit(WeaponActionKind::block_line_begin, weapon, true);
+        if (secondary_released_ && now >= timing.block) {
             emit(WeaponActionKind::block_line_commit, weapon, true);
-            cooldown_ = 0.5;
+            timing.block = now + 0.5;
         }
-        if (primary_held_ && !secondary_held_ && cooldown_ <= 1e-9) { emit(WeaponActionKind::block_line_begin, weapon); cooldown_ = 0.5; }
+        if (primary_held_ && !secondary_held_ && now >= timing.block) { emit(WeaponActionKind::block_line_begin, weapon); timing.block = now + 0.5; }
     } else if (*selected == 31) {
-        if (primary_pressed_ && cooldown_ <= 1e-9 && replication_.ammo(31)->magazine && !context_.sprinting) {
+        if (primary_pressed_ && now >= timing.grenade && replication_.ammo(31)->magazine && !context_.sprinting) {
             interaction_active_ = true; interaction_elapsed_ = 0;
             emit(WeaponActionKind::throwable_primed, weapon);
         }
@@ -156,27 +169,30 @@ void WeaponRuntime::tick_classic(double dt) noexcept {
             if (primary_released_ || interaction_elapsed_ >= 3.0) {
                 if (replication_.observe_shot(31) == WeaponStateResult::accepted)
                     emit(WeaponActionKind::oriented_item, weapon, false, std::max(0.0, 3.0 - interaction_elapsed_));
-                interaction_active_ = false; cooldown_ = 0.5;
+                interaction_active_ = false; timing.grenade = now + 0.5;
             }
         }
     }
+    timing.shooting = shooting;
+    timing.digging = digging;
+    timing.time += dt;
     primary_pressed_ = primary_released_ = secondary_pressed_ = secondary_released_ = custom_pressed_ = custom_released_ = false;
 }
 
 void WeaponRuntime::replace_loadout(std::span<const std::uint8_t> tool_ids,
                                     std::optional<std::uint8_t> selected) {
     replication_.replace_loadout(tool_ids, selected);
+    classic_timing_ = {};
     reset_selected_runtime();
 }
 
 WeaponStateResult WeaponRuntime::select(std::uint8_t tool_id) noexcept {
-    const auto classic_delay = cooldown_;
     const auto classic_reload = reload_remaining_;
     const auto result = replication_.select(tool_id);
     if (result == WeaponStateResult::accepted) {
         reset_selected_runtime();
         if (classic_protocol_) {
-            cooldown_ = classic_delay;
+            classic_timing_.shooting = classic_timing_.digging = false;
             reload_remaining_ = classic_reload;
         }
     }
@@ -191,6 +207,7 @@ void WeaponRuntime::set_primary(bool held) noexcept {
     primary_pressed_ = held;
     primary_released_ = !held;
     if (held) {
+        classic_timing_.digging = false;
         // A new press is a new shoot_primary: it may try again.
         primary_repeat_blocked_ = false;
     }
@@ -217,6 +234,7 @@ void WeaponRuntime::set_secondary(bool held) noexcept {
     secondary_pressed_ = held;
     secondary_released_ = !held;
     if (!held) {
+        classic_timing_.digging = false;
         secondary_dry_fire_latched_ = false;
     }
 }
@@ -325,6 +343,7 @@ bool WeaponRuntime::restock_from_ammo_crate() noexcept {
 }
 
 void WeaponRuntime::on_unset() noexcept {
+    classic_timing_ = {};
     // MinigunWeapon.on_unset explicitly restores shoot_interval_initial and
     // spin_speed=0 before chaining through Weapon/Tool. The shared runtime
     // reset also covers every other recovered on_unset invariant: an old
@@ -333,6 +352,7 @@ void WeaponRuntime::on_unset() noexcept {
 }
 
 void WeaponRuntime::cancel_interaction() noexcept {
+    classic_timing_.shooting = classic_timing_.digging = false;
     if (block_sucker_state_ != 0U) {
         if (const auto selected = replication_.selected_tool(); selected.has_value()) {
             emit(WeaponActionKind::block_sucker_state,
@@ -1083,7 +1103,15 @@ bool WeaponRuntime::take_auto_switch_request() noexcept {
     return std::exchange(auto_switch_requested_, false);
 }
 
-double WeaponRuntime::cooldown_remaining() const noexcept { return cooldown_; }
+double WeaponRuntime::cooldown_remaining() const noexcept {
+    if (!classic_protocol_) return cooldown_;
+    const auto selected = replication_.selected_tool();
+    if (!selected) return 0;
+    const auto& t = classic_timing_;
+    const double deadline = *selected == 4 ? t.spade : *selected == 5 ? t.block :
+                            *selected == 31 ? t.grenade : t.gun;
+    return std::max(0.0, deadline - t.time);
+}
 double WeaponRuntime::reload_remaining() const noexcept { return reload_remaining_; }
 
 double WeaponRuntime::charge_fraction() const noexcept {

@@ -867,6 +867,10 @@ void ServerBrowserModel::sort_visible() {
     std::stable_sort(visible_indices_.begin(),
                      visible_indices_.end(),
                      [this, &key_less](std::size_t left, std::size_t right) {
+                         if (sort_column_ == ServerSortColumn::ping &&
+                             servers_[left].ping_known != servers_[right].ping_known) {
+                             return servers_[left].ping_known;
+                         }
                          return sort_descending_ ? key_less(right, left) : key_less(left, right);
                      });
 }

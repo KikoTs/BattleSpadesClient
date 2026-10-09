@@ -39,6 +39,99 @@ without Steam, or with Steam signed out, still starts the game: the runtime
 fails to start, the host keeps its AoSPlay relay, and a `steam:` address
 reports that Steam is unavailable.
 
+## Steam sign-in and retail server authentication
+
+The modern runtime issues two independent kinds of authentication ticket:
+
+- AoSPlay sign-in uses `GetAuthTicketForWebApi("aosplay")`. The client waits
+  for Steam's callback, then sends the hexadecimal ticket and actual app ID to
+  AoSPlay over HTTPS. The backend must validate the ticket with Steam and read
+  the persona from Steam; client-supplied names or Steam IDs are not proof of
+  identity. The WebAPI ticket is cancelled after the exchange finishes.
+- Retail Protocol 168 servers use `GetAuthSessionTicket`, available only when
+  this runtime attached as **224540**. After its callback succeeds, packet 105
+  carries the original wrapper's lowercase ASCII-hex `SteamID LE || ticket`;
+  those exact bytes also remain the later packet XOR key. The ticket stays live
+  until the connection ends. Cancelling a sign-in ticket does not cancel it.
+
+Both operations begin and complete through polling, without a UI-thread wait.
+The callback registry holds at most eight live tickets, ignores late callbacks
+after cancellation, and rejects failed or oversized ticket responses. The UI
+owns the timeout and cancels abandoned requests; runtime shutdown cancels all
+remaining handles. Ticket material is never written to diagnostics or disk.
+
+Spacewar (480) is Valve's example application. A 480 ticket can identify its
+Steam user only to a backend configured to validate that app; it does not grant
+ownership of 224540 and is never sent as retail server authentication. Servers
+that enforce Ace of Spades ownership remain entitled to reject non-owners.
+The older optional Windows retail bridge remains a compatibility fallback for
+game-server tickets; its SteamUser016 interface cannot issue modern WebAPI
+tickets.
+
+See Valve's [authentication and ownership documentation](https://partner.steamgames.com/doc/features/auth),
+[ticket API](https://partner.steamgames.com/doc/api/ISteamUser), and
+[Spacewar example](https://partner.steamgames.com/doc/sdk/api/example).
+
+`aos_steam_auth_ticket_tests` exercises callback ordering, cancellation,
+retail wire encoding, bounds and app separation without Steam. The manual
+`aos_steam_auth_probe 224540` checks actual ticket callbacks without printing
+tickets; `480` additionally verifies that retail issuance is refused. An
+optional second argument, `host:port`, performs one authenticated map
+handshake and disconnects without spawning, chatting or combat. Public server
+connections are never part of CTest or CI.
+
+### Verification on 2026-10-09
+
+On Windows, the current Steam runtime confirmed app 224540 and returned
+successful WebAPI and session-ticket callbacks. App 480 returned a WebAPI
+ticket while retail session-ticket issuance was refused locally. The separate
+32-bit bridge could not initialize because Steam's process registration was
+stale; no registry repair or Steam restart was performed.
+
+Steam's native server list advertised three AGE X endpoints. After the fixes,
+authenticated connections completed map bootstrap on **#1**
+(`149.28.236.7:32887`, 1,479 received datagrams) and **#2**
+(`45.77.67.60:32887`, 1,007 received datagrams). Both probes used genuine 224540
+tickets and the installed stock maps, observed for three seconds after loading,
+and disconnected without spawning, chatting or combat.
+
+Two compatibility errors were involved. Unsolicited BSCF data changed the
+ticket packet seen by retail servers. Once that was removed, #1 and #2 accepted
+the Steam ticket but exposed a separate InitialInfo parser error: their nonempty
+loadout-override dictionaries were being read as padding. The retail packet has
+a counted `(class, slot) -> tool IDs` dictionary and a counted custom-rule list.
+The decoder now reads both with bounds checks, the loading menu displays server
+rules, and class selection uses the server's weapon-row/common-tool replacements.
+The captured response and original-serializer fixtures cover this regression.
+
+**Test (Frankfurt)** (`192.248.191.165:32887`) still returned reason 13
+(`ERROR_DATA`) before any application reply. The installed original retail game,
+launched through Steam with its own original ticket generation, failed there
+with the same `INVALID_DATA` result. An additional comparison using the original
+retail GameClient and a fresh modern ticket also returned 13. The rejection's
+server-side cause is unknown; do not infer that all AGE X servers reject Steam
+authentication from this test endpoint.
+
+The live transport now honors the caller's explicit flight-capability flag.
+The frontend enables BSCF only for BattleSpades identity-ticket listings,
+our Steam-host tunnels, and an exact loopback endpoint owned by the client.
+Other retail endpoints receive the stock ticket without a trailer; unknown
+direct BattleSpades endpoints use the server's retail movement profile.
+An actual loopback ENet regression checks both exact packet forms, including
+the ticket length, reliable delivery, and channel zero.
+
+The stock probe's packet layout, channel 0, reliable flag and empty pre-auth
+XOR key were compared with the original retail serializer using dummy data
+and an in-memory peer. `aos_steam_auth_probe 224540 host:port --stock` repeats
+only that initial exchange and prints incoming packet IDs/parse diagnostics,
+never ticket bytes. `--bridge` in place of the app ID tests the optional
+Windows bridge. Neither diagnostic mode changes authentication requirements.
+Use `aos_steam_auth_probe 224540 host:port --maps <retail-maps-directory>` for
+the full no-spawn handshake against a stock-map server. Runtime diagnostics
+report the loaded Steam DLL paths, logged-on state and retail subscription;
+they never print ticket bytes. `--stock-capture-initial-info <file>` saves only
+the server's packet 114 metadata for a parser fixture, never client tickets.
+
 ## Checking it across two machines
 
 The host needs no flags:

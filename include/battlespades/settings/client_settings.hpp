@@ -30,6 +30,10 @@ struct MainSettings final {
     bool ragdoll_corpses{true};
     /** Local blood droplets and temporary terrain stains in all game modes. */
     bool blood_marks{false};
+    /** Share current server/map/mode with the locally running Discord client. */
+    bool discord_presence{true};
+    /** Public, password-free servers only; no private addresses or credentials. */
+    bool discord_join{true};
     bool invert_mouse{false};
     bool show_skins{true};
     bool show_other_skins{true};

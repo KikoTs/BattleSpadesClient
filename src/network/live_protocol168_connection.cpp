@@ -185,7 +185,8 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
             // one worker-local copy rather than allocating/copying it on every
             // idle service poll merely to send no packets.
             const auto ticket_key = session_config.steam_ticket;
-            session_config.negotiate_flight_profile = true;
+            // The caller enables extensions only for known BattleSpades
+            // peers. Stock retail servers must receive the exact ticket.
             Protocol168Session session{std::move(session_config)};
             std::unique_ptr<ClassicProtocolSession> classic;
             if (is_classic_protocol(protocol)) classic = std::make_unique<ClassicProtocolSession>(protocol);

@@ -58,7 +58,7 @@ IdentityMenuModel::IdentityMenuModel()
               "SIGN IN THROUGH STEAM",
           },
           IdentityControl{
-              widget(4U, design_rect(269, 496, 262, 40)),
+              widget(4U, design_rect(269, 496, 126, 40)),
               IdentityAction::guest,
               "PLAY AS GUEST",
           },
@@ -66,6 +66,11 @@ IdentityMenuModel::IdentityMenuModel()
               widget(5U, design_rect(319, 450, 162, 46)),
               IdentityAction::acknowledge_recovery,
               "CONTINUE",
+          },
+          IdentityControl{
+              widget(6U, design_rect(405, 496, 126, 40)),
+              IdentityAction::recover_steam,
+              "RECOVER ACCOUNT",
           },
       } {
     controls_[2].widget.state.visible = false;
@@ -163,7 +168,7 @@ void IdentityMenuModel::pointer_move(std::optional<ui::Point> point) noexcept {
 void IdentityMenuModel::pointer_press(std::optional<ui::Point> point) noexcept {
     pointer_move(point);
     pressed_ = hovered_;
-    if (!point.has_value() || phase_ != IdentityMenuPhase::form || busy_) return;
+    if (!point.has_value() || phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_) return;
     if (field_hit(username_bounds(), *point)) {
         focused_field_ = IdentityField::username;
     } else if (field_hit(password_bounds(), *point)) {
@@ -186,18 +191,18 @@ IdentityMenuModel::pointer_release(std::optional<ui::Point> point) noexcept {
 }
 
 void IdentityMenuModel::focus(IdentityField field) noexcept {
-    if (phase_ == IdentityMenuPhase::form && !busy_) focused_field_ = field;
+    if (phase_ != IdentityMenuPhase::recovery_code && phase_ != IdentityMenuPhase::steam_link && !busy_) focused_field_ = field;
 }
 
 void IdentityMenuModel::focus_next() noexcept {
-    if (phase_ != IdentityMenuPhase::form || busy_) return;
+    if (phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_) return;
     focused_field_ = focused_field_ == IdentityField::username
                          ? IdentityField::password
                          : IdentityField::username;
 }
 
 bool IdentityMenuModel::append_text(std::string_view utf8) {
-    if (phase_ != IdentityMenuPhase::form || busy_ || utf8.empty() ||
+    if (phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_ || utf8.empty() ||
         utf8.find('\0') != std::string_view::npos) {
         return false;
     }
@@ -220,7 +225,7 @@ bool IdentityMenuModel::append_text(std::string_view utf8) {
 }
 
 bool IdentityMenuModel::erase_code_point() noexcept {
-    if (phase_ != IdentityMenuPhase::form || busy_) return false;
+    if (phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_) return false;
     auto& target =
         focused_field_ == IdentityField::username ? username_ : password_;
     if (target.empty()) return false;
@@ -253,10 +258,13 @@ void IdentityMenuModel::set_steam_state(IdentitySteamState state) noexcept {
 
 void IdentityMenuModel::apply_steam_control() noexcept {
     auto& control = controls_[2];
-    control.label = steam_state_ == IdentitySteamState::connecting ? "CONNECTING TO STEAM..."
+    controls_[0].widget.state.enabled = !busy_ &&
+        (phase_ != IdentityMenuPhase::steam_link || steam_state_ == IdentitySteamState::available);
+    control.label = phase_ == IdentityMenuPhase::steam_link ? "USE SEPARATE STEAM PROFILE" :
+        steam_state_ == IdentitySteamState::connecting ? "CONNECTING TO STEAM..."
                                                                    : "SIGN IN THROUGH STEAM";
     control.widget.state.visible =
-        phase_ == IdentityMenuPhase::form && steam_state_ != IdentitySteamState::hidden;
+        (phase_ == IdentityMenuPhase::form || phase_ == IdentityMenuPhase::steam_link) && steam_state_ != IdentitySteamState::hidden;
     control.widget.state.enabled = !busy_ && steam_state_ == IdentitySteamState::available;
     if (!control.widget.state.enabled && (hovered_ == 2U || pressed_ == 2U)) {
         hovered_.reset();
@@ -272,12 +280,13 @@ void IdentityMenuModel::set_error(std::string error) {
     apply_steam_control();
 }
 
-void IdentityMenuModel::show_recovery_code(std::string code) {
+void IdentityMenuModel::show_recovery_code(std::string code, std::string saved_location) {
     clear_password();
     busy_ = false;
     status_.clear();
     error_.clear();
     recovery_code_ = std::move(code);
+    status_ = std::move(saved_location);
     phase_ = IdentityMenuPhase::recovery_code;
     for (std::size_t index = 0U; index < controls_.size(); ++index) {
         controls_[index].widget.state.visible = index == 4U;
@@ -287,12 +296,27 @@ void IdentityMenuModel::show_recovery_code(std::string code) {
     pressed_.reset();
 }
 
+void IdentityMenuModel::show_recovery_form() {
+    reset_form();
+    username_.clear();
+    phase_ = IdentityMenuPhase::recovery_form;
+    controls_[0].label = "RECOVER";
+    controls_[1].label = "BACK";
+    for (std::size_t i = 2; i < controls_.size(); ++i) controls_[i].widget.state.visible = false;
+    status_ = "Use the Steam ID and code in Documents / BattleSpades.";
+}
+
 void IdentityMenuModel::reset_form() noexcept {
     clear_password();
     status_.clear();
     error_.clear();
     recovery_code_.clear();
+    link_account_name_.clear();
     phase_ = IdentityMenuPhase::form;
+    controls_[0].label = "SIGN IN";
+    controls_[1].label = "REGISTER";
+    controls_[0].action = IdentityAction::login;
+    controls_[1].action = IdentityAction::register_account;
     focused_field_ = IdentityField::username;
     for (std::size_t index = 0U; index < controls_.size(); ++index) {
         controls_[index].widget.state.visible = index != 4U;
@@ -301,6 +325,19 @@ void IdentityMenuModel::reset_form() noexcept {
     busy_ = false;
     hovered_.reset();
     pressed_.reset();
+    apply_steam_control();
+}
+
+void IdentityMenuModel::show_steam_link(std::string account_name) {
+    reset_form();
+    phase_ = IdentityMenuPhase::steam_link;
+    link_account_name_ = std::move(account_name);
+    controls_[0].label = "LINK STEAM";
+    controls_[0].action = IdentityAction::link_steam;
+    controls_[1].label = "KEEP ACCOUNT";
+    controls_[1].action = IdentityAction::keep_account;
+    for (std::size_t index = 0; index < controls_.size(); ++index)
+        controls_[index].widget.state.visible = index < 3U;
     apply_steam_control();
 }
 

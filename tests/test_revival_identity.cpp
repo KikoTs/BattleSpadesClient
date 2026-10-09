@@ -47,6 +47,10 @@ void explicit_offline_profiles_never_need_a_master() {
         id = login.account->legacy_id;
         const auto rejected = service.login("ValidUser", "test-password");
         expect(!rejected && rejected.error_code == "offline_mode", "account requests disabled offline");
+        const auto steam = service.steam_login(480U, "aa", "76561198000000001");
+        const auto recovered = service.recover_steam_account("76561198000000001", "fixture-code");
+        expect(!steam && steam.error_code == "offline_mode" && !recovered && recovered.error_code == "offline_mode",
+               "Steam login and recovery must also respect an explicitly offline profile");
     }
     {
         RevivalIdentityService restored{config};
@@ -247,6 +251,83 @@ void hosted_results_retry_fairly_and_stay_account_scoped(
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 4 && std::string_view{argv[1]} == "--steam-identity-mock") {
+            RevivalIdentityConfig config;
+            config.api_base = argv[2];
+            const auto root = std::filesystem::path{argv[3]};
+            config.state_path = root / "identity.json";
+            config.recovery_directory = root / "Documents" / "BattleSpades";
+            config.allow_environment_override = false;
+            RevivalIdentityService service{config};
+            const std::string steam_id{"76561198000000001"};
+            const auto signed_in = service.steam_login(224540U, "aa", steam_id);
+            expect(signed_in && signed_in.account->steam_id == steam_id &&
+                   signed_in.account->nickname == "PermanentName" && signed_in.account->display_name == "Steam Persona",
+                   "verified provider display must not overwrite the registered account name");
+            expect(!signed_in.recovery_backup_path.empty() && signed_in.recovery_backup_error.empty(),
+                   "new account recovery must be saved outside the installation");
+            std::ifstream backup{signed_in.recovery_backup_path};
+            const std::string contents{std::istreambuf_iterator<char>{backup}, {}};
+            expect(contents.find(steam_id) != std::string::npos && contents.find(signed_in.recovery_code) != std::string::npos,
+                   "backup must contain the stable Steam ID and recovery code");
+            const auto repeated = service.steam_login(480U, "bb", steam_id);
+            expect(repeated && repeated.recovery_code.empty() && repeated.recovery_backup_path.empty(),
+                   "ordinary sign-in must not rotate a code or make duplicate backup files");
+            const auto mismatch = service.steam_login(224540U, "cc", steam_id);
+            expect(!mismatch && mismatch.error_code == "steam_identity_mismatch" && service.cached_account()->steam_id == steam_id,
+                   "a mismatched auth response must preserve the previous identity");
+            const auto invalid = service.steam_login(123U, "aa", steam_id);
+            expect(!invalid && service.has_online_session(), "unsupported app must fail before disturbing the session");
+            const auto recovered = service.recover_steam_account(steam_id, signed_in.recovery_code);
+            expect(recovered && !recovered.recovery_code.empty() && recovered.recovery_code != signed_in.recovery_code &&
+                   recovered.recovery_backup_path != signed_in.recovery_backup_path && std::filesystem::exists(signed_in.recovery_backup_path),
+                   "recovery must save its replacement without overwriting any existing file");
+            std::filesystem::remove(recovered.recovery_backup_path);
+            const auto restored = service.steam_login(224540U, "bb", steam_id);
+            expect(restored && restored.recovery_code == recovered.recovery_code && !restored.recovery_backup_path.empty(),
+                   "missing backup can be restored from protected state without rotating the server code");
+            std::filesystem::remove(restored.recovery_backup_path);
+            const auto rotated_elsewhere = service.steam_login(224540U, "dd", steam_id);
+            expect(rotated_elsewhere && rotated_elsewhere.recovery_code.empty() && rotated_elsewhere.recovery_backup_path.empty(),
+                   "a backup invalidated by recovery on another PC must never be re-exported as current");
+            std::ifstream state{config.state_path};
+            const std::string protected_state{std::istreambuf_iterator<char>{state}, {}};
+            expect(protected_state.find(recovered.recovery_code) == std::string::npos,
+                   "recovery code must not be plaintext in launcher state");
+            auto failed_state_config = config;
+            const auto occupied = root / "not-a-directory";
+            { std::ofstream file{occupied}; file << "fixture"; }
+            failed_state_config.state_path = occupied / "identity.json";
+            RevivalIdentityService failed_state_service{failed_state_config};
+            const auto disk_failure = failed_state_service.steam_login(224540U, "aa", steam_id);
+            expect(disk_failure && failed_state_service.has_online_session() &&
+                   !disk_failure.recovery_code.empty() && !disk_failure.recovery_backup_path.empty() &&
+                   !disk_failure.recovery_backup_error.empty(),
+                   "state write failure must preserve the accepted session and display/save its recovery code");
+            auto linking_config = config;
+            linking_config.state_path = root / "linking.json";
+            RevivalIdentityService linking{linking_config};
+            expect(!linking.steam_login(224540U, "bb", steam_id, true),
+                   "linking without an existing account session must fail locally");
+            expect(static_cast<bool>(linking.login("ExistingPlayer", "local-test-password")),
+                   "existing account must be authenticated before linking");
+            const auto wrong_link = linking.steam_login(224540U, "ee", steam_id, true);
+            expect(!wrong_link && linking.cached_account()->public_id == "existing-account" &&
+                   linking.cached_account()->steam_id.empty(),
+                   "link response for another account must never replace the old session");
+            const auto linked = linking.steam_login(224540U, "bb", steam_id, true);
+            expect(linked && linked.account->public_id == "existing-account" &&
+                   linked.account->registered_name == "ExistingPlayer" && linked.account->steam_id == steam_id,
+                   "explicit linking sends the existing session and keeps its stable account ID");
+#if !defined(_WIN32)
+            const auto permissions = std::filesystem::status(config.state_path).permissions();
+            expect((permissions & (std::filesystem::perms::group_all | std::filesystem::perms::others_all)) ==
+                       std::filesystem::perms::none,
+                   "portable launcher state containing credentials must be owner-only");
+#endif
+            std::cout << "Steam account identity and private recovery backup checks passed\n";
+            return 0;
+        }
         if (argc == 4 && std::string_view{argv[1]} == "--hosted-results-mock") {
             hosted_results_retry_fairly_and_stay_account_scoped(argv[2], argv[3]);
             std::cout << "hosted result fairness and account isolation passed\n";

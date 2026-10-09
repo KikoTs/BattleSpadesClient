@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -91,6 +92,25 @@ struct SteamRelayStatus final {
     std::string detail;
 };
 
+/** A completed WebAPI ticket for the AoSPlay service; never log or persist it. */
+struct SteamWebApiTicket final {
+    std::uint32_t handle{};
+    std::uint32_t app_id{};
+    std::uint64_t steam_id{};
+    std::string ticket_hex;
+    /** Nonempty for a failed Steam callback; no ticket is returned in that case. */
+    std::string error;
+};
+
+/** Retail SteamID (little endian) plus session ticket, encoded as ASCII hex. */
+struct SteamSessionTicket final {
+    std::uint32_t handle{};
+    std::uint32_t app_id{};
+    std::uint64_t steam_id{};
+    std::vector<std::byte> wire_bytes;
+    std::string error;
+};
+
 /**
  * Owns SteamAPI for this process and pumps its callbacks.
  *
@@ -114,6 +134,23 @@ public:
     [[nodiscard]] std::string persona_name() const;
     /** The application id Steam accepted, which may be `fallback_app_id`. */
     [[nodiscard]] std::uint32_t app_id() const noexcept;
+    /**
+     * Nonblocking ticket issuance. Zero means unavailable (see error).
+     * WebAPI tickets use the fixed service identity "aosplay" and the actual
+     * attached app id. Session tickets require the owned retail app 224540;
+     * Spacewar is never used to authenticate to a retail server.
+     */
+    [[nodiscard]] std::uint32_t begin_web_api_ticket(std::string& error);
+    [[nodiscard]] std::uint32_t begin_session_ticket(std::string& error);
+    /**
+     * Take a completed callback once; nullopt means pending or unknown handle.
+     * The caller enforces its deadline and cancels on timeout. Issued tickets
+     * remain live after taking the result until cancelled or runtime shutdown.
+     */
+    [[nodiscard]] std::optional<SteamWebApiTicket> take_web_api_ticket(std::uint32_t handle);
+    [[nodiscard]] std::optional<SteamSessionTicket> take_session_ticket(std::uint32_t handle);
+    /** Cancel only this ticket, independently of other sign-ins/connections. */
+    void cancel_auth_ticket(std::uint32_t handle) noexcept;
     /**
      * False while attached as Spacewar.
      *

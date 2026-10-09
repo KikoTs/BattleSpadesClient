@@ -12,12 +12,14 @@
 #include <charconv>
 #include <chrono>
 #include <cctype>
+#include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <sstream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -192,6 +194,8 @@ template <typename Integer>
     }
     result.query_port = bounded_integer<std::uint16_t>(value, "queryPort", port);
     result.ping_milliseconds = bounded_integer<std::uint16_t>(value, "ping", 65'000U);
+    result.ping_known = !is_classic_protocol(result.game.protocol) &&
+                        result.ping_milliseconds < 65'000U;
     result.name = bounded_string(value, "name", result.game.identifier());
     result.map = bounded_string(value, "map", "Unknown");
     result.mode_code = lowercase(bounded_string(
@@ -857,6 +861,111 @@ DiscoveryResult discover_lan_servers(const LanDiscoveryConfig& config) {
     }
     return query_lan(endpoints, config.timeout, config.maximum_servers,
                      config.include_broadcast);
+}
+
+void measure_classic_server_pings(std::span<DiscoveredServer> servers,
+                                  std::chrono::milliseconds timeout,
+                                  std::stop_token stop) {
+    using Clock = std::chrono::steady_clock;
+    using EndpointKey = std::pair<std::uint32_t, std::uint16_t>;
+    struct Probe final {
+        sockaddr_in address{};
+        std::vector<std::size_t> rows;
+        Clock::time_point sent{};
+        bool pending{};
+    };
+    for (auto& server : servers) {
+        if (is_classic_protocol(server.game.protocol)) {
+            server.ping_known = false;
+            server.ping_milliseconds = 65'000U;
+        }
+    }
+    if (timeout.count() <= 0 || stop.stop_requested() ||
+        std::ranges::none_of(servers, [](const auto& row) {
+            return is_classic_protocol(row.game.protocol);
+        })) return;
+
+    SocketRuntime runtime;
+    if (!runtime.ready()) return;
+    SocketGuard socket{::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)};
+    if (socket.get() == invalid_socket) return;
+#if defined(_WIN32)
+    u_long nonblocking{1};
+    if (ioctlsocket(socket.get(), FIONBIO, &nonblocking) != 0) return;
+#else
+    if (socket.get() >= FD_SETSIZE) return;
+    const auto flags = fcntl(socket.get(), F_GETFL, 0);
+    if (flags < 0 || fcntl(socket.get(), F_SETFL, flags | O_NONBLOCK) < 0) return;
+#endif
+    // A fresh ephemeral socket isolates this refresh from old untagged HI replies.
+    sockaddr_in local{};
+    local.sin_family = AF_INET;
+    if (bind(socket.get(), reinterpret_cast<const sockaddr*>(&local), sizeof(local)) != 0) return;
+
+    const auto deadline = Clock::now() + std::min(timeout, std::chrono::milliseconds{5'000});
+    std::map<EndpointKey, Probe> probes;
+    for (std::size_t index{}; index < servers.size(); ++index) {
+        if (stop.stop_requested() || Clock::now() >= deadline) return;
+        const auto& game = servers[index].game;
+        if (!is_classic_protocol(game.protocol) || game.port == 0U) continue;
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(game.port);
+        if (inet_pton(AF_INET, game.host.c_str(), &address.sin_addr) != 1) continue;
+        const EndpointKey key{address.sin_addr.s_addr, address.sin_port};
+        auto found = probes.find(key);
+        if (found == probes.end()) {
+            if (probes.size() >= 512U) continue;
+            found = probes.try_emplace(key).first;
+            found->second.address = address;
+        }
+        found->second.rows.push_back(index);
+    }
+    constexpr std::string_view request{"HELLO"};
+    std::size_t pending{};
+    for (auto& [key, probe] : probes) {
+        static_cast<void>(key);
+        if (stop.stop_requested() || Clock::now() >= deadline) return;
+        probe.sent = Clock::now();
+        probe.pending = sendto(socket.get(), request.data(), static_cast<int>(request.size()), 0,
+                               reinterpret_cast<const sockaddr*>(&probe.address),
+                               sizeof(probe.address)) == static_cast<int>(request.size());
+        if (probe.pending) ++pending;
+    }
+    while (pending != 0U && !stop.stop_requested()) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(deadline - Clock::now());
+        if (remaining.count() <= 0) break;
+        timeval wait{};
+        wait.tv_usec = static_cast<decltype(wait.tv_usec)>(std::min<std::int64_t>(remaining.count(), 25'000));
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(socket.get(), &readable);
+        const auto selected = select(static_cast<int>(socket.get() + 1), &readable, nullptr, nullptr, &wait);
+#if !defined(_WIN32)
+        if (selected < 0 && errno == EINTR) continue;
+#endif
+        if (selected < 0) break;
+        if (selected == 0) continue;
+        // Extra capacity makes HI plus a NUL/newline/other payload invalid.
+        std::array<char, 64> bytes{};
+        sockaddr_in source{};
+        SocketLength length{sizeof(source)};
+        const auto count = recvfrom(socket.get(), bytes.data(), static_cast<int>(bytes.size()), 0,
+                                    reinterpret_cast<sockaddr*>(&source), &length);
+        const auto received = Clock::now();
+        if (count != 2 || bytes[0] != 'H' || bytes[1] != 'I' || source.sin_family != AF_INET) continue;
+        const auto found = probes.find({source.sin_addr.s_addr, source.sin_port});
+        if (found == probes.end() || !found->second.pending) continue;
+        auto& probe = found->second;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(received - probe.sent);
+        for (const auto index : probe.rows) {
+            servers[index].ping_milliseconds = static_cast<std::uint16_t>(
+                std::clamp<std::int64_t>(elapsed.count(), 0, 64'999));
+            servers[index].ping_known = true;
+        }
+        probe.pending = false;
+        --pending;
+    }
 }
 
 DiscoveryResult probe_lan_server(const ServerEndpoint& endpoint,

@@ -47,7 +47,7 @@ env:
   # Fast unit tests that need neither retail assets nor a GPU, run on every
   # target. Network fixtures bind only loopback, never public game servers.
   # WinHTTP is registered only on Windows; its absent name is ignored elsewhere.
-  SMOKE_TESTS: "^aos_(core|asset_install|retail_download|retail_download_http|updater_download|updater_http|client_unicode|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|classic_protocol|classic_corpse|legacy_vxl|demo_stream|demo_playback|public_workshop|workshop_media|workshop_sync|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
+  SMOKE_TESTS: "^aos_(core|asset_install|retail_download|retail_download_http|updater_(core|steam|apply|manifest|unicode|launch|download|http)|client_unicode|localization_catalog|localization_runtime|player_inventory|player_movement|protocol168_session|classic_protocol|classic_corpse|legacy_vxl|demo_stream|demo_playback|public_workshop|workshop_media|workshop_sync|steam_auth_ticket|revival_identity|steam_identity_http|identity_menu|discord_presence|connection_recovery|deferred_cleanup|shadow_projection|world_vertex_layout|friends_lobby|server_discovery)_tests$"
 
 jobs:
   plan:

@@ -8,6 +8,28 @@ protocol. CTF and Territory Control retain their separate game rules.
 
 ## Connection and isolation
 
+### Server browser ping
+
+Classic 0.75 and 0.76 use a connectionless UDP probe on the **game port**:
+send the five ASCII bytes `HELLO` (`48 45 4c 4c 4f`), expect exactly `HI`
+(`48 49`) from that same IP and port. There is no ENet header, packet ID,
+terminating NUL or newline. `HELLOLAN` is a separate metadata request.
+See [piqueserver's protocol documentation](https://www.piqueserver.org/aosprotocol/protocolping.html).
+
+The browser measures full round-trip time on its discovery worker, using a
+separate monotonic send timestamp for each endpoint. This follows ZeroSpades'
+RTT convention and ENet's connected ping (the old protocol document describes
+halving the elapsed time). The batch takes at most 900 ms for up to 512 unique
+numeric IPv4 endpoints; duplicates share a measurement. Missing replies, DNS
+rows and socket failures show `—`, sort after measured pings, and remain
+joinable. A fresh socket per refresh rejects replies left from earlier probes.
+The master server's latency is not used as the player's Classic latency.
+
+While connected, the local player's scoreboard ping comes from ENet. Standard
+Classic packets do not provide other players' RTTs, so those remain unknown.
+
+### Version selection
+
 `GameProtocol` uses the ENet connect data values 168, 3 (0.75), and 4 (0.76).
 An unversioned direct connection tries 168, 0.75, then 0.76, normally advancing
 after an explicit incompatible-version rejection **before any application
@@ -471,6 +493,79 @@ Custom weapon scripts receive reload progress and ready-state timing from the
 active Classic weapon rules, including per-shell shotgun reloads. Their visual
 timeline spans the actual reload duration without changing ammo or server timing.
 
+## ZeroSpades gameplay comparison (2026-10-09)
+
+This audit uses ZeroSpades revision
+[`6a56dc8444b0380eb77f677ba029d83a9c78d29a`](https://github.com/zerospades/zerospades/tree/6a56dc8444b0380eb77f677ba029d83a9c78d29a),
+with its default `cg_classicWeaponRecoil=1`. Compatibility does not establish
+identical behavior in every situation. The following **0.75 base values** in
+`classic_weapons.hpp` match that revision's `Sources/Client/Weapon.cpp`:
+
+| Weapon | Shot interval | Magazine / reserve | Reload | Spread parameter | Upward recoil | Pellets |
+| --- | --- | --- | --- | --- | --- | --- |
+| Rifle | 0.5 s | 10 / 50 | 2.5 s | 0.006 | 0.05 rad | 1 |
+| SMG | 0.1 s | 30 / 120 | 2.5 s | 0.012 | 0.0125 rad | 1 |
+| Shotgun | 1.0 s | 6 / 48 | 0.5 s per shell | 0.024 | 0.1 rad | 8 |
+
+Spread is a direction-vector perturbation parameter, not an angle in degrees.
+The perturbation formula, accumulated shotgun pellet directions, aiming half
+spread and crouching half spread (except shotgun) follow ZeroSpades. Recoil
+uses its 1024 ms horizontal triangle, per-weapon side coefficients, walking
+hip-fire and airborne multipliers, grounded crouch reduction and 89-degree
+pitch limit. The movement acceleration/friction equations follow the same
+approach, including pitch-dependent forward speed and diagonal normalization.
+Existing movement and grenade fixtures additionally compare against piqueserver.
+
+The three combat/runtime differences found in the audit are now corrected:
+
+- **Spread randomness:** Classic uses ZeroSpades' xorshift128+ generator and
+  uniform integer sampling over `[0,32767]`, continuing between shots. It no
+  longer restarts from the retail visual seed, which has only 255 values.
+  Direction perturbations and normalization use float arithmetic, including
+  accumulated shotgun pellets. Production streams start from entropy;
+  explicit seeds make reference tests reproducible. Resetting block damage
+  does not rewind the random stream. Random outcomes are not expected to be
+  identical between separate clients or standard-library implementations.
+- **Tool-switch cooldowns:** gun, spade, dig, block and grenade deadlines are
+  independent and advance while inactive. Switching cannot borrow another
+  tool's cooldown or erase its own. Gunfire advances the previous deadline,
+  matching `Weapon::FrameNext` cadence across uneven frames, with at most
+  one shot per update. New-life resets clear all deadlines.
+- **Simultaneous shovel buttons:** primary suppresses secondary locally and
+  in outgoing weapon input. Releasing primary while still holding secondary
+  starts a full new dig charge. Releasing/re-pressing secondary between ticks
+  and cancelling input also discard the previous charge.
+
+Right-click digging requires holding the button for one second; tapping and
+releasing cancels it in both clients. `shovel_dig_tests` now exercises the real
+session input and weapon runtime, combat trace, original BlockAction packet,
+decoded confirmation and terrain removal for both 0.75 and 0.76. It verifies
+the target plus its vertical neighbors are removed, connected lower terrain
+remains, tapping cancels, releasing stops further digs, and simultaneous
+buttons retain primary priority. This is an
+in-process regression, not evidence of server-specific plugin behavior.
+
+After these fixes, the Classic protocol/gameplay, weapon runtime, tutorial
+session and Classic corpse suites pass. Spread tests check 8,192 successive
+shots for diversity, centering and reference variance, plus stance/pellet
+behavior in both versions. Timing tests cover switching, new lives, uneven
+frames and dig cancellation. Movement fixtures passed in the preceding audit.
+Local piqueserver accepts hits, kills, colored builds, digs, grenades and
+reloads, with zero corrections or hack reports during the scripted exercise;
+map rotation and respawn also pass. The loopback 0.76 ENet fixture passes
+fallback, cache misses, sparse player IDs, plugin replies and redirect with
+one join. That fixture is not a public 0.76 server test.
+
+These checks establish the covered combat/runtime behavior, not full-client
+or server-specific anti-cheat certification. Client presentation/input gates,
+custom server scripts, network delay and public 0.76 interoperability require
+separate validation.
+
+For comparison, OpenSpades revision `ff9b3e71b9ad26dda940923515de8b46f4bba5a5`
+has the same base 0.75 gun values, but its crouched spread, recoil application,
+vertical-look movement scaling and shotgun block damage differ from this
+ZeroSpades baseline. Those two clients are not interchangeable parity targets.
+
 ## Reference provenance and licensing
 
 Protocol layouts and original gameplay behavior were checked against:
@@ -480,7 +575,7 @@ Protocol layouts and original gameplay behavior were checked against:
 - [piqueserver](https://github.com/piqueserver/piqueserver/tree/3dfc0a6774fc5cf3a80eec13b7764b751a0d949b),
   particularly `pyspades/contained.pyx`, `player.py`, `weapon.py`, and `world_c.cpp`.
 
-The adapted movement/hit-box routines retain their OpenSpades/ZeroSpades
+The adapted movement/hit-box and spread RNG routines retain their OpenSpades/ZeroSpades
 (Copyright 2013 yvt) and pyspades (Copyright 2011–2012 Mathias Kaerlev) attribution.
 Those routines are GPL-3.0-or-later; see `LICENSES/GPL-3.0.txt`. They are included
 in the combined AGPL-3.0 BattleSpades client. No reference-repository game assets

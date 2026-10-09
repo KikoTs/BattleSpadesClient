@@ -24,6 +24,9 @@ enum class IdentityAction : std::uint8_t {
     steam,
     guest,
     acknowledge_recovery,
+    recover_steam,
+    link_steam,
+    keep_account,
 };
 
 /**
@@ -42,6 +45,8 @@ enum class IdentitySteamState : std::uint8_t {
 enum class IdentityMenuPhase : std::uint8_t {
     form,
     recovery_code,
+    recovery_form,
+    steam_link,
 };
 
 struct IdentityControl final {
@@ -64,7 +69,7 @@ public:
         MainMenuModel::subpixels_per_pixel};
     static constexpr std::size_t maximum_username_bytes{24U};
     static constexpr std::size_t maximum_password_bytes{256U};
-    static constexpr std::size_t control_count{5U};
+    static constexpr std::size_t control_count{6U};
 
     IdentityMenuModel();
 
@@ -77,6 +82,7 @@ public:
     [[nodiscard]] std::string_view status() const noexcept;
     [[nodiscard]] std::string_view error() const noexcept;
     [[nodiscard]] std::string_view recovery_code() const noexcept;
+    [[nodiscard]] std::string_view link_account_name() const noexcept { return link_account_name_; }
     [[nodiscard]] bool busy() const noexcept;
     [[nodiscard]] bool steam_available() const noexcept;
     [[nodiscard]] IdentitySteamState steam_state() const noexcept;
@@ -100,7 +106,9 @@ public:
     /** Hidden, connecting (visible, disabled) or available. */
     void set_steam_state(IdentitySteamState state) noexcept;
     void set_error(std::string error);
-    void show_recovery_code(std::string code);
+    void show_recovery_code(std::string code, std::string saved_location = {});
+    void show_recovery_form();
+    void show_steam_link(std::string account_name);
     void reset_form() noexcept;
 
 private:
@@ -114,6 +122,7 @@ private:
     std::string status_;
     std::string error_;
     std::string recovery_code_;
+    std::string link_account_name_;
     IdentityMenuPhase phase_{IdentityMenuPhase::form};
     IdentityField focused_field_{IdentityField::username};
     std::optional<std::size_t> hovered_;

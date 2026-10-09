@@ -3,6 +3,8 @@
 #include "battlespades/world/terrain_effects.hpp"
 #include "battlespades/world/voxel_raycast.hpp"
 #include "battlespades/world/weapon_runtime.hpp"
+#include <array>
+#include <cstdint>
 #include <span>
 #include <unordered_map>
 
@@ -35,6 +37,9 @@ struct ClassicAttackResult {
 /** Gameplay boxes always have original AoS dimensions, independent of cosmetic meshes. */
 class ClassicCombat final {
 public:
+    ClassicCombat();
+    /** Reproducible stream for reference tests; production seeds once from entropy. */
+    explicit ClassicCombat(std::array<std::uint64_t, 2> seed) noexcept;
     [[nodiscard]] ClassicAttackResult attack(const VxlMap& map,
                                              const PlayerMovementState& player,
                                              std::span<const ClassicHitTarget> targets,
@@ -51,6 +56,15 @@ public:
     }
 
 private:
+    // ZeroSpades Core/Math.cpp LocalRNG (xorshift128+), GPL-3.0-or-later.
+    // A continuing stream, independent of retail's byte-sized visual/wire seed.
+    struct SpreadRandom {
+        using result_type = std::uint64_t;
+        std::array<result_type, 2> state;
+        static constexpr result_type min() noexcept { return 0; }
+        static constexpr result_type max() noexcept { return UINT64_MAX; }
+        result_type operator()() noexcept;
+    } random_;
     struct Damage {
         int remaining{100};
         double expires{};

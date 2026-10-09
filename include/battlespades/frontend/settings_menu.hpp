@@ -103,6 +103,8 @@ enum class SettingsRowId : std::uint8_t {
     carve_prefab,
     jetpack_hover,
     quick_save,
+    discord_presence,
+    discord_join,
 };
 
 enum class SettingsRowKind : std::uint8_t {

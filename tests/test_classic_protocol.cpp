@@ -18,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <zlib.h>
@@ -743,6 +744,216 @@ void stabilization_tests(const std::vector<std::byte>& raw) {
     }
 }
 
+void classic_weapon_timing_parity_tests() {
+    using world::WeaponActionKind;
+    for (const auto protocol : {3, 4}) {
+        world::WeaponRuntime runtime;
+        runtime.set_classic_protocol(static_cast<std::uint8_t>(protocol));
+        runtime.replace_loadout(std::array<std::uint8_t, 4>{4, 6, 31, 5}, 6);
+        const auto step = [&](double dt = 1.0 / 60.0) { runtime.tick(dt); return runtime.take_actions(); };
+        runtime.set_primary(true);
+        check(step().size() == 1, "rifle fires immediately when ready");
+        check(runtime.select(4) == world::WeaponStateResult::accepted, "select spade after gunfire");
+        runtime.set_primary(true);
+        const auto spade = step();
+        check(spade.size() == 1 && spade[0].kind == WeaponActionKind::melee && !spade[0].secondary,
+              "rifle cooldown must not delay a ready spade");
+        static_cast<void>(runtime.select(6));
+        runtime.set_primary(true);
+        check(step().empty(), "switching through a spade cannot shorten the rifle deadline");
+        static_cast<void>(runtime.select(5));
+        runtime.set_primary(true);
+        const auto block = step();
+        check(block.size() == 1 && block[0].kind == WeaponActionKind::block_line_begin,
+              "gun and spade timers cannot delay a ready block tool");
+        static_cast<void>(runtime.select(31));
+        runtime.set_primary(true);
+        const auto primed = step();
+        check(primed.size() == 1 && primed[0].kind == WeaponActionKind::throwable_primed,
+              "block timer cannot delay a grenade");
+        runtime.set_primary(false);
+        const auto thrown = step();
+        check(thrown.size() == 1 && thrown[0].kind == WeaponActionKind::oriented_item, "release cooked grenade");
+        static_cast<void>(runtime.select(4));
+        static_cast<void>(step());
+        static_cast<void>(runtime.select(31));
+        runtime.set_primary(true);
+        check(step().empty(), "switching tools preserves grenade cooldown");
+        runtime.set_primary(false);
+        for (int i = 0; i < 40; ++i) static_cast<void>(step());
+        runtime.set_primary(true);
+        const auto primed_again = step();
+        check(primed_again.size() == 1 && primed_again[0].kind == WeaponActionKind::throwable_primed,
+              "inactive tool cooldown expires on the common simulation clock");
+        runtime.on_unset();
+        static_cast<void>(runtime.select(6));
+        runtime.set_primary(true);
+        check(step().size() == 1, "new life clears old tool deadlines");
+
+        // Reference trace from ZeroSpades Weapon::FrameNext: a 100ms gun
+        // updated every 60ms preserves its old deadline instead of adding a
+        // fresh interval after a late frame. One shot maximum per update.
+        world::WeaponRuntime cadence;
+        cadence.set_classic_protocol(static_cast<std::uint8_t>(protocol));
+        cadence.replace_loadout(std::array<std::uint8_t, 1>{38}, 38);
+        cadence.set_primary(true);
+        std::vector<int> fired;
+        for (int frame = 0; frame < 10; ++frame) {
+            cadence.tick(0.06);
+            const auto shots = cadence.take_actions();
+            check(shots.size() <= 1, "a delayed frame never emits a burst of catch-up hits");
+            if (!shots.empty()) fired.push_back(frame);
+        }
+        check(fired == std::vector<int>({0, 2, 4, 5, 7, 9}), "SMG uneven-frame cadence matches ZeroSpades");
+        cadence.set_primary(false);
+        cadence.tick(0.25);
+        cadence.set_primary(true);
+        cadence.tick(0.01);
+        check(cadence.take_actions().size() == 1, "new trigger starts without a backlog of missed shots");
+
+        world::WeaponRuntime digger;
+        digger.set_classic_protocol(static_cast<std::uint8_t>(protocol));
+        digger.replace_loadout(std::array<std::uint8_t, 1>{4}, 4);
+        const auto dig_frames = [&](int frames) {
+            for (int n = 0; n < frames; ++n) digger.tick(0.05);
+            return digger.take_actions();
+        };
+        digger.set_secondary(true);
+        check(dig_frames(18).empty(), "initial partial dig charge");
+        digger.set_secondary(false);
+        digger.set_secondary(true);
+        check(dig_frames(14).empty(), "release and re-press between ticks resets dig charge");
+        check(dig_frames(8).size() == 1, "re-pressed dig requires a full charge");
+        digger.cancel_interaction();
+        digger.set_secondary(true);
+        check(dig_frames(14).empty(), "input cancellation cannot carry the previous dig charge");
+        check(dig_frames(8).size() == 1, "digging resumes normally after input cancellation");
+    }
+}
+
+void classic_spread_stream_tests(const std::vector<std::byte>& raw) {
+    const auto loaded = network::load_classic_vxl(raw);
+    check(static_cast<bool>(loaded), "spread fixture VXL");
+    const auto& map = *loaded.map;
+    world::PlayerMovementState player;
+    player.position = {250, 250, 200};
+    player.orientation = {1, 0, 0};
+    const std::array<std::uint64_t, 2> seed{0xABCD0123456789ULL, 0x987654321ABCDEFULL};
+    world::ClassicCombat combat{seed}, replay{seed};
+    world::WeaponAction shot{world::WeaponActionKind::hitscan, 38, 7, 1};
+    std::set<std::array<double, 3>> directions;
+    double sum{}, squared{};
+    constexpr int samples = 8192;
+    for (int n = 0; n < samples; ++n) {
+        const auto actual = combat.attack(map, player, {}, shot, 3, false, 0);
+        check(actual.tracers.size() == 1, "one SMG pellet per shot");
+        const auto ray = actual.tracers[0].direction;
+        directions.insert({ray.x, ray.y, ray.z});
+        sum += ray.y + ray.z;
+        squared += ray.y * ray.y + ray.z * ray.z;
+        if (n < 32) {
+            auto changed_visual_seed = shot;
+            changed_visual_seed.seed = static_cast<std::uint8_t>(n);
+            const auto expected = replay.attack(map, player, {}, changed_visual_seed, 3, false, 0).tracers[0].direction;
+            check(ray.x == expected.x && ray.y == expected.y && ray.z == expected.z,
+                  "retail byte seed cannot control or repeat the Classic spread stream");
+        }
+        if (n == 15) { combat.reset(); replay.reset(); }
+    }
+    check(directions.size() > 8000, "continuous Classic spread has more than 255 possible directions");
+    // Difference of two uniform integers [0,32767], scaled as ZeroSpades.
+    // Unit-vector normalization slightly reduces the variance at this spread.
+    constexpr double reference_variance = 2.0 * (32767.0 * 32769.0 / 12.0) /
+                                          (16383.0 * 16383.0) * 0.012 * 0.012;
+    check(std::abs(sum / (samples * 2)) < 0.0004 &&
+              std::abs(squared / (samples * 2) / reference_variance - 1.0) < 0.04,
+          "spread is centered and has the variance of ZeroSpades integer sampling");
+    // Identical random streams isolate stance multipliers from random noise.
+    for (const auto protocol : {3, 4}) for (const auto tool : {6, 38, 37}) {
+        world::ClassicCombat hip{seed}, aim{seed}, crouch{seed};
+        shot.tool_id = static_cast<std::uint8_t>(tool);
+        player.crouch = false;
+        const auto h = hip.attack(map, player, {}, shot, static_cast<std::uint8_t>(protocol), false, 0);
+        const auto a = aim.attack(map, player, {}, shot, static_cast<std::uint8_t>(protocol), true, 0);
+        player.crouch = true;
+        const auto c = crouch.attack(map, player, {}, shot, static_cast<std::uint8_t>(protocol), false, 0);
+        check(h.tracers.size() == (tool == 37 ? 8U : 1U), "original per-version pellet count");
+        const auto hy = h.tracers[0].direction.y, ay = a.tracers[0].direction.y, cy = c.tracers[0].direction.y;
+        check(std::abs(ay / hy - 0.5) < 0.01, "aiming halves spread in both Classic versions");
+        check(std::abs(cy / hy - (tool == 37 ? 1.0 : 0.5)) < 0.01,
+              "crouching halves gun spread but never shotgun spread");
+    }
+}
+
+void shovel_dig_tests(const std::vector<std::byte>& raw) {
+    for (const auto protocol : {3, 4}) {
+        auto loaded = network::load_classic_vxl(raw);
+        check(static_cast<bool>(loaded), "dig fixture VXL");
+        auto map = std::make_shared<world::VxlMap>(std::move(*loaded.map));
+        for (std::uint32_t z = 231; z <= 235; ++z)
+            static_cast<void>(map->set_voxel(252, 250, z, {100, 100, 100, 255}));
+        world::TutorialSessionConfig config;
+        config.network_authoritative = true;
+        config.classic_protocol = static_cast<std::uint8_t>(protocol);
+        config.initial_class_id = 5;
+        config.initial_loadout = {4, 6, 31, 5};
+        config.initial_tool = 4;
+        config.initial_position = {250.5, 250.5, 233.75};
+        config.initial_orientation = {1, 0, 0};
+        world::TutorialWorldSession session{map, config};
+        session.set_secondary_held(true);
+        for (int frame = 0; frame < 12; ++frame) session.tick();
+        session.set_secondary_held(false);
+        for (int frame = 0; frame < 60; ++frame) session.tick();
+        check(session.take_weapon_actions().empty(), "tapping right-click cancels the charged dig");
+        session.set_secondary_held(true);
+        for (int frame = 0; frame < 59; ++frame) session.tick();
+        check(session.take_weapon_actions().empty(), "dig must charge for one second before removing blocks");
+        for (int frame = 0; frame < 3; ++frame) session.tick();
+        const auto actions = session.take_weapon_actions();
+        check(actions.size() == 1 && actions[0].kind == world::WeaponActionKind::melee && actions[0].secondary,
+              "held right-click emits exactly one charged shovel dig");
+        world::ClassicCombat combat;
+        const auto dig = combat.attack(*map, session.player(), {}, actions[0],
+                                      config.classic_protocol, false, 1.1);
+        check(dig.destroy.has_value() && dig.block_action == 2 && dig.hits.empty(),
+              "secondary shovel chooses three-block terrain action, never player damage");
+        const auto cell = *dig.destroy;
+        const auto request = network::classic_block_packet(0, dig.block_action,
+            {static_cast<std::int32_t>(cell.x), static_cast<std::int32_t>(cell.y), static_cast<std::int32_t>(cell.z)});
+        check(request.size() == 15 && request[0] == std::byte{13} && request[2] == std::byte{2},
+              "three-block dig uses one original BlockAction packet with SPADE_DESTROY");
+        network::ClassicProtocolSession wire{static_cast<network::GameProtocol>(protocol)};
+        static_cast<void>(bootstrap(wire, raw));
+        const auto reply = wire.ingest(request);
+        check(reply.error.empty() && reply.events.size() == 1, "server dig confirmation decodes");
+        network::Protocol168TerrainReplica replica{*map, 1, true, false, true};
+        const auto removed = replica.apply(reply.events.front());
+        check(removed.mutation.accepted && !map->solid(cell.x, cell.y, cell.z - 1) &&
+                  !map->solid(cell.x, cell.y, cell.z) && !map->solid(cell.x, cell.y, cell.z + 1) &&
+                  map->solid(cell.x, cell.y, 235),
+              "confirmed dig removes the vertical three blocks and preserves connected lower terrain");
+        session.set_secondary_held(false);
+        for (int frame = 0; frame < 90; ++frame) session.tick();
+        check(session.take_weapon_actions().empty(), "releasing right-click stops repeated digging");
+        session.set_primary_held(true);
+        session.set_secondary_held(true);
+        check((session.action_flags() & 3U) == 1U, "server sees primary-only shovel input when both buttons are held");
+        for (int frame = 0; frame < 90; ++frame) session.tick();
+        const auto primary = session.take_weapon_actions();
+        check(!primary.empty() && std::ranges::none_of(primary, [](const auto& action) { return action.secondary; }),
+              "left-click suppresses digging for the entire combined press");
+        session.set_primary_held(false);
+        session.tick();
+        check((session.action_flags() & 3U) == 2U, "held right-click resumes after primary release");
+        for (int frame = 0; frame < 58; ++frame) session.tick();
+        check(session.take_weapon_actions().empty(), "resumed right-click must charge again before digging");
+        for (int frame = 0; frame < 4; ++frame) session.tick();
+        const auto resumed = session.take_weapon_actions();
+        check(resumed.size() == 1 && resumed[0].secondary, "full new charge produces one resumed dig");
+    }
+}
+
 void gameplay_tests(const std::vector<std::byte>& raw) {
     auto loaded = network::load_classic_vxl(raw);
     check(static_cast<bool>(loaded), "fixture VXL");
@@ -872,7 +1083,7 @@ void gameplay_tests(const std::vector<std::byte>& raw) {
     world::WeaponReplicationState native;
     native.replace_loadout(std::array<std::uint8_t, 1>{38});
     check(native.ammo(38)->reserve != 120, "Classic+ ammo table unchanged");
-    world::ClassicCombat combat;
+    world::ClassicCombat combat{std::array<std::uint64_t, 2>{12345, 67890}};
     p.position = {250, 250, 232};
     p.orientation = {1, 0, 0};
     p.crouch = false;
@@ -887,7 +1098,7 @@ void gameplay_tests(const std::vector<std::byte>& raw) {
     const std::array observer_targets{
         world::ClassicHitTarget{3, {270, 250, 232}, {-1, 0, 0}, false, false},
         targets.front()};
-    world::ClassicCombat observer;
+    world::ClassicCombat observer{std::array<std::uint64_t, 2>{12345, 67890}};
     const auto observed = observer.attack(map, p, observer_targets, shot, 3, true, 0);
     check(observed.hits.size() == 1 && observed.hits.front().player == 1 &&
               observed.tracers.front().endpoint.x == observed.hits.front().position.x,
@@ -1105,6 +1316,9 @@ int main() {
         objective_tests(raw);
         stabilization_tests(raw);
         gameplay_tests(raw);
+        shovel_dig_tests(raw);
+        classic_weapon_timing_parity_tests();
+        classic_spread_stream_tests(raw);
         grenade_tests(raw);
         water_movement_tests(raw);
         std::cout << "Classic codec, movement, weapons, combat and naming passed\n";

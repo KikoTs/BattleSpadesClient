@@ -719,6 +719,29 @@ void server_browser_region_defaults_to_us_west_and_mode_sorts_by_title() {
            "MODE sorts on the localised title (serverInfo.py), not the string id");
 }
 
+void unknown_pings_render_as_unknown_and_sort_last() {
+    ServerBrowserModel browser;
+    auto unknown = server("Unknown", "10.0.0.1", 32887U, 65000U, 1U, 32U);
+    unknown.ping_known = false;
+    auto fast = server("Fast", "10.0.0.2", 32887U, 0U, 1U, 32U);
+    auto slow = server("Slow", "10.0.0.3", 32887U, 120U, 1U, 32U);
+    browser.replace_servers({unknown, slow, fast});
+    const auto name_at = [&](std::size_t row) { return browser.servers()[browser.visible_indices()[row]].name; };
+    expect(name_at(0) == "Fast" && name_at(2) == "Unknown", "unknown pings sort after measured RTTs");
+    browser.select_sort_column(ServerSortColumn::ping);
+    expect(name_at(0) == "Slow" && name_at(2) == "Unknown", "descending ping keeps unknowns last");
+    const auto layer = ServerBrowserPresentation{}.build_layer(browser, ServerBrowserPresentationContext{});
+    bool unknown_label{}, zero_ping{};
+    for (const auto& command : layer.commands()) {
+        if (const auto* text = std::get_if<TextDrawCommand>(&command)) {
+            expect(text->localization_key != "65000", "never display the missing-ping sentinel");
+            unknown_label = unknown_label || text->localization_key == "—";
+            zero_ping = zero_ping || text->localization_key == "0";
+        }
+    }
+    expect(unknown_label && zero_ping, "unknown and a real sub-millisecond RTT have distinct labels");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -728,6 +751,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"unknown_pings_render_as_unknown_and_sort_last", unknown_pings_render_as_unknown_and_sort_last},
         {"direct_connect_committed_text_and_paste_preserve_endpoints",
          direct_connect_committed_text_and_paste_preserve_endpoints},
         {"public_regions_match_wire_names_without_hidden_filters", public_regions_match_wire_names_without_hidden_filters},
