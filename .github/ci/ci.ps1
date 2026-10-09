@@ -11,7 +11,10 @@ $PSNativeCommandUseErrorActionPreference = $false
 # architecture in this PowerShell process. Each step runs in a new process,
 # so every step that compiles calls this again (it takes a few seconds).
 function Enter-MsvcEnvironment {
-    param([Parameter(Mandatory = $true)][ValidateSet('x64', 'arm64')][string]$Arch)
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('x64', 'arm64')][string]$Arch,
+        [ValidatePattern('^[0-9.]+$')][string]$ToolsetVersion
+    )
 
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     $component = if ($Arch -eq 'arm64') {
@@ -26,7 +29,8 @@ function Enter-MsvcEnvironment {
 
     # VsDevCmd points VCPKG_ROOT at Visual Studio's private vcpkg; keep ours.
     $keepVcpkgRoot = $env:VCPKG_ROOT
-    $dump = & cmd.exe /d /c "call `"$devCmd`" -arch=$vsArch -host_arch=$vsArch -no_logo >nul 2>nul && set"
+    $toolsetArg = if ($ToolsetVersion) { "-vcvars_ver=$ToolsetVersion" } else { '' }
+    $dump = & cmd.exe /d /c "call `"$devCmd`" -arch=$vsArch -host_arch=$vsArch $toolsetArg -no_logo >nul 2>nul && set"
     if ($LASTEXITCODE -ne 0) { throw "VsDevCmd failed for $Arch" }
     foreach ($line in $dump) {
         $separator = $line.IndexOf('=')

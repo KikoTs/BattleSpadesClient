@@ -55,14 +55,14 @@ jobs:
           }
           Get-Content "$probeDir/stdout.log", "$probeDir/stderr.log"
           if ($probe.ExitCode -ne 0) { throw "Audio probe failed: $($probe.ExitCode)" }
-      - name: Rebuild the same library without C++ modules and check cleanup
+      - name: Rebuild the same library with MSVC 14.44 and check cleanup
         shell: pwsh
         env:
           ALSOFT_DRIVERS: "null"
           ALSOFT_LOGLEVEL: "3"
         run: |
           . .github/ci/ci.ps1
-          Enter-MsvcEnvironment -Arch arm64
+          Enter-MsvcEnvironment -Arch arm64 -ToolsetVersion 14.44
           Invoke-WebRequest https://github.com/kcat/openal-soft/archive/refs/tags/1.25.0.tar.gz -OutFile out/audio-diagnostic/openal.tar.gz
           $hash = (Get-FileHash out/audio-diagnostic/openal.tar.gz -Algorithm SHA512).Hash
           if ($hash -ne '33cdc03198c4fdbd6c67bae460328d8f910baf0a522891735590df140ef727a5d7a1acc64826128994700e7d75c75c938b20483858575ff4e0ebc3f120a9e206') { throw 'OpenAL source checksum mismatch' }
