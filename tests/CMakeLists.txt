@@ -1223,7 +1223,9 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             COMMAND_EXPAND_LISTS)
     endif()
     add_test(NAME aos_spatial_audio_tests COMMAND aos_spatial_audio_tests)
-    set_tests_properties(aos_spatial_audio_tests PROPERTIES SKIP_RETURN_CODE 77 RESOURCE_LOCK audio)
+    set_tests_properties(aos_spatial_audio_tests PROPERTIES
+        SKIP_RETURN_CODE 77 RESOURCE_LOCK audio TIMEOUT 30
+        ENVIRONMENT "ALSOFT_LOGLEVEL=3")
     # Named-asset cache: cache-first lookup, worker decode of cold samples and
     # the music/ambience LRU budget. Skips cleanly without an audio device.
     add_executable(aos_audio_cache_tests test_audio_cache.cpp)

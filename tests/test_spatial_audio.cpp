@@ -84,6 +84,7 @@ struct Mixer final {
 
 int main() {
     try {
+        std::cerr << "Checking spatial PCM conversion\n" << std::flush;
         using battlespades::audio::spatial_mono_pcm;
         const std::array<short, 8> extremes{32767, 32767, -32768, -32768, 32000, -16000, 0, 0};
         check(spatial_mono_pcm(extremes) == std::vector<short>{32767, -32768, 8000, 0},
@@ -93,6 +94,7 @@ int main() {
         catch (const std::invalid_argument&) { rejected = true; }
         check(rejected, "reject an incomplete stereo frame");
 
+        std::cerr << "Loading OpenAL loopback entry points\n" << std::flush;
         const auto open = reinterpret_cast<OpenLoopback>(
             alcGetProcAddress(nullptr, "alcLoopbackOpenDeviceSOFT"));
         const auto render = reinterpret_cast<RenderSamples>(
@@ -102,10 +104,12 @@ int main() {
             return 77;
         }
         Mixer mixer;
+        std::cerr << "Opening OpenAL loopback device\n" << std::flush;
         mixer.device = open(nullptr);
         check(mixer.device != nullptr, "open loopback device");
         const std::array<ALCint, 7> attributes{
             ALC_FREQUENCY, 48000, format_channels, stereo_channels, format_type, float_samples, 0};
+        std::cerr << "Creating OpenAL loopback context\n" << std::flush;
         mixer.context = alcCreateContext(mixer.device, attributes.data());
         check(mixer.context && alcMakeContextCurrent(mixer.context), "create loopback context");
         mixer.render = render;
@@ -126,6 +130,7 @@ int main() {
                      static_cast<ALsizei>(mono.size() * sizeof(short)), 48000);
         check(alGetError() == AL_NO_ERROR, "upload stereo and spatial PCM");
 
+        std::cerr << "Rendering world panning samples\n" << std::flush;
         const auto right = mixer.energy(false, 12.0F, 180.0);
         const auto left = mixer.energy(false, -12.0F, 180.0);
         const auto turned = mixer.energy(false, 12.0F, 0.0);
@@ -134,13 +139,14 @@ int main() {
         check(left[0] > left[1] * 5.0 && left[0] > 0.01, "left-side world sound must pan left");
         check(turned[0] > turned[1] * 5.0, "turning the listener must reverse world panning");
         check(raised[1] > raised[0] * 5.0, "Classic z-offset and pitch must preserve handedness");
+        std::cerr << "Rendering local stereo samples\n" << std::flush;
         const auto local = mixer.energy(true, 12.0F, 180.0);
         const auto local_turned = mixer.energy(true, -12.0F, 0.0);
         check(local[0] > local[1] * 7.0 && local[0] < local[1] * 11.0,
               "head-relative playback must preserve authored stereo balance");
         check(std::abs(local[0] / local[1] - local_turned[0] / local_turned[1]) < 0.01,
               "head-relative stereo must not follow world position or view rotation");
-        std::cout << "Spatial PCM and real OpenAL left/right/local-stereo rendering passed\n";
+        std::cerr << "Spatial PCM and real OpenAL left/right/local-stereo rendering passed\n" << std::flush;
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
