@@ -185,6 +185,10 @@ jobs:
           . .github/ci/ci.ps1
           Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
           "COMPILER_ID=MSVC $env:VCToolsVersion ${{ matrix.arch }}" >> $env:GITHUB_ENV
+          if ('${{ matrix.arch }}' -eq 'arm64') {
+            Enter-MsvcEnvironment -Arch arm64 -ToolsetVersion 14.44
+            "DEPENDENCY_COMPILER_ID=MSVC $env:VCToolsVersion arm64" >> $env:GITHUB_ENV
+          }
 
       - name: Install ccache (Windows)
         if: matrix.family == 'windows'
@@ -215,9 +219,13 @@ jobs:
         run: |
           compiler="$(printf '%s' "$COMPILER_ID" | sha256sum 2>/dev/null || printf '%s' "$COMPILER_ID" | shasum -a 256)"
           compiler="${compiler:0:12}"
+          dependency_id="${DEPENDENCY_COMPILER_ID:-$COMPILER_ID}"
+          dependency="$(printf '%s' "$dependency_id" | sha256sum 2>/dev/null || printf '%s' "$dependency_id" | shasum -a 256)"
+          dependency="${dependency:0:12}"
           echo "Compiler: $COMPILER_ID ($compiler)"
-          echo "vcpkg=vcpkg-v1-$TARGET-$compiler-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'cmake/vcpkg-ports/**') }}" >> "$GITHUB_OUTPUT"
-          echo "vcpkg_prefix=vcpkg-v1-$TARGET-$compiler-" >> "$GITHUB_OUTPUT"
+          echo "Dependency compiler: $dependency_id ($dependency)"
+          echo "vcpkg=vcpkg-v1-$TARGET-$dependency-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'cmake/vcpkg-ports/**') }}" >> "$GITHUB_OUTPUT"
+          echo "vcpkg_prefix=vcpkg-v1-$TARGET-$dependency-" >> "$GITHUB_OUTPUT"
           echo "ccache=ccache-v1-$TARGET-$compiler-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "ccache_prefix=ccache-v1-$TARGET-$compiler-" >> "$GITHUB_OUTPUT"
 
@@ -278,7 +286,11 @@ jobs:
         shell: pwsh
         run: |
           . .github/ci/ci.ps1
-          Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
+          if ('${{ matrix.arch }}' -eq 'arm64') {
+            Enter-MsvcEnvironment -Arch arm64 -ToolsetVersion 14.44
+          } else {
+            Enter-MsvcEnvironment -Arch ${{ matrix.arch }}
+          }
           Invoke-WithNetworkRetry {
             & "$env:VCPKG_ROOT\vcpkg.exe" install "--triplet=$env:TRIPLET" "--host-triplet=$env:TRIPLET" `
               --overlay-triplets=cmake/triplets --x-install-root=out/vcpkg_installed --clean-after-build

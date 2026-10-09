@@ -49,9 +49,12 @@ Notes:
   without `steam_api64.dll` and friends play through the AoSPlay relay. The
   32-bit Steam bridge (`BattleSpadesSteamBridge32.exe`) is still included; it
   runs under the built-in x86 emulation.
-  The ARM64 compiler and native dependency overlay use **MSVC 14.44 / v143**.
-  Install that ARM64 toolset when building locally and activate it with
-  `VsDevCmd.bat -arch=arm64 -host_arch=arm64 -vcvars_ver=14.44`.
+  The ARM64 native dependency overlay uses **MSVC 14.44 / v143**; install that
+  ARM64 toolset alongside the current compiler. Compile/link the client with
+  the current toolset (14.51 in CI), which supports its large embedded inventory
+  strings. This follows [MSVC's binary compatibility rules](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017):
+  use the newer linker and runtime with the older dependency libraries.
+  CI records separate compiler identities for dependency and client caches.
   MSVC 14.51 produced an OpenAL 1.25.0 destructor return path that looped
   during context cleanup, including in the published beta.2 library. Native
   ARM64 probes passed rendering but hung at shutdown with that library; the

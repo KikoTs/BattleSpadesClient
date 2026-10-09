@@ -2,7 +2,8 @@ set(VCPKG_TARGET_ARCHITECTURE arm64)
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE dynamic)
 
-# Keep native dependencies on the same compiler as the ARM64 release build.
+# Keep native dependencies on the verified ARM64 compiler; the client links
+# these libraries with its newer, binary-compatible MSVC toolset.
 # MSVC 14.51 emits a looping destructor return path in OpenAL 1.25.0.
 set(VCPKG_PLATFORM_TOOLSET v143)
 set(VCPKG_PLATFORM_TOOLSET_VERSION 14.44)

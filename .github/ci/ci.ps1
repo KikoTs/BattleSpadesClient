@@ -27,10 +27,9 @@ function Enter-MsvcEnvironment {
     $vsArch = if ($Arch -eq 'arm64') { 'arm64' } else { 'amd64' }
     $devCmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
 
-    # The v14.51 ARM64 OpenAL build can loop in a generated destructor epilogue.
-    # Keep release builds and vcpkg's arm64-windows overlay on the same v14.44
-    # compiler. An explicit version remains available for diagnostic comparisons.
-    if ($Arch -eq 'arm64' -and -not $ToolsetVersion) { $ToolsetVersion = '14.44' }
+    # Dependency jobs select v14.44 explicitly to avoid the ARM64 OpenAL
+    # cleanup regression. The client uses the current compiler, which supports
+    # its large embedded inventory strings, and links the older libraries.
 
     # VsDevCmd points VCPKG_ROOT at Visual Studio's private vcpkg; keep ours.
     $keepVcpkgRoot = $env:VCPKG_ROOT
