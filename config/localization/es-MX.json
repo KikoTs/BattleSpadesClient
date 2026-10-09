@@ -2103,6 +2103,10 @@
     "ARENA_DESCRIPTION": "¡Elimina a todos los enemigos para ganar la ronda!",
     "LOAD_FAILED": "Error al cargar",
     "BLOOD_MARKS": "Rastros de sangre",
-    "BLOOD_MARKS_DESCRIPTION": "Gotas de sangre y manchas temporales en los bloques en Classic y Standard. Duran 20–32 segundos; solo es un efecto visual."
+    "BLOOD_MARKS_DESCRIPTION": "Gotas de sangre y manchas temporales en los bloques en Classic y Standard. Duran 20–32 segundos; solo es un efecto visual.",
+    "DISCORD_PRESENCE": "Actividad en Discord",
+    "DISCORD_PRESENCE_DESCRIPTION": "Muestra el servidor, mapa, modo y número de jugadores en Discord. Requiere la aplicación de escritorio de Discord. Las direcciones de servidores privados se ocultan.",
+    "DISCORD_JOIN": "Unirse desde Discord",
+    "DISCORD_JOIN_DESCRIPTION": "Permite unirse a la partida desde Discord y compartir un botón para servidores públicos sin contraseña. Nunca se comparten direcciones privadas ni credenciales."
   }
 }

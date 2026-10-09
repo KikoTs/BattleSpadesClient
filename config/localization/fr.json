@@ -2160,6 +2160,10 @@
     "ARENA_DESCRIPTION": "Éliminez tous les ennemis pour gagner la manche !",
     "LOAD_FAILED": "Échec du chargement",
     "BLOOD_MARKS": "Traces de sang",
-    "BLOOD_MARKS_DESCRIPTION": "Gouttes de sang et taches temporaires sur les blocs en Classic et Standard. Durent 20–32 secondes, sans effet sur le jeu."
+    "BLOOD_MARKS_DESCRIPTION": "Gouttes de sang et taches temporaires sur les blocs en Classic et Standard. Durent 20–32 secondes, sans effet sur le jeu.",
+    "DISCORD_PRESENCE": "Activité Discord",
+    "DISCORD_PRESENCE_DESCRIPTION": "Affiche le serveur, la carte, le mode et le nombre de joueurs sur Discord. Nécessite l'application de bureau Discord. Les adresses des serveurs privés sont masquées.",
+    "DISCORD_JOIN": "Rejoindre via Discord",
+    "DISCORD_JOIN_DESCRIPTION": "Autorise à rejoindre la partie via Discord et partage un bouton pour les serveurs publics sans mot de passe. Les adresses privées et les identifiants ne sont jamais partagés."
   }
 }

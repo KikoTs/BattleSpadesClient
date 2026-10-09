@@ -2123,6 +2123,10 @@
     "ARENA_DESCRIPTION": "Elimina tutti i nemici per vincere il round!",
     "LOAD_FAILED": "Caricamento non riuscito",
     "BLOOD_MARKS": "Tracce di sangue",
-    "BLOOD_MARKS_DESCRIPTION": "Gocce di sangue e macchie temporanee sui blocchi in Classic e Standard. Durano 20–32 secondi; solo un effetto visivo."
+    "BLOOD_MARKS_DESCRIPTION": "Gocce di sangue e macchie temporanee sui blocchi in Classic e Standard. Durano 20–32 secondi; solo un effetto visivo.",
+    "DISCORD_PRESENCE": "Attività su Discord",
+    "DISCORD_PRESENCE_DESCRIPTION": "Mostra server, mappa, modalità e numero di giocatori su Discord. Richiede l'app desktop di Discord. Gli indirizzi dei server privati sono nascosti.",
+    "DISCORD_JOIN": "Unisciti tramite Discord",
+    "DISCORD_JOIN_DESCRIPTION": "Consente di unirsi alla partita tramite Discord e condivide un pulsante per i server pubblici senza password. Gli indirizzi privati e le credenziali non vengono mai condivisi."
   }
 }

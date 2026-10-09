@@ -2123,6 +2123,10 @@
     "ARENA_DESCRIPTION": "Raundu kazanmak için tüm düşmanları yok edin!",
     "LOAD_FAILED": "Yükleme başarısız",
     "BLOOD_MARKS": "Kan izleri",
-    "BLOOD_MARKS_DESCRIPTION": "Classic ve Standard modlarında görsel kan damlaları ve bloklarda geçici lekeler. 20–32 saniye kalır; oynanışı etkilemez."
+    "BLOOD_MARKS_DESCRIPTION": "Classic ve Standard modlarında görsel kan damlaları ve bloklarda geçici lekeler. 20–32 saniye kalır; oynanışı etkilemez.",
+    "DISCORD_PRESENCE": "Discord etkinliği",
+    "DISCORD_PRESENCE_DESCRIPTION": "Sunucu, harita, mod ve oyuncu sayısını Discord'da gösterir. Discord masaüstü uygulaması gerekir. Özel sunucu adresleri gizlenir.",
+    "DISCORD_JOIN": "Discord üzerinden katılma",
+    "DISCORD_JOIN_DESCRIPTION": "Discord üzerinden oyuna katılmaya izin verir ve şifresiz herkese açık sunucular için katıl düğmesi paylaşır. Özel adresler ve giriş bilgileri asla paylaşılmaz."
   }
 }

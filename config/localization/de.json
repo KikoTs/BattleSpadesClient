@@ -2160,6 +2160,10 @@
     "ARENA_DESCRIPTION": "Schalte alle Gegner aus, um die Runde zu gewinnen!",
     "LOAD_FAILED": "Laden fehlgeschlagen",
     "BLOOD_MARKS": "Blutspuren",
-    "BLOOD_MARKS_DESCRIPTION": "Sichtbare Blutstropfen und vorübergehende Flecken auf Blöcken in Classic und Standard. Bleiben 20–32 Sekunden; ohne Einfluss auf das Spiel."
+    "BLOOD_MARKS_DESCRIPTION": "Sichtbare Blutstropfen und vorübergehende Flecken auf Blöcken in Classic und Standard. Bleiben 20–32 Sekunden; ohne Einfluss auf das Spiel.",
+    "DISCORD_PRESENCE": "Discord-Aktivität",
+    "DISCORD_PRESENCE_DESCRIPTION": "Zeigt Server, Karte, Modus und Spielerzahl in Discord. Erfordert die Discord-Desktop-App. Private Serveradressen bleiben verborgen.",
+    "DISCORD_JOIN": "Über Discord beitreten",
+    "DISCORD_JOIN_DESCRIPTION": "Erlaubt den Spielbeitritt über Discord und teilt eine Beitrittsschaltfläche für öffentliche Server ohne Passwort. Private Adressen und Zugangsdaten werden niemals geteilt."
   }
 }

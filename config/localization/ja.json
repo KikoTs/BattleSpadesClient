@@ -2160,6 +2160,10 @@
     "ARENA_DESCRIPTION": "敵を全滅させてラウンドに勝利しよう！",
     "LOAD_FAILED": "読み込みに失敗しました",
     "BLOOD_MARKS": "血痕を残す",
-    "BLOOD_MARKS_DESCRIPTION": "ClassicとStandardで血のしずくと一時的な血痕を表示します。20～32秒間残る視覚効果で、ゲームプレイには影響しません。"
+    "BLOOD_MARKS_DESCRIPTION": "ClassicとStandardで血のしずくと一時的な血痕を表示します。20～32秒間残る視覚効果で、ゲームプレイには影響しません。",
+    "DISCORD_PRESENCE": "Discordのアクティビティ",
+    "DISCORD_PRESENCE_DESCRIPTION": "サーバー、マップ、モード、プレイヤー数をDiscordに表示します。Discordのデスクトップアプリが必要です。非公開サーバーのアドレスは表示されません。",
+    "DISCORD_JOIN": "Discordから参加",
+    "DISCORD_JOIN_DESCRIPTION": "Discordからのゲーム参加を許可し、パスワードのない公開サーバーの参加ボタンを共有します。非公開のアドレスやログイン情報は共有されません。"
   }
 }

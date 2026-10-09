@@ -1014,6 +1014,94 @@ PRESENTATION_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
     }
 }
 
+DISCORD_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
+    "en": {
+        "DISCORD_PRESENCE": "Discord activity",
+        "DISCORD_PRESENCE_DESCRIPTION": "Show your server, map, mode and player count on Discord. Requires the Discord desktop app. Private server addresses are hidden.",
+        "DISCORD_JOIN": "Discord joining",
+        "DISCORD_JOIN_DESCRIPTION": "Allow Discord Join Game and share a join button for public servers without a password. Private addresses and login credentials are never shared.",
+    },
+    "bg": {
+        "DISCORD_PRESENCE": "Активност в Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Показва сървъра, картата, режима и броя играчи в Discord. Изисква настолното приложение Discord. Адресите на частни сървъри са скрити.",
+        "DISCORD_JOIN": "Присъединяване чрез Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Позволява присъединяване към играта чрез Discord и споделя бутон за публични сървъри без парола. Частни адреси и данни за вход никога не се споделят.",
+    },
+    "de": {
+        "DISCORD_PRESENCE": "Discord-Aktivität",
+        "DISCORD_PRESENCE_DESCRIPTION": "Zeigt Server, Karte, Modus und Spielerzahl in Discord. Erfordert die Discord-Desktop-App. Private Serveradressen bleiben verborgen.",
+        "DISCORD_JOIN": "Über Discord beitreten",
+        "DISCORD_JOIN_DESCRIPTION": "Erlaubt den Spielbeitritt über Discord und teilt eine Beitrittsschaltfläche für öffentliche Server ohne Passwort. Private Adressen und Zugangsdaten werden niemals geteilt.",
+    },
+    "es": {
+        "DISCORD_PRESENCE": "Actividad en Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Muestra el servidor, mapa, modo y número de jugadores en Discord. Requiere la aplicación de escritorio de Discord. Las direcciones de servidores privados se ocultan.",
+        "DISCORD_JOIN": "Unirse desde Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Permite unirse a la partida desde Discord y compartir un botón para servidores públicos sin contraseña. Nunca se comparten direcciones privadas ni credenciales.",
+    },
+    "es-MX": {
+        "DISCORD_PRESENCE": "Actividad en Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Muestra el servidor, mapa, modo y número de jugadores en Discord. Requiere la aplicación de escritorio de Discord. Las direcciones de servidores privados se ocultan.",
+        "DISCORD_JOIN": "Unirse desde Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Permite unirse a la partida desde Discord y compartir un botón para servidores públicos sin contraseña. Nunca se comparten direcciones privadas ni credenciales.",
+    },
+    "fr": {
+        "DISCORD_PRESENCE": "Activité Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Affiche le serveur, la carte, le mode et le nombre de joueurs sur Discord. Nécessite l'application de bureau Discord. Les adresses des serveurs privés sont masquées.",
+        "DISCORD_JOIN": "Rejoindre via Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Autorise à rejoindre la partie via Discord et partage un bouton pour les serveurs publics sans mot de passe. Les adresses privées et les identifiants ne sont jamais partagés.",
+    },
+    "it": {
+        "DISCORD_PRESENCE": "Attività su Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Mostra server, mappa, modalità e numero di giocatori su Discord. Richiede l'app desktop di Discord. Gli indirizzi dei server privati sono nascosti.",
+        "DISCORD_JOIN": "Unisciti tramite Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Consente di unirsi alla partita tramite Discord e condivide un pulsante per i server pubblici senza password. Gli indirizzi privati e le credenziali non vengono mai condivisi.",
+    },
+    "pt-BR": {
+        "DISCORD_PRESENCE": "Atividade no Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Mostra servidor, mapa, modo e número de jogadores no Discord. Requer o aplicativo para computador do Discord. Endereços de servidores privados ficam ocultos.",
+        "DISCORD_JOIN": "Entrar pelo Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Permite entrar na partida pelo Discord e compartilha um botão para servidores públicos sem senha. Endereços privados e credenciais nunca são compartilhados.",
+    },
+    "ru": {
+        "DISCORD_PRESENCE": "Активность в Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Показывает сервер, карту, режим и число игроков в Discord. Требуется настольное приложение Discord. Адреса частных серверов скрыты.",
+        "DISCORD_JOIN": "Присоединение через Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Разрешает присоединяться к игре через Discord и показывает кнопку для общедоступных серверов без пароля. Частные адреса и данные для входа никогда не передаются.",
+    },
+    "uk": {
+        "DISCORD_PRESENCE": "Активність у Discord",
+        "DISCORD_PRESENCE_DESCRIPTION": "Показує сервер, карту, режим і кількість гравців у Discord. Потрібен настільний застосунок Discord. Адреси приватних серверів приховано.",
+        "DISCORD_JOIN": "Приєднання через Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Дозволяє приєднуватися до гри через Discord і показує кнопку для публічних серверів без пароля. Приватні адреси та дані для входу ніколи не передаються.",
+    },
+    "pl": {
+        "DISCORD_PRESENCE": "Aktywność na Discordzie",
+        "DISCORD_PRESENCE_DESCRIPTION": "Pokazuje serwer, mapę, tryb i liczbę graczy na Discordzie. Wymaga aplikacji Discord na komputer. Adresy prywatnych serwerów są ukryte.",
+        "DISCORD_JOIN": "Dołączanie przez Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Pozwala dołączać do gry przez Discord i udostępnia przycisk dla publicznych serwerów bez hasła. Prywatne adresy i dane logowania nigdy nie są udostępniane.",
+    },
+    "cs": {
+        "DISCORD_PRESENCE": "Aktivita na Discordu",
+        "DISCORD_PRESENCE_DESCRIPTION": "Zobrazuje server, mapu, režim a počet hráčů na Discordu. Vyžaduje aplikaci Discord pro počítač. Adresy soukromých serverů jsou skryté.",
+        "DISCORD_JOIN": "Připojení přes Discord",
+        "DISCORD_JOIN_DESCRIPTION": "Umožňuje připojení ke hře přes Discord a sdílí tlačítko pro veřejné servery bez hesla. Soukromé adresy a přihlašovací údaje se nikdy nesdílejí.",
+    },
+    "tr": {
+        "DISCORD_PRESENCE": "Discord etkinliği",
+        "DISCORD_PRESENCE_DESCRIPTION": "Sunucu, harita, mod ve oyuncu sayısını Discord'da gösterir. Discord masaüstü uygulaması gerekir. Özel sunucu adresleri gizlenir.",
+        "DISCORD_JOIN": "Discord üzerinden katılma",
+        "DISCORD_JOIN_DESCRIPTION": "Discord üzerinden oyuna katılmaya izin verir ve şifresiz herkese açık sunucular için katıl düğmesi paylaşır. Özel adresler ve giriş bilgileri asla paylaşılmaz.",
+    },
+    "ja": {
+        "DISCORD_PRESENCE": "Discordのアクティビティ",
+        "DISCORD_PRESENCE_DESCRIPTION": "サーバー、マップ、モード、プレイヤー数をDiscordに表示します。Discordのデスクトップアプリが必要です。非公開サーバーのアドレスは表示されません。",
+        "DISCORD_JOIN": "Discordから参加",
+        "DISCORD_JOIN_DESCRIPTION": "Discordからのゲーム参加を許可し、パスワードのない公開サーバーの参加ボタンを共有します。非公開のアドレスやログイン情報は共有されません。",
+    },
+}
+
+
 BLOOD_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {
     "en": {
         "BLOOD_MARKS": "Lingering blood",
@@ -1367,6 +1455,7 @@ def main() -> None:
         strings.update(PRESENTATION_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(SERVER_JOIN_OVERLAYS.get(locale, {}))
         strings.update(BLOOD_SETTINGS_OVERLAYS.get(locale, {}))
+        strings.update(DISCORD_SETTINGS_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,

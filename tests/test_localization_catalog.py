@@ -150,12 +150,16 @@ class LocalizationCatalogTests(unittest.TestCase):
                 changed = sum(strings[key] != english[key] for key in retail_keys)
                 self.assertGreater(changed, 1_000)
 
-    def test_appearance_settings_survive_catalog_regeneration_in_every_locale(self) -> None:
+    def test_appearance_and_discord_settings_survive_catalog_regeneration_in_every_locale(self) -> None:
         generator_path = PROJECT_ROOT / "tools" / "generate-localization-catalog.py"
         generator = runpy.run_path(generator_path)
-        overlays = generator["APPEARANCE_SETTINGS_OVERLAYS"]
+        overlays = {
+            locale: {**appearance, **generator["DISCORD_SETTINGS_OVERLAYS"][locale]}
+            for locale, appearance in generator["APPEARANCE_SETTINGS_OVERLAYS"].items()
+        }
         self.assertEqual(set(overlays), set(generator["LOCALES"]))
-        keys = {"SHOW_SKINS", "SHOW_OTHER_SKINS", "WEAPON_MOTION"}
+        keys = {"SHOW_SKINS", "SHOW_OTHER_SKINS", "WEAPON_MOTION", "DISCORD_PRESENCE",
+                "DISCORD_PRESENCE_DESCRIPTION", "DISCORD_JOIN", "DISCORD_JOIN_DESCRIPTION"}
         english = load_pack("en")["strings"]
         for locale, overlay in overlays.items():
             with self.subTest(locale=locale):

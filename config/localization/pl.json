@@ -2123,6 +2123,10 @@
     "ARENA_DESCRIPTION": "Wyeliminuj wszystkich wrogów, aby wygrać rundę!",
     "LOAD_FAILED": "Wczytywanie nie powiodło się",
     "BLOOD_MARKS": "Ślady krwi",
-    "BLOOD_MARKS_DESCRIPTION": "Wizualne krople krwi i tymczasowe plamy na blokach w Classic i Standard. Pozostają przez 20–32 sekundy i nie wpływają na rozgrywkę."
+    "BLOOD_MARKS_DESCRIPTION": "Wizualne krople krwi i tymczasowe plamy na blokach w Classic i Standard. Pozostają przez 20–32 sekundy i nie wpływają na rozgrywkę.",
+    "DISCORD_PRESENCE": "Aktywność na Discordzie",
+    "DISCORD_PRESENCE_DESCRIPTION": "Pokazuje serwer, mapę, tryb i liczbę graczy na Discordzie. Wymaga aplikacji Discord na komputer. Adresy prywatnych serwerów są ukryte.",
+    "DISCORD_JOIN": "Dołączanie przez Discord",
+    "DISCORD_JOIN_DESCRIPTION": "Pozwala dołączać do gry przez Discord i udostępnia przycisk dla publicznych serwerów bez hasła. Prywatne adresy i dane logowania nigdy nie są udostępniane."
   }
 }

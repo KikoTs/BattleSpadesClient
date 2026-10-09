@@ -65,6 +65,10 @@
     "ARENA_DESCRIPTION": "Zlikvidujte všechny nepřátele a vyhrajte kolo!",
     "LOAD_FAILED": "Načítání se nezdařilo",
     "BLOOD_MARKS": "Krvavé stopy",
-    "BLOOD_MARKS_DESCRIPTION": "Vizuální kapky krve a dočasné skvrny na blocích v Classic a Standard. Trvají 20–32 sekund a nemění hratelnost."
+    "BLOOD_MARKS_DESCRIPTION": "Vizuální kapky krve a dočasné skvrny na blocích v Classic a Standard. Trvají 20–32 sekund a nemění hratelnost.",
+    "DISCORD_PRESENCE": "Aktivita na Discordu",
+    "DISCORD_PRESENCE_DESCRIPTION": "Zobrazuje server, mapu, režim a počet hráčů na Discordu. Vyžaduje aplikaci Discord pro počítač. Adresy soukromých serverů jsou skryté.",
+    "DISCORD_JOIN": "Připojení přes Discord",
+    "DISCORD_JOIN_DESCRIPTION": "Umožňuje připojení ke hře přes Discord a sdílí tlačítko pro veřejné servery bez hesla. Soukromé adresy a přihlašovací údaje se nikdy nesdílejí."
   }
 }
