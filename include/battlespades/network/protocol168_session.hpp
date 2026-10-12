@@ -149,6 +149,9 @@ struct Protocol168InitialInfo final {
     bool enable_minimap_height_icons{};
     bool allow_shooting_holding_intel{};
     bool friendly_fire{};
+    bool enable_corpse_explosion{true};
+    /** Absent on older servers; a spawned grave still takes precedence. */
+    std::optional<bool> enable_gravestones;
     /** Whether authoritative movement collides players with allied bodies. */
     bool same_team_collision{};
     bool enable_colour_picker{};
@@ -183,6 +186,10 @@ struct Protocol168InitialInfo final {
     std::vector<std::pair<std::string, std::string>> custom_game_rules;
     std::uint8_t ugc_mode{};
     world::FlightProfile flight_profile;
+    /** BATTLESPADES_HARDCORE v1: normalized human movement, negotiated by BSCF v3. */
+    bool hardcore{};
+    std::string fun_mode;
+    bool race_momentum{};
 };
 
 /**

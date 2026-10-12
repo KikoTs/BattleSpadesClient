@@ -72,6 +72,12 @@ void every_mapped_server_sound_exists() {
 int main() {
     try {
         retail_distance_is_a_hard_sphere();
+        expect(within_retail_hearing_distance({}, {96.0F, 0, 0}, SpatialSoundProfile::classic_weapon_report),
+               "Classic guns must remain audible at the BetterSpades 96-block boundary");
+        expect(!within_retail_hearing_distance({}, {96.1F, 0, 0}, SpatialSoundProfile::classic_weapon_report),
+               "Classic reports must not become map-wide");
+        expect(!within_retail_hearing_distance({}, {60.0F, 0, 0}, SpatialSoundProfile::weapon_report),
+               "native weapon hearing distance must be unchanged");
         weapon_reports_use_retail_tool_volume_and_falloff();
         every_mapped_server_sound_exists();
         std::cout << "server audio catalog tests passed\n";

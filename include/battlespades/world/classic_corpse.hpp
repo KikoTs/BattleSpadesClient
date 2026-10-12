@@ -113,6 +113,7 @@ public:
     };
     /** Cosmetic capsule query against the current articulated pose. */
     [[nodiscard]] std::optional<Hit> trace(Vec3 origin, Vec3 direction, double range) const;
+    [[nodiscard]] Hit closest_hit(Vec3 position) const;
     /**
      * A blow at `hit` with `velocity` in blocks per second. The momentum it
      * delivers is fixed, so a light part is thrown and a heavy one barely
@@ -121,6 +122,14 @@ public:
      */
     void impulse(const Hit& hit, Vec3 velocity);
     void impulse(Vec3 position, Vec3 velocity);
+    enum class DeathImpact { ballistic, explosion, fall };
+    /** Changes presentation only; velocities and solver limits stay bounded. */
+    void react(DeathImpact cause, Vec3 direction = {});
+    [[nodiscard]] static Part hit_part(const Hit& hit) noexcept;
+    /** Release one anatomical joint, retaining the limb's existing momentum. */
+    bool detach(Part part);
+    [[nodiscard]] bool detached(Part part) const noexcept;
+    [[nodiscard]] Vec3 cut_position(Part part) const noexcept;
 
     [[nodiscard]] bool ragdoll() const noexcept {
         return ragdoll_;
@@ -152,6 +161,7 @@ private:
         std::uint8_t parent{}, child{};
         Vec3 parent_anchor{}, child_anchor{};
         bool hinge{};
+        bool severed{};
         /** Hinge: flexion about the shared local x axis, radians. */
         double flex_minimum{}, flex_maximum{};
         /** Ball joint: the child's bone in the parent's neutral frame. */

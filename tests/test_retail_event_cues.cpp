@@ -108,6 +108,13 @@ void voice_pool_follows_decision_d5() {
 
 int main() {
     try {
+        expect(battlespades::audio::classic_fatal_impact_cue(0) &&
+               battlespades::audio::classic_fatal_impact_cue(1) &&
+               battlespades::audio::classic_fatal_impact_cue(22) &&
+               !battlespades::audio::classic_fatal_impact_cue(7) &&
+               !battlespades::audio::classic_fatal_impact_cue(8),
+               "Classic fatal hit cues exclude falls and team switches");
+
         pickup_cues_cover_bomb_and_diamond_only();
         airstrike_uses_its_own_bank();
         rockets_pick_their_flight_loop_from_the_owner_tool();

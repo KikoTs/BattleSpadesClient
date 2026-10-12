@@ -501,6 +501,13 @@ struct GameHudMinimapZone final {
     double icon_scale{};
 };
 
+struct GameHudMinimapTracer final {
+    double x1{}, y1{}, x2{}, y2{};
+};
+/** A brief moving bullet trail; never reveals a player marker. */
+[[nodiscard]] std::optional<GameHudMinimapTracer> classic_minimap_tracer(
+    GameHudMinimapTracer path, double age_seconds, double speed) noexcept;
+
 /** Renderer-neutral state for the 512x512 north-up retail minimap. */
 struct GameHudMinimapState final {
     std::string texture_asset{std::string{game_hud_assets::minimap_texture}};
@@ -513,6 +520,7 @@ struct GameHudMinimapState final {
     std::vector<GameHudMinimapZone> zones;
     std::optional<GameHudMinimapMarker> view_cone;
     std::vector<GameHudMinimapMarker> markers;
+    std::vector<GameHudMinimapTracer> tracers;
 };
 
 /**

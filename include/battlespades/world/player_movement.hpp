@@ -37,6 +37,7 @@ struct MovementClassConfig final {
     float engineer_flight_accel{0.1F};
     float parachute_gravity_scale{0.05F};
     bool parachute_free_fall_floor{};
+    bool race_momentum{};
 };
 
 struct FlightProfile;
@@ -61,7 +62,8 @@ void apply_flight_profile(MovementClassConfig& config, const FlightProfile& prof
 [[nodiscard]] MovementClassConfig
 movement_config_for_class(std::uint8_t class_id,
                           double movement_speed_scale = 1.0,
-                          bool fall_on_water_damage = true) noexcept;
+                          bool fall_on_water_damage = true,
+                          bool hardcore = false) noexcept;
 
 /** Held semantic movement inputs consumed by one fixed simulation step. */
 struct PlayerInputState final {

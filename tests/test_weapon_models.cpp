@@ -56,6 +56,23 @@ int main() {
                    same(direct.models->first_person_parts, recoloured.first_person_parts),
                "tinted_weapon_models must be bit-identical to a tinted load");
     }
+    {
+        const auto red=battlespades::world::load_weapon_models(root,18,{1,1,1},battlespades::world::VxlColor{180,24,36,255});
+        const auto gold=battlespades::world::load_weapon_models(root,18,{1,1,1},battlespades::world::VxlColor{220,180,20,255});
+        expect(red && gold,"native sniper models load with custom team colors");
+        const auto check=[](const auto& a,const auto& b) {
+            std::size_t changed{},same{};
+            expect(a.size()==b.size(),"team colors preserve weapon parts");
+            for(std::size_t p=0;p<a.size();++p) {
+                expect(a[p].vertices.size()==b[p].vertices.size(),"team colors preserve weapon geometry");
+                for(std::size_t v=0;v<a[p].vertices.size();++v)
+                    (a[p].vertices[v].abgr==b[p].vertices[v].abgr?same:changed)++;
+            }
+            expect(changed>0 && same>0,"sniper camouflage follows team colors while wood and metal remain unchanged");
+        };
+        check(red.models->first_person_parts,gold.models->first_person_parts);
+        check(red.models->third_person_parts,gold.models->third_person_parts);
+    }
     for (const auto& definition : battlespades::world::weapon_catalog()) {
         const auto loaded = battlespades::world::load_weapon_models(
             root, definition.tool_id);

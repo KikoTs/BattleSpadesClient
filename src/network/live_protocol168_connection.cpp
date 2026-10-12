@@ -185,9 +185,9 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
             // one worker-local copy rather than allocating/copying it on every
             // idle service poll merely to send no packets.
             const auto ticket_key = session_config.steam_ticket;
-            // The caller enables extensions only for known BattleSpades
-            // peers. Stock retail servers must receive the exact ticket.
-            Protocol168Session session{std::move(session_config)};
+            // Unknown hosts receive a stock ticket first. Keep the config for
+            // a single extension retry if Hardcore asks for an updated client.
+            Protocol168Session session{session_config};
             std::unique_ptr<ClassicProtocolSession> classic;
             if (is_classic_protocol(protocol)) classic = std::make_unique<ClassicProtocolSession>(protocol);
             bool received_application_data{};
@@ -517,6 +517,23 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                         break;
                     }
                     case ENET_EVENT_TYPE_DISCONNECT: {
+                        if (protocol == GameProtocol::retail168 && event.data == 10U &&
+                            !joined && session.initial_info() == nullptr &&
+                            !session_config.negotiate_flight_profile) {
+                            session_config.negotiate_flight_profile = true;
+                            session = Protocol168Session{session_config};
+                            enet_peer_disconnect_now(peer, 0U);
+                            retail_ticket_at.reset();
+                            peer = enet_host_connect(host, &address, 1U, static_cast<enet_uint32>(protocol));
+                            if (peer == nullptr) { fail("Cannot retry native capability negotiation"); break; }
+                            connected = false;
+                            received_application_data = false;
+                            deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{connect_ms};
+                            const std::lock_guard lock{state->mutex};
+                            state->status.phase = LiveProtocol168Phase::connecting;
+                            state->status.disconnect_reason.reset();
+                            break;
+                        }
                         if (transport.protocol==GameProtocol::automatic) {
                             if (auto next=next_protocol(protocol,event.data,received_application_data)) {
                                 retry_classic(*next);

@@ -37,6 +37,11 @@ struct RetailCue final {
     }
 }
 
+/** Classic lethal hits can arrive as KillAction without a preceding SetHP. */
+[[nodiscard]] constexpr bool classic_fatal_impact_cue(std::uint8_t native_kill_type) noexcept {
+    return native_kill_type <= 2U || native_kill_type == 22U;
+}
+
 /** AIRSTRIKE_EXPLODE_SOUND / AIRSTRIKE_EXPLODE_WATER_SOUND (A2779/A2780). */
 [[nodiscard]] constexpr RetailCue airstrike_explode_cue(bool submerged) noexcept {
     return {submerged ? "airstrike_explode_water" : "airstrike_explode", {-0.8F, 0.8F}};

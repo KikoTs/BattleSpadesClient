@@ -51,10 +51,20 @@ void chat_is_bounded_and_utf8_safe() {
 }
 
 void chat_presentation_matches_retail_geometry_stroke_and_fade() {
+    {
+        GameChatModel chat;
+        chat.add("still readable");
+        chat.tick(10.0);
+        const auto list = GameChatPresentation{}.build(chat, ui::PixelExtent{1280, 720});
+        expect(!list.empty(), "chat remains visible well past the old five-second timeout");
+        const auto* text = std::get_if<ui::TextDrawCommand>(&list.commands().back());
+        expect(text && text->modulation.color.alpha == 255, "chat stays fully opaque for twelve seconds");
+    }
+
     GameChatModel chat;
     chat.add("older", {30U, 140U, 220U, 255U});
     chat.add("newest", {240U, 180U, 40U, 255U});
-    chat.tick(3.75);
+    chat.tick(GameChatModel::entry_lifetime_seconds - GameChatModel::entry_fade_seconds / 2.0);
     const auto draw =
         GameChatPresentation{}.build(chat, ui::PixelExtent{1280, 720});
     expect(draw.size() == 18U,

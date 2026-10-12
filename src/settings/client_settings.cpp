@@ -444,6 +444,8 @@ ClientSettings normalize_settings(const ClientSettings& source) noexcept {
         result.main.classic_sky = defaults.main.classic_sky;
     if (!valid_classic_fog(source.main.classic_fog))
         result.main.classic_fog = defaults.main.classic_fog;
+    result.main.gore_intensity = std::min<std::uint8_t>(source.main.gore_intensity, 3);
+    result.main.dismemberment_intensity = std::min<std::uint8_t>(source.main.dismemberment_intensity, 3);
     result.main.audio_device = valid_audio_device(source.main.audio_device)
                                    ? source.main.audio_device : std::string{};
     result.graphics.resolution = normalized_resolution(source.graphics.resolution);
@@ -508,6 +510,8 @@ SettingsValidationResult validate_settings(const ClientSettings& settings) {
     if (classic_sky_option(settings.main.classic_sky) == nullptr ||
         !valid_classic_fog(settings.main.classic_fog))
         return {false, "invalid Classic atmosphere preference"};
+    if (settings.main.gore_intensity > 3 || settings.main.dismemberment_intensity > 3)
+        return {false, "gore intensity must be 0..3"};
     if (!valid_language(settings.main.language)) {
         return {false, "language must be a BCP-47-style locale tag"};
     }

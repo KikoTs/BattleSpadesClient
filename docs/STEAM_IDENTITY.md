@@ -64,3 +64,13 @@ account sign-in is available. See the website's `docs/STEAM_LAUNCHER_AUTH.md`.
 Regression tests cover callback ownership/lifetimes, immutable account identity,
 unexpected subjects, recovery backups and replacement, and the existing identity
 menu. The loopback HTTP fixture never contacts Valve or a production account.
+
+## Join-code renewal after map changes
+
+The client marks a Revival join code consumed as soon as NewPlayerConnection
+is queued. A retained code with no issue timestamp must be refreshed, including
+a same-peer map transfer that tears down the previous scene. Initial spectator
+and spectator-to-team joins use this renewal path too. Tickets older than 30
+seconds are renewed before submission; failed renewal leaves the chooser open
+for retry without sending the consumed code. A completion from an abandoned
+map generation cannot authorize the replacement scene.

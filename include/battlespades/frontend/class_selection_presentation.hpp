@@ -36,6 +36,8 @@ struct ClassSelectionAppearance {
     double block_wallet_multiplier{1.0};
     /** prefab_manager.get_prefab_block_count; nullopt hides the number. */
     std::function<std::optional<std::size_t>(std::string_view)> prefab_block_count;
+    /** The negotiated five-role ruleset changes names, descriptions and slot labels. */
+    bool hardcore{};
 };
 
 /** Asset presentation for the multiplayer SelectClass gate. */

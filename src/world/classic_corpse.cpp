@@ -984,6 +984,7 @@ void ClassicCorpse::pose_limb(
 
 void ClassicCorpse::place_chain() {
     for (const auto& link : links_) {
+        if (link.severed) continue;
         const auto& parent = bodies_[link.parent];
         auto& child = bodies_[link.child];
         child.position = sub(add(parent.position, rotate(parent.orientation, link.parent_anchor)),
@@ -1082,6 +1083,7 @@ void ClassicCorpse::tick(double dt, const VxlMap& map, double gravity) {
 void ClassicCorpse::solve_links(double h) {
     for (std::size_t index = 0; index < link_count; ++index) {
         const auto& link = links_[index];
+        if (link.severed) continue;
         const auto& drive = drives_[index];
         // A spring of this stiffness, as the solver takes it.
         const double slack = drive.stiffness > 0 ? 1 / (drive.stiffness * h * h) : 0;
@@ -1196,11 +1198,17 @@ void ClassicCorpse::solve_self() {
         centers[i] = add(bodies_[balls_[i].part].position,
                          rotate(bodies_[balls_[i].part].orientation, balls_[i].local));
     std::array<std::array<Deepest, part_count>, part_count> pairs{};
+    std::array<std::array<bool, part_count>, part_count> separated{};
+    for (const auto& link : links_) if (link.severed) {
+        separated[link.parent][link.child] = true;
+        separated[link.child][link.parent] = true;
+    }
     for (std::size_t a = 0; a < ball_count_; ++a)
         for (std::size_t b = a + 1; b < ball_count_; ++b) {
             const auto& first = balls_[a];
             const auto& second = balls_[b];
-            if (first.part == second.part || !blocks(first.part, second.part))
+            if (first.part == second.part ||
+                (!separated[first.part][second.part] && !blocks(first.part, second.part)))
                 continue;
             const double depth =
                 first.radius + second.radius - length(sub(centers[a], centers[b]));
@@ -1340,6 +1348,7 @@ void ClassicCorpse::substep(const VxlMap& map, double gravity, double h) {
     bodies_[torso].angular_velocity =
         mul(bodies_[torso].angular_velocity, 1 - 5 * tone_ * h);
     for (const auto& link : links_) {
+        if (link.severed) continue;
         auto& parent = bodies_[link.parent];
         auto& child = bodies_[link.child];
         const auto relative = sub(child.angular_velocity, parent.angular_velocity);
@@ -1501,7 +1510,8 @@ ClassicCorpse::trace(Vec3 origin, Vec3 direction, double range) const {
     direction = unit(direction);
     std::optional<Hit> nearest;
     for (const auto& bone : bones) {
-        const auto a = joint(bone.from), b = joint(bone.to);
+        const auto a = detached(static_cast<Part>(bone.part)) ? joint_rest_to_world(bone.part, joint_rest_[bone.from]) : joint(bone.from);
+        const auto b = detached(static_cast<Part>(bone.part)) ? joint_rest_to_world(bone.part, joint_rest_[bone.to]) : joint(bone.to);
         const auto distance = ray_capsule(origin, direction, a, b, bone.radius);
         if (!distance || *distance >= range || (nearest && *distance >= nearest->distance))
             continue;
@@ -1548,10 +1558,16 @@ void ClassicCorpse::impulse(const Hit& hit, Vec3 velocity) {
 void ClassicCorpse::impulse(Vec3 position, Vec3 velocity) {
     if (!ragdoll_ || !finite(position))
         return;
+    impulse(closest_hit(position), velocity);
+}
+
+ClassicCorpse::Hit ClassicCorpse::closest_hit(Vec3 position) const {
     Hit closest{};
     double distance = std::numeric_limits<double>::infinity();
     for (const auto& bone : bones) {
-        const auto a = joint(bone.from), axis = sub(joint(bone.to), a);
+        const auto a = detached(static_cast<Part>(bone.part)) ? joint_rest_to_world(bone.part, joint_rest_[bone.from]) : joint(bone.from);
+        const auto b = detached(static_cast<Part>(bone.part)) ? joint_rest_to_world(bone.part, joint_rest_[bone.to]) : joint(bone.to);
+        const auto axis = sub(b, a);
         const double t =
             std::clamp(dot(sub(position, a), axis) / std::max(1e-12, dot(axis, axis)), 0.0, 1.0);
         const auto p = add(a, mul(axis, t));
@@ -1561,7 +1577,60 @@ void ClassicCorpse::impulse(Vec3 position, Vec3 velocity) {
             closest = Hit{p, d, t, bone.from, bone.to};
         }
     }
-    impulse(closest, velocity);
+    return closest;
+}
+
+ClassicCorpse::Part ClassicCorpse::hit_part(const Hit& hit) noexcept {
+    for (const auto& bone : bones)
+        if (bone.from == hit.from && bone.to == hit.to) return static_cast<Part>(bone.part);
+    return torso;
+}
+
+bool ClassicCorpse::detached(Part part) const noexcept {
+    return std::ranges::any_of(links_, [part](const auto& link) {
+        return link.child == part && link.severed;
+    });
+}
+
+Vec3 ClassicCorpse::cut_position(Part part) const noexcept {
+    for (const auto& link : links_) if(link.child==part) {
+        const auto& body=bodies_[link.child];
+        return add(body.position,rotate(body.orientation,link.child_anchor));
+    }
+    return position();
+}
+
+bool ClassicCorpse::detach(Part part) {
+    if (!ragdoll_ || part == torso || part >= part_count) return false;
+    for (auto& link : links_) {
+        if (link.child != part || link.severed) continue;
+        link.severed = true;
+        // Missing support cannot continue to carry the torso or drive gait.
+        // Do not teleport, scale or add energy to the separated parts.
+        stagger_ = carried_ = tone_ = upright_ = 0;
+        quiet_steps_ = still_steps_ = keel_spent_ = 0;
+        return true;
+    }
+    return false;
+}
+
+void ClassicCorpse::react(DeathImpact cause, Vec3 direction) {
+    if (!ragdoll_) return;
+    if (cause != DeathImpact::ballistic) {
+        stagger_ = carried_ = tone_ = upright_ = 0;
+        quiet_steps_ = still_steps_ = keel_spent_ = 0;
+    }
+    if (cause == DeathImpact::explosion && finite(direction)) {
+        direction = unit(direction, {0, 0, -1});
+        for (auto& body : bodies_) {
+            body.velocity = add(body.velocity, mul(direction, 4.0));
+            limit_rates(body);
+        }
+        impulse(joint(neck), mul(direction, 9.0));
+    } else if (cause == DeathImpact::fall) {
+        // Keep incoming momentum; collapse at the impact without a launch.
+        impulse(joint(pelvis), {0, 0, 3});
+    }
 }
 
 std::optional<Vec3> shoot_classic_corpses(std::span<ClassicCorpse* const> corpses,
@@ -1652,7 +1721,7 @@ ClassicCorpse::arm_transform(bool left, bool upper, Vec3 minimum, Vec3 maximum) 
     else
         pivot.z = minimum.z;
     const auto origin =
-        sub(joint(from),
+        sub(detached(part) ? joint_rest_to_world(part, joint_rest_[from]) : joint(from),
             add(add(mul(basis[0], pivot.x), mul(basis[1], pivot.y)), mul(basis[2], pivot.z)));
     return matrix_of(basis[0], basis[1], basis[2], origin);
 }

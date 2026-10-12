@@ -814,8 +814,7 @@ ui::DrawList GameChatPresentation::build(
                                         ? 1.0
                                         : std::clamp(
                                               entry.time_to_live_seconds /
-                                                      GameChatModel::entry_lifetime_seconds *
-                                                      2.0,
+                                                      GameChatModel::entry_fade_seconds,
                                               0.0, 1.0);
         if (alpha_fraction <= 0.0) continue;
         const auto font = entry.use_tuffy_font ? tuffy_font : standard_font;

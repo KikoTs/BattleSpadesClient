@@ -102,7 +102,8 @@ public:
     static constexpr std::size_t maximum_input_bytes{200U};
     /** MAX_CHAT_SIZE: feed lines longer than this wrap onto another line. */
     static constexpr std::size_t wrap_code_points{90U};
-    static constexpr double entry_lifetime_seconds{5.0};
+    static constexpr double entry_lifetime_seconds{15.0};
+    static constexpr double entry_fade_seconds{3.0};
 
     /**
      * HUD.on_text drops a character chat_font.contains_character rejects.

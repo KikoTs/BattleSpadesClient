@@ -483,16 +483,20 @@ std::optional<world::ChunkMesh> inventory_preview_mesh(
 }
 
 std::optional<world::ChunkMesh> inventory_weapon_preview_mesh(const InventoryCosmetic& item,
-        const std::filesystem::path& root,bool blue_team,const world::SkinVariantSelection& variants){
-    if(item.scripted_skin.empty())return inventory_preview_mesh(item,root,blue_team);
+        const std::filesystem::path& root,bool blue_team,const world::SkinVariantSelection& variants,
+        std::optional<world::VxlColor> team_color){
+    const auto fallback=[&]{return inventory_preview_mesh(item,root,blue_team,std::nullopt,nullptr,false,team_color);};
+    if(item.scripted_skin.empty())return fallback();
     world::ScriptedWeapon skin;std::string error;
-    if(!skin.load(root.parent_path()/item.scripted_skin,error,variants))return inventory_preview_mesh(item,root,blue_team);
+    if(!skin.load(root.parent_path()/item.scripted_skin,error,variants))return fallback();
     world::SkinInput input;input.dt=1.F/60.F;input.muted=true;
+    const auto color=team_color.value_or(blue_team?world::VxlColor{72,111,181,255}:world::VxlColor{79,132,61,255});
+    input.team_color={color.red/255.F,color.green/255.F,color.blue/255.F};
     for(int frame=0;frame<90;++frame)if(!skin.update(input,error))return std::nullopt;
     world::ChunkMesh combined;combined.minimum.fill(std::numeric_limits<float>::max());combined.maximum.fill(std::numeric_limits<float>::lowest());
     for(const auto& draw:skin.frame().models){
         if(skin.resources()[draw.resource].arm_part!=world::SkinArmPart::none)continue;
-        auto part=skin.model_mesh(draw.resource,blue_team?world::VxlColor{72,111,181,255}:world::VxlColor{79,132,61,255});
+        auto part=skin.model_mesh(draw.resource,color);
         const auto offset=static_cast<std::uint32_t>(combined.vertices.size());const auto& m=draw.transform;
         for(auto vertex:part.vertices){
             const std::array xyz{m[0]*vertex.x+m[4]*vertex.y+m[8]*vertex.z+m[12],
@@ -502,7 +506,7 @@ std::optional<world::ChunkMesh> inventory_weapon_preview_mesh(const InventoryCos
         }
         for(const auto index:part.indices)combined.indices.push_back(offset+index);
     }
-    return combined.empty()?inventory_preview_mesh(item,root,blue_team):std::optional{std::move(combined)};
+    return combined.empty()?fallback():std::optional{std::move(combined)};
 }
 
 std::vector<std::uint8_t> build_inventory_preview(const InventoryCosmetic& item,

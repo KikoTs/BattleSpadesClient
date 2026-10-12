@@ -11,6 +11,8 @@
 //            [times=0,0.12,0.3,0.6,1.2,4] [yaw=-90] [seed=1] [spacing=4.5] [bounds=1]
 //            [distance=11] [eye=2.4] [pitch=8] [pan=0] [fov=50] [width=1800] [height=600]
 //            [assets=<root>] [shaders=<bin root>]
+//            [gore=0|1] [intensity=0..3] [detach=head|arm|leg]
+//            [color=blue|red|gold] [cause=blast|fall]
 
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/quality_profile.hpp"
@@ -20,6 +22,8 @@
 #include "battlespades/world/chunk_mesh.hpp"
 #include "battlespades/world/class_models.hpp"
 #include "battlespades/world/classic_corpse.hpp"
+#include "battlespades/world/body_damage.hpp"
+#include "battlespades/world/particle_system.hpp"
 #include "battlespades/world/jetpack_death.hpp"
 #include "battlespades/world/kv6_model.hpp"
 #include "battlespades/world/map_atmosphere.hpp"
@@ -229,7 +233,7 @@ int main(int argc, char** argv) {
 
         const auto asset_root = std::filesystem::path{config.asset_root};
         const auto color =
-            world::retail_character_color(world::VxlColor{44U, 117U, 179U, 255U});
+            world::retail_character_color(get("color", "blue")=="red" ? world::VxlColor{210U,40U,60U,255U} : get("color", "blue")=="gold" ? world::VxlColor{235U,185U,25U,255U} : world::VxlColor{44U,117U,179U,255U});
         auto models = world::load_class_models(asset_root, class_id, color);
         expect(static_cast<bool>(models), models.error);
         const auto& set = *models.models;
@@ -256,6 +260,8 @@ int main(int argc, char** argv) {
         const char* const body_names[]{"torso", "head", "thigh_l", "shin_l", "thigh_r", "shin_r"};
         const char* const arm_names[]{"upper_l", "upper_r", "fore_l", "fore_r"};
         std::vector<render::WorldModelDraw> draws;
+        std::vector<world::ParticleInstance> fragments;
+        std::vector<world::ParticleBatch> fragment_batches;
         std::cout << "scenario=" << scenario << " class=" << static_cast<int>(class_id)
                   << " yaw=" << yaw << "\n";
         if (get("bounds", "0") != "0") {
@@ -296,6 +302,42 @@ int main(int argc, char** argv) {
             }
             if (scenario == "drop") position.z -= 3.0;
             Corpse corpse{position, yaw, velocity, seed, true, crouched, 0};
+            world::BodyDamage wounds;
+            const auto intensity=static_cast<std::uint8_t>(std::clamp(std::stoi(get("intensity","3")),0,3));
+            std::vector<world::BodyDamage::Surface> surfaces;
+            const std::array<Mat4,6> initial{corpse.body_transform(),corpse.head_transform(),corpse.leg_transform(true),
+                corpse.shin_transform(true),corpse.leg_transform(false),corpse.shin_transform(false)};
+            for(std::size_t p=0;p<6;++p) surfaces.push_back({&body[p],initial[p],static_cast<std::uint8_t>(p<2?p:p<4?2:3)});
+            if(arms) for(std::size_t p=0;p<4;++p) {
+                const auto& mesh=set.first_person_arms[p<2?0:1];
+                surfaces.push_back({&mesh,corpse.arm_transform(p%2==0,p<2,
+                    {mesh.minimum[0],mesh.minimum[1],mesh.minimum[2]}, {mesh.maximum[0],mesh.maximum[1],mesh.maximum[2]}),static_cast<std::uint8_t>(4+p)});
+            }
+            if(get("gore","0")=="1") {
+                const auto radius=world::gore_profile(intensity).wound_radius;
+                for(const auto z:{.3,.55,.8}) {
+                    auto hit=corpse.joint(Corpse::neck);hit.z+=z;hit.x+=forward.x*.25;hit.y+=forward.y*.25;
+                    wounds.hit(hit,seed,radius,0,intensity);
+                }
+                auto head=corpse.joint(Corpse::head);head.x+=forward.x*.23;head.y+=forward.y*.23;
+                wounds.hit(head,seed,radius,1,intensity);
+            }
+            if(get("cause","")=="blast") corpse.react(Corpse::DeathImpact::explosion,{0,-.5,-1});
+            if(get("cause","")=="fall") corpse.react(Corpse::DeathImpact::fall);
+            const auto detach=get("detach","");
+            if(!detach.empty()) {
+                const auto part=detach=="head"?Corpse::skull:detach=="arm"?Corpse::forearm_left:Corpse::shin_left;
+                const auto group=static_cast<std::uint8_t>(detach=="head"?1:detach=="arm"?6:2);
+                const auto cut=corpse.cut_position(part);
+                wounds.hit(cut,seed,.3,group,intensity,true);
+                if(detach!="leg") wounds.hit(cut,seed,.3,detach=="head"?0:4,intensity,true);
+                expect(corpse.detach(part),"capture releases the selected joint");
+                const auto joint=detach=="head"?Corpse::head:detach=="arm"?Corpse::hand_left:Corpse::foot_left;
+                corpse.impulse(corpse.joint(joint),{3,0,-1});
+            }
+            world::ParticleSystem debris;
+            world::emit_body_fragments(debris,wounds.resolve(surfaces),intensity);
+
             if (scenario == "headshot" || scenario == "bodyshot" || scenario == "backshot") {
                 // The frontend's kill impulse: from the killer toward the struck joint.
                 const auto target =
@@ -319,6 +361,7 @@ int main(int argc, char** argv) {
             auto previous = corpse.joint(Corpse::pelvis);
             for (double t = 0; t + 1e-9 < times[index]; t += dt) {
                 corpse.tick(dt, map, 1.0);
+                debris.tick(dt,map);
                 const auto now = corpse.joint(Corpse::pelvis);
                 peak_speed = std::max(peak_speed,
                                       std::sqrt((now.x - previous.x) * (now.x - previous.x) +
@@ -326,6 +369,11 @@ int main(int argc, char** argv) {
                                                 (now.z - previous.z) * (now.z - previous.z)) / dt);
                 previous = now;
             }
+            debris.build_draw_list({262,245,58},192);
+            for(auto batch:debris.batches()) {
+                batch.first+=static_cast<std::uint32_t>(fragments.size());fragment_batches.push_back(batch);
+            }
+            fragments.insert(fragments.end(),debris.instances().begin(),debris.instances().end());
             std::cout << "t=" << times[index] << " resting=" << corpse.resting()
                       << " pelvis_peak_speed=" << peak_speed
                       << "\n  gap above ground (+ floats, - sunk):";
@@ -342,7 +390,7 @@ int main(int argc, char** argv) {
                 corpse.leg_transform(true), corpse.shin_transform(true),
                 corpse.leg_transform(false), corpse.shin_transform(false)};
             for (std::size_t part = 0; part < transforms.size(); ++part) {
-                draws.push_back({body_slots[part], transforms[part]});
+                draws.push_back({get("gore","0")=="1" ? upload(wounds.mesh(body[part],static_cast<std::uint8_t>(part<2?part:part<4?2:3))) : body_slots[part], transforms[part]});
                 report(body_names[part], body[part], transforms[part]);
             }
             if (arms)
@@ -352,7 +400,7 @@ int main(int argc, char** argv) {
                     const auto transform = corpse.arm_transform(
                         left, upper, {mesh.minimum[0], mesh.minimum[1], mesh.minimum[2]},
                         {mesh.maximum[0], mesh.maximum[1], mesh.maximum[2]});
-                    draws.push_back({arm_slots[upper ? 0U : 1U], transform});
+                    draws.push_back({get("gore","0")=="1"?upload(wounds.mesh(mesh,static_cast<std::uint8_t>(4+part))):arm_slots[upper ? 0U : 1U], transform});
                     report(arm_names[part], mesh, transform);
                 }
             std::cout << "\n  joints (height above ground):";
@@ -392,7 +440,7 @@ int main(int argc, char** argv) {
         std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4U);
         for (int pass = 0; pass < 3; ++pass) {
             expect(ui.begin_frame(), std::string{ui.last_error()});
-            expect(scene.submit(camera, config.drawable_extent, {}, draws),
+            expect(scene.submit(camera, config.drawable_extent, {}, draws,fragments,fragment_batches),
                    std::string{scene.last_error()});
             for (const auto id : {render::backdrop_clear_view_id, render::world_view_id,
                                   render::view_model_view_id, render::ui_window_view_id,

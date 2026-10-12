@@ -392,6 +392,20 @@ double damage_indicator_angle_degrees(double source_delta_x,
            radians_to_degrees;
 }
 
+std::optional<GameHudMinimapTracer> classic_minimap_tracer(
+    GameHudMinimapTracer path, double age, double speed) noexcept {
+    const double dx=path.x2-path.x1, dy=path.y2-path.y1, length=std::hypot(dx,dy);
+    if(!std::isfinite(length) || length<1e-6 || !std::isfinite(age) || age<0 ||
+       !std::isfinite(speed) || speed<=0) return std::nullopt;
+    // OpenSpades' map trails use a 0.1-second shutter, independently of the
+    // world tracer mesh. Short impacts therefore still receive a visible trail.
+    const double end=std::min(length, std::max(1.0,age*speed));
+    const double start=std::max(0.0,age*speed-speed*.1);
+    if(start>=end) return std::nullopt;
+    return GameHudMinimapTracer{path.x1+dx*start/length,path.y1+dy*start/length,
+                                path.x1+dx*end/length,path.y1+dy*end/length};
+}
+
 double minimap_marker_rotation_degrees(double orientation_x,
                                        double orientation_y) noexcept {
     if (!std::isfinite(orientation_x) || !std::isfinite(orientation_y) ||
@@ -1861,6 +1875,20 @@ ui::DrawList GameHudPresentation::build(const GameHudModel& model,
             }
             for (const auto& marker : minimap.markers) {
                 append_marker(marker);
+            }
+            for(const auto& trail:minimap.tracers) {
+                const auto length=std::hypot(trail.x2-trail.x1,trail.y2-trail.y1);
+                if(!std::isfinite(length) || length<.001 || !std::isfinite(trail.x1) ||
+                   !std::isfinite(trail.y1)) continue;
+                const double cx=(trail.x1+trail.x2)*.5, cy=(trail.y1+trail.y2)*.5;
+                auto command=window_sprite(game_hud_assets::white_pixel,
+                    map_left+cx-(full?0:focus_x-minimap_half)-length*.5,
+                    map_top+cy-(full?0:focus_y-minimap_half)-1.0,length,2.0,
+                    ui::ColorModulation{ui::ColorRgba8{255,204,153,255},1000,1000},
+                    ui::TextureFilter::linear,
+                    std::atan2(trail.y2-trail.y1,trail.x2-trail.x1)*180.0/std::numbers::pi);
+                command.clip_pixels=minimap_clip;
+                list.push(std::move(command));
             }
         }
         };

@@ -33,7 +33,7 @@ uniform vec4 u_cameraPosition;
 uniform vec4 u_fogParams;
 // x: shading mode (0 passthrough, 1 classic, 2 enhanced)
 // y: ambient occlusion strength
-// z: specular strength
+// z: enhanced specular strength; in Compatibility, 1 selects original Classic colors
 // w: specular exponent
 uniform vec4 u_lightParams;
 // xyz: unit vector from a surface toward the key light. w: key intensity.
@@ -116,7 +116,17 @@ void main()
     }
     else if (u_lightParams.x < 1.5)
     {
-        if (v_retail_meta.w > 0.5)
+        if (u_lightParams.z > 0.5)
+        {
+            // AoS 0.75/0.76 has no retail StateData lights. Its adapter's
+            // synthetic ambient must not be added to RGB (turning black into
+            // gray and saturated colors into pastels). Preserve authored
+            // colors with the existing bounded face/corner shading instead.
+            // This is shared by terrain, players and held tools; fog below
+            // still uses the protocol's distance curve and visibility cap.
+            lit = albedo * v_shade;
+        }
+        else if (v_retail_meta.w > 0.5)
         {
             // Terrain normals are canonical x/y/z-down and retail places VXL
             // vertices at GL (x, -z, y). Its mesher (vxl.pyd sub_10030B60)
@@ -166,9 +176,9 @@ void main()
             vec3 l1 = safe_direction(u_retailLight1Direction.xyz);
             vec3 eye = safe_direction(u_retailViewDirection.xyz);
             vec3 light = (0.75 + 0.25 * dot(n, l0) +
-                0.2 * pow(max(0.0, dot(n, normalize(l0 + eye))), 5.0)) * u_retailLight0Color.rgb;
+                0.2 * pow(max(0.0, dot(n, safe_direction(l0 + eye))), 5.0)) * u_retailLight0Color.rgb;
             light += (0.75 + 0.25 * dot(n, l1) +
-                0.2 * pow(max(0.0, dot(n, normalize(l1 + eye))), 5.0)) * u_retailLight1Color.rgb;
+                0.2 * pow(max(0.0, dot(n, safe_direction(l1 + eye))), 5.0)) * u_retailLight1Color.rgb;
             light += u_retailAmbient.rgb * u_retailAmbient.a;
             lit = albedo * clamp(light, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));
         }

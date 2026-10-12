@@ -11,6 +11,7 @@ struct CosmeticIconRequest {
     world::SkinVariantSelection variants;
     CosmeticIconKind kind{CosmeticIconKind::weapon};
     std::uint8_t class_id{};
+    std::optional<std::uint8_t> tool_id;
     bool blue_team{true};
     std::optional<world::VxlColor> team_color;
 };

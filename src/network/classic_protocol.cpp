@@ -252,6 +252,16 @@ template <class T> void event(ClassicIngest& out, const T& p) {
             w.byte(p.damage_type);
             for (auto f : p.source)
                 fixed(f);
+        } else if constexpr (std::is_same_v<T, PlaySoundPacket>) {
+            w.byte(p.sound_id);
+            w.byte(static_cast<std::uint8_t>((p.looping ? 1U : 0U) | (p.positioned ? 2U : 0U)));
+            fixed(p.volume);
+            fixed(p.time);
+            if (p.looping) w.byte(p.loop_id);
+            if (p.positioned) {
+                for (auto f : p.position) fixed(f);
+                fixed(p.attenuation);
+            }
         } else if constexpr (std::is_same_v<T, PlayerLeftPacket>)
             w.byte(p.player_id);
         else if constexpr (std::is_same_v<T, PickPickupPacket>) {
@@ -785,6 +795,7 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
         const auto id = r.byte(), value = r.byte();
         r.end();
         auto& p = players_.at(id);
+        const auto previous_fire = p.fire;
         if (kind == 3)
             p.input = value;
         else if (kind == 4) {
@@ -795,8 +806,20 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             static_cast<void>(tool_in(value, p.weapon));
             p.tool = value;
         }
-        if (p.present && id != local_id_)
+        if (p.present && id != local_id_) {
             world_event(out, std::span{&id, 1});
+            // Keep a short gun/shovel press visible and audible even if its
+            // release arrives in the same frame. Held actions use the observer
+            // clock; this internal event is never transmitted to the server.
+            const bool primary_pressed = (value & 1U) && !(previous_fire & 1U);
+            const bool dig_pressed = !(value & 1U) && (value & 2U) && !(previous_fire & 2U);
+            if (kind == 4 && !p.record.dead && p.record.team >= 2 && !(p.input & 128U) &&
+                ((p.tool == 2 && primary_pressed) ||
+                 (p.tool == 0 && (primary_pressed || dig_pressed)))) {
+                event(out, ShootFeedbackPacket{world_loop_, id, tool_in(p.tool, p.weapon),
+                                               world_loop_, static_cast<std::uint8_t>(world_loop_)});
+            }
+        }
         break;
     }
     case 5: {
@@ -859,6 +882,10 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             p.weapon = r.byte();
             p.record.team = team_in(r.byte());
             p.record.position = r.vector(true);
+            // Classic CreatePlayer has no orientation. Match OpenSpades' new
+            // Player constructor instead of reusing the death/spectator camera.
+            p.record.orientation = p.record.team == 2 ? std::array<float,3>{1,0,0}
+                                                     : std::array<float,3>{-1,0,0};
             p.tool = 2;
             p.input = 0;
             p.fire = 0;
@@ -1092,6 +1119,7 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
         }
         event(out, DropPickupPacket{world_loop_, id, 16, players_[id].record.position, {}});
         announce_intel(id, "captured");
+        event(out, PlaySoundPacket{2, false, false, 1.0F});
         if (winning && team >= 2 && team <= 3)
             event(out, ChatMessagePacket{255, 2,
                                          team_names_[team - 2] + " captured the final intel."});
@@ -1108,6 +1136,7 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
         }
         event(out, PickPickupPacket{id, 16, false});
         announce_intel(id, "picked up");
+        event(out, PlaySoundPacket{12, false, false, 1.0F});
         break;
     }
     case 25: {
@@ -1126,6 +1155,7 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
               DropPickupPacket{
                   world_loop_, id, 16, position.value_or(players_[id].record.position), {}});
         announce_intel(id, "dropped");
+        event(out, PlaySoundPacket{20, false, false, 1.0F});
         break;
     }
     case 26: {

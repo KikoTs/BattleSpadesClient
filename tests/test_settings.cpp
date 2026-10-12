@@ -335,10 +335,14 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.weapon_motion = false;
     settings.main.fallback_music = true;
     settings.main.death_voices = false;
+    settings.main.spatial_audio = true;
     settings.main.ragdoll_corpses = false;
     settings.main.discord_presence = false;
     settings.main.discord_join = false;
     settings.main.blood_marks = true;
+    settings.main.gore = true;
+    settings.main.gore_intensity = 3;
+    settings.main.dismemberment_intensity = 0;
     settings.main.classic_sky = "random";
     settings.main.classic_fog = "custom";
     settings.main.classic_fog_color = {17U, 148U, 255U};
@@ -561,7 +565,7 @@ void classic_appearance_settings_validate_and_restore() {
     write_text(path, "[main]\nshow_skins = true\n");
     const auto old = TomlSettingsStore{path}.load();
     expect(static_cast<bool>(old) && old.settings.main.classic_sky == "server" &&
-           old.settings.main.classic_fog == "gray", "old installations receive the default gray Classic fog");
+           old.settings.main.classic_fog == "server", "missing fog preference follows the server map metadata");
     auto invalid = old.settings;
     invalid.main.classic_sky = "broken";
     invalid.main.classic_fog = "broken";

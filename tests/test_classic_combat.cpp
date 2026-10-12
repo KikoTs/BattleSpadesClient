@@ -1,4 +1,5 @@
 #include "battlespades/world/classic_combat.hpp"
+#include "battlespades/world/classic_weapons.hpp"
 #include "battlespades/world/classic_movement.hpp"
 
 #include <algorithm>
@@ -333,10 +334,33 @@ void pillar_tests(VxlMap& map) {
 
 int main() {
     try {
+        {
+            ClassicDigAnimation dig;
+            check(dig.tick(0.0, true, false), "remote primary dig starts on press");
+            check(!dig.tick(0.1, true, false) && dig.pose_time(0.2) > 0.09,
+                  "remote shovel advances through the existing rig animation");
+            check(dig.tick(0.1, true, false), "held primary repeats every 0.2 seconds");
+            check(dig.tick(0.0, false, true), "deep dig animates from windup start");
+            check(!dig.tick(0.5, false, true) && std::abs(dig.pose_time(0.2) - 0.1) < 1e-9,
+                  "deep dig scales the rig over its full one-second charge");
+            check(dig.tick(0.5, false, true), "held secondary repeats once per second");
+            check(!dig.tick(0.1, false, false) && dig.pose_time(0.2) < 1.0,
+                  "release lets the current swing finish");
+            check(!dig.tick(1.0, false, false) && dig.pose_time(0.2) > 100,
+                  "released shovel settles rather than looping forever");
+        }
         auto map = flat_map();
         hitbox_reference_tests(map);
         range_and_eye_tests(map);
         pillar_tests(map);
+        PlayerMovementState builder;builder.position={250.5,250.5,230};
+        const std::array line{VoxelCell{248,250,231},VoxelCell{249,250,231},
+                              VoxelCell{250,250,231},VoxelCell{251,250,231}};
+        check(!classic_line_clear_of_players(map,line,builder,{}),"middle of line must not wall in builder");
+        builder.position.y=252.5;
+        check(classic_line_clear_of_players(map,line,builder,{}),"clear line still builds");
+        const ClassicHitTarget other{9,{250.5,250.5,230},{1,0,0},false,false};
+        check(!classic_line_clear_of_players(map,line,builder,std::span{&other,1}),"middle of line must not wall in another player");
         std::cout << "Classic combat and pillar regressions passed\n";
         return 0;
     } catch (const std::exception& error) {

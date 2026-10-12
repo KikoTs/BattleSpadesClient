@@ -341,10 +341,26 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
             error = "malformed InitialInfo custom game rule";
             return std::nullopt;
         }
+        if (*name == "RULE_ENABLE_GRAVESTONES" && (*value == "0" || *value == "1"))
+            info.enable_gravestones = *value == "1";
+        if (*name == "BATTLESPADES_HARDCORE") {
+            if (*value != "1") {
+                error = "unsupported Hardcore movement profile; update the client";
+                return std::nullopt;
+            }
+            info.hardcore = true;
+        }
+        if (*name == "BATTLESPADES_FUN") info.fun_mode = *value;
+        if (*name == "BATTLESPADES_RACE_MOMENTUM") {
+            if (*value != "1") {
+                error = "unsupported race momentum profile; update the client";
+                return std::nullopt;
+            }
+            info.race_momentum = true;
+        }
         info.custom_game_rules.emplace_back(std::move(*name), std::move(*value));
     }
     const auto enable_corpse_explosion = reader.u8();
-    static_cast<void>(enable_corpse_explosion);
     if (!allow_shooting_holding_intel.has_value() ||
         !friendly_fire.has_value() ||
         !enable_corpse_explosion.has_value()) {
@@ -354,6 +370,7 @@ decode_initial_info(std::span<const std::byte> packet, std::string& error) {
     info.allow_shooting_holding_intel =
         *allow_shooting_holding_intel != 0U;
     info.friendly_fire = *friendly_fire != 0U;
+    info.enable_corpse_explosion = *enable_corpse_explosion != 0U;
     const auto ugc_mode = reader.u8();
     if (!ugc_mode.has_value()) {
         error = "malformed InitialInfo UGC mode";
@@ -762,9 +779,9 @@ steam_ticket_packet(std::span<const std::byte> ticket, bool flight_profile) {
         writer.u8(std::to_integer<std::uint8_t>(value));
     }
     if (flight_profile) {
-        // BSCF v2: also accept the Engineer/canopy mover tuning (BSFP v2).
+        // BSCF v4: flight, Hardcore, and optional race momentum movement.
         // A v1-only server ignores the unknown trailer and stays stock.
-        for (const auto value : {'B', 'S', 'C', 'F', '\x02'})
+        for (const auto value : {'B', 'S', 'C', 'F', '\x04'})
             writer.u8(static_cast<std::uint8_t>(value));
     }
     return std::move(writer).take();

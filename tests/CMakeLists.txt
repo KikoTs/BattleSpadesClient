@@ -64,6 +64,11 @@ target_link_libraries(aos_match_overlays_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_match_overlays_tests)
 add_test(NAME aos_match_overlays_tests COMMAND aos_match_overlays_tests)
 
+add_executable(aos_classic_scoreboard_ping_tests test_classic_scoreboard_ping.cpp)
+target_link_libraries(aos_classic_scoreboard_ping_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_classic_scoreboard_ping_tests)
+add_test(NAME aos_classic_scoreboard_ping_tests COMMAND aos_classic_scoreboard_ping_tests)
+
 add_executable(aos_retail_announcer_tests test_retail_announcer.cpp)
 target_link_libraries(aos_retail_announcer_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_retail_announcer_tests)

@@ -53,6 +53,7 @@
 #include "battlespades/frontend/main_menu.hpp"
 #include "battlespades/frontend/main_menu_presentation.hpp"
 #include "battlespades/frontend/match_overlays.hpp"
+#include "battlespades/frontend/classic_scoreboard_ping.hpp"
 #include "battlespades/frontend/retail_hud_rules.hpp"
 #include "battlespades/frontend/retail_input_rules.hpp"
 #include "battlespades/frontend/fallback_music.hpp"
@@ -137,6 +138,7 @@
 #include "battlespades/world/jetpack_death.hpp"
 #include "battlespades/world/classic_corpse.hpp"
 #include "battlespades/world/blood_marks.hpp"
+#include "battlespades/world/body_damage.hpp"
 #include "battlespades/world/kv6_model.hpp"
 #include "battlespades/world/map_atmosphere.hpp"
 #include "battlespades/world/map_catalog.hpp"
@@ -1967,8 +1969,23 @@ struct NativeFrontendModule::Impl final {
         std::optional<world::ClassicDroppedWeapon> weapon;
         std::array<float,16> weapon_release{};
         std::uint8_t weapon_tool{};
+        unsigned severed_parts{};
+        bool death_reacted{};
+        double death_time{};
+        std::array<double,world::ClassicCorpse::part_count> last_sever_attempt = [] {
+            std::array<double,world::ClassicCorpse::part_count> times{}; times.fill(-100); return times;
+        }();
     };
     std::array<std::optional<ClassicCorpseState>, 128U> classic_corpses;
+    struct PlayerBodyDamage {
+        std::uint32_t generation{};
+        world::BodyDamage wounds;
+        world::Vec3 last_hit{};
+        double last_hit_time{-100};
+        std::uint8_t tool{}, attacker{255};
+    };
+    std::array<PlayerBodyDamage,128> player_body_damage{};
+    using DamageSurface = std::pair<std::size_t,world::BodyDamage::Surface>;
     /** Last decoded position retained independently of the current-life roster. */
     std::array<std::optional<world::Vec3>, 128U> last_known_player_positions{};
     /** Retail running_local_player_kills (death-camera killer streak). */
@@ -2302,6 +2319,7 @@ struct NativeFrontendModule::Impl final {
     ChangeTeamMenuModel change_team_menu;
     ChangeTeamPresentation change_team_presentation;
     ScoreboardPresentation scoreboard_presentation;
+    ClassicScoreboardPing classic_scoreboard_ping;
     ClassSelectionMenuModel class_selection_menu;
     ClassSelectionPresentation class_selection_presentation;
     UgcLoadoutMenuModel ugc_loadout_menu;
@@ -2412,6 +2430,8 @@ struct NativeFrontendModule::Impl final {
     std::map<std::uint64_t, double> projectile_smoke_clocks;
     /** Flying Tracer entities (WEAPON_TRACER_SPEED 200). */
     std::vector<world::TracerState> tracers;
+    struct ClassicMapShot {GameHudMinimapTracer path; double born{}, speed{};};
+    std::vector<ClassicMapShot> classic_map_shots;
     /** One muzzleflash_default.kv6 draw alive for 0.05 s. */
     struct MuzzleFlashPresentation final {
         std::array<float, 16U> transform{};
@@ -2667,6 +2687,7 @@ struct NativeFrontendModule::Impl final {
         bool primary_was_held{};
         std::int32_t last_primary_world_loop{-1};
         double classic_primary_elapsed{1.0e9};
+        world::ClassicDigAnimation classic_dig{};
         std::int32_t last_snapshot_world_loop{-1};
         std::uint64_t action_serial{};
         bool airborne{};
@@ -2901,12 +2922,13 @@ struct NativeFrontendModule::Impl final {
     }
     std::optional<std::uint8_t> forced_team;
     bool initial_join_submitted{};
-    /** When the join code in active_join_wire_name was issued; nullopt for a plain name. */
+    /** Issue time of an unused join code; cleared on send or map teardown. */
     std::optional<std::chrono::steady_clock::time_point> join_code_issued_at;
     /** A class pick held back while a fresh join code is fetched. */
     struct JoinTicketRefresh final {
         world::ClassSelection selection;
         std::uint8_t fallback_team{};
+        bool spectator_join{};
         /** Zero once the match it was started for is gone; its result is then dropped. */
         std::uint64_t generation{};
         std::future<network::RevivalTicketResult> ticket;
@@ -5754,12 +5776,33 @@ struct NativeFrontendModule::Impl final {
                          const network::RemotePlayerReplica& player) const {
         row.ping_known = !network::is_classic_protocol(match_protocol);
         row.ping = static_cast<std::uint16_t>(std::clamp<std::int32_t>(player.ping, 0, 65535));
+        if (!row.ping_known && local_player_id != player.player_id) {
+            if (const auto ping = classic_scoreboard_ping.ping(
+                    player, ClassicScoreboardPing::Clock::now())) {
+                row.ping_known = true;
+                row.ping = *ping;
+            }
+        }
         if (!row.ping_known && local_player_id == player.player_id && match_connection) {
             if (const auto ping = match_connection->status().round_trip_time_ms) {
                 row.ping_known = true;
                 row.ping = static_cast<std::uint16_t>(std::min(*ping, 65535U));
             }
         }
+    }
+
+    void update_classic_scoreboard_ping() {
+        if (!network_match || !network::is_classic_protocol(match_protocol) ||
+            !match_connection || !local_player_id || !config.play_demo_path.empty()) return;
+        const auto query = classic_scoreboard_ping.next_query(
+            tutorial_roster, *local_player_id,
+            screen() == FrontendScreen::tutorial_world &&
+                (scoreboard_visible || scoreboard_forced) && !game_chat.active(),
+            ClassicScoreboardPing::Clock::now());
+        if (!query) return;
+        const auto encoded = network::encode_packet(network::ChatMessagePacket{
+            *local_player_id, 0, *query});
+        if (encoded.empty() || !match_connection->send(encoded)) classic_scoreboard_ping.send_failed();
     }
 
     /** Return no stale tool when a retail player id has been reused. */
@@ -6297,6 +6340,12 @@ struct NativeFrontendModule::Impl final {
     }
 
     /** Stops one observer fire loop and optionally lands its retail tail. */
+    [[nodiscard]] audio::SpatialSoundProfile remote_report_profile() const {
+        return network::is_classic_protocol(match_protocol)
+            ? audio::SpatialSoundProfile::classic_weapon_report
+            : audio::SpatialSoundProfile::weapon_report;
+    }
+
     void stop_remote_fire_loop(std::uint8_t player_id,
                                audio::SoundPosition position,
                                bool play_tail = true) {
@@ -6308,7 +6357,7 @@ struct NativeFrontendModule::Impl final {
                 audio->stop_weapon_loop(
                     state.voice, state.tool_id, audio::WeaponCue::fire_tail, position,
                     audio::remote_weapon_report_gain(), false,
-                    audio::SpatialSoundProfile::weapon_report);
+                    remote_report_profile());
             } else {
                 audio->stop_weapon_loop(state.voice);
             }
@@ -6433,10 +6482,85 @@ struct NativeFrontendModule::Impl final {
         if(applied_settings.main.blood_marks) blood_marks.emit(position,seed);
     }
 
+    void record_body_hit(std::uint8_t id, world::Vec3 point, std::uint8_t tool,
+                         std::uint8_t attacker, std::uint32_t seed) {
+        if (!applied_settings.main.gore || !retain_player_corpses() || id>=player_body_damage.size()) return;
+        const auto* player=tutorial_roster.player(id);
+        if (!player) return;
+        auto& state=player_body_damage[id];
+        if (state.generation!=player->generation) { state={}; state.generation=player->generation; }
+        const auto profile=world::gore_profile(applied_settings.main.gore_intensity);
+        state.wounds.hit(point,seed,profile.wound_radius,255,applied_settings.main.gore_intensity);
+        state.last_hit=point; state.last_hit_time=retail_effect_clock;
+        state.tool=tool; state.attacker=attacker;
+    }
+
+    static world::GoreWeapon gore_weapon(std::uint8_t tool) {
+        const auto* definition=world::find_weapon_definition(tool);
+        if (definition && definition->category==world::WeaponCategory::shotgun) return world::GoreWeapon::shotgun;
+        if (definition && definition->category==world::WeaponCategory::sniper) return world::GoreWeapon::sniper;
+        return world::GoreWeapon::ordinary;
+    }
+
+    void try_sever(std::uint8_t id, const world::ClassicCorpse::Hit& hit,
+                   world::GoreWeapon weapon, double distance, bool lethal, std::uint32_t seed) {
+        if (!applied_settings.main.gore || id>=classic_corpses.size()) return;
+        auto& state=classic_corpses[id];
+        const auto intensity=std::min<unsigned>(applied_settings.main.dismemberment_intensity,3);
+        if (!state || !intensity || state->severed_parts>=std::array{0U,2U,4U,6U}[intensity]) return;
+        const auto part=world::ClassicCorpse::hit_part(hit);
+        if (part==world::ClassicCorpse::torso || state->physics.detached(part) ||
+            retail_effect_clock-state->last_sever_attempt[part]<.08) return;
+        // One roll per anatomical part per volley. A torso pellet must not
+        // consume the head/hand attempt from the rest of the same shotgun shot.
+        state->last_sever_attempt[part]=retail_effect_clock;
+        if (world::sever_on_impact(weapon,part,distance,lethal,seed,static_cast<std::uint8_t>(intensity)) && state->physics.detach(part)) {
+            ++state->severed_parts;
+            // Mark both exposed ends on the original skin meshes. Thigh and
+            // shin share the same authored leg coordinates and damage group.
+            static constexpr std::array<std::uint8_t,10> group{0,1,4,5,6,7,2,3,2,3};
+            static constexpr std::array<std::uint8_t,10> parent{0,0,0,0,4,5,0,0,2,3};
+            auto& wounds=player_body_damage[id];
+            if (wounds.generation!=state->generation) {wounds={};wounds.generation=state->generation;}
+            const auto cut=state->physics.cut_position(part);
+            const auto detail=applied_settings.main.gore_intensity;
+            wounds.wounds.hit(cut,seed,.30,group[part],detail,true);
+            if(parent[part]!=group[part]) wounds.wounds.hit(cut,seed,.30,parent[part],detail,true);
+            const auto center=state->physics.joint(world::ClassicCorpse::pelvis);
+            world::Vec3 outward{hit.position.x-center.x,hit.position.y-center.y,hit.position.z-center.z-.2};
+            const double length=std::max(.1,std::sqrt(outward.x*outward.x+outward.y*outward.y+outward.z*outward.z));
+            state->physics.impulse(hit,{outward.x/length*3,outward.y/length*3,outward.z/length*3});
+            emit_blood({static_cast<float>(hit.position.x),static_cast<float>(hit.position.y),static_cast<float>(hit.position.z)},seed);
+        }
+    }
+
+    void apply_body_damage(const network::RemotePlayerReplica& player,
+                           std::vector<render::WorldModelDraw>& draws,
+                           std::span<const DamageSurface> surfaces) {
+        if (!applied_settings.main.gore || !retain_player_corpses() || surfaces.empty()) return;
+        auto& state=player_body_damage[player.player_id & 0x7FU];
+        if (state.generation!=player.generation) { state={}; state.generation=player.generation; }
+        std::array<world::BodyDamage::Surface,16> parts{};
+        const auto count=std::min(parts.size(),surfaces.size());
+        for(std::size_t i=0;i<count;++i) parts[i]=surfaces[i].second;
+        const auto chips=state.wounds.resolve(std::span{parts}.first(count));
+        world::emit_body_fragments(particles,chips,applied_settings.main.gore_intensity);
+        for(std::size_t i=0;i<count;++i) {
+            const auto& [index,surface]=surfaces[i];
+            if (!surface.mesh || !state.wounds.marked(surface.group)) continue;
+            auto& draw=draws[index];
+            const auto key="wound:"+std::to_string(player.player_id)+":"+std::to_string(player.generation)+":"+
+                std::to_string(state.wounds.revision(surface.group))+":"+std::to_string(character_color_key(remote_team_color(player.team)))+":"+std::to_string(player.class_id)+":"+std::to_string(draw.slot)+":"+std::to_string(surface.group);
+            world::ChunkMesh damaged;
+            const auto slot=character_accessory_slot(key,[&] { damaged=state.wounds.mesh(*surface.mesh,surface.group); return &damaged; });
+            if(slot) draw.slot=*slot;
+        }
+    }
+
     void present_corpse_hit(world::Vec3 origin, world::Vec3 direction, double range,
                             std::uint8_t tool, std::size_t pellets, std::uint32_t seed,
                             std::optional<std::uint8_t> shooter=std::nullopt) {
-        if (!tutorial_session || !match_initial_info.classic) return;
+        if (!tutorial_session || !retain_player_corpses()) return;
         std::array<world::ClassicCorpse*,128> bodies{};
         bool any{};
         for (std::size_t id=0;id<classic_corpses.size();++id) {
@@ -6462,8 +6586,23 @@ struct NativeFrontendModule::Impl final {
             }
         }
         const double strength=(tool==38U?5.0:9.0)/std::sqrt(static_cast<double>(std::max<std::size_t>(1,pellets)));
-        if (const auto hit=world::shoot_classic_corpses(bodies,tutorial_session->map(),origin,direction,range,strength))
+        if (const auto hit=world::shoot_classic_corpses(bodies,tutorial_session->map(),origin,direction,range,strength)) {
             emit_blood({static_cast<float>(hit->x),static_cast<float>(hit->y),static_cast<float>(hit->z)},seed);
+            if (!applied_settings.main.gore) return;
+            // The shared query has already clipped this contact against terrain
+            // and living players. Resolve only that same nearest corpse.
+            double nearest=range+1; std::optional<std::uint8_t> struck;
+            std::optional<world::ClassicCorpse::Hit> contact;
+            for(std::size_t id=0;id<bodies.size();++id) if(bodies[id]) {
+                if(auto candidate=bodies[id]->trace(origin,direction,nearest)) {
+                    nearest=candidate->distance; struck=static_cast<std::uint8_t>(id); contact=candidate;
+                }
+            }
+            if(struck && contact) {
+                record_body_hit(*struck,*hit,tool,shooter.value_or(255),seed);
+                try_sever(*struck,*contact,gore_weapon(tool),contact->distance,false,seed);
+            }
+        }
     }
 
     /**
@@ -6500,6 +6639,7 @@ struct NativeFrontendModule::Impl final {
             // contacts affect presentation only: never report hits, change HP,
             // or show the local shooter's hit marker for another player's shot.
             for (const auto& hit : attack.hits) {
+                record_body_hit(hit.player,hit.position,tool_id,player_id,seed);
                 emit_blood(
                     {static_cast<float>(hit.position.x), static_cast<float>(hit.position.y),
                      static_cast<float>(hit.position.z)}, seed);
@@ -6516,6 +6656,7 @@ struct NativeFrontendModule::Impl final {
                 const std::array<float, 3U> end{
                     static_cast<float>(tracer.endpoint.x), static_cast<float>(tracer.endpoint.y),
                     static_cast<float>(tracer.endpoint.z)};
+                record_classic_map_shot(tool_id,tracer_muzzle.value_or(origin),end);
                 if (const auto launch = world::plan_tracer_launch(
                         retail_look_active(), origin, direction, tracer_muzzle, end))
                     spawn_tracer(tool_id, launch->start, launch->end);
@@ -6654,6 +6795,13 @@ struct NativeFrontendModule::Impl final {
                      static_cast<float>(-zoomed->position.z)};
         }
         local_view_muzzle_point = point;
+    }
+
+    void record_classic_map_shot(std::uint8_t tool, std::array<float,3> start,
+                                 std::array<float,3> end, bool local=false) {
+        const double speed=(tool==6?700.0:tool==38?360.0:500.0)*(local?2.0:1.0);
+        if(classic_map_shots.size()>=96) classic_map_shots.erase(classic_map_shots.begin());
+        classic_map_shots.push_back({{start[0],start[1],end[0],end[1]},retail_effect_clock,speed});
     }
 
     void spawn_tracer(std::uint8_t tool_id,
@@ -6931,6 +7079,29 @@ struct NativeFrontendModule::Impl final {
         return item->id;
     }
 
+    void advance_classic_remote_dig(const network::RemotePlayerReplica& player, double dt) {
+        if (auto rig = remote_player_rigs.find(player.player_id); rig != remote_player_rigs.end()) {
+            if (player.tool_id == 4 && !player.dead && player.team >= 2) {
+                const bool usable = !(player.input_flags & 128U);
+                const bool swing = rig->second.classic_dig.tick(dt,
+                    usable && (player.action_flags & 1U),
+                    usable && (player.action_flags & 0x40U));
+                const auto* tool = world::find_weapon_definition(4);
+                const double length = tool ? tool->retail.use.shoot_interval.value_or(tool->fire_interval) : 0.2;
+                rig->second.classic_primary_elapsed = rig->second.classic_dig.pose_time(length);
+                if (swing) {
+                    ++rig->second.action_serial;
+                    if (audio_started)
+                        audio->play_weapon_cue(4, audio::WeaponCue::melee_miss,
+                            static_cast<std::uint8_t>(rig->second.action_serial),
+                            remote_sound_position(player), audio::retail_tool_sound_volume);
+                }
+            } else {
+                rig->second.classic_dig = {};
+            }
+        }
+    }
+
     void advance_classic_remote_shots(double dt) {
         if (!network_match || !network::is_classic_protocol(match_protocol)) return;
         const PerformanceScope performance{"classic_observer_shots", std::chrono::microseconds{2'000}};
@@ -6941,6 +7112,7 @@ struct NativeFrontendModule::Impl final {
             auto& reload = classic_remote_reload_delay[id];
             delay = std::max(0.0, delay - dt);
             reload = std::max(0.0, reload - dt);
+            advance_classic_remote_dig(player, dt);
             const auto rules = world::classic_weapon_rules(static_cast<std::uint8_t>(match_protocol), player.tool_id);
             if (!rules || player.dead || player.team < 2 || !(player.action_flags & 1U) ||
                 (player.input_flags & 128U) || delay > 0 || (reload > 0 && player.tool_id != 37)) continue;
@@ -7006,7 +7178,7 @@ struct NativeFrontendModule::Impl final {
         if (cosmetic && audio->has_cosmetic_fire(cosmetic->id)) {
             stop_remote_fire_loop(feedback.shooter_id, position, false);
             audio->play_weapon_shoot(feedback.tool_id,feedback.seed,position,
-                audio::remote_weapon_report_gain(),false,audio::SpatialSoundProfile::weapon_report,cosmetic->id);
+                audio::remote_weapon_report_gain(),false,remote_report_profile(),cosmetic->id);
             return;
         }
         if (audio->has_weapon_cue(feedback.tool_id, audio::WeaponCue::fire_loop)) {
@@ -7017,7 +7189,7 @@ struct NativeFrontendModule::Impl final {
                 state.voice = audio->start_weapon_loop(
                     feedback.tool_id, audio::WeaponCue::fire_loop, position,
                     audio::remote_weapon_report_gain(),
-                    false, audio::SpatialSoundProfile::weapon_report);
+                    false, remote_report_profile());
                 state.tool_id = feedback.tool_id;
             }
             state.last_feedback_world_loop = latest_world_loop;
@@ -7027,7 +7199,7 @@ struct NativeFrontendModule::Impl final {
         }
         audio->play_weapon_shoot(feedback.tool_id, feedback.seed, position,
                                  audio::remote_weapon_report_gain(),
-                                 false, audio::SpatialSoundProfile::weapon_report);
+                                 false, remote_report_profile());
     }
 
     /** Repositions or closes a remote automatic-fire voice from WorldUpdate. */
@@ -8133,6 +8305,7 @@ struct NativeFrontendModule::Impl final {
         surface_patch_smoke_due.clear();
         projectile_smoke_clocks.clear();
         tracers.clear();
+        classic_map_shots.clear();
         muzzle_flashes.clear();
         burn_indicator_remaining = 0.0;
         sudden_death_indicator_remaining = 0.0;
@@ -9342,9 +9515,13 @@ struct NativeFrontendModule::Impl final {
             const bool sky_changed = applied_settings.main.classic_sky != value.main.classic_sky;
             const bool fog_changed = applied_settings.main.classic_fog != value.main.classic_fog ||
                                      applied_settings.main.classic_fog_color != value.main.classic_fog_color;
+            if(audio_started && audio && applied_settings.main.spatial_audio != value.main.spatial_audio &&
+               !audio->set_spatial_audio(value.main.spatial_audio))
+                settings_warning = "Headphone spatial audio is unavailable on this output; stereo positioning remains active.";
             applied_settings = value;
             if (sky_changed || fog_changed) refresh_classic_appearance(sky_changed);
             if(!value.main.blood_marks) blood_marks.clear();
+            if(!value.main.gore) player_body_damage = {};
             sync_fallback_music();
             if (tutorial_session != nullptr) {
                 tutorial_session->set_look_preferences(
@@ -9429,6 +9606,15 @@ struct NativeFrontendModule::Impl final {
             applied_settings.main.discord_presence = draft.main.discord_presence;
             applied_settings.main.discord_join = draft.main.discord_join;
             return true;
+        case SettingsRowId::gore_intensity:
+        case SettingsRowId::dismemberment_intensity:
+            applied_settings.main.gore_intensity = draft.main.gore_intensity;
+            applied_settings.main.dismemberment_intensity = draft.main.dismemberment_intensity;
+            return true;
+        case SettingsRowId::gore:
+            applied_settings.main.gore = draft.main.gore;
+            if (!draft.main.gore) player_body_damage = {};
+            return true;
         case SettingsRowId::blood_marks:
             applied_settings.main.blood_marks = draft.main.blood_marks;
             if(!draft.main.blood_marks) blood_marks.clear();
@@ -9439,6 +9625,13 @@ struct NativeFrontendModule::Impl final {
         case SettingsRowId::fallback_music:
             applied_settings.main.fallback_music = draft.main.fallback_music;
             sync_fallback_music();
+            return true;
+        case SettingsRowId::spatial_audio:
+            if(audio_started && audio && !audio->set_spatial_audio(draft.main.spatial_audio)) {
+                settings_warning = "Headphone spatial audio is unavailable on this output; stereo positioning remains active.";
+                return false;
+            }
+            applied_settings.main.spatial_audio = draft.main.spatial_audio;
             return true;
         case SettingsRowId::death_voices:
             applied_settings.main.death_voices = draft.main.death_voices;
@@ -9590,9 +9783,14 @@ struct NativeFrontendModule::Impl final {
                         case SettingsRowId::classic_fog_blue:
                         case SettingsRowId::discord_presence:
                         case SettingsRowId::discord_join:
+                        case SettingsRowId::gore_intensity:
+                        case SettingsRowId::dismemberment_intensity:
+                        case SettingsRowId::gore:
                         case SettingsRowId::blood_marks:
                         case SettingsRowId::ragdoll_corpses:
                         case SettingsRowId::fallback_music:
+                        case SettingsRowId::spatial_audio:
+                        case SettingsRowId::death_voices:
                         case SettingsRowId::show_skins:
                         case SettingsRowId::show_other_skins:
                         case SettingsRowId::weapon_motion:
@@ -9612,6 +9810,7 @@ struct NativeFrontendModule::Impl final {
                     } else if constexpr (std::is_same_v<Payload, SettingsDefaultsCommand>) {
                         if (payload.tab == settings::SettingsTab::main) {
                             apply_cosmetic_preferences(payload.draft.main);
+                            static_cast<void>(apply_live_preview(SettingsRowId::spatial_audio,payload.draft));
                             static_cast<void>(apply_live_preview(SettingsRowId::classic_sky, payload.draft));
                             static_cast<void>(
                                 apply_live_preview(SettingsRowId::language, payload.draft));
@@ -12396,6 +12595,8 @@ struct NativeFrontendModule::Impl final {
         // Packet 105 stays byte-for-byte retail on unknown/public Steam-list
         // peers. Only identified native hosts receive our capability trailer.
         session.negotiate_flight_profile = request.identity_ticket || request.steam_host_id != 0U ||
+            request.host == "127.0.0.1" || request.host == "localhost" ||
+            request.expected_mode.starts_with("hc_") || request.expected_mode.starts_with("hardcore_") ||
             (owned_local_server && owned_local_server->running() && request.port == owned_local_server->port() &&
              (request.host == "127.0.0.1" || request.host == "localhost"));
         // send_map_validation: crc32 of the local stock map, so an unchanged
@@ -13993,6 +14194,7 @@ struct NativeFrontendModule::Impl final {
         environment_audio = {};
         server_ambience_received = false;
         classic_corpses.fill(std::nullopt);
+        player_body_damage = {};
         stop_fallback_music();
         server_music_received = false;
         server_sound_variant = 0U;
@@ -14404,7 +14606,7 @@ struct NativeFrontendModule::Impl final {
                          row.player_id != *local_player_id)) {
                         observe_remote_character_audio(*updated_replica);
                     }
-                    if (updated_replica != nullptr && row.health <= 0) {
+                    if (updated_replica != nullptr && row.health <= 0 && !retain_player_corpses()) {
                         // The authority continues publishing a jetpack corpse
                         // for exactly one second. Ordinary corpses never enter
                         // this state and therefore keep the immediate packet-36
@@ -14624,10 +14826,27 @@ struct NativeFrontendModule::Impl final {
                     // it emitted Shoot(6); packet 8 is observer feedback.
                     continue;
                 }
+                if (network::is_classic_protocol(match_protocol)) {
+                    if (!shooter || shooter->dead || shooter->team < 2 || (shooter->input_flags & 128U)) continue;
+                    if (feedback->tool_id == 4U) {
+                        advance_classic_remote_dig(*shooter, 0.0);
+                        continue;
+                    }
+                    const auto rules = world::classic_weapon_rules(
+                        static_cast<std::uint8_t>(match_protocol), feedback->tool_id);
+                    if (feedback->shooter_id >= classic_remote_shot_delay.size()) continue;
+                    if (classic_remote_reload_delay[feedback->shooter_id] > 0.0 && feedback->tool_id != 37U) continue;
+                    auto& delay = classic_remote_shot_delay[feedback->shooter_id];
+                    if (rules) {
+                        if (delay > 0.0) continue;
+                        delay = rules->interval;
+                    }
+                }
                 auto rig = remote_player_rigs.find(feedback->shooter_id);
                 if (rig != remote_player_rigs.end()) {
                     ++rig->second.action_serial;
                     rig->second.last_primary_world_loop = latest_world_loop;
+                    rig->second.classic_primary_elapsed = 0.0;
                 }
                 if (shooter != nullptr) {
                     // Muzzle feedback remains visible when audio is disabled;
@@ -14649,6 +14868,32 @@ struct NativeFrontendModule::Impl final {
                         static_cast<std::uint32_t>(response->damage_by) * 0x9E3779B9U ^
                         static_cast<std::uint32_t>(latest_world_loop);
                     emit_blood( response->position, seed);
+                    const world::Vec3 hit{response->position[0],response->position[1],response->position[2]};
+                    double nearest=2.5; std::optional<std::uint8_t> struck;
+                    for(const auto& candidate:tutorial_roster.present_players()) {
+                        const auto& corpse=classic_corpses[candidate.player_id & 0x7FU];
+                        const bool fresh_corpse=corpse && corpse->generation==candidate.generation &&
+                            retail_effect_clock-corpse->death_time<.4;
+                        if((candidate.dead && !fresh_corpse) || candidate.player_id==response->damage_by || candidate.team<2) continue;
+                        auto position=candidate.position;
+                        if(const auto rig=remote_player_rigs.find(candidate.player_id);rig!=remote_player_rigs.end()) position=rig->second.motion.sample().position;
+                        const double dx=hit.x-position.x,dy=hit.y-position.y,dz=hit.z-position.z-.7;
+                        const double distance=dx*dx+dy*dy+dz*dz;
+                        if(distance<nearest) {nearest=distance;struck=candidate.player_id;}
+                    }
+                    if(struck) {
+                        const auto* shooter=tutorial_roster.player(response->damage_by);
+                        const auto tool=remembered_combat_tool(shooter).value_or(shooter?shooter->tool_id:0);
+                        record_body_hit(*struck,hit,tool,response->damage_by,seed);
+                        const auto* victim=tutorial_roster.player(*struck);
+                        auto& corpse=classic_corpses[*struck];
+                        if(victim && victim->dead && corpse && retail_effect_clock-corpse->death_time<.4) {
+                            const auto contact=corpse->physics.closest_hit(hit);
+                            const auto source=shooter?shooter->position:hit;
+                            const double dx=hit.x-source.x,dy=hit.y-source.y,dz=hit.z-source.z;
+                            if(contact.distance<.75) try_sever(*struck,contact,gore_weapon(tool),std::sqrt(dx*dx+dy*dy+dz*dz),true,seed);
+                        }
+                    }
                     const auto* attacker=tutorial_roster.player(response->damage_by);
                     const auto* cosmetic=attacker?equipped_cosmetic(attacker->player_id,"weapon:"+std::to_string(attacker->tool_id)+":world"):nullptr;
                     if(audio_started&&cosmetic)static_cast<void>(audio->play_cosmetic_cue(cosmetic->id,"melee-hit-player",0U,{response->position[0],response->position[1],response->position[2]},1.F,false));
@@ -15155,6 +15400,7 @@ struct NativeFrontendModule::Impl final {
                     stop_remote_jetpack_flight(left->player_id, {}, false);
                     remote_character_audio[left->player_id] = {};
                 }
+                classic_scoreboard_ping.remove(left->player_id);
                 tutorial_roster.remove(left->player_id);
                 server_player_scores[left->player_id] = 0;
                 server_player_score_valid[left->player_id] = false;
@@ -15399,7 +15645,8 @@ struct NativeFrontendModule::Impl final {
                     }
                     const auto* victim = tutorial_roster.player(corpse->player_id);
                     const auto jetpack_corpse = jetpack_deaths.finish(corpse->player_id);
-                    if (victim != nullptr && victim->dead) {
+                    if (victim != nullptr && victim->dead &&
+                        (corpse->show_explosion_effect || !retain_player_corpses())) {
                         // Character.explode_corpse: exploded = True hides the
                         // ClassicCorpse (and any pack) for the rest of the life.
                         exploded_corpse_generations[corpse->player_id] = victim->generation;
@@ -15417,7 +15664,7 @@ struct NativeFrontendModule::Impl final {
                         // DeathController; an immediately following
                         // CreatePlayer then clears a pre-respawn cleanup.
                         finish_local_jetpack_death(jetpack_corpse);
-                        retained_corpse_positions[corpse->player_id].reset();
+                        if (!retain_player_corpses()) retained_corpse_positions[corpse->player_id].reset();
                         continue;
                     }
                     const auto position = jetpack_corpse.has_value()
@@ -15525,9 +15772,13 @@ struct NativeFrontendModule::Impl final {
                     if (!tutorial_session->apply_server_entity(entity)) {
                         settings_warning =
                             "CreateEntity rejected invalid type, face, or entity budget";
-                    } else if (entity.type == 11U && local_player_id == entity.owner &&
-                               death_camera.active()) {
-                        death_camera.bind_grave(entity.id, grave_camera_focus(entity));
+                    } else if (entity.type == 11U) {
+                        if (const auto* owner = tutorial_roster.player(entity.owner); owner && owner->dead) {
+                            exploded_corpse_generations[entity.owner & 0x7FU] = owner->generation;
+                            classic_corpses[entity.owner & 0x7FU].reset();
+                        }
+                        if (local_player_id == entity.owner && death_camera.active())
+                            death_camera.bind_grave(entity.id, grave_camera_focus(entity));
                     } else if (entity.type == 13U && local_player_id == entity.owner) {
                         // flareBlockTool.py:47: block_count -= FLAREBLOCK_COST,
                         // paid here for the one flare this client asked for
@@ -15943,6 +16194,11 @@ struct NativeFrontendModule::Impl final {
                             *local_player_id, kill->domination,
                             kill->revenge, team_change_kill));
                     }
+                    if (network::is_classic_protocol(match_protocol) && audio_started &&
+                        local_player_id == kill->player_id && game_hud.health() > 0 &&
+                        audio::classic_fatal_impact_cue(kill->kill_type)) {
+                        static_cast<void>(audio->play_named_one_shot("hitplayer", {}, 1.0F, true));
+                    }
                     if (network::is_classic_protocol(match_protocol) && tutorial_session &&
                         local_player_id == kill->player_id) {
                         // Original WorldUpdate omits our own row. Otherwise
@@ -16000,7 +16256,7 @@ struct NativeFrontendModule::Impl final {
                     const auto jetpack =
                         world::retail_jetpack_id(victim->loadout, victim->ugc_tools);
                     const bool jetpack_corpse =
-                        jetpack.has_value() &&
+                        !retain_player_corpses() && jetpack.has_value() &&
                         jetpack_deaths.begin(victim->player_id,
                                              victim->generation,
                                              *jetpack,
@@ -16020,7 +16276,7 @@ struct NativeFrontendModule::Impl final {
                     // Emitting here duplicates the separate 40-piece bright-red
                     // corpse burst and makes a death unlike the preserved client.
                     begin_classic_corpse(*victim);
-                    if (!victim->dead && killer && killer->player_id != victim->player_id) {
+                    if (kill->kill_type<=2U && classic_corpses[victim->player_id] && !classic_corpses[victim->player_id]->death_reacted && killer && killer->player_id != victim->player_id) {
                         if (auto& fallen=classic_corpses[victim->player_id]; fallen) {
                             auto source=killer->position;
                             if(local_player_id==killer->player_id && tutorial_session)
@@ -16031,6 +16287,53 @@ struct NativeFrontendModule::Impl final {
                             const auto dx=target.x-source.x,dy=target.y-source.y,dz=target.z-source.z;
                             const double distance=std::sqrt(dx*dx+dy*dy+dz*dz);
                             if(distance>.01) fallen->physics.impulse(target,{dx/distance*5,dy/distance*5,dz/distance*5-1});
+                        }
+                    }
+                    if (auto& fallen=classic_corpses[victim->player_id]; fallen && !fallen->death_reacted) {
+                        fallen->death_reacted=true;
+                        {
+                            using Impact=world::ClassicCorpse::DeathImpact;
+                            const auto type=kill->kill_type;
+                            const bool blast=type==retail::GRENADE_KILL || type==retail::CLASSIC_GRENADE_KILL ||
+                                type==retail::ROCKET_KILL || type==retail::ROCKET2_KILL || type==retail::UGC_ROCKET2_KILL ||
+                                type==retail::AIRSTRIKE_KILL || type==retail::BOMB_KILL || type==retail::C4_KILL ||
+                                type==retail::DYNAMITE_KILL || type==retail::LANDMINE_KILL || type==retail::MINE_KILL ||
+                                type==retail::GRENADE_LAUNCHER_KILL || type==retail::STICKY_GRENADE_KILL ||
+                                type==retail::ANTIPERSONNEL_GRENADE_KILL || type==retail::ROCKET_TURRET_KILL;
+                            if(blast) {
+                                // Packet carries no explosion centre. Preserve the body's
+                                // incoming lateral motion and use a restrained upward shock.
+                                fallen->physics.react(Impact::explosion,{victim->velocity.x,victim->velocity.y,-.5});
+                                if(applied_settings.main.gore) {
+                                    const bool left=((victim->generation^victim->player_id)&1U)!=0;
+                                    const auto at=fallen->physics.joint(left?world::ClassicCorpse::elbow_left:world::ClassicCorpse::elbow_right);
+                                    try_sever(victim->player_id,fallen->physics.closest_hit(at),world::GoreWeapon::explosive,0,true,voice_rng());
+                                    record_body_hit(victim->player_id,at,0,kill->killer_id,voice_rng());
+                                }
+                            } else if(type==retail::FALL_KILL) {
+                                fallen->physics.react(Impact::fall);
+                                if(applied_settings.main.gore) {
+                                    const auto at=fallen->physics.joint(world::ClassicCorpse::pelvis);
+                                    record_body_hit(victim->player_id,at,0,kill->killer_id,voice_rng());
+                                }
+                            } else if(type==retail::WEAPON_KILL || type==retail::HEADSHOT_KILL) {
+                                const auto& wound=player_body_damage[victim->player_id];
+                                // Only a fresh observed contact identifies the final limb;
+                                // kill packets alone do not carry a hit location.
+                                const bool fresh=wound.generation==victim->generation && wound.attacker==kill->killer_id &&
+                                    retail_effect_clock-wound.last_hit_time<.4;
+                                const bool headshot=type==retail::HEADSHOT_KILL;
+                                if(fresh || (headshot && killer)) {
+                                    using C=world::ClassicCorpse;
+                                    const auto at=headshot?fallen->physics.joint(C::head):wound.last_hit;
+                                    const auto contact=headshot?C::Hit{at,0,1,C::neck,C::head}:fallen->physics.closest_hit(at);
+                                    const auto source=killer?killer->position:victim->position;
+                                    const auto tool=fresh?wound.tool:remembered_combat_tool(killer).value_or(killer?killer->tool_id:0);
+                                    const double dx=at.x-source.x,dy=at.y-source.y,dz=at.z-source.z;
+                                    if(headshot) record_body_hit(victim->player_id,at,tool,kill->killer_id,voice_rng());
+                                    if(contact.distance<.75) try_sever(victim->player_id,contact,gore_weapon(tool),std::sqrt(dx*dx+dy*dy+dz*dz),true,voice_rng());
+                                }
+                            }
                         }
                     }
                     stop_remote_fire_loop(kill->player_id, victim_position, false);
@@ -16081,6 +16384,11 @@ struct NativeFrontendModule::Impl final {
                 } else if (const auto* message =
                                std::get_if<network::ChatMessagePacket>(&*decoded.packet);
                            message != nullptr) {
+                    if (network::is_classic_protocol(match_protocol) &&
+                        classic_scoreboard_ping.observe(*message, tutorial_roster,
+                                                       ClassicScoreboardPing::Clock::now())) {
+                        continue;
+                    }
                     // gameScene.pyd process_packet_chat_message (0x1017cf90):
                     // SYSTEM -> add_server_message (255,100,100); BIG -> big
                     // text; ALL/TEAM from player -1 -> add_server_message(
@@ -17638,6 +17946,7 @@ struct NativeFrontendModule::Impl final {
                     present_corpse_hit(eye,tracer.direction,
                         std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z),action.tool_id,result.tracers.size(),action.seed);
                     const auto pack=[](world::Vec3 v){return std::array<float,3>{static_cast<float>(v.x),static_cast<float>(v.y),static_cast<float>(v.z)};};
+                    record_classic_map_shot(action.tool_id,local_muzzle_point(),pack(tracer.endpoint),true);
                     if(const auto launch=world::plan_tracer_launch(retail_look_active(),pack(eye),
                         pack(tracer.direction),local_muzzle_point(),pack(tracer.endpoint)))
                         spawn_tracer(action.tool_id,launch->start,launch->end);
@@ -17648,6 +17957,7 @@ struct NativeFrontendModule::Impl final {
                 bool enemy_hit{};
                 for (const auto& hit : result.hits) {
                     send(network::classic_hit_packet(hit.player, hit.part));
+                    record_body_hit(hit.player,hit.position,action.tool_id,*local_player_id,action.seed);
                     emit_blood(
                         {static_cast<float>(hit.position.x), static_cast<float>(hit.position.y),
                          static_cast<float>(hit.position.z)}, action.seed);
@@ -17684,8 +17994,11 @@ struct NativeFrontendModule::Impl final {
                     network::BlockLinePacket line;
                     const auto start=cell_array(*classic_line_start),end=cell_array(*target);
                     for(std::size_t i=0;i<3;++i){line.start[i]=static_cast<std::int16_t>(start[i]);line.end[i]=static_cast<std::int16_t>(end[i]);}
-                    if (network::cube_line_cells(line).size() <= static_cast<std::size_t>(tutorial_session->blocks_remaining()))
+                    const auto cells = network::cube_line_cells(line);
+                    if (cells.size() <= static_cast<std::size_t>(tutorial_session->blocks_remaining()) &&
+                        world::classic_line_clear_of_players(tutorial_session->map(),cells,player,targets))
                         send(network::classic_line_packet(*local_player_id,start,end));
+                    else play_build_error();
                 }
                 classic_line_start.reset();
             }
@@ -19272,16 +19585,21 @@ struct NativeFrontendModule::Impl final {
     std::string cosmetic_weapon_icon(std::uint8_t tool,std::string_view fallback,bool blue_team){
         const auto* item=local_equipped_cosmetic("weapon:"+std::to_string(tool)+":view");
         if(!item)item=local_equipped_cosmetic("weapon:"+std::to_string(tool)+":world");
-        if(!item)return std::string{fallback};
+        const auto* definition=world::find_weapon_definition(tool);
+        if(!item && !(network_match && definition && definition->team_colored_first_person_image))return std::string{fallback};
         if(!cosmetic_icons)cosmetic_icons=std::make_unique<CosmeticIconCache>(config.asset_root);
-        CosmeticIconRequest request;request.item=*item;request.blue_team=blue_team;
-        if(skin_variant_preferences)request.variants=skin_variant_preferences->selection(item->id);
+        CosmeticIconRequest request;if(item)request.item=*item;request.blue_team=blue_team;request.tool_id=tool;
+        if(network_match)request.team_color=remote_team_color(blue_team?2U:3U);
+        if(item&&skin_variant_preferences)request.variants=skin_variant_preferences->selection(item->id);
         return cosmetic_icons->request(request,fallback);
     }
-    std::string cosmetic_class_icon(std::uint8_t klass,bool blue_team,bool portrait,std::string_view fallback,bool equipped=true){
-        const auto* body=equipped?local_equipped_cosmetic("class:"+std::to_string(klass)+":body"):nullptr;
-        const auto* hat=equipped?local_equipped_cosmetic("class:"+std::to_string(klass)+":hat"):nullptr;
-        const bool server_color=network_match&&network::is_classic_protocol(match_protocol);
+    std::string cosmetic_class_icon(std::uint8_t klass,bool blue_team,bool portrait,std::string_view fallback,bool equipped=true,std::optional<std::uint8_t> player=std::nullopt){
+        const auto cosmetic=[&](const std::string& slot) -> const InventoryCosmetic* {
+            return !equipped?nullptr:player?equipped_cosmetic(*player,slot):local_equipped_cosmetic(slot);
+        };
+        const auto* body=cosmetic("class:"+std::to_string(klass)+":body");
+        const auto* hat=cosmetic("class:"+std::to_string(klass)+":hat");
+        const bool server_color=network_match;
         if(!body&&!hat&&!server_color)return std::string{fallback};
         if(!cosmetic_icons)cosmetic_icons=std::make_unique<CosmeticIconCache>(config.asset_root);
         CosmeticIconRequest request;if(body||hat)request.item=body?*body:*hat;request.class_id=klass;request.blue_team=blue_team;
@@ -19292,6 +19610,7 @@ struct NativeFrontendModule::Impl final {
     }
     ClassSelectionAppearance class_selection_icons(){
         ClassSelectionAppearance appearance;const bool blue=class_selection_menu.team()!=3U;const auto team=blue?0U:1U;
+        appearance.hardcore = match_initial_info.hardcore;
         const auto classes=class_selection_menu.classes();
         const auto first=class_selection_menu.visible_class_offset(),last=std::min(classes.size(),first+class_selection_menu.classes_per_page());
         for(auto i=first;i<last;++i)if(const auto* klass=world::find_class_definition(classes[i]))
@@ -20892,7 +21211,12 @@ struct NativeFrontendModule::Impl final {
 
     /** Commit the initial player only after both retail chooser gates. */
     [[nodiscard]] bool send_initial_player(std::uint8_t team, std::uint8_t class_id) {
+        if (awaiting_initial_spawn_create_player) return false;
         if (match_connection == nullptr || team > 3U || class_id > 17U) {
+            return false;
+        }
+        if (join_code_stale()) {
+            begin_join_ticket_refresh({}, team, team == 0U);
             return false;
         }
         network::Protocol168SessionConfig join;
@@ -20905,6 +21229,8 @@ struct NativeFrontendModule::Impl final {
             settings_warning = "failed to queue NewPlayerConnection(15)";
             return false;
         }
+        // NewPlayerConnection consumes the code even when CreatePlayer is delayed.
+        join_code_issued_at.reset();
         awaiting_initial_spawn_create_player = true;
         return true;
     }
@@ -20933,7 +21259,7 @@ struct NativeFrontendModule::Impl final {
                                      match_state_info.team2_name == "TEAM2_COLOR" ? "Green" : "");
         state.team1_color = match_state_info.team1_color;
         state.team2_color = match_state_info.team2_color;
-        state.server_team_colors = network::is_classic_protocol(match_protocol);
+        state.server_team_colors = network_match;
         state.team1_score = match_state_info.team1_score;
         state.team2_score = match_state_info.team2_score;
         state.score_limit = match_state_info.score_limit;
@@ -20964,7 +21290,7 @@ struct NativeFrontendModule::Impl final {
                 if (const auto* klass=world::find_class_definition(replica.class_id)) {
                     const auto team=replica.team==3U?1U:0U;
                     row.class_icon_asset=cosmetic_class_icon(replica.class_id,team==0U,false,
-                        klass->team_icon_assets[team],local_player_id==replica.player_id);
+                        klass->team_icon_assets[team],true,replica.player_id);
                 }
             row.dead = replica.dead;
             row.demo_player = replica.demo_player;
@@ -21791,6 +22117,7 @@ struct NativeFrontendModule::Impl final {
         map_transition_armed = false;
         classic_block_placement.cancel();
         live_map_generation = 0U;
+        classic_scoreboard_ping.reset();
         same_peer_loading_route_pending = false;
         map_transition_reconnecting = false;
         map_transition_attempts = 0U;
@@ -21956,6 +22283,7 @@ struct NativeFrontendModule::Impl final {
         pending_remote_mesh_clears.clear();
         retained_corpse_positions.fill(std::nullopt);
         classic_corpses.fill(std::nullopt);
+        player_body_damage = {};
         last_known_player_positions.fill(std::nullopt);
         running_local_kills.clear();
         team_select_entry.new_match();
@@ -22270,6 +22598,8 @@ struct NativeFrontendModule::Impl final {
         world::TutorialSessionConfig session_config;
         session_config.flight_profile = network_match ? match_initial_info.flight_profile
                                                        : world::balanced_flight_profile();
+        session_config.hardcore = network_match && match_initial_info.hardcore;
+        session_config.race_momentum = network_match && match_initial_info.race_momentum;
         session_config.fall_on_water_damage =
             !network_match || match_initial_info.enable_fall_on_water_damage;
         session_config.mouse_sensitivity = applied_settings.controls.mouse_sensitivity;
@@ -22533,30 +22863,34 @@ struct NativeFrontendModule::Impl final {
      * minutes on those screens was refused with ERROR_NOTICKET.
      */
     [[nodiscard]] bool join_code_stale() const {
-        return join_code_issued_at.has_value() &&
-               std::chrono::steady_clock::now() - *join_code_issued_at >
-                   std::chrono::seconds{30};
+        return network::revival_join_code_needs_refresh(
+            active_join_wire_name, join_code_issued_at, std::chrono::steady_clock::now());
     }
 
-    void begin_join_ticket_refresh(world::ClassSelection selection, std::uint8_t fallback_team) {
+    void begin_join_ticket_refresh(world::ClassSelection selection, std::uint8_t fallback_team,
+                                   bool spectator_join = false) {
         if (join_ticket_refresh.has_value()) {
-            // A live refresh already holds a pick; an abandoned one is still
-            // draining and a second future would block on it, so the code we
-            // hold goes out as it is.
-            if (join_ticket_refresh->generation != 0U) return;
+            // Keep a single HTTP request in flight. An abandoned request must
+            // never authorize a new map or cause an old code to be resent.
+            if (join_ticket_refresh->generation != 0U) {
+                // A second choice while the request is pending replaces the
+                // desired loadout/team, but reuses that same authorization.
+                join_ticket_refresh->selection = std::move(selection);
+                join_ticket_refresh->fallback_team = fallback_team;
+                join_ticket_refresh->spectator_join = spectator_join;
+                return;
+            }
             if (join_ticket_refresh->ticket.valid() &&
                 join_ticket_refresh->ticket.wait_for(std::chrono::milliseconds{0}) !=
                     std::future_status::ready) {
-                join_code_issued_at.reset();
-                submit_loadout_selection(std::move(selection), fallback_team);
+                settings_warning = "Previous authorization is finishing. Please select again shortly.";
                 return;
             }
             join_ticket_refresh.reset();
         }
         if (!active_match_request.has_value() || active_match_request->identity_server_id.empty() ||
             identity_service == nullptr) {
-            join_code_issued_at.reset();
-            submit_loadout_selection(std::move(selection), fallback_team);
+            settings_warning = "Could not refresh server authorization. Rejoin this server from the browser.";
             return;
         }
         auto service = identity_service;
@@ -22564,13 +22898,14 @@ struct NativeFrontendModule::Impl final {
         JoinTicketRefresh refresh;
         refresh.selection = std::move(selection);
         refresh.fallback_team = fallback_team;
+        refresh.spectator_join = spectator_join;
         refresh.generation = next_join_ticket_refresh_generation++;
         refresh.ticket = std::async(std::launch::async, [service, server_id] {
             return service->game_ticket(server_id);
         });
         join_ticket_refresh = std::move(refresh);
         settings_warning = "Authorizing with AoSPlay...";
-        core::diagnostic("identity", "join code older than 30 s; fetching a fresh one before joining");
+        core::diagnostic("identity", "join code consumed, unknown or aging; fetching a fresh one before joining");
     }
 
     void pump_join_ticket_refresh() {
@@ -22581,21 +22916,28 @@ struct NativeFrontendModule::Impl final {
         }
         auto refresh = std::move(*join_ticket_refresh);
         join_ticket_refresh.reset();
-        auto ticket = refresh.ticket.get();
+        network::RevivalTicketResult ticket;
+        try { ticket = refresh.ticket.get(); }
+        catch (const std::exception& error) { ticket.error = error.what(); }
         if (refresh.generation == 0U || match_connection == nullptr ||
-            !class_selection_initial_join) {
+            (!refresh.spectator_join && !class_selection_initial_join && !spectator_rejoin_team)) {
             return;
         }
         if (ticket) {
             active_join_wire_name = std::move(ticket.join_code);
             join_code_issued_at = std::chrono::steady_clock::now();
         } else {
-            // Send the code we hold and let the server decide.
             core::diagnostic("identity", "join code refresh failed: " + ticket.error);
             join_code_issued_at.reset();
+            settings_warning = "Server authorization failed. Please select again to retry: " + ticket.error;
+            return;
         }
         settings_warning.clear();
-        submit_loadout_selection(std::move(refresh.selection), refresh.fallback_team);
+        if (refresh.spectator_join) {
+            if (send_initial_player(0U, 0U)) send_client_in_menu(false);
+        } else {
+            submit_loadout_selection(std::move(refresh.selection), refresh.fallback_team);
+        }
     }
 
     /** Commit either SelectClass or SelectUGC through the same packet-13 transaction. */
@@ -22605,7 +22947,7 @@ struct NativeFrontendModule::Impl final {
         // The first press already sent NewPlayerConnection. A repeat press
         // before CreatePlayer arrives would resend the loadout without a team.
         if (initial_join_submitted) return;
-        if (class_selection_initial_join && join_code_stale()) {
+        if ((class_selection_initial_join || spectator_rejoin_team) && join_code_stale()) {
             begin_join_ticket_refresh(std::move(selection), fallback_team);
             return;
         }
@@ -22647,7 +22989,9 @@ struct NativeFrontendModule::Impl final {
             join.auto_join = false;
             if (!match_connection->send(network::encode_protocol168_new_player_connection(join))) {
                 settings_warning = "failed to queue NewPlayerConnection(15)";
+                return;
             }
+            join_code_issued_at.reset();
             spectator_rejoin_team.reset();
         } else if (in_game_change) {
             const std::array<std::byte, 3U> change_class{
@@ -23143,6 +23487,10 @@ struct NativeFrontendModule::Impl final {
         packet.player_id = *local_player_id;
         packet.chat_type = static_cast<std::uint8_t>(outgoing->first);
         packet.value = std::move(outgoing->second);
+        if (network::is_classic_protocol(match_protocol)) {
+            classic_scoreboard_ping.user_chat(ClassicScoreboardPing::Clock::now(),
+                packet.value == "/ping" || packet.value.starts_with("/ping "));
+        }
         const auto encoded = network::encode_packet(packet);
         if (encoded.empty() || !match_connection->send(encoded)) {
             settings_warning = "failed to queue ChatMessage(49)";
@@ -24624,6 +24972,11 @@ struct NativeFrontendModule::Impl final {
         const auto& local_motion = tutorial_session->player();
         state.focus_x = local_motion.position.x;
         state.focus_y = local_motion.position.y;
+        std::erase_if(classic_map_shots,[&](const auto& shot) {
+            const auto trail=classic_minimap_tracer(shot.path,retail_effect_clock-shot.born,shot.speed);
+            if(trail && network::is_classic_protocol(match_protocol)) state.tracers.push_back(*trail);
+            return !trail;
+        });
 
         const auto team = local_player_team_color();
         const auto team_ui = ui::ColorRgba8{team.red, team.green, team.blue, team.alpha};
@@ -24983,7 +25336,7 @@ struct NativeFrontendModule::Impl final {
         const auto* tool_definition = world::find_weapon_definition(replica.tool_id);
         const auto tool_path = world::retail_tool_color_path(
             replica.tool_id,
-            tool_definition != nullptr && tool_definition->retail.use.use_team_color);
+            tool_definition != nullptr && (tool_definition->retail.use.use_team_color || tool_definition->team_colored_first_person_image));
         std::array<float, 3U> tool_tint{1.0F, 1.0F, 1.0F};
         auto tool_default_color = color;
         bool tool_forces_default_color{};
@@ -25104,6 +25457,7 @@ struct NativeFrontendModule::Impl final {
             rig.primary_was_held = found->second.primary_was_held;
             rig.last_primary_world_loop = found->second.last_primary_world_loop;
             rig.classic_primary_elapsed = found->second.classic_primary_elapsed;
+            rig.classic_dig = found->second.classic_dig;
             rig.last_snapshot_world_loop = found->second.last_snapshot_world_loop;
             rig.action_serial = found->second.action_serial;
             rig.block_sucker_state = found->second.block_sucker_state;
@@ -25388,9 +25742,14 @@ struct NativeFrontendModule::Impl final {
         return arm;
     }
 
+    [[nodiscard]] bool retain_player_corpses() const {
+        return network::is_classic_protocol(match_protocol) ||
+               (!match_initial_info.enable_corpse_explosion &&
+                !match_initial_info.enable_gravestones.value_or(false));
+    }
+
     void begin_classic_corpse(const network::RemotePlayerReplica& player) {
-        if (!tutorial_session || !match_initial_info.classic || player.player_id >= classic_corpses.size() ||
-            world::retail_jetpack_id(player.loadout, player.ugc_tools).has_value()) return;
+        if (!tutorial_session || (!retain_player_corpses() && (!match_initial_info.classic || world::retail_jetpack_id(player.loadout,player.ugc_tools).has_value())) || player.player_id >= classic_corpses.size()) return;
         auto& state = classic_corpses[player.player_id];
         if (state && state->generation == player.generation) return;
         auto position = player.position;
@@ -25410,10 +25769,11 @@ struct NativeFrontendModule::Impl final {
         const bool deuce = player.class_id == 5U;
         state.emplace(ClassicCorpseState{player.generation, world::ClassicCorpse{
             position, world::retail_character_root_yaw_degrees({orientation.x, orientation.y, orientation.z}),
-            velocity, player.generation ^ player.player_id, !deuce || applied_settings.main.ragdoll_corpses,
+            velocity, player.generation ^ player.player_id, !deuce || applied_settings.main.ragdoll_corpses || applied_settings.main.gore,
             local_player_id==player.player_id?tutorial_session->player().crouch:(player.input_flags&32U)!=0,
             static_cast<std::uint64_t>(std::max(0.0,character_animation_timer_ms))},
             std::nullopt, {}, player.tool_id});
+        state->death_time=retail_effect_clock;
         // Read the same tool animation and transform hierarchy as the live
         // third-person arms. Death must release the held pose, not reset it.
         const auto rig = remote_player_rigs.find(player.player_id);
@@ -25473,8 +25833,9 @@ struct NativeFrontendModule::Impl final {
     }
 
     void advance_classic_corpses(double dt) {
-        if (!tutorial_session || !match_initial_info.classic) {
+        if (!tutorial_session || (!match_initial_info.classic && !retain_player_corpses())) {
             classic_corpses.fill(std::nullopt);
+            player_body_damage = {};
             return;
         }
         for (std::size_t id = 0; id < classic_corpses.size(); ++id) {
@@ -25503,7 +25864,7 @@ struct NativeFrontendModule::Impl final {
         const auto* replica = tutorial_roster.player(player_id);
         const auto rig = remote_player_rigs.find(player_id);
         if (replica == nullptr || rig == remote_player_rigs.end() ||
-            world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value())
+            (!retain_player_corpses() && world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value()))
             return;
         auto still = rig->second.motion.sample();
         still.dead = true;
@@ -25916,6 +26277,7 @@ struct NativeFrontendModule::Impl final {
             if (const auto* item = equipped_cosmetic(player.player_id, cosmetic_slot_key(slot, player.class_id)))
                 appearance += ":" + item->id;
         }
+        std::vector<DamageSurface> damage_surfaces;
         const auto emit = [&](std::size_t part, const world::ChunkMesh* mesh,
                               const world::ClassicCorpse::Matrix& transform) {
             if (!mesh || mesh->empty()) return;
@@ -25923,7 +26285,11 @@ struct NativeFrontendModule::Impl final {
                 "ragdoll:" + std::to_string(player.class_id) + ":" +
                 std::to_string(character_color_key(color)) + appearance + ":" + std::to_string(part),
                 [mesh] { return mesh; });
-            if (slot) draws.push_back({*slot, transform});
+            if (slot) {
+                static constexpr std::array<std::uint8_t,10> groups{0,1,2,2,3,3,4,5,6,7};
+                damage_surfaces.push_back({draws.size(),{mesh,transform,groups[part]}});
+                draws.push_back({*slot, transform});
+            }
         };
         emit(0, &models->standing_torso_preview, corpse.body_transform());
         emit(1, &models->head_preview, corpse.head_transform());
@@ -25942,6 +26308,7 @@ struct NativeFrontendModule::Impl final {
                     {mesh.maximum[0], mesh.maximum[1], mesh.maximum[2]}));
             }
         }
+        apply_body_damage(player,draws,damage_surfaces);
     }
 
     [[nodiscard]] std::vector<render::WorldModelDraw> tutorial_player_draws() {
@@ -25978,14 +26345,13 @@ struct NativeFrontendModule::Impl final {
             const auto rig = remote_player_rigs.find(player.player_id);
             const auto* jetpack_corpse = jetpack_deaths.state(player.player_id);
             const bool draws_jetpack_corpse =
-                player.dead && jetpack_corpse != nullptr &&
+                player.dead && !retain_player_corpses() && jetpack_corpse != nullptr &&
                 jetpack_corpse->generation == player.generation;
             const auto equipped_jetpack = world::retail_jetpack_id(player.loadout, player.ugc_tools);
             // Character.draw pyx 2058-2059: a dead character without a pack
             // leaves ClassicCorpse in classic matches until explode_corpse.
             const bool draws_classic_corpse =
-                player.dead && !draws_jetpack_corpse && !equipped_jetpack.has_value() &&
-                match_initial_info.classic &&
+                player.dead && !draws_jetpack_corpse && (retain_player_corpses() || (match_initial_info.classic && !equipped_jetpack.has_value())) &&
                 exploded_corpse_generations[player.player_id & 0x7FU] != player.generation;
             // Our own player never has a rig, but Character.draw leaves its
             // ClassicCorpse too: the death camera looks at it.
@@ -26115,6 +26481,12 @@ struct NativeFrontendModule::Impl final {
                 return flash_slots.has_value() ? (*flash_slots).*flashed : normal;
             };
 
+            std::vector<DamageSurface> damage_surfaces;
+            const auto* damage_models=applied_settings.main.gore && retain_player_corpses()
+                ? remote_class_models_for(player,rig->second.resolved_team_color) : nullptr;
+            const auto damaged_part=[&](const world::ChunkMesh* mesh,std::uint8_t group) {
+                if(mesh) damage_surfaces.push_back({draws.size()-1,{mesh,draws.back().transform,group}});
+            };
             // Retail draws the torso, head and both legs as separate
             // DisplayLists. Pitching the old combined body either left the
             // head rigid or rotated the entire player around their feet.
@@ -26123,6 +26495,7 @@ struct NativeFrontendModule::Impl final {
                            : body_slot(rig->second.standing_body_slot,
                                        &CharacterFlashSlots::standing),
                  root});
+            if(damage_models) damaged_part(crouching?&damage_models->crouching_torso_preview:&damage_models->standing_torso_preview,0);
             // set_crouch keeps the head at BODY_PARTS_Z 0.3 in both poses (no
             // invented standing lift); the head pitches about that anchor.
             constexpr float head_pivot_z{0.3F};
@@ -26131,6 +26504,7 @@ struct NativeFrontendModule::Impl final {
             head = mat_mul(head, mat_translate(0.0F, 0.0F, head_pivot_z));
             head = mat_mul(head, root);
             draws.push_back({body_slot(rig->second.head_slot, &CharacterFlashSlots::head), head});
+            if(damage_models) damaged_part(&damage_models->head_preview,1);
             if(rig->second.combined_arms){
                 auto arms=mat_translate(0.F,0.F,-.25F);
                 arms=mat_mul(arms,mat_rotate_x(static_cast<float>(aim_pitch)));
@@ -26165,12 +26539,14 @@ struct NativeFrontendModule::Impl final {
                                        &CharacterFlashSlots::crouching_left_leg)
                            : body_slot(rig->second.left_leg_slot, &CharacterFlashSlots::left_leg),
                  animated_leg(0.25F, walk_pose.left)});
+            if(damage_models) damaged_part(crouching?&damage_models->crouching_left_leg_preview:&damage_models->left_leg_preview,2);
             draws.push_back(
                 {crouching ? body_slot(rig->second.crouching_right_leg_slot,
                                        &CharacterFlashSlots::crouching_right_leg)
                            : body_slot(rig->second.right_leg_slot,
                                        &CharacterFlashSlots::right_leg),
                  animated_leg(-0.25F, walk_pose.right)});
+            if(damage_models) damaged_part(crouching?&damage_models->crouching_right_leg_preview:&damage_models->right_leg_preview,3);
 
             // Character.set_jetpack_model keeps this exact child attached
             // while Character.update_dead rotates the complete owner. The
@@ -26320,10 +26696,12 @@ struct NativeFrontendModule::Impl final {
                                                               : rig->second.tool_slots[part],
                                  held});
             }
-            const auto arm_draw = [&](std::uint32_t slot,
+            const auto arm_draw = [&](std::uint32_t slot, std::uint8_t group,
                                       const world::RetailThirdPersonArmPose& part) {
                 const auto arm = character_arm_matrix(pose,part,root,sucker_shake);
                 draws.push_back({slot, arm});
+                if(damage_models && damage_models->first_person_arms.size()>=2)
+                    damaged_part(&damage_models->first_person_arms[group<6?0:1],group);
             };
             if (rig->second.draws_arms && pose.draws_player_arms) {
                 const auto& arms = pose.arms;
@@ -26332,18 +26710,19 @@ struct NativeFrontendModule::Impl final {
                 const auto lower =
                     body_slot(rig->second.arm_lower_slot, &CharacterFlashSlots::arm_lower);
                 arm_draw(
-                    upper,
+                    upper,5,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::right_upper)]);
                 arm_draw(
-                    lower,
+                    lower,7,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::right_lower)]);
                 arm_draw(
-                    upper,
+                    upper,4,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::left_upper)]);
                 arm_draw(
-                    lower,
+                    lower,6,
                     arms[static_cast<std::size_t>(world::RetailThirdPersonArmPart::left_lower)]);
             }
+            apply_body_damage(player,draws,damage_surfaces);
         }
         return draws;
     }
@@ -28376,11 +28755,14 @@ struct NativeFrontendModule::Impl final {
             }
             command.asset_id = std::string{
                 projection->pointer ? objective_pointer_asset : icon_asset};
+            const double icon_size = match_initial_info.fun_mode.empty() ? projection->size_pixels :
+                std::clamp(projection->size_pixels, 18.0 * drawable_extent.height / 1080.0,
+                           48.0 * drawable_extent.height / 1080.0);
             command.destination = {
-                projection->x_pixels - projection->size_pixels * 0.5,
-                projection->y_pixels - projection->size_pixels * 0.5,
-                projection->size_pixels,
-                projection->size_pixels};
+                projection->x_pixels - icon_size * 0.5,
+                projection->y_pixels - icon_size * 0.5,
+                icon_size,
+                icon_size};
             command.space = ui::DrawSpace::window_pixels;
             command.sampling = ui::TextureFilter::linear;
             command.retail_source_anchor = ui::TextureAnchor::center;
@@ -28760,7 +29142,7 @@ struct NativeFrontendModule::Impl final {
             const auto name_color =
                 player.team == 2U || player.team == 3U
                     ? ui::ColorModulation{[&] {
-                          if (network_match && network::is_classic_protocol(match_protocol)) {
+                          if (network_match) {
                               const auto color = remote_team_color(player.team);
                               return ui::ColorRgba8{color.red, color.green, color.blue, color.alpha};
                           }
@@ -29421,7 +29803,10 @@ struct NativeFrontendModule::Impl final {
             } else {
                 const auto canvas=ui::DesignCanvas{800,600}.viewport({static_cast<std::int32_t>(extent.width),static_cast<std::int32_t>(extent.height)});
                 if (workshop_open) inventory_view->prepare_workshop(workshop_menu,canvas?static_cast<float>(canvas->scale):1.0F);
-                else inventory_view->prepare(inventory_menu,inventory_fixture,canvas?static_cast<float>(canvas->scale):1.0F);
+                else {
+                    inventory_view->set_team_colors(network_match ? std::optional{std::array{remote_team_color(2U),remote_team_color(3U)}} : std::nullopt);
+                    inventory_view->prepare(inventory_menu,inventory_fixture,canvas?static_cast<float>(canvas->scale):1.0F);
+                }
                 consume_inventory_view();
             }
         }
@@ -29499,6 +29884,9 @@ struct NativeFrontendModule::Impl final {
             camera.yaw_degrees = 0.0;
             camera.pitch_degrees = 18.0;
             camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.classic_voxel_lighting = network::is_classic_protocol(match_protocol);
+            camera.flat_fog_sky = network::is_classic_protocol(match_protocol) &&
+                                  applied_settings.main.classic_sky == "server";
             camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
                 static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             if (!world_renderer.submit(camera, {extent.width, extent.height})) {
@@ -29533,6 +29921,9 @@ struct NativeFrontendModule::Impl final {
             camera.pitch_degrees = 0.0;
             camera.sky_anchor = std::array<double, 3U>{256.0, 256.0, 0.0};
             camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.classic_voxel_lighting = network::is_classic_protocol(match_protocol);
+            camera.flat_fog_sky = network::is_classic_protocol(match_protocol) &&
+                                  applied_settings.main.classic_sky == "server";
             camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
                 static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             if (!world_renderer.submit(camera, {extent.width, extent.height})) {
@@ -29632,6 +30023,9 @@ struct NativeFrontendModule::Impl final {
             camera.view_model_fov_y_degrees =
                 world::zoom_fov_y_degrees(tutorial_session->zoom_level());
             camera.classic075_fog = match_protocol == network::GameProtocol::classic075;
+            camera.classic_voxel_lighting = network::is_classic_protocol(match_protocol);
+            camera.flat_fog_sky = network::is_classic_protocol(match_protocol) &&
+                                  applied_settings.main.classic_sky == "server";
             camera.fog_distance = world::protocol_fog_distance(static_cast<std::uint8_t>(match_protocol),
                 static_cast<double>(static_cast<std::uint16_t>(applied_settings.graphics.draw_distance)));
             const auto tool_draws = (result_camera.has_value() ||
@@ -30179,7 +30573,7 @@ bool NativeFrontendModule::start() {
                     static_cast<float>(startup_settings.main.music_volume),
                     1.0F,
                     false,
-                    startup_settings.main.audio_device});
+                    startup_settings.main.audio_device, startup_settings.main.spatial_audio});
             // Audio is intentionally optional: a missing output device must not
             // prevent the graphical client from opening.
             impl_->audio_started = impl_->audio->start();
@@ -30549,6 +30943,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
     impl_->remote_rig_uploads_remaining = 1U;
     impl_->remote_rig_uploaded_this_tick = false;
     impl_->pump_live_match_packets();
+    impl_->update_classic_scoreboard_ping();
     if (impl_->classic_server_spawn_pending && impl_->tutorial_session == nullptr &&
         impl_->tutorial_ready_map != nullptr && impl_->match_loading.snapshot().start_enabled &&
         !impl_->navigation.shell().transitioning() &&
@@ -30592,7 +30987,7 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             // it no more rows); stepping it on its last held keys walked the
             // corpse away. Jetpack corpses keep flying on their own rows.
             if (replica == nullptr || !replica->dead ||
-                world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value()) {
+                (!impl_->retain_player_corpses() && world::retail_jetpack_id(replica->loadout, replica->ugc_tools).has_value())) {
                 rig.motion.tick(dt, remote_motion_map, remote_motion_gravity, impl_->network_match && network::is_classic_protocol(impl_->match_protocol));
             }
             // MinigunWeapon.update for observers: the barrel spools while the

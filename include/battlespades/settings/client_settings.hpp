@@ -30,13 +30,20 @@ struct MainSettings final {
     bool fallback_music{false};
     /** Local and remote death cries; other combat audio stays independent. */
     bool death_voices{true};
+    /** Headphone binaural rendering; ordinary stereo panning remains available. */
+    bool spatial_audio{false};
     /** Articulated local corpses in Classic modes; gravity applies in either mode. */
     bool ragdoll_corpses{true};
     /** Local blood droplets and temporary terrain stains in all game modes. */
     bool blood_marks{false};
+    bool gore{false};
+    /** Wound size/depth: light, medium, heavy, brutal. */
+    std::uint8_t gore_intensity{2};
+    /** Separation frequency: off, restrained, heavy, brutal. */
+    std::uint8_t dismemberment_intensity{2};
     /** Local atmosphere overrides for legacy Classic VXL maps only. */
     std::string classic_sky{"server"};
-    std::string classic_fog{"gray"};
+    std::string classic_fog{"server"};
     std::array<std::uint8_t, 3U> classic_fog_color{128U, 128U, 128U};
     /** Share current server/map/mode with the locally running Discord client. */
     bool discord_presence{true};

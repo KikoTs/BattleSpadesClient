@@ -13,6 +13,8 @@
 //       [ambient=r,g,b] [ambient_intensity=f] [tier=compatibility|low|...]
 //       [backend=direct3d11] [shaders=<bin root>] [sky=x,y,z]
 //       [classic075=1] (original horizontal fog, clamped to 128 blocks)
+//       [classic_colors=0|1] (original voxel colors; defaults to classic075)
+//       [flat_fog_sky=1] (Classic sky uses the fog-colored background)
 //       [checkpoint=x,y,z] [checkpoint_color=r,g,b] (existing base entity)
 //       [explosion_tool=57 effect_position=x,y,z effect_ticks=12]
 //       [effect_color=r,g,b] [effect_gravity=1] [effect_collision=1]
@@ -275,6 +277,8 @@ int main(int argc, char** argv) {
         camera.fov_y_degrees = std::stod(get("fov", "75"));
         camera.fog_distance = std::stod(get("fog_distance", "192"));
         camera.classic075_fog = get("classic075", "0") == "1";
+        camera.classic_voxel_lighting = get("classic_colors", get("classic075", "0")) == "1";
+        camera.flat_fog_sky = get("flat_fog_sky", "0") == "1";
         if (camera.classic075_fog) camera.fog_distance = std::min(camera.fog_distance, 128.0);
         if (args.contains("sky")) {
             const auto sky = numbers(args["sky"], 3U);

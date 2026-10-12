@@ -16,7 +16,8 @@ namespace battlespades::frontend {
     bool head_only = false, std::optional<world::VxlColor> team_color = std::nullopt);
 [[nodiscard]] std::optional<world::ChunkMesh> inventory_weapon_preview_mesh(
     const InventoryCosmetic& item, const std::filesystem::path& root, bool blue_team,
-    const world::SkinVariantSelection& variants);
+    const world::SkinVariantSelection& variants,
+    std::optional<world::VxlColor> team_color = std::nullopt);
 [[nodiscard]] const InventoryCosmetic* find_inventory_cosmetic(std::string_view id);
 [[nodiscard]] std::shared_ptr<const world::Kv6Model> inventory_verified_model(
     const InventoryCosmetic& item, const std::filesystem::path& root);

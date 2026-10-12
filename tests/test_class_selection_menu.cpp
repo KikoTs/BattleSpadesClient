@@ -42,6 +42,18 @@ int main() {
     using battlespades::frontend::ClassSelectionMenuModel;
     try {
         {
+            ClassSelectionMenuModel hardcore_menu;
+            const std::array<std::uint8_t, 5U> roles{5U, 0U, 1U, 3U, 17U};
+            hardcore_menu.configure(roles, 2U, 5U);
+            battlespades::frontend::ClassSelectionAppearance appearance;
+            appearance.hardcore = true;
+            const battlespades::frontend::ClassSelectionPresentation presentation;
+            const auto draw = presentation.build(hardcore_menu, {800U, 600U}, false, appearance);
+            for (const auto name : {"Soldier", "Heavy", "Recon", "Demolitionist", "Medic", "Grenades"})
+                expect(find_text(draw, name) != nullptr, "Hardcore must explain role and grenade choices");
+            expect(find_text(draw, "MELEE") == nullptr, "Hardcore grenade row must not be labelled melee");
+        }
+        {
             // Zombie mode: retail GameClass.build_class_loadout appends the
             // Flare Block to every non-mafia class, the zombie included, but
             // the server commits the infected kit (hands 24, zombie prefab

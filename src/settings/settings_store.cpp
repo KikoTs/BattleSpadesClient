@@ -424,6 +424,14 @@ template <typename Value, typename Parser>
     }
 
     if (state.section == Section::main) {
+        if (key == "gore_intensity" || key == "dismemberment_intensity") {
+            if (!state.remember(line, key)) return false;
+            const auto parsed = parse_unsigned(value);
+            if (!parsed || *parsed > 3U) return state.fail(line, "gore intensity must be 0..3");
+            (key == "gore_intensity" ? state.candidate.main.gore_intensity
+                                    : state.candidate.main.dismemberment_intensity) = static_cast<std::uint8_t>(*parsed);
+            return true;
+        }
         if (key == "classic_sky" || key == "classic_fog") {
             if (!state.remember(line, key)) return false;
             const auto parsed = parse_string(value);
@@ -477,7 +485,7 @@ template <typename Value, typename Parser>
         }
         if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
             key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints" ||
-            key == "fallback_music" || key == "death_voices" || key == "ragdoll_corpses" || key == "blood_marks" ||
+            key == "fallback_music" || key == "death_voices" || key == "spatial_audio" || key == "ragdoll_corpses" || key == "blood_marks" || key == "gore" ||
             key == "discord_presence" || key == "discord_join") {
             if (!state.remember(line, key)) {
                 return false;
@@ -496,10 +504,14 @@ template <typename Value, typename Parser>
                 state.candidate.main.weapon_motion = *parsed;
             } else if (key == "ability_hints") {
                 state.candidate.main.ability_hints = *parsed;
+            } else if (key == "spatial_audio") {
+                state.candidate.main.spatial_audio = *parsed;
             } else if (key == "death_voices") {
                 state.candidate.main.death_voices = *parsed;
             } else if (key == "fallback_music") {
                 state.candidate.main.fallback_music = *parsed;
+            } else if (key == "gore") {
+                state.candidate.main.gore = *parsed;
             } else if (key == "blood_marks") {
                 state.candidate.main.blood_marks = *parsed;
             } else if (key == "ragdoll_corpses") {
@@ -693,9 +705,13 @@ template <typename Value, typename Parser>
            << "language = \"" << settings.main.language << "\"\n"
            << "master_volume = " << decimal(settings.main.master_volume) << "\n"
            << "music_volume = " << decimal(settings.main.music_volume) << "\n"
+           << "spatial_audio = " << (settings.main.spatial_audio ? "true" : "false") << "\n"
            << "death_voices = " << (settings.main.death_voices ? "true" : "false") << "\n"
            << "fallback_music = " << (settings.main.fallback_music ? "true" : "false") << "\n"
            << "ragdoll_corpses = " << (settings.main.ragdoll_corpses ? "true" : "false") << "\n"
+           << "gore = " << (settings.main.gore ? "true" : "false") << "\n"
+           << "gore_intensity = " << static_cast<unsigned>(settings.main.gore_intensity) << "\n"
+           << "dismemberment_intensity = " << static_cast<unsigned>(settings.main.dismemberment_intensity) << "\n"
            << "blood_marks = " << (settings.main.blood_marks ? "true" : "false") << "\n"
            << "discord_presence = " << (settings.main.discord_presence ? "true" : "false") << "\n"
            << "discord_join = " << (settings.main.discord_join ? "true" : "false") << "\n"

@@ -306,3 +306,56 @@ cmake --build .\out\build\native-release --config Release --target package
 
 The portable archive and its SHA-256 checksum are written under
 `out/build/native-release`.
+
+## Body damage intensity
+
+`main.gore` remains the opt-in master switch. `gore_intensity` selects Light (0),
+Medium (1), Heavy (2, default), or Brutal (3) for new wounds.
+`dismemberment_intensity` independently selects Off (0), Restrained (1), Heavy
+(2, default), or Brutal (3). Both controls are in the native Main settings menu
+and apply without restarting. Existing settings files retain their gore choice.
+
+Wounds excavate visible skin faces and close the holes with dark tissue walls.
+Head wounds use an ivory ring and darker core; limbs use an ivory center. These
+are stylized interiors, not anatomical simulation. Depth is limited to five
+model voxels and less than half the part's thickness. Detached heads/limbs retain
+the native rigid body rig. Brutal guarantees separation for eligible shotgun
+head/limb contacts within eight blocks; the probability falls to zero at sixteen
+blocks. Living players only separate after server-confirmed death. Snipers retain
+rare lethal limb separation and do not decapitate.
+
+The cosmetic budget is 32 stored wounds and 16 pending contacts per player,
+1,024 removed voxel cells per mesh (at most 32,768 carving probes). A temporary
+occupancy grid capped at 262,144 cells fills hollow KV6 interiors on mesh updates;
+unsupported geometry uses a single surface tint. There are at most 64 skin/bone
+particles per body per rendered batch, and the existing shared 4,096-particle pool. Skin fragments last 1.8 seconds
+and bone fragments 2.2 seconds with gravity and terrain collision. Mesh changes
+reuse the revision cache and four-upload frame budget. Neighboring wounds merge
+and only exposed boundary faces are generated, avoiding stacked skin/interior
+surfaces. No per-voxel rigid bodies,
+extra network packets, damage changes, or gameplay hitbox changes are introduced.
+
+Visual references: [Paint the Town Red](https://store.steampowered.com/app/337320/Paint_the_Town_Red/)
+uses dynamic voxel damage; [Teardown's authoring guide](https://www.teardowngame.com/modding/)
+highlights connectivity and physics problems from trapped loose material. This
+implementation uses bounded surface excavation and pooled debris suited to the
+existing BattleSpades renderer, rather than importing either game's engine.
+
+## Headphone spatial audio and Classic map atmosphere
+
+`main.spatial_audio` (default `false`) enables OpenAL Soft binaural HRTF from
+Main → Spatial audio (headphones). It applies live and Cancel restores the
+previous choice. Ordinary stereo positional sound remains active when it is
+Off. Unsupported outputs retain stereo; the menu reports when HRTF cannot be
+applied. Avoid combining it with another headphone surround processor.
+
+For Classic servers, the default sky is a flat fill matching the active fog.
+`main.classic_fog = "server"` now defaults to the color sent in StateData and
+FogColor packets, so server map metadata and scripted changes are respected.
+Existing saved gray/custom fog and sky choices stay intact. Native maps retain
+their authored atmosphere.
+
+## Chat visibility
+
+Chat messages stay fully opaque for 12 seconds, then fade over three seconds.
+Opening chat still exposes the retained history; the history limit is unchanged.

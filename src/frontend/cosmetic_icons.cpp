@@ -14,6 +14,7 @@ std::string cosmetic_icon_key(const CosmeticIconRequest& r){
     std::string key="runtime/cosmetic/"+r.item.id+"/"+r.item.sha256+"/"+std::to_string(static_cast<int>(r.kind))+"/"+
         std::to_string(r.class_id)+"/"+std::to_string(r.blue_team);
     if(r.team_color)key+="/rgb:"+std::to_string(r.team_color->red)+","+std::to_string(r.team_color->green)+","+std::to_string(r.team_color->blue);
+    if(r.tool_id)key+="/tool:"+std::to_string(*r.tool_id);
     for(const auto& [name,part]:r.item.character_parts)key+="/"+name+":"+part.sha256;
     if(r.hat)key+="/hat:"+r.hat->id+":"+r.hat->sha256;
     for(const auto& [option,value]:r.variants)if(option!="zoom")key+="/"+option+":"+value;
@@ -21,8 +22,12 @@ std::string cosmetic_icon_key(const CosmeticIconRequest& r){
 }
 
 std::vector<std::uint8_t> render_cosmetic_icon(const CosmeticIconRequest& r,const std::filesystem::path& root){
-    const auto mesh=r.kind==CosmeticIconKind::weapon?inventory_weapon_preview_mesh(r.item,root,r.blue_team,r.variants):
+    auto mesh=r.kind==CosmeticIconKind::weapon?inventory_weapon_preview_mesh(r.item,root,r.blue_team,r.variants,r.team_color):
         inventory_preview_mesh(r.item,root,r.blue_team,r.class_id,r.hat?&*r.hat:nullptr,r.kind==CosmeticIconKind::class_head,r.team_color);
+    if(r.kind==CosmeticIconKind::weapon && r.item.id.empty() && r.tool_id) {
+        auto stock=world::load_weapon_models(root,*r.tool_id,{1,1,1},r.team_color);
+        if(stock && !stock.models->first_person_parts.empty()) mesh=std::move(stock.models->first_person_parts.front());
+    }
     if(!mesh||mesh->empty())return {};
     world::CosmeticPreviewStyle style;
     style.width=style.height=cosmetic_icon_size;

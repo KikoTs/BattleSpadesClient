@@ -21,19 +21,28 @@
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 5) {
         std::cerr << "usage: aos_protocol168_live_session_smoke HOST PORT "
-                     "[SECONDS] [--prefab]\n";
+                      "[SECONDS] [--prefab|--hardcore|--community]\n";
         return 2;
     }
     const auto parsed_port = std::strtoul(argv[2], nullptr, 10);
     const auto seconds = argc >= 4 ? std::strtoul(argv[3], nullptr, 10) : 5UL;
     const bool test_prefab = argc == 5 && std::string_view{argv[4]} == "--prefab";
-    if (argc == 5 && !test_prefab) return 2;
+    const bool test_hardcore = argc == 5 && std::string_view{argv[4]} == "--hardcore";
+    const bool test_community = argc == 5 && std::string_view{argv[4]} == "--community";
+    if (argc == 5 && !test_prefab && !test_hardcore && !test_community) return 2;
     if (parsed_port == 0UL || parsed_port > 65'535UL || seconds == 0UL) return 2;
 
     using namespace battlespades::network;
     LiveProtocol168Connection connection;
     Protocol168SessionConfig primary_config;
     primary_config.player_name = "NativeLiveSmoke";
+    // Exercise unknown direct-IP discovery: stock ticket, update refusal,
+    // then a single BSCF v3 retry. The observer advertises v3 immediately.
+    if (test_hardcore) primary_config.class_id = 5U;
+    if (test_community) {
+        primary_config.class_id = 12U;
+        primary_config.negotiate_flight_profile = true;
+    }
     // Select the complete loadout before spawning, just like SelectClass.
     // Changing it after auto-join correctly kills the old life on local servers.
     primary_config.auto_join = false;
@@ -61,10 +70,17 @@ int main(int argc, char** argv) {
         std::cerr << "live session never published a world bootstrap\n";
         return 1;
     }
+    if (test_hardcore && (!bootstrap->initial_info.hardcore ||
+                         bootstrap->initial_info.loadout_overrides.size() != 35U)) {
+        std::cerr << "Hardcore capability and five-class menu were not negotiated\n";
+        return 1;
+    }
 
     LiveProtocol168Connection observer;
     Protocol168SessionConfig observer_config;
     observer_config.player_name = "NativeObserver";
+    observer_config.negotiate_flight_profile = test_hardcore;
+    if (test_community) observer_config.class_id = 12U; // Deliberately keep the stock ticket.
     if (!observer.start(
             EnetProtocol168Config{argv[1], static_cast<std::uint16_t>(parsed_port),
                                   30'000U},
@@ -102,11 +118,14 @@ int main(int argc, char** argv) {
         // An intentional single non-default choice must survive normalization.
         requested_prefabs = {"prefab_caltrop"};
     }
-    const auto selection = requested_prefabs.empty()
-                               ? battlespades::world::default_class_selection(
-                                     primary_config.class_id)
-                               : battlespades::world::make_class_selection(
-                                     primary_config.class_id, {}, requested_prefabs);
+    battlespades::world::ClassSelectionRules rules;
+    rules.disabled_tools = bootstrap->initial_info.disabled_tools;
+    rules.loadout_overrides = bootstrap->initial_info.loadout_overrides;
+    const auto selection = (test_hardcore || test_community)
+        ? battlespades::world::automatic_class_selection(primary_config.class_id, rules)
+        : requested_prefabs.empty()
+            ? battlespades::world::default_class_selection(primary_config.class_id)
+            : battlespades::world::make_class_selection(primary_config.class_id, {}, requested_prefabs);
     SetClassLoadoutPacket loadout;
     loadout.player_id = bootstrap->local_player_id;
     loadout.class_id = selection.class_id;
@@ -135,9 +154,62 @@ int main(int argc, char** argv) {
     }
     const auto* local = bootstrap->roster.player(bootstrap->local_player_id);
     if (local == nullptr || local->class_id != selection.class_id ||
-        local->prefabs != selection.prefabs) {
+        (!test_community && local->prefabs != selection.prefabs)) {
         std::cerr << "server did not preserve the selected class and exact construct list\n";
         return 1;
+    }
+    if (test_hardcore) {
+        auto expected = selection.loadout;
+        auto actual = local->loadout;
+        std::ranges::sort(expected);
+        std::ranges::sort(actual);
+        if (expected != actual) {
+            std::cerr << "Hardcore server/client loadout disagreement\n";
+            std::cerr << "requested:";
+            for (const auto tool : expected) std::cerr << ' ' << static_cast<unsigned>(tool);
+            std::cerr << "\ncommitted:";
+            for (const auto tool : actual) std::cerr << ' ' << static_cast<unsigned>(tool);
+            std::cerr << '\n';
+            return 1;
+        }
+    }
+    if (test_community) {
+        const auto& info = bootstrap->initial_info;
+        const auto& stock = observer_bootstrap->initial_info;
+        if (info.fun_mode.empty() || stock.fun_mode != info.fun_mode || stock.race_momentum ||
+            info.race_momentum != (info.fun_mode == "crumbling_run") || local->loadout.empty()) {
+            std::cerr << "community profile, kit, or retail fallback mismatch\n";
+            return 1;
+        }
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
+        std::int32_t community_loop{};
+        while (std::chrono::steady_clock::now() < until) {
+            ClientDataPacket input;
+            input.loop_count = community_loop++;
+            input.player_id = bootstrap->local_player_id;
+            input.tool_id = local->loadout.front();
+            input.opaque_state = protocol168_client_data_opaque_state(input.loop_count);
+            input.orientation = {1.0F, 0.0F, 0.0F};
+            input.action_flags = 0x10U;
+            static_cast<void>(connection.send(encode_packet(input)));
+            input.player_id = observer_bootstrap->local_player_id;
+            static_cast<void>(observer.send(encode_packet(input)));
+            for (const auto& packet : connection.take_inbound()) {
+                if (!packet.empty() && packet.front() == std::byte{2U}) ++world_updates;
+            }
+            static_cast<void>(observer.take_inbound());
+            std::this_thread::sleep_for(std::chrono::milliseconds{16});
+        }
+        if (!world_updates || connection.status().phase == LiveProtocol168Phase::failed ||
+            observer.status().phase == LiveProtocol168Phase::disconnected) {
+            std::cerr << "community runtime failure: updates=" << world_updates << ", "
+                      << connection.status().error << ", observer=" << observer.status().error << '\n';
+            return 1;
+        }
+        std::cout << "Community join passed: " << info.fun_mode << ", native momentum="
+                  << info.race_momentum << ", stock momentum=" << stock.race_momentum
+                  << ", world updates=" << world_updates << '\n';
+        return 0;
     }
     auto active_tool = selection.loadout.empty() ? std::uint8_t{}
                                                   : selection.loadout.front();

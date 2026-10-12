@@ -625,10 +625,23 @@ double canopy_vertical_step(double vz, double dt, double gravity,
 }
 
 MovementClassConfig movement_config_for_class(
-    std::uint8_t class_id, double movement_speed_scale, bool fall_on_water_damage) noexcept {
+    std::uint8_t class_id, double movement_speed_scale, bool fall_on_water_damage, bool hardcore) noexcept {
     auto result = class_id < class_movement_profiles.size()
                       ? class_movement_profiles[class_id]
                       : class_movement_profiles[0U];
+    if (hardcore && (class_id == 0U || class_id == 1U || class_id == 3U || class_id == 5U || class_id == 17U)) {
+        // BATTLESPADES_HARDCORE v1; mirror server/hardcore.py exactly.
+        result.accel_multiplier = 0.7;
+        result.sprint_multiplier = 1.05;
+        result.crouch_sneak_multiplier = 0.35;
+        result.jump_multiplier = 0.77;
+        result.can_sprint_uphill = true;
+        result.water_friction = 8.0;
+        result.falling_damage_min_distance = 10.0;
+        result.falling_damage_max_distance = 40.0;
+        result.falling_damage_max_damage = 100.0;
+        result.fall_on_water_damage_multiplier = 1.0;
+    }
     if (!std::isfinite(movement_speed_scale) || movement_speed_scale <= 0.0) {
         movement_speed_scale = 1.0;
     }
@@ -725,6 +738,10 @@ MovementStepResult step_player(PlayerMovementState& state, const PlayerInputStat
     double accel = f32((state.crouch && !hover) || input.sneak
         ? movement_class.crouch_sneak_multiplier
         : (input.sprint && !state.burdened ? movement_class.sprint_multiplier : movement_class.accel_multiplier));
+    if (movement_class.race_momentum) {
+        const auto factor = .65 + .7 * std::min(1.0, std::hypot(state.velocity.x, state.velocity.y) / .35);
+        accel = f32(accel * factor);
+    }
     accel = f32(accel * dt);
     if (state.airborne) {
         if (state.jetpack_active && !hover && state.jetpack == 3U)

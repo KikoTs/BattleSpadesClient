@@ -1,4 +1,5 @@
 #include "battlespades/frontend/game_hud.hpp"
+#include "battlespades/frontend/classic_scoreboard_ping.hpp"
 #include "battlespades/frontend/loading_screen.hpp"
 #include "battlespades/network/classic_protocol.hpp"
 #include "battlespades/network/protocol168_runtime.hpp"
@@ -550,13 +551,13 @@ void objective_tests(const std::vector<std::byte>& raw) {
     Packet pickup{24};
     pickup.byte(0);
     auto picked = ctf.ingest(pickup.bytes);
-    check(picked.error.empty() && picked.events.size() == 4,
-          "pickup removes ground intel, attaches carried intel and announces the event");
+    check(picked.error.empty() && picked.events.size() == 5,
+          "pickup removes ground intel, attaches carried intel, announces it and plays its cue");
     Packet drop{25};
     drop.byte(0);
     drop.vector(22, 33, 59);
     auto dropped = ctf.ingest(drop.bytes);
-    check(dropped.error.empty() && dropped.events.size() == 4, "drop restores one intel entity and announces it");
+    check(dropped.error.empty() && dropped.events.size() == 5, "drop restores one intel entity, announces it and plays its cue");
     check(static_cast<bool>(decode_tool_action_packet(dropped.events[1])),
           "drop uses the existing pickup lifecycle");
 
@@ -707,6 +708,29 @@ void stabilization_tests(const std::vector<std::byte>& raw) {
         Packet chat{17}; chat.byte(0); chat.byte(1); chat.text("Team test");
         check(wire_equals(session.translate_client(encode_packet(ChatMessagePacket{99, 1, "Team test"})), chat),
               "chat uses the assigned local ID and original team channel");
+        {
+            frontend::ClassicScoreboardPing pings;
+            Protocol168Roster ping_roster;
+            CreatePlayerPacket peer;
+            peer.player_id = 1; peer.name = "Other Player"; peer.team = 1;
+            check(ping_roster.apply(peer), "ping peer roster");
+            const auto now = frontend::ClassicScoreboardPing::Time{} + std::chrono::seconds{100};
+            const auto query = pings.next_query(ping_roster, 0, true, now);
+            check(query == "/ping #1", "scoreboard targets numeric Classic player ID");
+            Packet expected_ping{17}; expected_ping.byte(0); expected_ping.byte(0);
+            expected_ping.text("/ping #1");
+            check(wire_equals(session.translate_client(encode_packet(ChatMessagePacket{0, 0, *query})), expected_ping),
+                  "075 and 076 ping lookups send only original ChatMessage bytes");
+            Packet ping_reply{17}; ping_reply.byte(0); ping_reply.byte(2);
+            ping_reply.text("Other Player's ping is 123 ms");
+            const auto incoming = session.ingest(ping_reply.bytes);
+            check(incoming.error.empty() && incoming.events.size() == 1, "original server ping reply translates");
+            const auto decoded_ping = decode_runtime_packet(incoming.events.front());
+            const auto* message = decoded_ping ? std::get_if<ChatMessagePacket>(&*decoded_ping.packet) : nullptr;
+            check(message && message->player_id == 255 && pings.observe(*message, ping_roster, now),
+                  "Classic system reply retains server origin for silent lookup");
+            check(pings.ping(*ping_roster.player(1), now) == 123, "wire reply updates correct scoreboard player");
+        }
         Packet grenade{6}; grenade.byte(0); grenade.number(2.5F);
         grenade.vector(32, 33, 50); grenade.vector(1, 0, -0.5F);
         check(classic_grenade_packet(0, 2.5F, {32, 33, 226}, {1, 0, -0.5F}) == grenade.bytes &&
@@ -752,7 +776,17 @@ void stabilization_tests(const std::vector<std::byte>& raw) {
                   released[1].back() == std::byte{0},
               "stale render input releases controls after server death");
         check(session.motion(motion, 2).empty(), "stale render input cannot restart a dead life");
-        check(session.ingest(spawn(0).bytes).error.empty(), "stability respawn");
+        Packet stale_aim{1};stale_aim.vector(0,1,0);
+        check(session.ingest(stale_aim.bytes).error.empty(), "spectator aim packet");
+        const auto respawn=session.ingest(spawn(0).bytes);
+        check(respawn.error.empty(), "stability respawn");
+        const auto facing=network::decode_create_player(respawn.events.front());
+        check(facing && facing.packet->orientation==std::array<float,3>{1,0,0},
+              "team zero respawns facing +X, independent of previous aim");
+        const auto opponent=session.ingest(spawn(1).bytes);
+        const auto opposite=network::decode_create_player(opponent.events.front());
+        check(opposite && opposite.packet->orientation==std::array<float,3>{-1,0,0},
+              "opposing team respawns facing -X");
         const auto resumed = session.motion(motion, 2.1);
         check(std::any_of(resumed.begin(), resumed.end(), [](const auto& packet) {
                   return packet.front() == std::byte{1};
@@ -1547,6 +1581,39 @@ void classic_notice_tests(const std::vector<std::byte>& raw) {
         check(!boot->initial_info.enable_deathcam, "Classic never opts into retail killer deathcam");
         check(session.ingest(spawn(0).bytes).error.empty(), "notice local player");
         check(session.ingest(spawn(1).bytes).error.empty(), "notice remote player");
+        const auto shoot_edges = [](const ClassicIngest& result) {
+            check(result.error.empty() && result.wire.empty(), "observer shots never report hits");
+            return std::count_if(result.events.begin(), result.events.end(), [](const auto& bytes) {
+                const auto packet = decode_weapon_packet(bytes);
+                return packet && std::holds_alternative<ShootFeedbackPacket>(*packet.packet);
+            });
+        };
+        Packet press{4}; press.byte(1); press.byte(1);
+        Packet release{4}; release.byte(1); release.byte(0);
+        check(shoot_edges(session.ingest(press.bytes)) == 1, "trigger press emits an immediate observer shot");
+        check(shoot_edges(session.ingest(press.bytes)) == 0, "repeated held input does not duplicate shots");
+        check(shoot_edges(session.ingest(release.bytes)) == 0, "release does not shoot");
+        check(shoot_edges(session.ingest(press.bytes)) == 1, "next short tap remains audible");
+        static_cast<void>(session.ingest(release.bytes));
+        Packet shovel{7}; shovel.byte(1); shovel.byte(0);
+        check(session.ingest(shovel.bytes).error.empty(), "remote equips shovel");
+        check(shoot_edges(session.ingest(press.bytes)) == 1, "quick shovel tap starts its rig immediately");
+        check(shoot_edges(session.ingest(press.bytes)) == 0, "held shovel does not restart at every input packet");
+        static_cast<void>(session.ingest(release.bytes));
+        Packet dig{4}; dig.byte(1); dig.byte(2);
+        check(shoot_edges(session.ingest(dig.bytes)) == 1, "deep dig starts on secondary press");
+        static_cast<void>(session.ingest(release.bytes));
+        Packet sprint{3}; sprint.byte(1); sprint.byte(128);
+        static_cast<void>(session.ingest(sprint.bytes));
+        check(shoot_edges(session.ingest(press.bytes)) == 0, "sprinting cannot start a shovel swing");
+        const auto has_cue = [](const ClassicIngest& result, std::uint8_t sound) {
+            return std::count_if(result.events.begin(), result.events.end(), [sound](const auto& bytes) {
+                const auto packet = decode_runtime_packet(bytes);
+                const auto* cue = packet ? std::get_if<PlaySoundPacket>(&*packet.packet) : nullptr;
+                return cue && cue->sound_id == sound && !cue->positioned && !cue->looping;
+            }) == 1;
+        };
+
         const auto chat = [&](std::uint8_t id, std::uint8_t type, std::string_view value) {
             Packet p{17}; p.byte(id); p.byte(type); p.text(value);
             return messages(session.ingest(p.bytes));
@@ -1573,16 +1640,22 @@ void classic_notice_tests(const std::vector<std::byte>& raw) {
                   "missing-sender script messages remain visible with their native lane and exact text");
         }
         Packet pickup{24}; pickup.byte(0);
-        const auto picked = messages(session.ingest(pickup.bytes));
+        const auto pickup_result = session.ingest(pickup.bytes);
+        check(has_cue(pickup_result, 12), "intel pickup has one global native sound");
+        const auto picked = messages(pickup_result);
         check(picked.size() == 2 && picked[0].value == "Test picked up Gold's intel" &&
                   picked[1].value == "You picked up Gold's intel" && picked[1].chat_type == 3,
               "intel pickup uses the real server team name in native chat and center notice");
         Packet drop{25}; drop.byte(0); drop.vector(22, 33, 59);
-        const auto dropped = messages(session.ingest(drop.bytes));
+        const auto drop_result = session.ingest(drop.bytes);
+        check(has_cue(drop_result, 20), "intel drop has one distinct global native sound");
+        const auto dropped = messages(drop_result);
         check(dropped.size() == 2 && dropped[0].value == "Test dropped Gold's intel",
               "server intel drop emits the existing UI notice");
         Packet capture{23}; capture.byte(1); capture.byte(0);
-        const auto captured = messages(session.ingest(capture.bytes));
+        const auto capture_result = session.ingest(capture.bytes);
+        check(has_cue(capture_result, 2), "intel capture has one global success cue");
+        const auto captured = messages(capture_result);
         check(captured.size() == 2 && captured[1].value == "Test captured Azure's intel",
               "remote capture preserves player and custom team names");
         capture.bytes.back() = std::byte{1};

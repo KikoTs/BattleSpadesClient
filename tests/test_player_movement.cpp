@@ -100,6 +100,37 @@ void settle(PlayerMovementState& state, const VxlMap& map, int maximum_steps) {
 
 int main() {
     try {
+        // Hardcore uses one predictor profile for all five visual models.
+        for (const auto cid : {0U, 1U, 3U, 5U, 17U}) {
+            const auto profile = movement_config_for_class(static_cast<std::uint8_t>(cid), .75, true, true);
+            expect(std::fabs(profile.accel_multiplier - .525) < 1e-9 &&
+                       std::fabs(profile.sprint_multiplier - .7875) < 1e-9 &&
+                       profile.jump_multiplier == .77 && profile.can_sprint_uphill,
+                   "Hardcore must use the common profile and apply speed once");
+            for (const auto height : {1U, 2U, 3U}) {
+                for (const bool crouch : {false, true}) {
+                    if (height < 3U && crouch) continue;
+                    auto map = platform_world();
+                    for (std::uint32_t x{101U}; x < 110U; ++x)
+                        for (std::uint32_t y{99U}; y < 103U; ++y)
+                            for (std::uint32_t dz{1U}; dz <= height; ++dz)
+                                static_cast<void>(map.set_voxel(x, y, 200U - dz, stone));
+                    PlayerMovementState body;
+                    body.position = {100.5, 100.5, 197.75};
+                    body.orientation = {1.0, 0.0, 0.0};
+                    for (int tick{}; tick < 120; ++tick) {
+                        PlayerInputState input;
+                        input.forward = true;
+                        input.jump = height > 1U && tick >= 3;
+                        input.crouch = crouch && tick > 5;
+                        apply_crouch_request(body, input.crouch, &map);
+                        static_cast<void>(step_player(body, input, &map, fixed_dt, profile));
+                    }
+                    expect((body.position.x > 101.5) == (height <= 2U),
+                           "Hardcore must climb one, jump two and reject three-block walls");
+                }
+            }
+        }
         const auto scout = movement_config_for_class(1U);
         const auto zombie = movement_config_for_class(14U);
         const auto sped_up = movement_config_for_class(1U, 1.25);
@@ -804,6 +835,37 @@ int main() {
                    "no water landing damage with the rule off");
         }
 
+        {
+            auto arena = empty_world();
+            for (std::uint32_t x{90U}; x < 400U; ++x)
+                for (std::uint32_t y{96U}; y <= 104U; ++y)
+                    static_cast<void>(arena.set_voxel(x, y, 200U, stone));
+            auto stock = movement_config_for_class(12U);
+            auto momentum = stock;
+            momentum.race_momentum = true;
+            PlayerMovementState runner;
+            runner.position = {100.5, 100.5, 197.75};
+            runner.orientation = {1.0, 0.0, 0.0};
+            auto retail = runner;
+            PlayerInputState input;
+            input.forward = true;
+            input.sprint = true;
+            double early{};
+            for (int frame{}; frame < 180; ++frame) {
+                static_cast<void>(step_player(runner, input, &arena, fixed_dt, momentum));
+                static_cast<void>(step_player(retail, input, &arena, fixed_dt, stock));
+                if (frame == 4) early = runner.velocity.x;
+            }
+            expect(runner.velocity.x > early * 2 && runner.velocity.x > retail.velocity.x,
+                   "race momentum must build speed while retail keeps its original profile");
+            expect(runner.velocity.x < retail.velocity.x * 1.36,
+                   "momentum has a bounded top speed");
+            const auto before = runner.velocity.x;
+            for (int frame{}; frame < 90; ++frame)
+                static_cast<void>(step_player(runner, {}, &arena, fixed_dt, momentum));
+            expect(std::abs(runner.velocity.x) < before * .01,
+                   "released movement still brakes to rest");
+        }
         std::cout << "player movement: retail step/collision parity checks passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -35,6 +35,7 @@ struct OpenAlFrontendAudioConfig final {
     bool play_music_on_start{true};
     /** Empty tries the system default, then available outputs; an explicit device never falls back. */
     std::string playback_device{};
+    bool spatial_audio{false};
 };
 
 /** Pure validation helper; does not touch the filesystem or an audio device. */
@@ -185,6 +186,8 @@ public:
     [[nodiscard]] core::TickDecision tick(const core::TickContext& context) override;
     void stop() noexcept override;
 
+    /** Toggle OpenAL Soft HRTF without destroying playing sources. */
+    [[nodiscard]] bool set_spatial_audio(bool enabled);
     void set_listener(SoundPosition position) override;
     /**
      * Updates position and orientation atomically for correct left/right and

@@ -100,9 +100,9 @@ int main(int argc,char** argv){
         if(argc>2&&std::string_view{argv[2]}=="--all"){
             std::size_t count=0;
             for(const auto& item:frontend::inventory_preview_fixture().items){
-                if(!item.enabled||(item.kind!="weapon_model"&&item.kind!="character_skin"))continue;
+                if(!item.enabled||(item.kind!="weapon_model"&&item.kind!="character_skin"&&item.kind!="hat"))continue;
                 frontend::CosmeticIconRequest request;request.item=item;
-                if(item.kind=="character_skin"){
+                if(item.kind=="character_skin" || item.kind=="hat"){
                     request.kind=frontend::CosmeticIconKind::class_head;
                     for(const auto& slot:item.slots)if(slot.starts_with("class:")){request.class_id=static_cast<std::uint8_t>(std::stoi(slot.substr(6)));break;}
                 }
@@ -114,10 +114,39 @@ int main(int argc,char** argv){
                 }
                 expect(coverage>200,"Missing gameplay icon: "+item.id);
                 expect(stbi_write_png(("tmp/cosmetic-icons/"+item.id+".png").c_str(),256,256,4,image.data(),256*4)!=0,"Catalogue icon capture failed");
+                // Every shipped skin must remain renderable with arbitrary
+                // server colors in both the head and full-body preview paths.
+                for(const auto color:{world::VxlColor{210,32,50,255},world::VxlColor{235,185,25,255},world::VxlColor{35,185,140,255}}) {
+                    request.team_color=color;
+                    const auto tinted=frontend::render_cosmetic_icon(request,config.asset_root);
+                    expect(tinted.size()==image.size(),"custom color icon size: "+item.id);
+                    for(std::size_t pixel=3;pixel<tinted.size();pixel+=4)
+                        expect(tinted[pixel]==image[pixel],"custom colors changed the skin silhouette: "+item.id);
+                    if(item.kind=="character_skin" || item.kind=="hat") {
+                        auto full=request;full.kind=frontend::CosmeticIconKind::class_body;
+                        const auto body_pixels=frontend::render_cosmetic_icon(full,config.asset_root);
+                        std::size_t visible{};for(std::size_t pixel=3;pixel<body_pixels.size();pixel+=4) visible+=body_pixels[pixel]>0;
+                        expect(visible>200,"custom color body preview: "+item.id);
+                    }
+                }
                 ++count;
             }
             std::cout<<count<<" equipped weapon and class skin icons rendered\n";
         }
+        std::vector<std::uint8_t> team_sheet(1024U*1536U*4U);
+        for(std::uint8_t klass=0;klass<6;++klass) {
+            for(unsigned column=0;column<4;++column) {
+                frontend::CosmeticIconRequest native;
+                native.class_id=klass;
+                native.kind=column%2==0?frontend::CosmeticIconKind::class_head:frontend::CosmeticIconKind::class_body;
+                native.team_color=column<2?world::VxlColor{210,32,50,255}:world::VxlColor{235,185,25,255};
+                const auto pixels=frontend::render_cosmetic_icon(native,config.asset_root);
+                expect(pixels.size()==256U*256U*4U,"Native class icon with custom team colors");
+                for(unsigned y=0;y<256;++y) for(unsigned x=0;x<256;++x) for(unsigned c=0;c<4;++c)
+                    team_sheet[((static_cast<unsigned>(klass)*256+y)*1024+column*256+x)*4+c]=pixels[(y*256+x)*4+c];
+            }
+        }
+        expect(stbi_write_png("tmp/cosmetic-icons/custom-team-classes.png",1024,1536,4,team_sheet.data(),1024*4)!=0,"Custom team contact sheet");
         const auto colour=bgfx::createTexture2D(800,600,false,1,bgfx::TextureFormat::RGBA8,BGFX_TEXTURE_RT);
         const auto framebuffer=bgfx::createFrameBuffer(1,&colour,false);
         const auto readback=bgfx::createTexture2D(800,600,false,1,bgfx::TextureFormat::RGBA8,BGFX_TEXTURE_BLIT_DST|BGFX_TEXTURE_READ_BACK);

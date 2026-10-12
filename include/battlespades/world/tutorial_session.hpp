@@ -192,6 +192,8 @@ struct TutorialSessionConfig final {
     std::vector<std::uint8_t> initial_ugc_tools;
     std::optional<std::uint8_t> initial_tool;
     FlightProfile flight_profile;
+    bool hardcore{};
+    bool race_momentum{};
     /** 3=AoS 0.75, 4=AoS 0.76; zero retains all BattleSpades rules. */
     std::uint8_t classic_protocol{};
 };

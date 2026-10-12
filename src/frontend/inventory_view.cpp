@@ -156,6 +156,7 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
     std::string workshop_viewport;
     std::string workshop_grid_html, workshop_detail_html, workshop_pages_html;
     InventoryMenuModel* model{};
+    std::optional<std::array<world::VxlColor,2>> team_colors;
     InventoryAction action{InventoryAction::none};
     world::SkinVariantPreferences* variant_preferences{};
     std::map<std::string,world::SkinVariantDefinition> variant_definitions;
@@ -485,7 +486,7 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         if (model->reveal && (command=="rotate" || command=="team" || command=="reset-view")) {
             // Update these labels without rebuilding the button that is handling this event.
             if (auto* control=document->GetElementById("reward-rotate")) control->SetInnerRML(auto_rotate?"PAUSE":"ROTATE");
-            if (auto* control=document->GetElementById("reward-team")) control->SetInnerRML(model->blue_team?"BLUE":"GREEN");
+            if (auto* control=document->GetElementById("reward-team")) control->SetInnerRML(team_colors?(model->blue_team?"TEAM 1":"TEAM 2"):(model->blue_team?"BLUE":"GREEN"));
         }
     }
     const world::SkinVariantDefinition& variant_definition(const InventoryCosmetic& item){
@@ -536,7 +537,7 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         if (item.kind!="profile_badge") {
             html += "<div class=\"preview-tools\"><button action=\"rotate\" id=\""+std::string{reward?"reward-rotate":"preview-rotate"}+
                 "\">"+(auto_rotate?"PAUSE":"ROTATE")+"</button><button action=\"team\" id=\""+
-                std::string{reward?"reward-team":"preview-team"}+"\">"+(model->blue_team?"BLUE":"GREEN")+"</button>"+
+                std::string{reward?"reward-team":"preview-team"}+"\">"+(team_colors?(model->blue_team?"TEAM 1":"TEAM 2"):(model->blue_team?"BLUE":"GREEN"))+"</button>"+
                 button("reset-view","RESET")+"</div>";
             html += "<div class=\"hint\">Drag to rotate · Scroll to zoom</div>";
         }
@@ -674,8 +675,10 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         return hero.texture.is_valid() ? "ready" : hero_worker.valid() ? "loading" : "none";
     }
     void update_hero(const InventoryCosmetic* item) {
+        const auto color=team_colors ? std::optional{(*team_colors)[model->blue_team?0U:1U]} : std::nullopt;
+        const auto color_key=color ? ":rgb:"+std::to_string(color->red)+","+std::to_string(color->green)+","+std::to_string(color->blue) : std::string{};
         const auto key=item && item->kind!="profile_badge"
-            ? item->id+(model->blue_team?":blue":":green")+":"+std::to_string(variant_revision) : std::string{};
+            ? item->id+(model->blue_team?":blue":":green")+":"+std::to_string(variant_revision)+color_key : std::string{};
         if (key != hero_key) {
             hero_key=key; hero={}; content_key.clear();
             // A completed attempt is not a retained preview after the selection
@@ -696,10 +699,10 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
         hero_pending=key;
         const auto values=variant_selection(*item);
         const bool configurable=!item->scripted_skin.empty();
-        hero_worker=std::async(std::launch::async,[cosmetic=*item,assets=root,blue=model->blue_team,values,configurable]() -> std::optional<world::ChunkMesh>{
+        hero_worker=std::async(std::launch::async,[cosmetic=*item,assets=root,blue=model->blue_team,values,configurable,color]() -> std::optional<world::ChunkMesh>{
             try {
-                if(!configurable)return inventory_preview_mesh(cosmetic,assets,blue);
-                return inventory_weapon_preview_mesh(cosmetic,assets,blue,values);
+                if(!configurable)return inventory_preview_mesh(cosmetic,assets,blue,std::nullopt,nullptr,false,color);
+                return inventory_weapon_preview_mesh(cosmetic,assets,blue,values,color);
             } catch (const std::exception& error) {
                 std::cerr << "Inventory preview " << cosmetic.id << ": " << error.what() << '\n';
                 return std::nullopt;
@@ -954,6 +957,9 @@ struct InventoryView::Impl final : Rml::RenderInterface, Rml::SystemInterface, R
 InventoryView::InventoryView(render::BgfxUiRenderer& renderer,std::filesystem::path root,world::SkinVariantPreferences* variants)
     : impl_(std::make_unique<Impl>(renderer,std::move(root),variants)) {}
 InventoryView::~InventoryView() = default;
+void InventoryView::set_team_colors(std::optional<std::array<world::VxlColor,2>> colors) {
+    if(impl_->team_colors!=colors) {impl_->team_colors=colors;impl_->hero_key.clear();impl_->content_key.clear();}
+}
 void InventoryView::prepare(InventoryMenuModel& model,bool fixture,float scale) { impl_->prepare(model,fixture,scale); }
 void InventoryView::prepare_workshop(WorkshopMenuModel& model,float scale) { impl_->prepare_workshop(model,scale); }
 WorkshopAction InventoryView::take_workshop_action() { return std::exchange(impl_->workshop_action,WorkshopAction::none); }

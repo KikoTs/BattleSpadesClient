@@ -134,7 +134,9 @@ WeaponModelLoadResult load_weapon_models(
     // `weapon_object.__class__ == ZombiePrefabTool` at 0x10053C87/0x10060645).
     // Without it the hands' (128,0,128)/(64,0,64) markers stayed purple.
     // block.kv6 has no marker voxels, so the block itself is unaffected.
-    const auto model_team_color = definition->retail.use.use_team_color || force_default_color ||
+    // The retail sniper's camouflage uses the reserved team material even
+    // though SniperWeapon inherits Tool.use_team_color=false.
+    const auto model_team_color = definition->retail.use.use_team_color || definition->team_colored_first_person_image || force_default_color ||
                                           tool_id == zombie_prefab_tool_id
                                       ? team_color
                                       : std::nullopt;

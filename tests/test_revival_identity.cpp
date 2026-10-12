@@ -361,6 +361,17 @@ int main(int argc, char** argv) {
                 "mismatched object targets must fail before any external upload");
             return 0;
         }
+        {
+            using battlespades::network::revival_join_code_needs_refresh;
+            const auto now = std::chrono::steady_clock::now();
+            constexpr auto code = "~12345678901234";
+            expect(!revival_join_code_needs_refresh(code, now, now), "new ticket can join");
+            expect(revival_join_code_needs_refresh(code, {}, now),
+                   "same-peer map teardown must refresh a retained one-use code");
+            expect(revival_join_code_needs_refresh(code, now, now + std::chrono::seconds{30}),
+                   "class chooser delays must refresh an aging ticket");
+            expect(!revival_join_code_needs_refresh("Guest", {}, now), "plain names need no ticket");
+        }
         validation_matches_public_contract();
         explicit_offline_profiles_never_need_a_master();
         offline_account_state_is_loaded_and_logout_is_local();

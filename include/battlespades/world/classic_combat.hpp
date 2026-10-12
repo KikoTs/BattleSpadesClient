@@ -79,6 +79,11 @@ private:
     const VxlMap&, const PlayerMovementState&, std::span<const ClassicHitTarget> targets,
     bool allow_local_overlap = false, std::optional<Vec3> eye = std::nullopt);
 
+/** Validate every new voxel of a dragged line against living bodies. */
+[[nodiscard]] bool classic_line_clear_of_players(
+    const VxlMap&, std::span<const VoxelCell>, const PlayerMovementState&,
+    std::span<const ClassicHitTarget>);
+
 /** One attempted airborne placement, retained only until the physical body clears it.
  * Optional eye affects the aim ray and build range, never the collision overlap. */
 class ClassicBlockPlacement final {

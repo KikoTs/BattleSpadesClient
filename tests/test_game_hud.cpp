@@ -59,6 +59,11 @@ constexpr double fixed_dt{1.0 / 60.0};
 
 int main() {
     try {
+        using battlespades::frontend::classic_minimap_tracer;
+        const auto short_shot=classic_minimap_tracer({10,20,12,20},.02,700);
+        expect(short_shot && short_shot->x1==10 && short_shot->x2==12,"close shots remain visible on the map");
+        expect(!classic_minimap_tracer({10,20,12,20},.2,700),"map shots expire without leaving enemy markers");
+        expect(!classic_minimap_tracer({10,20,10,20},.01,700),"vertical shots do not produce invalid map geometry");
         {
             namespace art = battlespades::frontend::game_hud_assets;
             GameHudModel model;

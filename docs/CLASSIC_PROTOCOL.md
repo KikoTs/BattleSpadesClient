@@ -733,12 +733,69 @@ The Release client builds successfully, and all 13 affected CPU/audio suites
 pass after updating the accepted-build fixture and accounting for verified
 coplanar reference ties. Death/ragdoll simulation was not changed by this pass.
 
+## Observer feedback
+
+Classic weapon-input press edges are preserved as internal observer events, so
+receiving a press and release in one frame does not hide the shot or shovel
+swing. Sustained fire uses the weapon cooldown; observer actions never send hit
+reports or modify terrain. Remote shovels animate the existing character rig at
+0.2 seconds per primary swing and one second per secondary dig, including the
+windup. Sprinting, death and tool changes stop repeated swings.
+
+Classic gun reports use BetterSpades's 96-block hearing range and 0.1 OpenAL
+rolloff. Native gameplay retains its existing sound mix. Lethal Classic weapon
+hits also play the local impact cue when a KillAction arrives without a SetHP
+that already reduced health to zero. Intel pickup, drop and capture events play
+the existing classic_pickup, flag_returned and event_positive sound groups once
+per event. Initial objective snapshots remain silent.
+
+## Compatibility color regression
+
+Original 0.75/0.76 connections select color-preserving voxel lighting in the
+Compatibility tier. Their synthetic StateData ambient is not authored retail
+lighting: adding it to terrain RGB made black gray and saturated colors pastel.
+These connections now keep the original RGB with the existing face/corner shade,
+without retail baked-light preprocessing. Terrain, remote models and held tools
+use the same protocol flag. Native Classic+ and standard maps keep their retail
+lighting; enhanced tiers are unchanged. The 0.75 fog curve and cap remain active.
+
+The graphics regression uses the actual adapter light/ambient values and tests
+black, dark gray, red, blue and pale swatches through all three draw paths. It
+also checks live enhanced/Compatibility switches and restoration of native
+lighting. The previous shaders fail (black terrain renders at 142/255); corrected
+shaders pass on D3D11, D3D12, Vulkan and OpenGL, each with 0x and 4x MSAA. The same
+runs pass the existing native lighting oracles, all-tier fog, water-pattern and
+atmosphere-reset checks. A production-renderer capture of an old-format VXL
+corridor confirms the visible color correction. Metal and ESSL shaders compile;
+they have not been runtime-tested on this Windows machine.
+
+## Classic scoreboard ping lookup
+
+Classic 0.75/0.76 do not carry remote-player RTT in their ordinary world updates.
+The local row continues to use the ENet connection RTT. While the scoreboard is
+open, the client can obtain other rows from piqueserver-compatible `/ping #id`
+commands, using the original ChatMessage wire packet. Numeric IDs avoid partial
+name matching and quoting issues. There is only one outstanding request, with
+a minimum two-second interval. Cached samples refresh after 60 seconds while TAB
+is open and expire after five minutes; opening/closing TAB does not reset limits.
+
+Only server-origin `<name>'s ping is <integer> ms` replies are accepted. Exact
+replies to automatic requests are hidden from chat; manual `/ping` replies remain
+visible and also populate the cache. Manual chat pauses polling for five seconds.
+Duplicate names are not guessed. Departures invalidate samples and pending
+results, while ordinary respawns retain them; map changes/disconnects reset the
+lookup. A rejected, unrecognized or unanswered request stops automatic polling
+for that session. Unknown values stay as a dash. Scripted/localized servers with
+a different response format are not treated as having a measured remote ping.
+
 ## Reference provenance and licensing
 
 Protocol layouts and original gameplay behavior were checked against:
 
 - [ZeroSpades](https://github.com/zerospades/zerospades/tree/6a56dc8444b0380eb77f677ba029d83a9c78d29a),
   particularly `Sources/Client/NetClient.cpp`, `Player.cpp`, and weapon classes.
+- [BetterSpades](https://github.com/xtreme8000/BetterSpades/tree/a695aaa7686561c6a3565499716227d8ae3483aa),
+  particularly `src/sound.c` and `src/player.c` for sound range and shovel cadence.
 - [piqueserver](https://github.com/piqueserver/piqueserver/tree/3dfc0a6774fc5cf3a80eec13b7764b751a0d949b),
   particularly `pyspades/contained.pyx`, `player.py`, `weapon.py`, and `world_c.cpp`.
 

@@ -38,12 +38,13 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 20U> main_inventory{{
+constexpr std::array<SettingsRowId, 24U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
     SettingsRowId::fallback_music,
     SettingsRowId::death_voices,
+    SettingsRowId::spatial_audio,
     SettingsRowId::invert_mouse,
     SettingsRowId::favorite_server,
     SettingsRowId::show_skins,
@@ -52,6 +53,9 @@ constexpr std::array<SettingsRowId, 20U> main_inventory{{
     SettingsRowId::ability_hints,
     SettingsRowId::ragdoll_corpses,
     SettingsRowId::blood_marks,
+    SettingsRowId::gore,
+    SettingsRowId::gore_intensity,
+    SettingsRowId::dismemberment_intensity,
     SettingsRowId::classic_sky,
     SettingsRowId::classic_fog,
     SettingsRowId::classic_fog_red,
@@ -200,8 +204,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     }
     if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music || row == SettingsRowId::death_voices ||
-        row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
+        row == SettingsRowId::fallback_music || row == SettingsRowId::spatial_audio || row == SettingsRowId::death_voices ||
+        row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks || row == SettingsRowId::gore ||
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join ||
         row == SettingsRowId::favorite_server ||
         row == SettingsRowId::vsync || row == SettingsRowId::compatibility_shader ||
@@ -209,7 +213,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         row == SettingsRowId::anisotropic_filtering) {
         return SettingsRowKind::toggle;
     }
-    if (row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog ||
+    if (row == SettingsRowId::gore_intensity || row == SettingsRowId::dismemberment_intensity ||
+        row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog ||
         row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::window_mode || row == SettingsRowId::resolution ||
         row == SettingsRowId::graphics_api || row == SettingsRowId::antialiasing ||
@@ -239,11 +244,15 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return "MASTER_VOLUME";
     case SettingsRowId::music_volume:
         return "MUSIC_VOLUME";
+    case SettingsRowId::spatial_audio: return "SPATIAL_AUDIO";
     case SettingsRowId::death_voices: return "DEATH_VOICES";
     case SettingsRowId::fallback_music:
         return "FALLBACK_MUSIC";
     case SettingsRowId::ragdoll_corpses:
         return "RAGDOLL_CORPSES";
+    case SettingsRowId::gore: return "GORE";
+    case SettingsRowId::gore_intensity: return "GORE_INTENSITY";
+    case SettingsRowId::dismemberment_intensity: return "DISMEMBERMENT_INTENSITY";
     case SettingsRowId::blood_marks:
         return "BLOOD_MARKS";
     case SettingsRowId::classic_sky: return "CLASSIC_SKY";
@@ -1137,8 +1146,12 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(music_volume);
         AOS_SETTINGS_ROW_NAME(fallback_music);
         AOS_SETTINGS_ROW_NAME(death_voices);
+        AOS_SETTINGS_ROW_NAME(spatial_audio);
         AOS_SETTINGS_ROW_NAME(ragdoll_corpses);
         AOS_SETTINGS_ROW_NAME(blood_marks);
+        AOS_SETTINGS_ROW_NAME(gore);
+        AOS_SETTINGS_ROW_NAME(gore_intensity);
+        AOS_SETTINGS_ROW_NAME(dismemberment_intensity);
         AOS_SETTINGS_ROW_NAME(classic_sky);
         AOS_SETTINGS_ROW_NAME(classic_fog);
         AOS_SETTINGS_ROW_NAME(classic_fog_red);
@@ -1658,10 +1671,18 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     const auto tooltip_target = hovered_ ? hovered_ : focused_;
     if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::fallback_music)) {
         result.tooltip_key = "FALLBACK_MUSIC_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::spatial_audio)) {
+        result.tooltip_key = "SPATIAL_AUDIO_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::death_voices)) {
         result.tooltip_key = "DEATH_VOICES_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::ragdoll_corpses)) {
         result.tooltip_key = "RAGDOLL_CORPSES_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::gore_intensity)) {
+        result.tooltip_key = "GORE_INTENSITY_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::dismemberment_intensity)) {
+        result.tooltip_key = "DISMEMBERMENT_INTENSITY_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::gore)) {
+        result.tooltip_key = "GORE_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::blood_marks)) {
         result.tooltip_key = "BLOOD_MARKS_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::discord_presence)) {
@@ -1715,6 +1736,16 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             item.value_text = item.choices[item.choice_index];
             break;
         }
+        case SettingsRowId::gore_intensity:
+        case SettingsRowId::dismemberment_intensity:
+            item.choices = row == SettingsRowId::gore_intensity
+                ? std::vector<std::string>{"GORE_LIGHT", "GORE_MEDIUM", "GORE_HEAVY", "GORE_BRUTAL"}
+                : std::vector<std::string>{"OFF", "GORE_RESTRAINED", "GORE_HEAVY", "GORE_BRUTAL"};
+            item.choice_index = std::min<std::size_t>(3, row == SettingsRowId::gore_intensity
+                ? current.main.gore_intensity : current.main.dismemberment_intensity);
+            item.choice_count = item.choices.size();
+            item.value_text = item.choices[item.choice_index];
+            break;
         case SettingsRowId::classic_fog: {
             for (std::size_t i{}; i < settings::classic_fog_options.size(); ++i) {
                 if (settings::classic_fog_options[i] == current.main.classic_fog) item.choice_index = i;
@@ -1764,7 +1795,9 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         case SettingsRowId::show_other_skins:
         case SettingsRowId::weapon_motion:
         case SettingsRowId::fallback_music:
+        case SettingsRowId::spatial_audio:
         case SettingsRowId::death_voices:
+        case SettingsRowId::gore:
         case SettingsRowId::blood_marks:
         case SettingsRowId::ragdoll_corpses:
         case SettingsRowId::discord_presence:
@@ -1774,9 +1807,11 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
                             row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
                             row == SettingsRowId::ability_hints ? current.main.ability_hints :
                             row == SettingsRowId::fallback_music ? current.main.fallback_music :
+                            row == SettingsRowId::spatial_audio ? current.main.spatial_audio :
                             row == SettingsRowId::death_voices ? current.main.death_voices :
                             row == SettingsRowId::ragdoll_corpses ? current.main.ragdoll_corpses :
                             row == SettingsRowId::blood_marks ? current.main.blood_marks :
+                            row == SettingsRowId::gore ? current.main.gore :
                             row == SettingsRowId::discord_presence ? current.main.discord_presence :
                             row == SettingsRowId::discord_join ? current.main.discord_join :
                             current.main.weapon_motion;
@@ -2446,10 +2481,14 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.weapon_motion ? -1 : 1);
     case SettingsRowId::ability_hints:
         return adjust_row(target.row, draft.main.ability_hints ? -1 : 1);
+    case SettingsRowId::spatial_audio:
+        return adjust_row(target.row, draft.main.spatial_audio ? -1 : 1);
     case SettingsRowId::death_voices:
         return adjust_row(target.row, draft.main.death_voices ? -1 : 1);
     case SettingsRowId::fallback_music:
         return adjust_row(target.row, draft.main.fallback_music ? -1 : 1);
+    case SettingsRowId::gore:
+        return adjust_row(target.row, draft.main.gore ? -1 : 1);
     case SettingsRowId::blood_marks:
         return adjust_row(target.row, draft.main.blood_marks ? -1 : 1);
     case SettingsRowId::ragdoll_corpses:
@@ -2616,13 +2655,14 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         return true;
     }
 
-    if (row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog || is_fog_channel(row) ||
+    if (row == SettingsRowId::gore_intensity || row == SettingsRowId::dismemberment_intensity ||
+        row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog || is_fog_channel(row) ||
         row == SettingsRowId::language || row == SettingsRowId::master_volume ||
         row == SettingsRowId::music_volume ||
         row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music || row == SettingsRowId::death_voices || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks ||
+        row == SettingsRowId::fallback_music || row == SettingsRowId::spatial_audio || row == SettingsRowId::death_voices || row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks || row == SettingsRowId::gore ||
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join) {
         auto main = before.main;
         switch (row) {
@@ -2683,11 +2723,23 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         case SettingsRowId::ability_hints:
             main.ability_hints = direction > 0;
             break;
+        case SettingsRowId::spatial_audio:
+            main.spatial_audio = direction > 0;
+            break;
         case SettingsRowId::death_voices:
             main.death_voices = direction > 0;
             break;
         case SettingsRowId::fallback_music:
             main.fallback_music = direction > 0;
+            break;
+        case SettingsRowId::gore_intensity:
+            main.gore_intensity = static_cast<std::uint8_t>(shifted_index(main.gore_intensity, 4, direction));
+            break;
+        case SettingsRowId::dismemberment_intensity:
+            main.dismemberment_intensity = static_cast<std::uint8_t>(shifted_index(main.dismemberment_intensity, 4, direction));
+            break;
+        case SettingsRowId::gore:
+            main.gore = direction > 0;
             break;
         case SettingsRowId::blood_marks:
             main.blood_marks = direction > 0;

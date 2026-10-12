@@ -305,6 +305,77 @@ int main(int argc, char** argv) {
                "Zero-length disabled Classic light corrupts terrain or held model");
         retail.back_light_direction = {1,0,0};
         scene.set_retail_lighting(retail);
+        // The real Classic adapter has a strong additive retail ambient (160/255 * .7).
+        // This is not authored lighting in the original map. It used to whiten
+        // black and saturated terrain under Compatibility. Exercise terrain,
+        // remote models and the separate first-person pass with that exact input.
+        {
+            const auto saved_lighting = retail;
+            retail.light_color = {220.F/255.F,220.F/255.F,220.F/255.F};
+            retail.light_direction = {.5F,-.5F,-1.F};
+            retail.back_light_color = {}; retail.back_light_direction = {};
+            retail.ambient_color = {160.F/255.F,160.F/255.F,160.F/255.F};
+            retail.ambient_intensity = .7F;
+            scene.set_retail_lighting(retail);
+            camera.classic_voxel_lighting = true;
+            camera.classic075_fog = true; // zero XY distance isolates lighting from fog
+            camera.eye = {256,256,96}; camera.pitch_degrees = 90;
+            bx::mtxLookAt(view.data(),{256,256,96},{256,256,128},{0,-1,0},bx::Handedness::Right);
+            bx::mtxOrtho(projection.data(),-12,12,-12,12,.1F,100,0,bgfx::getCaps()->homogeneousDepth,bx::Handedness::Right);
+            const std::array<std::array<std::uint8_t,3>,5> swatches{{
+                {0,0,0},{18,18,18},{180,12,8},{8,20,180},{225,225,225}}};
+            for (int path=0; path<3; ++path) for (const auto rgb:swatches) {
+                auto mesh = path == 2 ? held_mesh : plane(4);
+                for (auto& vertex:mesh.vertices) {
+                    vertex.abgr = static_cast<std::uint32_t>(rgb[0]) |
+                        (static_cast<std::uint32_t>(rgb[1])<<8U) | (static_cast<std::uint32_t>(rgb[2])<<16U);
+                    vertex.static_light = path == 0 ? 0xFF000000U : 0x40000000U;
+                    vertex.retail_baked_light = .5F; // old VXL light byte must not halve Classic RGB
+                    vertex.ao_u = path == 0 ? .375F : 0.F;
+                    vertex.ao_v = path == 0 ? .625F : 0.F;
+                    vertex.edge_u = path == 0 ? .375F : -1.F;
+                    vertex.edge_v = .625F;
+                }
+                // plane() uses uncullable model-test winding. Chunk top faces
+                // use the outward -Z winding from the production mesher.
+                if (path == 0) for (std::size_t i=0; i<mesh.indices.size(); i+=3)
+                    std::swap(mesh.indices[i+1],mesh.indices[i+2]);
+                scene.clear_chunks();
+                if (path == 0) expect(scene.upload_chunk(mesh),"Classic terrain color fixture");
+                else if (path == 2) expect(scene.set_view_model_mesh(0,mesh),"Classic held color fixture");
+                else expect(scene.set_world_model_mesh(0,mesh),"Classic world color fixture");
+                const auto sample = [&] {
+                    return path == 2 ? capture({},false,held_draws)
+                         : path == 1 ? capture(draws,false) : capture({},false);
+                };
+                camera.classic_voxel_lighting = false;
+                const auto native_pixels = sample();
+                camera.classic_voxel_lighting = true;
+                const auto pixels = sample();
+                for (std::size_t channel=0;channel<3;++channel) {
+                    const auto actual = pixels[center+channel];
+                    expect(actual <= rgb[channel] + 2 && actual >= rgb[channel] * .45,
+                        "Classic Compatibility washed out/darkened voxel color: path="+std::to_string(path)+
+                        " input="+std::to_string(rgb[channel])+" actual="+std::to_string(actual));
+                }
+                if (rgb == swatches[2]) save("classic-colors-path-"+std::to_string(path),pixels);
+                // A live enhanced -> Compatibility switch must restore identical colors.
+                profile=render::profile_for(settings::ShaderQuality::medium,settings::QualityLevel::high);
+                static_cast<void>(sample());
+                profile=render::profile_for(settings::ShaderQuality::compatibility,settings::QualityLevel::high);
+                expect(sample() == pixels, "Switching to Compatibility retained enhanced lighting");
+                camera.classic_voxel_lighting = false;
+                expect(sample() == native_pixels,"Returning from Classic altered native retail lighting");
+                camera.classic_voxel_lighting = true;
+            }
+            scene.clear_chunks();
+            // Returning to retail clears the protocol flag; all earlier native oracles remain valid.
+            camera.classic_voxel_lighting = false; camera.classic075_fog = false;
+            camera.eye={256,256,100}; camera.pitch_degrees=0;
+            retail=saved_lighting; scene.set_retail_lighting(retail);
+            expect(scene.set_view_model_mesh(0,held_mesh),"Restore native held fixture");
+            std::cout << "Classic terrain/model/held color swatches and live tier switches passed" << std::endl;
+        }
         // Cycle every tier/effect combination without remeshing, then restore Legacy.
         auto surface=plane(4);
         for (auto& vertex:surface.vertices) {

@@ -190,7 +190,7 @@ void live_ticket_preserves_explicit_extension_policy() {
             std::byte{}, std::byte{}, std::byte{'a'}, std::byte{'1'}, std::byte{'B'}};
         if (negotiate) {
             expected.insert(expected.end(), {std::byte{'B'}, std::byte{'S'},
-                                            std::byte{'C'}, std::byte{'F'}, std::byte{2U}});
+                                            std::byte{'C'}, std::byte{'F'}, std::byte{4U}});
         }
         bool received{};
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};

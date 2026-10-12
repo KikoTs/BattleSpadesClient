@@ -1975,7 +1975,7 @@ bool WorldRenderer::submit(const WorldCamera& camera,
                                          active_fog[1U] / 255.0F,
                                          active_fog[2U] / 255.0F,
                                          static_cast<float>(camera.fog_distance)};
-    if (!impl_->skydome_slots.empty()) {
+    if (!camera.flat_fog_sky && !impl_->skydome_slots.empty()) {
         std::array<float, 16U> sky_transform{};
         // GameScene.draw passes the camera as SkyDome.draw(x, -z, y) and the
         // dome is translated to (x, y - 35, z) in GL (gameScene.pyd
@@ -2034,7 +2034,8 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     const std::array<float, 4U> terrain_light{
         enhanced ? 2.0F : 1.0F,
         0.85F,
-        matte_voxel_specular(atmosphere.specular_strength),
+        enhanced ? matte_voxel_specular(atmosphere.specular_strength)
+                 : (camera.classic_voxel_lighting ? 1.0F : 0.0F),
         // A tight highlight reads as a small surface glint. The old exponent
         // of 24 spread the same highlight across a whole axis-aligned face and
         // made dirt, stone, and uniforms look injection-moulded.
@@ -2349,7 +2350,8 @@ bool WorldRenderer::submit(const WorldCamera& camera,
     // first time, and with six axis-aligned normals it would act as a per-face
     // switch rather than a highlight. The exponent is widened anyway so that
     // when it is turned on it can fall off ACROSS a face instead of flipping it.
-    const std::array<float, 4U> viewmodel_light{enhanced ? 2.0F : 1.0F, 1.0F, 0.0F, 8.0F};
+    const std::array<float, 4U> viewmodel_light{enhanced ? 2.0F : 1.0F, 1.0F,
+        !enhanced && camera.classic_voxel_lighting ? 1.0F : 0.0F, 8.0F};
 
     const auto& retail = impl_->retail_lighting;
     const std::array<float, 4U> retail_light0_direction{

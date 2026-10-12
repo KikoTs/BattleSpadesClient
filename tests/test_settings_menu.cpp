@@ -95,7 +95,7 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 20U,
+    expect(view.rows.size() == 24U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
@@ -103,6 +103,7 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::music_volume,
         SettingsRowId::fallback_music,
         SettingsRowId::death_voices,
+        SettingsRowId::spatial_audio,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
         SettingsRowId::show_skins,
@@ -111,6 +112,9 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::ability_hints,
         SettingsRowId::ragdoll_corpses,
         SettingsRowId::blood_marks,
+        SettingsRowId::gore,
+        SettingsRowId::gore_intensity,
+        SettingsRowId::dismemberment_intensity,
         SettingsRowId::classic_sky,
         SettingsRowId::classic_fog,
         SettingsRowId::classic_fog_red,
@@ -815,6 +819,25 @@ void death_voices_preview_cancel_and_commit() {
     expect(!session.committed().main.death_voices, "Done persists muted death voices");
 }
 
+void spatial_audio_preview_cancel_and_commit() {
+    SettingsSession session;
+    SettingsMenuModel menu{session, full_environment()};
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::spatial_audio)), "spatial audio control exists");
+    expect(!session.draft().main.spatial_audio && menu.presentation().tooltip_key == "SPATIAL_AUDIO_DESCRIPTION",
+           "spatial audio defaults off with a localized description");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    const auto effects = menu.take_effects();
+    const auto* preview = find_effect<SettingsPreviewEffect>(effects);
+    expect(preview && preview->source == SettingsRowId::spatial_audio && preview->draft.main.spatial_audio,
+           "headphone HRTF previews live");
+    menu.activate_cancel();
+    expect(!session.draft().main.spatial_audio, "Cancel restores stereo");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::spatial_audio)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    menu.activate_done();
+    expect(session.committed().main.spatial_audio, "Done persists headphone HRTF");
+}
+
 void fallback_music_previews_cancels_and_commits() {
     auto environment = full_environment();
     environment.context = SettingsMenuContext::in_game;
@@ -855,6 +878,20 @@ void fallback_music_previews_cancels_and_commits() {
     menu.activate_cancel();
     expect(session.draft().main.ragdoll_corpses && session.draft().main.fallback_music,
            "Cancel restores the ragdoll draft without losing the committed music choice");
+    expect(!session.draft().main.gore,"gore is opt in");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::gore)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate,InputPhase::pressed}));
+    expect(session.draft().main.gore,"gore can be enabled through the native menu");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::gore_intensity)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}));
+    expect(session.draft().main.gore_intensity==3,"wounds can be increased to brutal");
+    static_cast<void>(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::dismemberment_intensity)));
+    static_cast<void>(menu.handle(InputEvent{InputAction::navigate_left, InputPhase::pressed}));
+    expect(session.draft().main.dismemberment_intensity==1,"separation adjusts independently");
+    menu.activate_cancel();
+    expect(!session.draft().main.gore,"Cancel restores gore preference");
+    expect(session.draft().main.gore_intensity==2 && session.draft().main.dismemberment_intensity==2,
+           "Cancel restores both intensity preferences");
     expect(!session.draft().main.blood_marks,"lingering blood starts disabled");
     static_cast<void>(menu.take_effects());
     expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::blood_marks)) &&
@@ -1045,6 +1082,7 @@ void sensitivity_track_maps_and_its_box_takes_typed_values() {
 void toggle_rows_set_the_clicked_half() {
     SettingsSession session;
     SettingsMenuModel menu{session};
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::show_skins)), "reveal the scrolled toggle");
     auto toggle = row(menu.presentation(), SettingsRowId::show_skins);
     const auto on_half =
         control_point(toggle, toggle.control_bounds.x + toggle.control_bounds.width - 5);
@@ -1133,8 +1171,7 @@ void classic_atmosphere_previews_and_custom_fog_controls() {
     auto effects = menu.take_effects();
     expect(find_effect<SettingsPreviewEffect>(effects) != nullptr, "sky previews live");
     expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::classic_fog)), "fog reachable");
-    expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "fog matches sky");
-    expect(session.draft().main.classic_fog == "server", "server fog remains available");
+    expect(session.draft().main.classic_fog == "server", "server fog is the default");
     expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "sky fog choice");
     expect(session.draft().main.classic_fog == "sky", "sky fog choice");
     expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "custom fog choice");
@@ -1167,6 +1204,7 @@ int main() {
          graphics_capabilities_and_wheel_scrolling_are_deterministic},
         {"fallback_music_previews_cancels_and_commits", fallback_music_previews_cancels_and_commits},
         {"death_voices_preview_cancel_and_commit", death_voices_preview_cancel_and_commit},
+        {"spatial_audio_preview_cancel_and_commit", spatial_audio_preview_cancel_and_commit},
         {"discord_preferences_preview_cancel_and_commit", discord_preferences_preview_cancel_and_commit},
         {"native_graphics_rows_edit_presets_and_report_why_they_are_unavailable",
          native_graphics_rows_edit_presets_and_report_why_they_are_unavailable},

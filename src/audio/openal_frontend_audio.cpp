@@ -1488,7 +1488,6 @@ struct OpenAlFrontendAudio::Impl final {
               float pitch = 1.0F,
               bool reverb_send = true,
               std::uint16_t speaker = 0U) {
-        static_cast<void>(profile);
         if (context == nullptr || !on_owner_thread()) {
             last_error = context == nullptr ? "OpenAL frontend audio is not started"
                                             : "OpenAL frontend audio used from non-owner thread";
@@ -1503,7 +1502,7 @@ struct OpenAlFrontendAudio::Impl final {
         // Retail rejects the cue before allocating a player. AL_MAX_DISTANCE
         // only clamps attenuation and otherwise leaks every distant dig/build
         // event into the listener at a permanent low volume.
-        if (!relative && !within_retail_hearing_distance(listener_position, position)) {
+        if (!relative && !within_retail_hearing_distance(listener_position, position, profile)) {
             return;
         }
 
@@ -1803,9 +1802,9 @@ bool OpenAlFrontendAudio::start() {
                 // Retail shipped OpenAL Soft 1.13 ("1.1 ALSOFT 1.13" in its
                 // OpenAL32.dll), which predates HRTF. Modern OpenAL Soft
                 // turns HRTF on by itself for headphone outputs, which
-                // re-colours and re-levels every cue; request it off.
+                // re-colours and re-levels every cue; keep it opt-in.
                 const std::array<ALCint, 3U> context_attributes{
-                    ALC_HRTF_SOFT, retail_context_hrtf ? ALC_TRUE : ALC_FALSE, 0};
+                    ALC_HRTF_SOFT, impl_->config.spatial_audio ? ALC_TRUE : ALC_FALSE, 0};
                 const bool hrtf_extension =
                     alcIsExtensionPresent(impl_->device, "ALC_SOFT_HRTF") != ALC_FALSE;
                 impl_->context = alcCreateContext(
@@ -2206,7 +2205,7 @@ LoopVoice OpenAlFrontendAudio::start_weapon_loop(std::uint8_t tool_id,
         return invalid_loop_voice;
     }
     // MediaManager.play's allocation-time HEARING_DISTANCE rejection.
-    if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position)) {
+    if (!head_relative && !within_retail_hearing_distance(impl_->listener_position, position, profile)) {
         return invalid_loop_voice;
     }
     const auto found =
@@ -2552,6 +2551,32 @@ void OpenAlFrontendAudio::stop() noexcept {
     }
     impl_->owner_thread = {};
     impl_->playback_device_name.clear();
+}
+
+bool OpenAlFrontendAudio::set_spatial_audio(bool enabled) {
+    if (impl_->context && !impl_->on_owner_thread()) return false;
+    if (!impl_->device) {
+        impl_->config.spatial_audio = enabled;
+        return true;
+    }
+    if (alcIsExtensionPresent(impl_->device, "ALC_SOFT_HRTF") == ALC_FALSE) {
+        impl_->config.spatial_audio = false;
+        return !enabled;
+    }
+    ALCint active{ALC_FALSE};
+    alcGetIntegerv(impl_->device, ALC_HRTF_SOFT, 1, &active);
+    if ((active == ALC_TRUE) != enabled) {
+        using ResetDevice = ALCboolean (ALC_APIENTRY *)(ALCdevice*, const ALCint*);
+        const auto reset = reinterpret_cast<ResetDevice>(
+            alcGetProcAddress(impl_->device, "alcResetDeviceSOFT"));
+        const std::array<ALCint, 3> attributes{
+            ALC_HRTF_SOFT, enabled ? ALC_TRUE : ALC_FALSE, 0};
+        if (!reset || reset(impl_->device, attributes.data()) == ALC_FALSE) return false;
+        // OpenAL treats the attribute as a hint (the device/user can override it).
+        alcGetIntegerv(impl_->device, ALC_HRTF_SOFT, 1, &active);
+    }
+    impl_->config.spatial_audio = active == ALC_TRUE;
+    return impl_->config.spatial_audio == enabled;
 }
 
 void OpenAlFrontendAudio::set_listener(SoundPosition position) {

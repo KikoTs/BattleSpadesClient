@@ -1,10 +1,37 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <numbers>
 #include <optional>
 #include <span>
 
 namespace battlespades::world {
+/** Observer-only shovel clock. Never sends hits or changes the map. */
+struct ClassicDigAnimation {
+    std::uint8_t held{};
+    double elapsed{1.0e9};
+    double interval{0.2};
+
+    /** Primary wins when both buttons are held, as in the local Classic tool. */
+    bool tick(double dt, bool primary, bool secondary) noexcept {
+        if (!std::isfinite(dt) || dt < 0.0) return false;
+        elapsed = std::min(1.0e9, elapsed + dt);
+        const std::uint8_t next = primary ? 1 : secondary ? 2 : 0;
+        const bool begin = next && (held != next || elapsed >= interval);
+        held = next;
+        if (begin) {
+            interval = primary ? 0.2 : 1.0;
+            elapsed = 0.0;
+        }
+        return begin;
+    }
+
+    [[nodiscard]] double pose_time(double retail_interval) const noexcept {
+        return elapsed < interval ? elapsed * retail_interval / interval : 1.0e9;
+    }
+};
+
 // Original AoS wire versions, independent of the Classic+ retail catalog.
 struct ClassicWeaponRules {
     std::uint16_t magazine, reserve;
@@ -40,7 +67,7 @@ struct ClassicRecoilKick {
 [[nodiscard]] inline std::optional<std::uint8_t>
 classic_kill_tool(std::uint8_t kill_type, std::span<const std::uint8_t> loadout) noexcept {
     if (kill_type == 2)
-        return 4;
+        return std::uint8_t{4};
     if (kill_type == 0)
         for (auto tool : loadout)
             if (classic_weapon_rules(3, tool))

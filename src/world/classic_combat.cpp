@@ -298,6 +298,19 @@ std::optional<VoxelCell> classic_build_target(const VxlMap& map,
     return cell;
 }
 
+bool classic_line_clear_of_players(const VxlMap& map, std::span<const VoxelCell> cells,
+                                   const PlayerMovementState& player,
+                                   std::span<const ClassicHitTarget> others) {
+    if(cells.empty()) return false;
+    for(const auto cell:cells) {
+        if(map.solid(cell.x,cell.y,cell.z)) continue;
+        if(overlap(cell,player.position,player.crouch)) return false;
+        for(const auto& other:others)
+            if(overlap(cell,other.position,other.crouched)) return false;
+    }
+    return true;
+}
+
 std::optional<VoxelCell> ClassicBlockPlacement::request(
     const VxlMap& map, const PlayerMovementState& player, std::span<const ClassicHitTarget> others,
     std::optional<Vec3> eye) {

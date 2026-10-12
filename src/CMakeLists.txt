@@ -95,6 +95,7 @@ add_library(
         world/player_inventory.cpp
         world/jetpack_death.cpp
         world/classic_corpse.cpp
+        world/body_damage.cpp
         world/blood_marks.cpp
         world/player_movement.cpp
     world/classic_movement.cpp
@@ -225,6 +226,7 @@ add_library(
         frontend/main_menu.cpp
         frontend/main_menu_presentation.cpp
         frontend/match_overlays.cpp
+        frontend/classic_scoreboard_ping.cpp
         frontend/retail_input_rules.cpp
         frontend/retail_hud_rules.cpp
         frontend/objective_indicator.cpp

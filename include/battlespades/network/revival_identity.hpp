@@ -61,6 +61,15 @@ struct RevivalTicketResult final {
     }
 };
 
+/** A cleared timestamp means consumed/unknown, never an indefinitely valid ticket. */
+[[nodiscard]] inline bool revival_join_code_needs_refresh(
+    std::string_view wire_name,
+    std::optional<std::chrono::steady_clock::time_point> issued_at,
+    std::chrono::steady_clock::time_point now) noexcept {
+    return wire_name.starts_with('~') &&
+           (!issued_at || now < *issued_at || now - *issued_at >= std::chrono::seconds{30});
+}
+
 struct HostedResultsUpload final {
     std::size_t uploaded{};
     std::string error{};

@@ -50,6 +50,10 @@ struct WorldCamera final {
     double fog_distance{192.0};
     /** AoS 0.75 uses squared horizontal distance, regardless of lighting tier. */
     bool classic075_fog{};
+    /** Original 0.75/0.76 colors use multiplicative voxel shading on Compatibility. */
+    bool classic_voxel_lighting{};
+    /** Legacy default sky is the same solid color as fog. */
+    bool flat_fog_sky{};
     /**
      * Map position the authored skydome is centred on; unset follows the eye.
      *

@@ -13,16 +13,14 @@ namespace battlespades::audio {
 inline constexpr float retail_hearing_distance{50.0F};
 
 /**
- * Call-site tag for positional cues after the retail 50-block allocation gate.
- *
- * Retail mixes every world cue identically: `DEFAULT_ATTENUATION` rolloff,
- * reference distance 1 and no occlusion (the only audio raycast in retail is
- * the reverb probe). The tag keeps call sites readable, but both values
- * resolve to the same retail mix.
+ * Native cues retain the retail 50-block allocation gate and 0.15 rolloff.
+ * Classic gun reports use BetterSpades' 96-block range and 0.1 rolloff.
+ * Both use reference distance 1 and positional OpenAL playback.
  */
 enum class SpatialSoundProfile : std::uint8_t {
     ordinary,
     weapon_report,
+    classic_weapon_report,
 };
 
 /**
@@ -38,10 +36,10 @@ enum class SpatialSoundProfile : std::uint8_t {
     return 0.5F;
 }
 
-/** Retail `AL_ROLLOFF_FACTOR` = DEFAULT_ATTENUATION 0.15 for every world cue. */
+/** Distance attenuation for the selected native/Classic sound mix. */
 [[nodiscard]] constexpr float
-spatial_rolloff(SpatialSoundProfile /*profile*/) noexcept {
-    return 0.15F;
+spatial_rolloff(SpatialSoundProfile profile) noexcept {
+    return profile == SpatialSoundProfile::classic_weapon_report ? 0.1F : 0.15F;
 }
 
 /**
@@ -53,7 +51,8 @@ spatial_rolloff(SpatialSoundProfile /*profile*/) noexcept {
  */
 [[nodiscard]] inline bool
 within_retail_hearing_distance(SoundPosition listener,
-                               SoundPosition source) noexcept {
+                               SoundPosition source,
+                               SpatialSoundProfile profile = SpatialSoundProfile::ordinary) noexcept {
     if (!std::isfinite(listener.x) || !std::isfinite(listener.y) ||
         !std::isfinite(listener.z) || !std::isfinite(source.x) ||
         !std::isfinite(source.y) || !std::isfinite(source.z)) {
@@ -62,8 +61,11 @@ within_retail_hearing_distance(SoundPosition listener,
     const float x = source.x - listener.x;
     const float y = source.y - listener.y;
     const float z = source.z - listener.z;
-    return (x * x) + (y * y) + (z * z) <=
-           retail_hearing_distance * retail_hearing_distance;
+    // BetterSpades sound.c uses a 96-block gun-report range. Keep the
+    // retail 50-block gate for native gameplay and other sound classes.
+    const float range = profile == SpatialSoundProfile::classic_weapon_report
+                            ? 96.0F : retail_hearing_distance;
+    return (x * x) + (y * y) + (z * z) <= range * range;
 }
 
 /**

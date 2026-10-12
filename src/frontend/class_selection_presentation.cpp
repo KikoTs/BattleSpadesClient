@@ -76,11 +76,32 @@ constexpr std::string_view select_class_root{"png/ui/in_game_menus/select_class/
     return appearance.localize ? appearance.localize(key) : std::string{key};
 }
 
-[[nodiscard]] std::string class_name_id(std::uint8_t class_id) {
+[[nodiscard]] std::string class_name_id(std::uint8_t class_id, bool hardcore) {
+    if (hardcore) {
+        switch (class_id) {
+        case 5U: return "Soldier";
+        case 0U: return "Heavy";
+        case 1U: return "Recon";
+        case 3U: return "Demolitionist";
+        case 17U: return "Medic";
+        default: break;
+        }
+    }
     const auto key = world::class_name_key(class_id);
     if (!key.empty()) return std::string{key};
     const auto* definition = world::find_class_definition(class_id);
     return definition == nullptr ? std::string{} : std::string{definition->display_name};
+}
+
+[[nodiscard]] std::string_view hardcore_description(std::uint8_t class_id) {
+    switch (class_id) {
+    case 5U: return "Deuce model. Assault rifles and SMGs. Extra spawn ammunition. Balanced movement.";
+    case 0U: return "Commando model. LMG or double barrel. Body bullets deal 20% less damage. Slowest movement.";
+    case 1U: return "Marksman model. Sniper rifles and pistols. Standard health and balanced movement.";
+    case 3U: return "Miner model. SMGs and shotguns. Choose C4 or dynamite. Slightly slower movement.";
+    case 17U: return "Medic model. SMGs and shotguns. Medpacks heal after 3 seconds without damage.";
+    default: return {};
+    }
 }
 
 void append_selected_frame(ui::DrawList& list, DrawRect item, double scale_x, double scale_y) {
@@ -353,12 +374,14 @@ void append_class_popup(ui::DrawList& list, const ClassSelectionMenuModel& menu,
                      {x - 158.0, 600.0 - y_up - 92.0, frame_width, frame_height}));
     const double name_x = (right_half ? x - 10.0 : x) - 130.0;
     const double name_up = y_up + 52.0;
-    list.push(text(class_name_id(class_id),
+    list.push(text(class_name_id(class_id, appearance.hardcore),
                    {name_x, top_from_bottom(name_up, 28.0), frame_width - 60.0, 28.0}, 20.0,
                    HorizontalTextAlignment::center, menu_color, "fonts/Edo.ttf"));
     const double body_x = right_half ? x - 135.0 : x - 115.0;
     const auto description_key = world::class_description_key(class_id);
-    const std::string description = localized(appearance, description_key);
+    const auto role_description = appearance.hardcore ? hardcore_description(class_id) : std::string_view{};
+    const std::string description = role_description.empty() ? localized(appearance, description_key)
+                                                            : std::string{role_description};
     // split_text_to_fit_screen(font, text, 317, 60) wraps at ~257 px; the
     // renderer performs the wrap, the line count positions the block row.
     constexpr double wrap_width{257.0};
@@ -367,7 +390,7 @@ void append_class_popup(ui::DrawList& list, const ClassSelectionMenuModel& menu,
         1U, (description.size() * 55U / 10U + static_cast<std::size_t>(wrap_width) - 1U) /
                 static_cast<std::size_t>(wrap_width));
     y_up += 10.0;
-    auto body = body_text(std::string{appearance.localize ? std::string_view{description}
+    auto body = body_text(std::string{appearance.localize || !role_description.empty() ? std::string_view{description}
                                                           : description_key},
                           {body_x, 600.0 - (y_up + 20.0) - 10.0, wrap_width, line_height * 6.0},
                           ui::VerticalTextAlignment::top);
@@ -593,7 +616,7 @@ ui::DrawList ClassSelectionPresentation::build(
         "MELEE", "PRIMARY_WEAPONS", "SECONDARY_WEAPONS", "EQUIPMENT"};
     for (std::size_t group{}; group < labels.size(); ++group) {
         const double top = 294.0 + static_cast<double>(group) * 53.0;
-        auto label = text(std::string{labels[group]}, {84.0, top, 80.0, 42.0}, 10.0,
+        auto label = text(appearance.hardcore && group == 0U ? "Grenades" : std::string{labels[group]}, {84.0, top, 80.0, 42.0}, 10.0,
                           HorizontalTextAlignment::center, menu_color, "fonts/Edo.ttf");
         if (group == 1U || group == 2U) {
             label.layout = ui::TextLayout::bounded_wrapped_lines;
@@ -608,7 +631,7 @@ ui::DrawList ClassSelectionPresentation::build(
     for (std::size_t display_index{}; display_index < visible; ++display_index) {
         const auto class_index = offset + display_index;
         list.push(text(
-            class_name_id(classes[class_index]),
+            class_name_id(classes[class_index], appearance.hardcore),
             {card_layout.name_x + static_cast<double>(display_index) * card_layout.interval,
              96.0, static_cast<double>(card_layout.name_width), 31.0},
             20.0, HorizontalTextAlignment::center,

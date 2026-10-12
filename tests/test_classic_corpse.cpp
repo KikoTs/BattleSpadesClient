@@ -1,4 +1,6 @@
 #include "battlespades/world/classic_corpse.hpp"
+#include "battlespades/world/body_damage.hpp"
+#include "battlespades/world/particle_system.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,6 +8,7 @@
 #include <cstddef>
 #include <iostream>
 #include <stdexcept>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -606,10 +609,151 @@ void a_dropped_gun_is_one_rigid_thing() {
     expect(distance(rested, gun.position()) < 1e-9, "and lies still once it has landed");
 }
 
+void detached_parts_keep_rigid_transforms_and_collide() {
+    auto map=field();
+    wall(map,262,263,248,252,4);
+    for(const auto part:{C::skull,C::upper_arm_left,C::forearm_right,C::thigh_left,C::shin_right}) {
+        C corpse{{261.5,250,ground-2.25},-90,{2,0,0},71,true};
+        expect(corpse.detach(part),"joint can be released once");
+        expect(!corpse.detach(part) && !corpse.detach(C::torso),"cannot detach twice or release the torso");
+        const auto joint=part==C::skull?C::head:part==C::upper_arm_left?C::elbow_left:
+            part==C::forearm_right?C::hand_right:part==C::thigh_left?C::knee_left:C::foot_right;
+        corpse.impulse(corpse.joint(joint),{-9,2,-3});
+        for(int frame=0;frame<480;++frame) {
+            corpse.tick(1.0/60,map);
+            for(std::size_t p=0;p<C::part_count;++p) {
+                const auto matrix=corpse.part_transform(static_cast<C::Part>(p));
+                for(const auto value:matrix) expect(std::isfinite(value),"detached bodies remain finite near a wall");
+                expect(std::abs(matrix[12]-261.5)<30 && std::abs(matrix[13]-250)<30,
+                       "separation cannot launch a limb across the map");
+                for(std::size_t axis=0;axis<3;++axis) {
+                    const double norm=matrix[axis*4]*matrix[axis*4]+matrix[axis*4+1]*matrix[axis*4+1]+matrix[axis*4+2]*matrix[axis*4+2];
+                    expect(std::abs(norm-1)<1e-4,"native parts remain rigid after separation");
+                }
+            }
+        }
+        expect(corpse.detached(part),"terrain contact does not reattach a limb");
+    }
+    C fallen{{250,250,ground-2.25},-90,{},1,true};
+    fallen.react(C::DeathImpact::fall);
+    for(int frame=0;frame<180;++frame) fallen.tick(1.0/60,map);
+    expect(fallen.position().z>ground-2,"fall death collapses without a standing stagger");
+}
+
+void body_damage_is_bounded_and_cosmetic() {
+    world::ChunkMesh source;
+    using Cell=std::array<int,3>;
+    const std::array<Cell,6> normals{{{-1,0,0},{1,0,0},{0,-1,0},{0,1,0},{0,0,-1},{0,0,1}}};
+    const std::array<std::array<Cell,4>,6> corners{{
+        {{{0,0,0},{0,0,1},{0,1,1},{0,1,0}}}, {{{1,0,0},{1,1,0},{1,1,1},{1,0,1}}},
+        {{{0,0,0},{1,0,0},{1,0,1},{0,0,1}}}, {{{0,1,0},{0,1,1},{1,1,1},{1,1,0}}},
+        {{{0,0,0},{0,1,0},{1,1,0},{1,0,0}}}, {{{0,0,1},{1,0,1},{1,1,1},{0,1,1}}}
+    }};
+    // KV6 stores a hollow shell: include its inward skin faces as well as
+    // the visible outside. A wound must fill that hidden air with tissue.
+    const auto shell=[](Cell c) {
+        return c[0]>=0 && c[0]<6 && c[1]>=0 && c[1]<6 && c[2]>=0 && c[2]<8 &&
+               (c[0]==0 || c[0]==5 || c[1]==0 || c[1]==5 || c[2]==0 || c[2]==7);
+    };
+    for(int x=0;x<6;++x) for(int y=0;y<6;++y) for(int z=0;z<8;++z) {
+        if(!shell({x,y,z})) continue;
+        for(std::uint8_t face=0;face<6;++face) {
+            const Cell neighbor{x+normals[face][0],y+normals[face][1],z+normals[face][2]};
+            if(shell(neighbor)) continue;
+            const auto base=static_cast<std::uint32_t>(source.vertices.size());
+            for(const auto corner:corners[face]) {
+                world::ChunkVertex v;v.x=-.3F+(x+corner[0])*.1F;v.y=-.3F+(y+corner[1])*.1F;v.z=(z+corner[2])*.1F;
+                v.face=(face+2)%6; // composite geometry deliberately differs from old material face tags
+                v.abgr=0x006090a0U;source.vertices.push_back(v);
+            }
+            for(const auto index:{0U,1U,2U,0U,2U,3U}) source.indices.push_back(base+index);
+        }
+    }
+    source.minimum={-.3F,-.3F,0};source.maximum={.3F,.3F,.8F};
+    C::Matrix matrix{1,0,0,0,0,1,0,0,0,0,1,0,10,20,30,1};
+    const std::array surfaces{world::BodyDamage::Surface{&source,matrix,0}};
+    world::BodyDamage inside_contact;
+    inside_contact.hit({10,20,30.08},3,.24,0,3);
+    const auto outside=inside_contact.resolve(surfaces);
+    expect(outside.count==1 && std::abs(outside.values[0].position.z-30)<1e-5,
+           "contacts inside a broad hitbox snap to external skin, never reversed internal faces");
+    world::BodyDamage damage;
+    damage.hit({100,100,100},0);
+    expect(!damage.resolve(surfaces) && damage.wound_count()==0,"distant contacts never mark another body");
+    for(std::uint32_t shot=0;shot<100;++shot) {
+        damage.hit({10,20,30},shot);
+        expect(static_cast<bool>(damage.resolve(surfaces)),"hit resolves against the displayed native surface");
+    }
+    expect(damage.wound_count()==32,"wounds use a fixed per-player budget");
+    const auto wounded=damage.mesh(source,0);
+    expect(wounded.vertices.size()<=source.vertices.size()+1024*24,"excavated skin gets closed walls under a fixed topology budget");
+    const auto wound_depth=[](const world::ChunkMesh& mesh) {
+        double depth{};for(const auto& v:mesh.vertices) if(v.abgr!=0x006090a0U) depth=std::max(depth,static_cast<double>(v.z));return depth;
+    };
+    expect(wound_depth(wounded)>0 && source.vertices[0].abgr==0x006090a0U,"real cavities leave shared native skin unchanged");
+    for(const auto& v:wounded.vertices) expect((v.abgr>>24)==0,"gore materials must not glow");
+    world::BodyDamage deep;
+    deep.hit({10,20,30},1,.24,255,3);
+    deep.hit({10.02,20,30},2,.24,255,3);
+    expect(deep.resolve(surfaces).count==2,"each resolved bullet supplies debris, including same-frame hits");
+    const auto crater=deep.mesh(source,0);
+    expect(wound_depth(crater)>wound_depth(wounded),"higher intensity carves more deeply");
+    expect(wound_depth(crater)<.4,"thin surfaces constrain excavation depth");
+    for(const auto& v:crater.vertices) if(v.abgr==0x006090a0U)
+        expect(std::abs(v.x)>.299 || std::abs(v.y)>.299 || v.z<.001 || v.z>.799,
+               "hollow KV6 interiors cannot leave skin behind a carved wound");
+    for(const auto index:crater.indices) expect(index<crater.vertices.size(),"cavity indices stay valid");
+    std::set<std::array<Cell,4>> unique_faces;
+    for(std::size_t i=0;i+3<crater.vertices.size();i+=4) {
+        std::array<Cell,4> key{};
+        for(std::size_t j=0;j<4;++j) {const auto& v=crater.vertices[i+j];key[j]={static_cast<int>(std::lround(v.x*10000)),static_cast<int>(std::lround(v.y*10000)),static_cast<int>(std::lround(v.z*10000))};}
+        std::sort(key.begin(),key.end());
+        expect(unique_faces.insert(key).second,"merged wounds never stack duplicate skin or interior faces");
+    }
+    world::BodyDamage skull;
+    const std::array skull_surface{world::BodyDamage::Surface{&source,matrix,1}};
+    skull.hit({10,20,30},17,.24,1,3);static_cast<void>(skull.resolve(skull_surface));
+    const auto exposed=skull.mesh(source,1);
+    expect(std::any_of(exposed.vertices.begin(),exposed.vertices.end(),[](const auto& v){return v.abgr==0x0091b7d5U;}),"head cavities reveal an ivory skull layer");
+
+    expect(damage.mesh(source,1).vertices[0].abgr==source.vertices[0].abgr,"other limbs keep their original skin");
+    world::BodyDamage::Chips chips;
+    chips.count=16;
+    for(std::size_t i=0;i<chips.count;++i) chips.values[i]={{260,250,ground-4.0},0x006090a0U,static_cast<std::uint32_t>(i),true};
+    world::ParticleSystem debris;
+    world::emit_body_fragments(debris,chips,3);
+    expect(debris.live_count()<=64 && debris.live_count()>=16,"same-frame impacts keep visible fragments within the shared burst budget");
+    const auto map=field();
+    for(int i=0;i<30;++i) debris.tick(1./60,map);
+    debris.build_draw_list({260,245,ground-3.F},192);
+    double mean_z{};
+    for(const auto& particle:debris.instances()) mean_z+=particle.position[2];
+    expect(!debris.instances().empty() && mean_z/debris.instances().size()>ground-4.0,"fragments visibly fall under gravity");
+    for(int i=0;i<150;++i) debris.tick(1./60,map);
+    expect(debris.live_count()==0,"brief debris expires and frees pooled slots");
+    unsigned close_shotgun{},distant_shotgun{},lethal_sniper{},heavy_heads{},brutal_heads{};
+    for(std::uint32_t seed=0;seed<1000;++seed) {
+        heavy_heads+=world::sever_on_impact(world::GoreWeapon::shotgun,C::skull,2,true,seed,2);
+        brutal_heads+=world::sever_on_impact(world::GoreWeapon::shotgun,C::skull,2,true,seed,3);
+        expect(!world::sever_on_impact(world::GoreWeapon::explosive,C::skull,0,true,seed,0),"off forbids even explosive separation");
+        close_shotgun+=world::sever_on_impact(world::GoreWeapon::shotgun,C::forearm_left,2,false,seed);
+        distant_shotgun+=world::sever_on_impact(world::GoreWeapon::shotgun,C::forearm_left,30,false,seed);
+        lethal_sniper+=world::sever_on_impact(world::GoreWeapon::sniper,C::forearm_left,30,true,seed);
+        expect(!world::sever_on_impact(world::GoreWeapon::sniper,C::skull,2,true,seed),"sniper headshot does not decapitate");
+        expect(!world::sever_on_impact(world::GoreWeapon::sniper,C::forearm_left,2,false,seed),"nonlethal sniper hits do not sever");
+        expect(!world::sever_on_impact(world::GoreWeapon::explosive,C::torso,0,true,seed),"torso never disintegrates");
+    }
+    expect(heavy_heads>750 && heavy_heads<950 && brutal_heads==1000,"brutal guarantees close shotgun head separation; heavy remains variable");
+    expect(close_shotgun>200 && distant_shotgun==0 && lethal_sniper>0 && lethal_sniper<close_shotgun,
+           "weapon and range meaningfully restrict dismemberment");
+}
+
 } // namespace
 
 int main() {
-    const std::array<std::pair<const char*, void (*)()>, 13> tests{{
+    const std::array<std::pair<const char*, void (*)()>, 15> tests{{
+        {"detached_parts_keep_rigid_transforms_and_collide", detached_parts_keep_rigid_transforms_and_collide},
+        {"body_damage_is_bounded_and_cosmetic", body_damage_is_bounded_and_cosmetic},
         {"a_body_ends_lying_down", a_body_ends_lying_down},
         {"it_staggers_before_it_falls", it_staggers_before_it_falls},
         {"a_standing_death_collapses_and_rests", a_standing_death_collapses_and_rests},

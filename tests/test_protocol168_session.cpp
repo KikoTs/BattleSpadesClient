@@ -251,8 +251,8 @@ void retail_initial_info_decodes_nonempty_loadouts_and_rules() {
     }
     string(packet, "RULE_BLOCKS");
     string(packet, "OFF");
-    string(packet, "RULE_TIME");
-    string(packet, "90");
+    string(packet, "RULE_ENABLE_GRAVESTONES");
+    string(packet, "0");
     packet.insert(packet.end(), {std::byte{}, std::byte{7U}});
     std::string error;
     auto info = decode_protocol168_initial_info(packet, error);
@@ -261,8 +261,8 @@ void retail_initial_info_decodes_nonempty_loadouts_and_rules() {
                info->loadout_overrides.at({3U, 0U}) == std::vector<std::uint8_t>{9U},
            "retail loadout dictionary keys and counted tool lists must be preserved");
     const std::vector<std::pair<std::string, std::string>> rules{
-        {"RULE_BLOCKS", "OFF"}, {"RULE_TIME", "90"}};
-    expect(info->custom_game_rules == rules && info->allow_shooting_holding_intel &&
+        {"RULE_BLOCKS", "OFF"}, {"RULE_ENABLE_GRAVESTONES", "0"}};
+    expect(info->custom_game_rules == rules && info->enable_gravestones == false && !info->enable_corpse_explosion && info->allow_shooting_holding_intel &&
                !info->friendly_fire && info->ugc_mode == 7U,
            "custom rule string pairs must not shift later combat/UGC flags");
     for (std::size_t size{}; size < packet.size(); ++size) {
@@ -341,8 +341,8 @@ void flight_profile_is_negotiated_bounded_and_separate_from_the_ticket() {
     const auto ticket = session.connected();
     expect(ticket.size() == 14U && ticket[2U] == std::byte{3U} &&
                ticket[6U] == std::byte{'k'} && ticket[9U] == std::byte{'B'} &&
-               ticket.back() == std::byte{2U},
-           "flight support (BSCF v2) must be explicit and outside the length-delimited auth key");
+               ticket.back() == std::byte{4U},
+           "flight, Hardcore and race support (BSCF v4) must be explicit and outside the length-delimited auth key");
     // Exact server.flight_profile.BALANCED_FLIGHT.encode() bytes.
     const std::array<unsigned char, 20U> trailer{
         0x42,0x53,0x46,0x50,0x01,0x03,0x40,0x00,0x80,0x07,
@@ -943,6 +943,41 @@ void deferred_runtime_memory_is_bounded_independently_of_map_transfer() {
 
 int main() {
     try {
+        {
+            auto packet = initial_info();
+            packet.resize(packet.size() - 3U); // replace the custom-rule count and final flags
+            packet.push_back(std::byte{1U});
+            string(packet, "BATTLESPADES_HARDCORE");
+            string(packet, "1");
+            packet.push_back(std::byte{});
+            packet.push_back(std::byte{});
+            std::string error;
+            auto decoded = battlespades::network::decode_protocol168_initial_info(packet, error);
+            expect(decoded && decoded->hardcore, "Hardcore movement must survive InitialInfo decoding");
+            packet[packet.size() - 4U] = std::byte{'9'};
+            expect(!battlespades::network::decode_protocol168_initial_info(packet, error),
+                   "an unknown Hardcore profile must fail closed");
+            decoded = battlespades::network::decode_protocol168_initial_info(initial_info(), error);
+            expect(decoded && !decoded->hardcore, "ordinary servers retain stock movement");
+        }
+        {
+            auto packet = initial_info();
+            packet.resize(packet.size() - 3U);
+            packet.push_back(std::byte{2U});
+            string(packet, "BATTLESPADES_FUN");
+            string(packet, "crumbling_run");
+            string(packet, "BATTLESPADES_RACE_MOMENTUM");
+            string(packet, "1");
+            packet.push_back(std::byte{});
+            packet.push_back(std::byte{});
+            std::string error;
+            const auto decoded = battlespades::network::decode_protocol168_initial_info(packet, error);
+            expect(decoded && decoded->fun_mode == "crumbling_run" && decoded->race_momentum,
+                   "community mode and negotiated momentum must reach prediction");
+            const auto stock = battlespades::network::decode_protocol168_initial_info(initial_info(), error);
+            expect(stock && stock->fun_mode.empty() && !stock->race_momentum,
+                   "retail servers must keep original presentation and movement");
+        }
         offline_ticket_and_initial_sequence_are_exact();
         native_steam_ticket_and_xor_sequence_are_exact();
         retail_initial_info_decodes_nonempty_loadouts_and_rules();

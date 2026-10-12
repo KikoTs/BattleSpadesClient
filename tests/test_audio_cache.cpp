@@ -81,6 +81,18 @@ int main() {
         expect(sound.resident_music_ambience_bytes() <=
                    audio::OpenAlFrontendAudio::music_ambience_pcm_budget_bytes,
                "a playing bed must not push the cache past its budget");
+        // Live headphone switching must preserve the context, cached buffers
+        // and current ambience instead of tearing down the mixer.
+        const auto cached_bytes = sound.resident_music_ambience_bytes();
+        const bool hrtf = sound.set_spatial_audio(true);
+        std::cout << "headphone HRTF " << (hrtf ? "enabled" : "unavailable on this device") << '\n';
+        expect(sound.resident_music_ambience_bytes() == cached_bytes,
+               "enabling HRTF must preserve the audio cache");
+        expect(sound.set_spatial_audio(false), "could not restore ordinary stereo");
+        expect(sound.play_named_one_shot("build", {}, 1.0F, true),
+               "cached sounds must still play after live HRTF switching");
+        expect(sound.resident_music_ambience_bytes() == cached_bytes,
+               "disabling HRTF must preserve the audio cache");
         sound.stop();
         std::cout << "audio cache: " << stems.size() << " beds, peak resident "
                   << peak / (1024U * 1024U) << " MiB (budget "

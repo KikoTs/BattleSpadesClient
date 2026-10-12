@@ -16,7 +16,10 @@ void main()
 {
     gl_Position = mul(u_modelViewProj, vec4(a_position, 1.0));
     v_color0 = a_color0;
-    if (u_lightParams.x > 0.5 && u_lightParams.x < 1.5 && a_color2.a > 0.5)
+    // Compatibility z=1 selects original Classic colors, whose light byte is
+    // not the retail baked-light contract. Keep its authored RGB intact.
+    if (u_lightParams.x > 0.5 && u_lightParams.x < 1.5 &&
+        u_lightParams.z < 0.5 && a_color2.a > 0.5)
     {
         // vxl.pyd sub_100051C0 writes truncated RGB bytes BEFORE interpolation.
         // The VXL light byte is baked illumination, not gl_Vertex.w's flare bypass.
