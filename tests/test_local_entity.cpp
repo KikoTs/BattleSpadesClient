@@ -657,6 +657,29 @@ void owning_rocket_exits_the_first_person_launcher() {
     expect(local_rocket_presentation_anchor(
                11U, spawn, integrated, velocity, 0.0) == integrated,
            "grenades and remote projectile families must not inherit RPG offsets");
+
+    // Smoke must stay 19 model voxels behind the rendered centre throughout
+    // the muzzle blend, including steep shots and both launcher models.
+    for (const auto tool : {12U, 13U, 46U}) {
+        for (const auto age : {0.0, 0.016, 0.033, 0.05, 0.5}) {
+            constexpr std::array<double, 3U> steep_velocity{30.0, -40.0, -50.0};
+            const std::array<double, 3U> position{
+                spawn[0U] + steep_velocity[0U] * age,
+                spawn[1U] + steep_velocity[1U] * age,
+                spawn[2U] + steep_velocity[2U] * age};
+            const auto displayed = local_rocket_presentation_anchor(
+                static_cast<std::uint8_t>(tool), spawn, position, steep_velocity, age);
+            const auto rocket = projectile_presentation_transform(
+                displayed, steep_velocity, 23.0, 0.02F);
+            const auto tail = projectile_exhaust_position(
+                displayed, steep_velocity, 23.0, 0.02F);
+            const auto forward = projectile_presentation_direction(rocket, {0.0F, 0.0F, -1.0F});
+            for (std::size_t axis{}; axis < tail.size(); ++axis) {
+                expect(std::abs(tail[axis] - (rocket[12U + axis] - forward[axis] * .38F)) < .0001F,
+                       "muzzle-blended smoke must attach to the rendered rocket tail");
+            }
+        }
+    }
 }
 
 /** Pickups, graves and deployables fall continuously, never teleport down. */

@@ -32326,19 +32326,29 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
                 projectile.stuck) {
                 continue;
             }
-            const std::array<double, 3U> position{
+            auto position = std::array<double, 3U>{
                 projectile.position.x, projectile.position.y, projectile.position.z};
             const std::array<double, 3U> velocity{
                 projectile.velocity.x, projectile.velocity.y, projectile.velocity.z};
-            // Rocket.update (rocket.py) emits the puff at the rocket's own
-            // position + (0, 0, 0.5), not at the rendered exhaust: the first
-            // puffs sit on the line of fire right in front of the eye, which is
-            // the large back-blast cloud retail shows left of the launcher.
+            const bool owning_first_person =
+                !projectile.autonomous_source &&
+                (!impl_->network_match ||
+                 (impl_->local_player_id.has_value() &&
+                  projectile.source_player == impl_->local_player_id));
+            if (owning_first_person) {
+                position = world::local_rocket_presentation_anchor(
+                    projectile.tool_id,
+                    {projectile.spawn_position.x, projectile.spawn_position.y,
+                     projectile.spawn_position.z},
+                    position, velocity, projectile.presentation_age);
+            }
+            // Use the same muzzle interpolation, rotation and scale as the
+            // visible model. A physics-space offset separates smoke from it.
             world::emit_projectile_trail(
                 impl_->particles,
-                {static_cast<float>(position[0U]),
-                 static_cast<float>(position[1U]),
-                 static_cast<float>(position[2U] + 0.5)},
+                world::projectile_exhaust_position(
+                    position, velocity, projectile.roll,
+                    projectile_model_scale(projectile.tool_id)),
                 {static_cast<float>(velocity[0U]),
                  static_cast<float>(velocity[1U]),
                  static_cast<float>(velocity[2U])},
@@ -32363,9 +32373,25 @@ core::TickDecision NativeFrontendModule::tick(const core::TickContext& context) 
             if (entity.type == 24U) {
                 world::emit_block_cannon_trail(impl_->particles, position, velocity, seed);
             } else if (entity.type == 21U || entity.type == 22U) {
+                const auto* definition = world::find_entity_definition(entity.type);
+                if (definition == nullptr || definition->parts.empty()) {
+                    continue;
+                }
+                auto anchor = std::array<double, 3U>{
+                    entity.position.x, entity.position.y, entity.position.z};
+                const std::array<double, 3U> motion{
+                    entity.velocity.x, entity.velocity.y, entity.velocity.z};
+                if (entity.local_launcher_muzzle) {
+                    anchor = world::local_rocket_presentation_anchor(
+                        entity.type == 21U ? 12U : 13U,
+                        {entity.home.x, entity.home.y, entity.home.z},
+                        anchor, motion, entity.presentation_age);
+                }
                 world::emit_projectile_trail(
                     impl_->particles,
-                    {position[0U], position[1U], position[2U] + 0.5F},
+                    world::projectile_exhaust_position(
+                        anchor, motion, entity.accumulators[0U],
+                        definition->model_size * definition->parts.front().scale),
                     velocity, seed);
             }
         }

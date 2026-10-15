@@ -714,9 +714,8 @@ void emit_falling_blocks_breakup(ParticleSystem& particles,
 void emit_projectile_trail(ParticleSystem& particles,
                            std::array<float, 3U> position,
                            std::array<float, 3U> velocity, std::uint32_t seed) {
-    // The caller supplies Rocket.update's anchor: the rocket position plus
-    // 0.5 z (not the rendered exhaust). It grows as it ages and never
-    // collides.
+    // The caller supplies the rendered exhaust, including muzzle interpolation.
+    // Emitted smoke grows independently after leaving the rocket and never collides.
     const float length = std::sqrt(velocity[0U] * velocity[0U] +
                                    velocity[1U] * velocity[1U] +
                                    velocity[2U] * velocity[2U]);
