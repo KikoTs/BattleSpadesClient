@@ -2187,6 +2187,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Mapas VXL antiguos: color del servidor, del cielo o RGB propio. La distancia no cambia. Cancelar restaura los colores anteriores.",
     "CLASSIC_FOG_GRAY": "Gris clásico (predeterminado)",
     "DEATH_VOICES": "Gritos al morir",
-    "DEATH_VOICES_DESCRIPTION": "Reproduce los gritos al morir de tu personaje y de otros jugadores. Los demás sonidos de combate no cambian."
+    "DEATH_VOICES_DESCRIPTION": "Reproduce los gritos al morir de tu personaje y de otros jugadores. Los demás sonidos de combate no cambian.",
+    "GORE": "Heridas y desmembramiento",
+    "GORE_DESCRIPTION": "Heridas, fragmentos y desmembramiento cosméticos. No cambia el daño ni las zonas de impacto.",
+    "GORE_INTENSITY": "Intensidad de heridas",
+    "DISMEMBERMENT_INTENSITY": "Intensidad de desmembramiento",
+    "GORE_LIGHT": "Leve",
+    "GORE_MEDIUM": "Media",
+    "GORE_HEAVY": "Alta",
+    "GORE_BRUTAL": "Brutal",
+    "GORE_RESTRAINED": "Moderada",
+    "GORE_INTENSITY_DESCRIPTION": "Tamaño y profundidad de las nuevas heridas y fragmentos. Requiere heridas activadas; solo visual.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Separación de cabeza y extremidades al morir o recibir impactos en cadáveres. Brutal intensifica los disparos cercanos de escopeta. Desactivar conserva las heridas.",
+    "SPATIAL_AUDIO": "Audio espacial (auriculares)",
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural para indicar dirección y altura con auriculares. Desactívalo para estéreo o procesamiento externo. Requiere una salida de audio compatible."
   }
 }

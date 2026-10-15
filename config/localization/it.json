@@ -2150,6 +2150,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Vecchie mappe VXL: colore del server, del cielo o RGB personale. Distanza invariata. Annulla ripristina i colori precedenti.",
     "CLASSIC_FOG_GRAY": "Grigio classico (predefinito)",
     "DEATH_VOICES": "Urla di morte",
-    "DEATH_VOICES_DESCRIPTION": "Riproduce le urla di morte del tuo personaggio e degli altri giocatori. Gli altri suoni di combattimento restano invariati."
+    "DEATH_VOICES_DESCRIPTION": "Riproduce le urla di morte del tuo personaggio e degli altri giocatori. Gli altri suoni di combattimento restano invariati.",
+    "GORE": "Ferite e smembramento",
+    "GORE_DESCRIPTION": "Ferite, frammenti e smembramento cosmetici. Non modifica i danni né le aree colpibili.",
+    "GORE_INTENSITY": "Intensità delle ferite",
+    "DISMEMBERMENT_INTENSITY": "Intensità dello smembramento",
+    "GORE_LIGHT": "Lieve",
+    "GORE_MEDIUM": "Media",
+    "GORE_HEAVY": "Elevata",
+    "GORE_BRUTAL": "Brutale",
+    "GORE_RESTRAINED": "Moderata",
+    "GORE_INTENSITY_DESCRIPTION": "Dimensioni e profondità di nuove ferite e frammenti. Richiede le ferite attive; solo visivo.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Separazione di testa e arti alla morte e con colpi sui cadaveri. Brutale intensifica i colpi ravvicinati di fucile a pompa. Disattivare mantiene le ferite.",
+    "SPATIAL_AUDIO": "Audio spaziale (cuffie)",
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaurale per direzione e altezza in cuffia. Disattiva per stereo o elaborazione esterna. Richiede un’uscita audio compatibile."
   }
 }

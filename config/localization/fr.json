@@ -2187,6 +2187,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Anciennes cartes VXL : couleur du serveur, du ciel ou RVB personnalisé. Distance inchangée. Annuler restaure les couleurs précédentes.",
     "CLASSIC_FOG_GRAY": "Gris classique (par défaut)",
     "DEATH_VOICES": "Cris de mort",
-    "DEATH_VOICES_DESCRIPTION": "Joue les cris de mort de votre personnage et des autres joueurs. Les autres sons de combat restent inchangés."
+    "DEATH_VOICES_DESCRIPTION": "Joue les cris de mort de votre personnage et des autres joueurs. Les autres sons de combat restent inchangés.",
+    "GORE": "Blessures et démembrement",
+    "GORE_DESCRIPTION": "Blessures, fragments et démembrement cosmétiques. Ne modifie ni les dégâts ni les zones de collision.",
+    "GORE_INTENSITY": "Intensité des blessures",
+    "DISMEMBERMENT_INTENSITY": "Intensité du démembrement",
+    "GORE_LIGHT": "Légère",
+    "GORE_MEDIUM": "Moyenne",
+    "GORE_HEAVY": "Forte",
+    "GORE_BRUTAL": "Brutale",
+    "GORE_RESTRAINED": "Modérée",
+    "GORE_INTENSITY_DESCRIPTION": "Taille et profondeur des nouvelles blessures et des fragments. Nécessite les blessures ; effet purement visuel.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Séparation de la tête et des membres à la mort et lors des tirs sur les corps. Brutale renforce les tirs de fusil à pompe à courte portée. Désactiver conserve les blessures.",
+    "SPATIAL_AUDIO": "Audio spatial (casque)",
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural pour repérer direction et hauteur au casque. Désactivez pour la stéréo ou un traitement externe. Nécessite une sortie audio compatible."
   }
 }

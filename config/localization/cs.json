@@ -92,6 +92,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Staré mapy VXL: barva serveru, oblohy nebo vlastní RGB. Vzdálenost se nemění. Zrušit obnoví předchozí barvy.",
     "CLASSIC_FOG_GRAY": "Klasická šedá (výchozí)",
     "DEATH_VOICES": "Výkřiky při smrti",
-    "DEATH_VOICES_DESCRIPTION": "Přehrává výkřiky při smrti vaší postavy a ostatních hráčů. Ostatní zvuky boje se nemění."
+    "DEATH_VOICES_DESCRIPTION": "Přehrává výkřiky při smrti vaší postavy a ostatních hráčů. Ostatní zvuky boje se nemění.",
+    "GORE": "Rány a oddělování končetin",
+    "GORE_DESCRIPTION": "Kosmetické rány, úlomky těla a oddělování končetin. Nemění poškození ani zásahové oblasti.",
+    "GORE_INTENSITY": "Intenzita ran",
+    "DISMEMBERMENT_INTENSITY": "Intenzita oddělování končetin",
+    "GORE_LIGHT": "Lehká",
+    "GORE_MEDIUM": "Střední",
+    "GORE_HEAVY": "Silná",
+    "GORE_BRUTAL": "Brutální",
+    "GORE_RESTRAINED": "Umírněná",
+    "GORE_INTENSITY_DESCRIPTION": "Velikost a hloubka nových ran a úlomků. Vyžaduje zapnuté rány; pouze vizuální efekt.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Oddělování hlavy a končetin při smrti a zásazích mrtvol. Brutální režim zesiluje blízké zásahy brokovnicí. Vypnutí zachová rány.",
+    "SPATIAL_AUDIO": "Prostorový zvuk (sluchátka)",
+    "SPATIAL_AUDIO_DESCRIPTION": "Binaurální HRTF pro směr a výšku ve sluchátkách. Vypněte pro stereo nebo externí zpracování. Vyžaduje kompatibilní zvukový výstup."
   }
 }

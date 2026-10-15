@@ -2150,6 +2150,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Eski VXL haritaları: sunucu rengi, gökyüzü veya özel RGB. Sis mesafesi değişmez. İptal önceki renkleri geri getirir.",
     "CLASSIC_FOG_GRAY": "Klasik gri (varsayılan)",
     "DEATH_VOICES": "Ölüm sesleri",
-    "DEATH_VOICES_DESCRIPTION": "Kendi karakterinizin ve diğer oyuncuların ölüm çığlıklarını çalar. Diğer savaş sesleri değişmez."
+    "DEATH_VOICES_DESCRIPTION": "Kendi karakterinizin ve diğer oyuncuların ölüm çığlıklarını çalar. Diğer savaş sesleri değişmez.",
+    "GORE": "Yaralar ve parçalanma",
+    "GORE_DESCRIPTION": "Görsel yaralar, vücut parçaları ve parçalanma. Hasarı veya isabet bölgelerini değiştirmez.",
+    "GORE_INTENSITY": "Yara yoğunluğu",
+    "DISMEMBERMENT_INTENSITY": "Parçalanma yoğunluğu",
+    "GORE_LIGHT": "Hafif",
+    "GORE_MEDIUM": "Orta",
+    "GORE_HEAVY": "Yüksek",
+    "GORE_BRUTAL": "Vahşi",
+    "GORE_RESTRAINED": "Ölçülü",
+    "GORE_INTENSITY_DESCRIPTION": "Yeni yaraların ve parçaların boyutu ve derinliği. Yaralar açık olmalıdır; yalnızca görseldir.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Ölümde ve ceset isabetlerinde baş ve uzuv ayrılması. Vahşi, yakın pompalı tüfek isabetlerini güçlendirir. Kapatmak yaraları korur.",
+    "SPATIAL_AUDIO": "Uzamsal ses (kulaklık)",
+    "SPATIAL_AUDIO_DESCRIPTION": "Kulaklıkta yön ve yükseklik ipuçları için binaural HRTF. Stereo veya harici işleme için kapatın. Uyumlu ses çıkışı gerektirir."
   }
 }

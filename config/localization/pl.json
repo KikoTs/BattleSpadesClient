@@ -2150,6 +2150,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Stare mapy VXL: kolor serwera, nieba lub własny RGB. Odległość bez zmian. Anuluj przywraca poprzednie kolory.",
     "CLASSIC_FOG_GRAY": "Klasyczna szarość (domyślna)",
     "DEATH_VOICES": "Okrzyki śmierci",
-    "DEATH_VOICES_DESCRIPTION": "Odtwarza okrzyki śmierci twojej postaci i innych graczy. Pozostałe dźwięki walki pozostają bez zmian."
+    "DEATH_VOICES_DESCRIPTION": "Odtwarza okrzyki śmierci twojej postaci i innych graczy. Pozostałe dźwięki walki pozostają bez zmian.",
+    "GORE": "Rany i rozczłonkowanie",
+    "GORE_DESCRIPTION": "Kosmetyczne rany, fragmenty ciała i rozczłonkowanie. Nie zmienia obrażeń ani obszarów trafienia.",
+    "GORE_INTENSITY": "Intensywność ran",
+    "DISMEMBERMENT_INTENSITY": "Intensywność rozczłonkowania",
+    "GORE_LIGHT": "Lekka",
+    "GORE_MEDIUM": "Średnia",
+    "GORE_HEAVY": "Silna",
+    "GORE_BRUTAL": "Brutalna",
+    "GORE_RESTRAINED": "Powściągliwa",
+    "GORE_INTENSITY_DESCRIPTION": "Rozmiar i głębokość nowych ran oraz fragmentów. Wymaga włączonych ran; efekt wyłącznie wizualny.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Oddzielanie głowy i kończyn przy śmierci oraz trafieniach w zwłoki. Tryb brutalny wzmacnia bliskie trafienia strzelby. Wyłączenie zachowuje rany.",
+    "SPATIAL_AUDIO": "Dźwięk przestrzenny (słuchawki)",
+    "SPATIAL_AUDIO_DESCRIPTION": "Binauralny HRTF określa kierunek i wysokość w słuchawkach. Wyłącz dla stereo lub zewnętrznego przetwarzania. Wymaga zgodnego wyjścia audio."
   }
 }

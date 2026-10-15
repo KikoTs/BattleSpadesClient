@@ -2187,6 +2187,19 @@
     "CLASSIC_FOG_DESCRIPTION": "旧VXLマップ用。サーバーの色、空に合う色、またはRGBを選択します。霧の距離は変わりません。キャンセルで元の色に戻ります。",
     "CLASSIC_FOG_GRAY": "クラシックグレー（標準）",
     "DEATH_VOICES": "死亡時の声",
-    "DEATH_VOICES_DESCRIPTION": "自分と他のプレイヤーが死亡したときの声を再生します。他の戦闘音には影響しません。"
+    "DEATH_VOICES_DESCRIPTION": "自分と他のプレイヤーが死亡したときの声を再生します。他の戦闘音には影響しません。",
+    "GORE": "傷と部位切断",
+    "GORE_DESCRIPTION": "外見上の傷、破片、部位切断を表示します。ダメージや当たり判定は変わりません。",
+    "GORE_INTENSITY": "傷の強さ",
+    "DISMEMBERMENT_INTENSITY": "部位切断の強さ",
+    "GORE_LIGHT": "軽度",
+    "GORE_MEDIUM": "中程度",
+    "GORE_HEAVY": "重度",
+    "GORE_BRUTAL": "過激",
+    "GORE_RESTRAINED": "控えめ",
+    "GORE_INTENSITY_DESCRIPTION": "新しい傷の大きさ、深さ、破片を調整します。傷の表示が必要です。外見のみの効果です。",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "死亡時や死体への命中時の頭部・手足の切断を調整します。過激では近距離のショットガン命中で切断しやすくなります。オフでも傷は残ります。",
+    "SPATIAL_AUDIO": "空間オーディオ（ヘッドホン）",
+    "SPATIAL_AUDIO_DESCRIPTION": "バイノーラルHRTFで方向と高さを表現します。通常のステレオや外部処理では無効にしてください。対応する音声出力が必要です。"
   }
 }

@@ -2187,6 +2187,19 @@
     "CLASSIC_FOG_DESCRIPTION": "Für alte VXL-Karten: Serverfarbe, Himmelfarbe oder eigenes RGB. Die Nebeldistanz bleibt gleich. Abbrechen stellt die vorherigen Farben wieder her.",
     "CLASSIC_FOG_GRAY": "Klassisches Grau (Standard)",
     "DEATH_VOICES": "Todesschreie",
-    "DEATH_VOICES_DESCRIPTION": "Spielt Todesschreie deiner Figur und anderer Spieler ab. Andere Kampfgeräusche bleiben unverändert."
+    "DEATH_VOICES_DESCRIPTION": "Spielt Todesschreie deiner Figur und anderer Spieler ab. Andere Kampfgeräusche bleiben unverändert.",
+    "GORE": "Wunden und Abtrennung von Körperteilen",
+    "GORE_DESCRIPTION": "Kosmetische Wunden, Körperfragmente und abgetrennte Gliedmaßen. Ändert weder Schaden noch Trefferzonen.",
+    "GORE_INTENSITY": "Wundintensität",
+    "DISMEMBERMENT_INTENSITY": "Intensität der Abtrennung",
+    "GORE_LIGHT": "Leicht",
+    "GORE_MEDIUM": "Mittel",
+    "GORE_HEAVY": "Stark",
+    "GORE_BRUTAL": "Brutal",
+    "GORE_RESTRAINED": "Zurückhaltend",
+    "GORE_INTENSITY_DESCRIPTION": "Größe und Tiefe neuer Wunden und Fragmente. Erfordert aktivierte Wunden; rein kosmetisch.",
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Abtrennung von Kopf und Gliedmaßen beim Tod und bei Leichentreffern. Brutal verstärkt nahe Schrotflintentreffer. Aus behält Wunden bei.",
+    "SPATIAL_AUDIO": "Raumklang (Kopfhörer)",
+    "SPATIAL_AUDIO_DESCRIPTION": "Binaurales HRTF für Richtungs- und Höhenhinweise über Kopfhörer. Für Stereo oder externe Verarbeitung deaktivieren. Erfordert einen kompatiblen Audioausgang."
   }
 }

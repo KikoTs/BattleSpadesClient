@@ -1779,6 +1779,276 @@ DEATH_VOICE_OVERLAYS = {'en': {'DEATH_VOICES': 'Death voices',
  'ja': {'DEATH_VOICES': '死亡時の声', 'DEATH_VOICES_DESCRIPTION': '自分と他のプレイヤーが死亡したときの声を再生します。他の戦闘音には影響しません。'}}
 
 
+EFFECT_SETTINGS_OVERLAYS: dict[str, dict[str, str]] = {'en': {'GORE': 'Body wounds and dismemberment',
+        'GORE_DESCRIPTION': 'Optional cosmetic bullet wounds, skin fragments and weapon-dependent '
+                            'dismemberment. Uses native ragdolls when corpse explosions and '
+                            'gravestones are disabled. Does not change damage or hitboxes.',
+        'GORE_INTENSITY': 'Wound intensity',
+        'DISMEMBERMENT_INTENSITY': 'Dismemberment intensity',
+        'GORE_LIGHT': 'Light',
+        'GORE_MEDIUM': 'Medium',
+        'GORE_HEAVY': 'Heavy',
+        'GORE_BRUTAL': 'Brutal',
+        'GORE_RESTRAINED': 'Restrained',
+        'GORE_INTENSITY_DESCRIPTION': 'Controls new wound size, layered interiors and skin/bone '
+                                      'fragments. Requires body wounds; cosmetic only.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Controls head and limb separation on death and '
+                                               'corpse hits. Brutal makes close shotgun impacts '
+                                               'reliable. Off keeps wounds without separation.',
+        'SPATIAL_AUDIO': 'Spatial audio (headphones)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Use binaural HRTF for headphone direction and height cues. '
+                                     'Disable for ordinary stereo or external surround processing. '
+                                     'Requires a compatible audio output.'},
+ 'bg': {'GORE': 'Рани и разчленяване',
+        'GORE_DESCRIPTION': 'Козметични рани, отломки и разчленяване. Не променя щетите или зоните '
+                            'за попадение.',
+        'GORE_INTENSITY': 'Сила на раните',
+        'DISMEMBERMENT_INTENSITY': 'Сила на разчленяването',
+        'GORE_LIGHT': 'Лека',
+        'GORE_MEDIUM': 'Средна',
+        'GORE_HEAVY': 'Силна',
+        'GORE_BRUTAL': 'Брутална',
+        'GORE_RESTRAINED': 'Умерена',
+        'GORE_INTENSITY_DESCRIPTION': 'Размер и дълбочина на новите рани и отломките. Изисква '
+                                      'включени рани; само визуален ефект.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Отделяне на глава и крайници при смърт и удари по '
+                                               'трупове. Брутална усилва ефекта на близки изстрели '
+                                               'с пушка. Изключването запазва раните.',
+        'SPATIAL_AUDIO': 'Пространствен звук (слушалки)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Бинаурален HRTF за посока и височина със слушалки. Изключете '
+                                     'за стерео или външна обработка. Изисква съвместим '
+                                     'аудиоизход.'},
+ 'ru': {'GORE': 'Раны и расчленение',
+        'GORE_DESCRIPTION': 'Косметические раны, фрагменты тела и расчленение. Не меняет урон или '
+                            'зоны попадания.',
+        'GORE_INTENSITY': 'Выраженность ран',
+        'DISMEMBERMENT_INTENSITY': 'Интенсивность расчленения',
+        'GORE_LIGHT': 'Лёгкая',
+        'GORE_MEDIUM': 'Средняя',
+        'GORE_HEAVY': 'Сильная',
+        'GORE_BRUTAL': 'Жестокая',
+        'GORE_RESTRAINED': 'Сдержанная',
+        'GORE_INTENSITY_DESCRIPTION': 'Размер и глубина новых ран и фрагментов. Требуются '
+                                      'включённые раны; только визуальный эффект.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Отделение головы и конечностей при смерти и '
+                                               'попаданиях по трупам. Жестокий режим усиливает '
+                                               'близкие попадания дробовика. Выключение сохраняет '
+                                               'раны.',
+        'SPATIAL_AUDIO': 'Пространственный звук (наушники)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Бинауральный HRTF для определения направления и высоты в '
+                                     'наушниках. Выключите для стерео или внешней обработки. '
+                                     'Требуется совместимый аудиовыход.'},
+ 'uk': {'GORE': 'Рани та розчленування',
+        'GORE_DESCRIPTION': 'Косметичні рани, уламки тіла та розчленування. Не змінює шкоду чи '
+                            'зони влучання.',
+        'GORE_INTENSITY': 'Виразність ран',
+        'DISMEMBERMENT_INTENSITY': 'Інтенсивність розчленування',
+        'GORE_LIGHT': 'Легка',
+        'GORE_MEDIUM': 'Середня',
+        'GORE_HEAVY': 'Сильна',
+        'GORE_BRUTAL': 'Жорстока',
+        'GORE_RESTRAINED': 'Стримана',
+        'GORE_INTENSITY_DESCRIPTION': 'Розмір і глибина нових ран та уламків. Потрібно ввімкнути '
+                                      'рани; лише візуальний ефект.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Відокремлення голови та кінцівок під час смерті й '
+                                               'влучань у тіла. Жорстокий режим посилює близькі '
+                                               'влучання дробовика. Вимкнення зберігає рани.',
+        'SPATIAL_AUDIO': 'Просторовий звук (навушники)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Бінауральний HRTF для напрямку й висоти в навушниках. '
+                                     'Вимкніть для стерео або зовнішньої обробки. Потрібен '
+                                     'сумісний аудіовихід.'},
+ 'pl': {'GORE': 'Rany i rozczłonkowanie',
+        'GORE_DESCRIPTION': 'Kosmetyczne rany, fragmenty ciała i rozczłonkowanie. Nie zmienia '
+                            'obrażeń ani obszarów trafienia.',
+        'GORE_INTENSITY': 'Intensywność ran',
+        'DISMEMBERMENT_INTENSITY': 'Intensywność rozczłonkowania',
+        'GORE_LIGHT': 'Lekka',
+        'GORE_MEDIUM': 'Średnia',
+        'GORE_HEAVY': 'Silna',
+        'GORE_BRUTAL': 'Brutalna',
+        'GORE_RESTRAINED': 'Powściągliwa',
+        'GORE_INTENSITY_DESCRIPTION': 'Rozmiar i głębokość nowych ran oraz fragmentów. Wymaga '
+                                      'włączonych ran; efekt wyłącznie wizualny.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Oddzielanie głowy i kończyn przy śmierci oraz '
+                                               'trafieniach w zwłoki. Tryb brutalny wzmacnia '
+                                               'bliskie trafienia strzelby. Wyłączenie zachowuje '
+                                               'rany.',
+        'SPATIAL_AUDIO': 'Dźwięk przestrzenny (słuchawki)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Binauralny HRTF określa kierunek i wysokość w słuchawkach. '
+                                     'Wyłącz dla stereo lub zewnętrznego przetwarzania. Wymaga '
+                                     'zgodnego wyjścia audio.'},
+ 'cs': {'GORE': 'Rány a oddělování končetin',
+        'GORE_DESCRIPTION': 'Kosmetické rány, úlomky těla a oddělování končetin. Nemění poškození '
+                            'ani zásahové oblasti.',
+        'GORE_INTENSITY': 'Intenzita ran',
+        'DISMEMBERMENT_INTENSITY': 'Intenzita oddělování končetin',
+        'GORE_LIGHT': 'Lehká',
+        'GORE_MEDIUM': 'Střední',
+        'GORE_HEAVY': 'Silná',
+        'GORE_BRUTAL': 'Brutální',
+        'GORE_RESTRAINED': 'Umírněná',
+        'GORE_INTENSITY_DESCRIPTION': 'Velikost a hloubka nových ran a úlomků. Vyžaduje zapnuté '
+                                      'rány; pouze vizuální efekt.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Oddělování hlavy a končetin při smrti a zásazích '
+                                               'mrtvol. Brutální režim zesiluje blízké zásahy '
+                                               'brokovnicí. Vypnutí zachová rány.',
+        'SPATIAL_AUDIO': 'Prostorový zvuk (sluchátka)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Binaurální HRTF pro směr a výšku ve sluchátkách. Vypněte pro '
+                                     'stereo nebo externí zpracování. Vyžaduje kompatibilní '
+                                     'zvukový výstup.'},
+ 'de': {'GORE': 'Wunden und Abtrennung von Körperteilen',
+        'GORE_DESCRIPTION': 'Kosmetische Wunden, Körperfragmente und abgetrennte Gliedmaßen. '
+                            'Ändert weder Schaden noch Trefferzonen.',
+        'GORE_INTENSITY': 'Wundintensität',
+        'DISMEMBERMENT_INTENSITY': 'Intensität der Abtrennung',
+        'GORE_LIGHT': 'Leicht',
+        'GORE_MEDIUM': 'Mittel',
+        'GORE_HEAVY': 'Stark',
+        'GORE_BRUTAL': 'Brutal',
+        'GORE_RESTRAINED': 'Zurückhaltend',
+        'GORE_INTENSITY_DESCRIPTION': 'Größe und Tiefe neuer Wunden und Fragmente. Erfordert '
+                                      'aktivierte Wunden; rein kosmetisch.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Abtrennung von Kopf und Gliedmaßen beim Tod und '
+                                               'bei Leichentreffern. Brutal verstärkt nahe '
+                                               'Schrotflintentreffer. Aus behält Wunden bei.',
+        'SPATIAL_AUDIO': 'Raumklang (Kopfhörer)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Binaurales HRTF für Richtungs- und Höhenhinweise über '
+                                     'Kopfhörer. Für Stereo oder externe Verarbeitung '
+                                     'deaktivieren. Erfordert einen kompatiblen Audioausgang.'},
+ 'fr': {'GORE': 'Blessures et démembrement',
+        'GORE_DESCRIPTION': 'Blessures, fragments et démembrement cosmétiques. Ne modifie ni les '
+                            'dégâts ni les zones de collision.',
+        'GORE_INTENSITY': 'Intensité des blessures',
+        'DISMEMBERMENT_INTENSITY': 'Intensité du démembrement',
+        'GORE_LIGHT': 'Légère',
+        'GORE_MEDIUM': 'Moyenne',
+        'GORE_HEAVY': 'Forte',
+        'GORE_BRUTAL': 'Brutale',
+        'GORE_RESTRAINED': 'Modérée',
+        'GORE_INTENSITY_DESCRIPTION': 'Taille et profondeur des nouvelles blessures et des '
+                                      'fragments. Nécessite les blessures ; effet purement visuel.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Séparation de la tête et des membres à la mort et '
+                                               'lors des tirs sur les corps. Brutale renforce les '
+                                               'tirs de fusil à pompe à courte portée. Désactiver '
+                                               'conserve les blessures.',
+        'SPATIAL_AUDIO': 'Audio spatial (casque)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'HRTF binaural pour repérer direction et hauteur au casque. '
+                                     'Désactivez pour la stéréo ou un traitement externe. '
+                                     'Nécessite une sortie audio compatible.'},
+ 'es': {'GORE': 'Heridas y desmembramiento',
+        'GORE_DESCRIPTION': 'Heridas, fragmentos y desmembramiento cosméticos. No cambia el daño '
+                            'ni las zonas de impacto.',
+        'GORE_INTENSITY': 'Intensidad de heridas',
+        'DISMEMBERMENT_INTENSITY': 'Intensidad de desmembramiento',
+        'GORE_LIGHT': 'Leve',
+        'GORE_MEDIUM': 'Media',
+        'GORE_HEAVY': 'Alta',
+        'GORE_BRUTAL': 'Brutal',
+        'GORE_RESTRAINED': 'Moderada',
+        'GORE_INTENSITY_DESCRIPTION': 'Tamaño y profundidad de las nuevas heridas y fragmentos. '
+                                      'Requiere heridas activadas; solo visual.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Separación de cabeza y extremidades al morir o '
+                                               'recibir impactos en cadáveres. Brutal intensifica '
+                                               'los disparos cercanos de escopeta. Desactivar '
+                                               'conserva las heridas.',
+        'SPATIAL_AUDIO': 'Audio espacial (auriculares)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'HRTF binaural para indicar dirección y altura con '
+                                     'auriculares. Desactívalo para estéreo o procesamiento '
+                                     'externo. Requiere una salida de audio compatible.'},
+ 'pt-BR': {'GORE': 'Ferimentos e desmembramento',
+           'GORE_DESCRIPTION': 'Ferimentos, fragmentos e desmembramento cosméticos. Não altera o '
+                               'dano nem as áreas de acerto.',
+           'GORE_INTENSITY': 'Intensidade dos ferimentos',
+           'DISMEMBERMENT_INTENSITY': 'Intensidade do desmembramento',
+           'GORE_LIGHT': 'Leve',
+           'GORE_MEDIUM': 'Média',
+           'GORE_HEAVY': 'Alta',
+           'GORE_BRUTAL': 'Brutal',
+           'GORE_RESTRAINED': 'Moderada',
+           'GORE_INTENSITY_DESCRIPTION': 'Tamanho e profundidade de novos ferimentos e fragmentos. '
+                                         'Requer ferimentos ativados; apenas visual.',
+           'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Separação da cabeça e dos membros na morte e em '
+                                                  'acertos nos corpos. Brutal intensifica tiros '
+                                                  'próximos de escopeta. Desativar mantém os '
+                                                  'ferimentos.',
+           'SPATIAL_AUDIO': 'Áudio espacial (fones)',
+           'SPATIAL_AUDIO_DESCRIPTION': 'HRTF binaural para direção e altura nos fones. Desative '
+                                        'para estéreo ou processamento externo. Requer uma saída '
+                                        'de áudio compatível.'},
+ 'it': {'GORE': 'Ferite e smembramento',
+        'GORE_DESCRIPTION': 'Ferite, frammenti e smembramento cosmetici. Non modifica i danni né '
+                            'le aree colpibili.',
+        'GORE_INTENSITY': 'Intensità delle ferite',
+        'DISMEMBERMENT_INTENSITY': 'Intensità dello smembramento',
+        'GORE_LIGHT': 'Lieve',
+        'GORE_MEDIUM': 'Media',
+        'GORE_HEAVY': 'Elevata',
+        'GORE_BRUTAL': 'Brutale',
+        'GORE_RESTRAINED': 'Moderata',
+        'GORE_INTENSITY_DESCRIPTION': 'Dimensioni e profondità di nuove ferite e frammenti. '
+                                      'Richiede le ferite attive; solo visivo.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Separazione di testa e arti alla morte e con colpi '
+                                               'sui cadaveri. Brutale intensifica i colpi '
+                                               'ravvicinati di fucile a pompa. Disattivare '
+                                               'mantiene le ferite.',
+        'SPATIAL_AUDIO': 'Audio spaziale (cuffie)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'HRTF binaurale per direzione e altezza in cuffia. Disattiva '
+                                     'per stereo o elaborazione esterna. Richiede un’uscita audio '
+                                     'compatibile.'},
+ 'tr': {'GORE': 'Yaralar ve parçalanma',
+        'GORE_DESCRIPTION': 'Görsel yaralar, vücut parçaları ve parçalanma. Hasarı veya isabet '
+                            'bölgelerini değiştirmez.',
+        'GORE_INTENSITY': 'Yara yoğunluğu',
+        'DISMEMBERMENT_INTENSITY': 'Parçalanma yoğunluğu',
+        'GORE_LIGHT': 'Hafif',
+        'GORE_MEDIUM': 'Orta',
+        'GORE_HEAVY': 'Yüksek',
+        'GORE_BRUTAL': 'Vahşi',
+        'GORE_RESTRAINED': 'Ölçülü',
+        'GORE_INTENSITY_DESCRIPTION': 'Yeni yaraların ve parçaların boyutu ve derinliği. Yaralar '
+                                      'açık olmalıdır; yalnızca görseldir.',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Ölümde ve ceset isabetlerinde baş ve uzuv '
+                                               'ayrılması. Vahşi, yakın pompalı tüfek isabetlerini '
+                                               'güçlendirir. Kapatmak yaraları korur.',
+        'SPATIAL_AUDIO': 'Uzamsal ses (kulaklık)',
+        'SPATIAL_AUDIO_DESCRIPTION': 'Kulaklıkta yön ve yükseklik ipuçları için binaural HRTF. '
+                                     'Stereo veya harici işleme için kapatın. Uyumlu ses çıkışı '
+                                     'gerektirir.'},
+ 'ja': {'GORE': '傷と部位切断',
+        'GORE_DESCRIPTION': '外見上の傷、破片、部位切断を表示します。ダメージや当たり判定は変わりません。',
+        'GORE_INTENSITY': '傷の強さ',
+        'DISMEMBERMENT_INTENSITY': '部位切断の強さ',
+        'GORE_LIGHT': '軽度',
+        'GORE_MEDIUM': '中程度',
+        'GORE_HEAVY': '重度',
+        'GORE_BRUTAL': '過激',
+        'GORE_RESTRAINED': '控えめ',
+        'GORE_INTENSITY_DESCRIPTION': '新しい傷の大きさ、深さ、破片を調整します。傷の表示が必要です。外見のみの効果です。',
+        'DISMEMBERMENT_INTENSITY_DESCRIPTION': '死亡時や死体への命中時の頭部・手足の切断を調整します。過激では近距離のショットガン命中で切断しやすくなります。オフでも傷は残ります。',
+        'SPATIAL_AUDIO': '空間オーディオ（ヘッドホン）',
+        'SPATIAL_AUDIO_DESCRIPTION': 'バイノーラルHRTFで方向と高さを表現します。通常のステレオや外部処理では無効にしてください。対応する音声出力が必要です。'},
+ 'es-MX': {'GORE': 'Heridas y desmembramiento',
+           'GORE_DESCRIPTION': 'Heridas, fragmentos y desmembramiento cosméticos. No cambia el '
+                               'daño ni las zonas de impacto.',
+           'GORE_INTENSITY': 'Intensidad de heridas',
+           'DISMEMBERMENT_INTENSITY': 'Intensidad de desmembramiento',
+           'GORE_LIGHT': 'Leve',
+           'GORE_MEDIUM': 'Media',
+           'GORE_HEAVY': 'Alta',
+           'GORE_BRUTAL': 'Brutal',
+           'GORE_RESTRAINED': 'Moderada',
+           'GORE_INTENSITY_DESCRIPTION': 'Tamaño y profundidad de las nuevas heridas y fragmentos. '
+                                         'Requiere heridas activadas; solo visual.',
+           'DISMEMBERMENT_INTENSITY_DESCRIPTION': 'Separación de cabeza y extremidades al morir o '
+                                                  'recibir impactos en cadáveres. Brutal '
+                                                  'intensifica los disparos cercanos de escopeta. '
+                                                  'Desactivar conserva las heridas.',
+           'SPATIAL_AUDIO': 'Audio espacial (auriculares)',
+           'SPATIAL_AUDIO_DESCRIPTION': 'HRTF binaural para indicar dirección y altura con '
+                                        'auriculares. Desactívalo para estéreo o procesamiento '
+                                        'externo. Requiere una salida de audio compatible.'}}
+
+
 def main() -> None:
     """Generate all configured language files and validate retail coverage."""
 
@@ -1834,6 +2104,7 @@ def main() -> None:
         strings.update(DISCORD_SETTINGS_OVERLAYS.get(locale, {}))
         strings.update(CLASSIC_APPEARANCE_OVERLAYS.get(locale, {}))
         strings.update(DEATH_VOICE_OVERLAYS.get(locale, {}))
+        strings.update(EFFECT_SETTINGS_OVERLAYS.get(locale, {}))
 
         document = {
             "schema_version": 1,
