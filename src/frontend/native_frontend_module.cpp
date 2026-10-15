@@ -26473,12 +26473,17 @@ struct NativeFrontendModule::Impl final {
                 spawn_flash = world::retail_spawn_blink_draw(
                     blink.blink, static_cast<double>(player.spawn_protection));
             }
-            const auto flash_slots =
-                spawn_flash ? character_flash_slots(player, rig->second)
-                            : std::optional<CharacterFlashSlots>{};
-            const auto body_slot = [&flash_slots](std::uint32_t normal,
+            CharacterFlashSlots flash_slots{};
+            bool has_flash_slots{};
+            if (spawn_flash) {
+                if (const auto flashed = character_flash_slots(player, rig->second)) {
+                    flash_slots = *flashed;
+                    has_flash_slots = true;
+                }
+            }
+            const auto body_slot = [&flash_slots, has_flash_slots](std::uint32_t normal,
                                                   std::uint32_t CharacterFlashSlots::*flashed) {
-                return flash_slots.has_value() ? (*flash_slots).*flashed : normal;
+                return has_flash_slots ? flash_slots.*flashed : normal;
             };
 
             std::vector<DamageSurface> damage_surfaces;

@@ -53,7 +53,8 @@ struct VoxelVolume {
                c[0]<dimensions[0]-1 && c[1]<dimensions[1]-1 && c[2]<dimensions[2]-1;
     }
     std::size_t offset(Cell c) const {
-        return static_cast<std::size_t>((c[2]+1)*dimensions[1]+c[1]+1)*dimensions[0]+c[0]+1;
+        return static_cast<std::size_t>((c[2]+1)*dimensions[1]+c[1]+1) *
+                   static_cast<std::size_t>(dimensions[0]) + static_cast<std::size_t>(c[0]+1);
     }
     bool solid(Cell c) const {return !occupancy.empty() && inside(c) && occupancy[offset(c)]!=2;}
     bool exposed(const ChunkMesh& mesh, std::size_t i) const {
@@ -73,7 +74,7 @@ struct VoxelVolume {
             const double extent=(source.maximum[axis]-origin[axis])/cell;
             if(!std::isfinite(extent) || extent<0 || extent>126) return;
             dimensions[axis]=static_cast<int>(std::lround(extent))+2;
-            volume*=dimensions[axis];
+            volume*=static_cast<std::size_t>(dimensions[axis]);
         }
         constexpr std::size_t maximum_volume=262144;
         if(volume>maximum_volume) return;
@@ -200,7 +201,7 @@ ChunkMesh BodyDamage::mesh(const ChunkMesh& source, std::uint8_t group) const {
     std::size_t probes{};
     for(std::size_t w=0;w<count_ && probes<maximum_probes;++w) {
         const auto& wound=wounds_[w];if(wound.group!=group) continue;
-        const auto n=normals[wound.face];const auto axis=wound.face/2;
+        const auto n=normals[wound.face];const auto axis=static_cast<std::size_t>(wound.face/2U);
         const double thickness=source.maximum[axis]-origin[axis];
         const int layers=std::max(1,std::min(static_cast<int>(std::array{1U,2U,4U,5U}[wound.intensity]),static_cast<int>(thickness*.42/cell)));
         const double radius=std::min(wound.radius,cell*10);
@@ -248,7 +249,7 @@ ChunkMesh BodyDamage::mesh(const ChunkMesh& source, std::uint8_t group) const {
         Cell neighbor=cut;for(std::size_t a=0;a<3;++a) neighbor[a]+=normals[direction][a];
         if(removed.contains(neighbor) || !solid(neighbor)) continue;
         const auto face=static_cast<std::uint8_t>(direction^1U);const auto n=normals[face];
-        const auto& wound=wounds_[w];const auto axis=wound.face/2;
+        const auto& wound=wounds_[w];const auto axis=static_cast<std::size_t>(wound.face/2U);
         const auto at=cell_center(neighbor);const std::array d{at.x-wound.point.x,at.y-wound.point.y,at.z-wound.point.z};
         const double radial=std::sqrt(d[(axis+1)%3]*d[(axis+1)%3]+d[(axis+2)%3]*d[(axis+2)%3])/wound.radius;
         const double depth=std::abs(d[axis])/cell;

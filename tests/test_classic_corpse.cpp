@@ -662,8 +662,11 @@ void body_damage_is_bounded_and_cosmetic() {
             if(shell(neighbor)) continue;
             const auto base=static_cast<std::uint32_t>(source.vertices.size());
             for(const auto corner:corners[face]) {
-                world::ChunkVertex v;v.x=-.3F+(x+corner[0])*.1F;v.y=-.3F+(y+corner[1])*.1F;v.z=(z+corner[2])*.1F;
-                v.face=(face+2)%6; // composite geometry deliberately differs from old material face tags
+                world::ChunkVertex v;
+                v.x=-.3F+static_cast<float>(x+corner[0])*.1F;
+                v.y=-.3F+static_cast<float>(y+corner[1])*.1F;
+                v.z=static_cast<float>(z+corner[2])*.1F;
+                v.face=static_cast<std::uint8_t>((face+2U)%6U); // composite geometry differs from old material face tags
                 v.abgr=0x006090a0U;source.vertices.push_back(v);
             }
             for(const auto index:{0U,1U,2U,0U,2U,3U}) source.indices.push_back(base+index);
@@ -728,7 +731,7 @@ void body_damage_is_bounded_and_cosmetic() {
     debris.build_draw_list({260,245,ground-3.F},192);
     double mean_z{};
     for(const auto& particle:debris.instances()) mean_z+=particle.position[2];
-    expect(!debris.instances().empty() && mean_z/debris.instances().size()>ground-4.0,"fragments visibly fall under gravity");
+    expect(!debris.instances().empty() && mean_z/static_cast<double>(debris.instances().size())>ground-4.0,"fragments visibly fall under gravity");
     for(int i=0;i<150;++i) debris.tick(1./60,map);
     expect(debris.live_count()==0,"brief debris expires and frees pooled slots");
     unsigned close_shotgun{},distant_shotgun{},lethal_sniper{},heavy_heads{},brutal_heads{};
