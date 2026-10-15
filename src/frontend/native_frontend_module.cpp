@@ -26591,7 +26591,7 @@ struct NativeFrontendModule::Impl final {
             if (equipped_jetpack.has_value() && !rig->second.disguised) {
                 const auto pack_color =
                     back_intel ? other_color
-                    : flash_slots.has_value()
+                    : has_flash_slots
                         ? world::retail_spawn_flash_color(rig->second.resolved_team_color)
                         : rig->second.resolved_team_color;
                 const auto stem = world::retail_jetpack_model(*equipped_jetpack);
@@ -26633,7 +26633,7 @@ struct NativeFrontendModule::Impl final {
             // Only Tool.flash_with_spawn_protection (ZombieHandTool) keeps the
             // doubled default colour; every other tool is reset to color.
             const auto flash_tool_slots =
-                flash_slots.has_value() &&
+                has_flash_slots &&
                         world::retail_tool_flashes_with_spawn_protection(player.tool_id) &&
                         rig->second.weapon_appearance.empty()
                     ? character_flash_tool_slots(
