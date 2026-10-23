@@ -565,6 +565,11 @@ jobs:
           Copy-Item out/installer/BattleSpades-server-*-windows-x64.zip out/dist/
           Copy-Item out/installer/BattleSpades-assets-*.zip out/dist/
 
+      - name: Verify installer preserves local server settings
+        if: matrix.target == 'windows-x64' && inputs.publish == 'draft-release'
+        shell: pwsh
+        run: ./installer/test-config-preservation.ps1
+
       - name: Write checksums
         run: |
           cd out/dist

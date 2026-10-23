@@ -78,9 +78,13 @@ ReadyLabel1=BattleSpades is ready to install.
 ReadyLabel2a=Click Install to continue.
 
 [Files]
-Source: "{#StageDir}\*"; DestDir: "{app}"; Excludes: "\ui-layout.json"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\*"; DestDir: "{app}"; Excludes: "\ui-layout.json,\server\config.toml,\server\bans.json,\server\fleet.toml,\server\logs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; A player-edited HUD layout survives reinstalls (same rule as the updater's "preserve").
 Source: "{#StageDir}\ui-layout.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
+; The bundled companion must not reset an existing host's settings or bans.
+Source: "{#StageDir}\server\config.toml"; DestDir: "{app}\server"; Flags: onlyifdoesntexist skipifsourcedoesntexist uninsneveruninstall
+Source: "{#StageDir}\server\bans.json"; DestDir: "{app}\server"; Flags: onlyifdoesntexist skipifsourcedoesntexist uninsneveruninstall
+Source: "{#StageDir}\server\fleet.toml"; DestDir: "{app}\server"; Flags: onlyifdoesntexist skipifsourcedoesntexist uninsneveruninstall
 ; Extracted to {tmp} before the wizard runs, for Steam/game detection.
 Source: "{#StageDir}\{#HelperExe}"; Flags: dontcopy
 
