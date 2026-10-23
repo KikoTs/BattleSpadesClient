@@ -312,6 +312,9 @@ Playing and joining remote servers are never affected.
    - **mandatory**: `required`, or too many Laters.
 
    A version the player rolled back from is skipped unless it is required.
+   An explicitly required server component is also installed when missing,
+   so older slim installations acquire offline hosting on their next online
+   launcher check. A cancelled or failed server download still allows play.
 5. **Download** each update (`run_update_session`):
    - Mirrors are tried strictly in order. Any failure moves on to the next
      mirror: timeout, DNS, HTTP error, wrong size, or SHA-256 mismatch.

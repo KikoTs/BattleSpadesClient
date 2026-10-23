@@ -636,7 +636,7 @@ jobs:
           New-Item -ItemType Directory -Force out/manifest | Out-Null
           ./installer/make-update-manifest.ps1 -ClientPackage $client.FullName -ServerPackage $server.FullName -AssetsPackage $assets.FullName `
             -MirrorBaseUrls 'https://github.com/${{ github.repository }}/releases/download/{tag}' `
-            -Tag "v$env:VERSION" -HostingServer '>=0.3.0-beta.3' -Protocol 168 -Output out/manifest/stable.json
+            -Tag "v$env:VERSION" -HostingServer '>=0.3.0-beta.3' -RequiredComponents server -Protocol 168 -Output out/manifest/stable.json
           Get-Content out/manifest/stable.json
 
       - name: Upload draft update manifest

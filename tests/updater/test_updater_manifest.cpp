@@ -213,6 +213,15 @@ void test_planner() {
     expect(find(plan, "server")->prompt == up::UpdatePrompt::mandatory, "required component is mandatory");
     expect(find(plan, "client")->prompt == up::UpdatePrompt::automatic, "other components stay optional");
     expect(!up::blocks_play(*find(plan, "server")), "a failed required server update never blocks playing");
+    plan = up::plan_updates(parse(required_server), main_build, state, policy);
+    const auto* companion = find(plan, "server");
+    expect(companion != nullptr && companion->installed.empty() &&
+               companion->prompt == up::UpdatePrompt::mandatory,
+           "older slim installations acquire an explicitly required offline companion");
+    expect(companion != nullptr && !up::blocks_play(*companion),
+           "a missing companion download never blocks the installed game");
+    expect(find(plan, "retail_assets") == nullptr,
+           "installing the companion does not force an original game asset download");
     std::string required_all = manifest_json();
     replace_all(required_all, "\"channel\": \"stable\",", "\"channel\": \"stable\", \"required\": true,");
     plan = up::plan_updates(parse(required_all), old_install(), state, policy);

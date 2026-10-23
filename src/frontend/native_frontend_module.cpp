@@ -11028,7 +11028,8 @@ struct NativeFrontendModule::Impl final {
         const bool offline_match = config.offline || (!public_lobby && !config.steam_only);
         // Hosting needs a present, compatible server. When it is missing or
         // too old the launcher downloads it (never blocks playing).
-        if (const auto gate = platform::check_hosting_gate(config.executable_directory, bundle.has_value(), !offline_match);
+        const bool allow_host_download = !config.offline && (!offline_match || !bundle.has_value());
+        if (const auto gate = platform::check_hosting_gate(config.executable_directory, bundle.has_value(), allow_host_download);
             !gate.ready) {
             settings_warning = gate.message;
             return;

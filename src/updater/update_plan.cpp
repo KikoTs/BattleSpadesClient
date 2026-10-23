@@ -30,7 +30,11 @@ UpdatePlan plan_updates(const UpdateManifest& manifest, const InstalledVersions&
     UpdatePlan plan;
     for (const auto& release : manifest.components) {
         const auto current = installed_of(installed, release.name);
-        if (current.empty()) {
+        // Older installers omitted the server. A release may explicitly make
+        // it part of the offline-ready installation, while failed/cancelled
+        // server downloads still never block playing an installed client.
+        const bool install_companion = current.empty() && release.name == component_server && release.required;
+        if (current.empty() && !install_companion) {
             plan.notes.push_back(release.name + " is not installed; offered, not forced");
             continue;
         }

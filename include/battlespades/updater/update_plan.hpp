@@ -41,7 +41,9 @@ struct UpdatePlan {
 /**
  * Per-launch updates. Only components that are installed (have a known
  * version) and whose manifest version is newer are planned; optional
- * components that are not installed are never forced. Every component is
+ * components that are not installed are never forced. An explicitly required
+ * companion server is also installed when missing, without blocking play.
+ * Every component is
  * independent: there is no cross-component pairing here. A version the
  * player rolled back from is skipped unless it is required.
  */
