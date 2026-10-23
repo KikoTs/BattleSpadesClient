@@ -1180,6 +1180,7 @@ bool CreateMatchMenuModel::adjust_row(std::string_view key, std::int32_t directi
             if (next == index) return false;
             configuration_.match_minutes = match_lengths[next];
         } else if (key == "BOTS") {
+            if (selected_mode().mode_key == "night_shift") return false;
             std::vector<std::uint16_t> available;
             std::copy_if(bot_counts.begin(), bot_counts.end(),
                          std::back_inserter(available),
@@ -1557,7 +1558,9 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
                     [this](std::uint16_t count) {
                         return count < configuration_.max_players;
                     }));
-                row.value_text = to_string(configuration_.bot_count);
+                row.value_text = selected_mode().mode_key == "night_shift"
+                    ? "Waves" : to_string(configuration_.bot_count);
+                row.enabled = row.enabled && selected_mode().mode_key != "night_shift";
             } else if (key == "BOT_DIFFICULTY") {
                 row.value_index =
                     index_of(bot_difficulties, configuration_.bot_difficulty);

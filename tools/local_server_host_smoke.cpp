@@ -2,6 +2,7 @@
 #include "battlespades/network/revival_identity.hpp"
 #include "battlespades/network/server_discovery.hpp"
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/network/live_protocol168_connection.hpp"
 #include "battlespades/platform/relay_host_tunnel.hpp"
 #if defined(AOS_HAS_STEAM_NETWORKING)
 #include "battlespades/platform/steam_networking.hpp"
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
     config.maximum_players = 4U;
     config.match_minutes = 5U;
     config.offline = offline;
-    config.bot_count = offline ? 2U : 0U;
+    config.bot_count = offline && config.mode != "night_shift" ? 2U : 0U;
     if (offline) {
         // Deliberately unusable services must not affect a private match.
         config.environment_overrides = {{"AOS_MASTER_URL", "http://127.0.0.1:1"},
@@ -243,11 +244,33 @@ int main(int argc, char** argv) {
             std::cout << "Protocol 168 bootstrap: map="
                       << session.initial_info()->map_name
                       << " voxels=" << session.map()->solid_voxels() << '\n';
-            const auto valid = (!offline || server.players >= 2U) && server.mode_code == config.mode &&
+            auto valid = (!offline || config.mode == "night_shift" || server.players >= 2U) && server.mode_code == config.mode &&
                                server.map == config.map_name &&
                                session.initial_info()->hardcore == config.mode.starts_with("hc_") &&
                                !session.initial_info()->map_name.empty() &&
                                session.map()->solid_voxels() > 0U;
+            if (valid && offline && config.mode == "night_shift") {
+                // Survival owns its bot population. The empty waiting lobby
+                // is expected; joining a human must start the enemy waves.
+                battlespades::network::LiveProtocol168Connection live;
+                valid = live.start({endpoint.host, endpoint.port, 30'000U}, session_config);
+                bool wave_started{};
+                const auto wave_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{30};
+                while (valid && std::chrono::steady_clock::now() < wave_deadline) {
+                    static_cast<void>(live.take_bootstrap());
+                    static_cast<void>(live.take_inbound(256U));
+                    const auto probe = battlespades::network::probe_lan_server(
+                        {"127.0.0.1", process.port()}, std::chrono::milliseconds{350});
+                    if (probe && !probe.servers.empty() && probe.servers.front().players >= 2U) {
+                        wave_started = true;
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds{250});
+                }
+                live.stop();
+                valid = valid && wave_started;
+                std::cout << "Survival enemy wave started=" << wave_started << '\n';
+            }
             cleanup();
             if (offline) std::cout << "offline name=LAN Player bots=" << server.players << " success=" << valid << '\n';
             return valid ? 0 : 1;

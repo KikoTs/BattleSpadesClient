@@ -605,6 +605,14 @@ void serializes_hardcore_and_community_hosts() {
                "community hosts must load their authored arena, never a fallback flat map");
     }
     config.mode = "hc_ugc";
+    auto survival = config;
+    survival.mode = "night_shift";
+    survival.map_name = "BlackPineOutpost";
+    survival.bot_count = 0U;
+    const auto wave_config = build_local_server_toml(survival, 27015U);
+    expect(wave_config.find("[bots]\nenabled = true\npopulation_mode = \"admin\"") != std::string::npos &&
+               wave_config.find("max_bots = 11") != std::string::npos,
+           "Survival must enable its wave director even when the ordinary bot slider is zero");
     expect(build_local_server_toml(config, 27015U).empty(), "unknown Hardcore codes stay rejected");
     config.mode = "false_wall";
     expect(build_local_server_toml(config, 27015U).empty(), "retired prototypes stay out of Create Match");

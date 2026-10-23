@@ -792,6 +792,12 @@ void expanded_modes_preserve_selection_and_rule_policy() {
                menu.configuration().rule_overrides.empty() &&
                !menu.open_page(CreateMatchPage::game_rules),
            "community modes use their arena and fixed rules instead of leftover stock overrides");
+    expect(menu.activate_row("night_shift") && menu.activate_done(), "Survival returns to match settings");
+    expect(!menu.adjust_row("BOTS", 1), "Survival owns its enemy wave population");
+    expect(menu.set_focus("BOTS"), "wave setting can be revealed");
+    const auto waves = menu.presentation();
+    expect(row(waves, "BOTS").value_text == "Waves" && !row(waves, "BOTS").enabled,
+           "Survival must explain why the ordinary bot count is unavailable");
 }
 
 struct TestCase final {

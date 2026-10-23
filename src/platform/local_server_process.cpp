@@ -645,6 +645,10 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
         return {};
     }
 
+    const bool wave_bots = config.mode == "night_shift";
+    const auto bot_limit = wave_bots
+        ? (std::min)(std::uint16_t{12U}, static_cast<std::uint16_t>(config.maximum_players - 1U))
+        : config.bot_count;
     std::ostringstream output;
     output.imbue(std::locale::classic());
     output << "# Disposable client-owned local match. Safe to delete.\n\n"
@@ -674,10 +678,10 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "match_length_minutes = " << config.match_minutes << '\n'
            << "end_screen_seconds = 12.0\n\n"
            << "[bots]\n"
-           << "enabled = " << (config.bot_count == 0U ? "false" : "true") << '\n'
-           << "population_mode = \"fixed\"\n"
-           << "fill_target = " << config.bot_count << '\n'
-           << "max_bots = " << config.bot_count << '\n'
+           << "enabled = " << (wave_bots || config.bot_count != 0U ? "true" : "false") << '\n'
+           << "population_mode = " << toml_quote(wave_bots ? "admin" : "fixed") << '\n'
+           << "fill_target = " << (wave_bots ? 0U : config.bot_count) << '\n'
+           << "max_bots = " << bot_limit << '\n'
            << "reserve_human_slots = 1\n"
            << "difficulty = " << toml_quote(config.bot_difficulty) << '\n'
            << "worker = \"process\"\n\n"
