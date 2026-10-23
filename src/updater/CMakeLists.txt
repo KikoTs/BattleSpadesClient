@@ -29,7 +29,8 @@ aos_enable_strict_warnings(aos_updater_core)
 
 # Our own redistributable asset packs (assetsient) are versioned on their
 # own so the launcher can update them separately from the client.
-set(AOS_ASSETS_VERSION "${AOS_RELEASE_VERSION}" CACHE STRING "Version of the bundled assets/client packs")
+# This release changes code, not the redistributable asset packs.
+set(AOS_ASSETS_VERSION "0.3.0-beta.4" CACHE STRING "Version of the bundled assets/client packs")
 # Network protocol of this client; the launcher compares it with the bundled
 # server's to decide whether hosting works (playing never depends on it).
 set(AOS_NETWORK_PROTOCOL "168" CACHE STRING "Network protocol spoken by this client build")
