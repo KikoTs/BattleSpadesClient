@@ -618,11 +618,12 @@ jobs:
           # Kiril uploads to R2 and regenerates stable.json with both mirrors
           # (docs/INSTALLER_AND_UPDATER.md); this draft lists only GitHub.
           $client = Get-ChildItem out/release/BattleSpades-client-*-windows-x64.zip | Select-Object -First 1
+          $server = Get-ChildItem out/release/BattleSpades-server-*-windows-x64.zip | Select-Object -First 1
           $assets = Get-ChildItem out/release/BattleSpades-assets-*.zip | Select-Object -First 1
           New-Item -ItemType Directory -Force out/manifest | Out-Null
-          ./installer/make-update-manifest.ps1 -ClientPackage $client.FullName -AssetsPackage $assets.FullName `
+          ./installer/make-update-manifest.ps1 -ClientPackage $client.FullName -ServerPackage $server.FullName -AssetsPackage $assets.FullName `
             -MirrorBaseUrls 'https://github.com/${{ github.repository }}/releases/download/{tag}' `
-            -Protocol 168 -Output out/manifest/stable.json
+            -Tag "v$env:VERSION" -HostingServer '>=0.3.0-beta.3' -Protocol 168 -Output out/manifest/stable.json
           Get-Content out/manifest/stable.json
 
       - name: Upload draft update manifest

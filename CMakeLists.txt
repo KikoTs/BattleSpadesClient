@@ -331,6 +331,8 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             DESTINATION "${CMAKE_INSTALL_BINDIR}"
             COMPONENT Runtime
             FILES_MATCHING PATTERN "*.dll"
+            PATTERN "assets" EXCLUDE
+            PATTERN "server" EXCLUDE
         )
 
         # Steam's original application entry point is named aos.exe.  Install
