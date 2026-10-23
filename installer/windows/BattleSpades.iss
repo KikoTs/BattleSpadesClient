@@ -86,6 +86,7 @@ Source: "{#StageDir}\{#HelperExe}"; Flags: dontcopy
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"
+Name: "{autoprograms}\{#AppName} - play offline"; Filename: "{app}\BattleSpadesClient.exe"; Parameters: "--offline"; WorkingDir: "{app}"
 Name: "{autoprograms}\{#AppName} - restore previous version"; Filename: "{app}\{#LauncherExe}"; Parameters: "--rollback"; WorkingDir: "{app}"
 Name: "{autoprograms}\{#AppName} - choose what Steam Play starts"; Filename: "{app}\{#LauncherExe}"; Parameters: "--reset-launch-choice"; WorkingDir: "{app}"; Check: GameDetected
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#LauncherExe}"; WorkingDir: "{app}"

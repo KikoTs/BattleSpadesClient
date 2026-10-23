@@ -73,6 +73,9 @@ HostingStatusFile read_hosting_status(const std::filesystem::path& install) {
 
 HostingGateAction decide_hosting_gate(bool bundle_found, const HostingStatusFile& status, bool launcher_present,
                                       bool download_running, bool allow_download) noexcept {
+    // Online update policy can be stale or unreachable. A private offline
+    // match uses the installed client/server pair without an update service.
+    if (!allow_download && bundle_found) return HostingGateAction::start;
     const bool needs_server = !bundle_found || status.state == "update_required";
     if (!needs_server) return HostingGateAction::start;
     if (!allow_download) return HostingGateAction::offline_unavailable;

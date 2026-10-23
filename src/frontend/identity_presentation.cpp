@@ -156,7 +156,7 @@ void append_field(ui::DrawList& list,
     if (value.empty()) {
         if (label == "STEAM ID") value = "17-digit Steam ID";
         else if (label == "RECOVERY CODE") value = "Code from your backup file";
-        else value = label == "USERNAME" ? "Player name" : "Password";
+        else value = label == "USERNAME" || label == "LOCAL PLAYER NAME" ? "Player name" : "Password";
     }
     list.push(text(std::move(value),
                    DrawRect{bounds.x + 10.0, bounds.y + 2.0,
@@ -235,10 +235,11 @@ ui::DrawList IdentityPresentation::build(
         } else {
         append_field(list,
                      draw_rect(model.username_bounds()),
+                     model.phase() == IdentityMenuPhase::offline_form ? "LOCAL PLAYER NAME" :
                      model.phase() == IdentityMenuPhase::recovery_form ? "STEAM ID" : "USERNAME",
                      std::string{model.username()},
                      model.focused_field() == IdentityField::username);
-        append_field(list,
+        if (model.phase() != IdentityMenuPhase::offline_form) append_field(list,
                      draw_rect(model.password_bounds()),
                      model.phase() == IdentityMenuPhase::recovery_form ? "RECOVERY CODE" : "PASSWORD",
                      model.masked_password(),

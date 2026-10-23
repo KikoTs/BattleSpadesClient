@@ -234,8 +234,8 @@ void test_hosting_gate(const fs::path& root) {
            "installed compatible server works offline");
     expect(decide_hosting_gate(false, none, true, false, false) == HostingGateAction::offline_unavailable,
            "offline host never requests a missing component download");
-    expect(decide_hosting_gate(true, status, true, false, false) == HostingGateAction::offline_unavailable,
-           "offline host never requests an incompatible component update");
+    expect(decide_hosting_gate(true, status, true, false, false) == HostingGateAction::start,
+           "a cached online update requirement cannot prevent installed offline play");
     const auto offline = battlespades::platform::check_hosting_gate(install, false, false);
     expect(!offline.ready && !offline.download_started && offline.message.find("offline") != std::string::npos,
            "offline failure explains the needed bundle without starting the launcher");

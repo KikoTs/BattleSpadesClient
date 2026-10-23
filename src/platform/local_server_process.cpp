@@ -21,6 +21,7 @@ extern char** environ;
 #endif
 
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/settings/hosted_modes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -84,6 +85,7 @@ server_executable_name(LocalServerProgram program) noexcept {
 }
 
 [[nodiscard]] bool safe_mode(std::string_view value) noexcept {
+    if (settings::is_hardcore_mode(value) || settings::is_community_mode(value)) return true;
     constexpr std::array modes{
         std::string_view{"tdm"}, std::string_view{"ctf"}, std::string_view{"cctf"},
         std::string_view{"vip"}, std::string_view{"zom"}, std::string_view{"mh"},
@@ -660,11 +662,12 @@ std::string build_local_server_toml(const LocalServerLaunchConfig& config,
            << "bot_count = " << config.bot_count << '\n'
            << "movement_authority = \"server\"\n"
            << "map_sync_mode = \"full\"\n\n";
-    if (!config.maps_path.empty()) {
+    if (!config.maps_path.empty() || settings::is_community_mode(config.mode)) {
         // server/config.py reads [world].maps_path; the session copy holds the
         // authored .vxl/.txt/.ugc triplet named by default_map.
         output << "[world]\n"
-               << "maps_path = " << toml_quote(utf8_text(config.maps_path)) << "\n\n";
+               << "maps_path = " << toml_quote(config.maps_path.empty()
+                       ? std::string{"maps/unofficial"} : utf8_text(config.maps_path)) << "\n\n";
     }
     output << "[lobby]\n"
            << "map_rotation = [" << toml_quote(config.map_name) << "]\n"

@@ -60,10 +60,10 @@ bool has_sprite(const battlespades::ui::DrawList& list, std::string_view asset) 
 
 void catalogs_recover_every_retail_playlist_and_rule() {
     const auto modes = retail_create_match_modes();
-    expect(modes.size() == 10U,
-           "Create Match must expose the ten non-random, non-tutorial, non-UGC playlists");
+    expect(modes.size() == 33U,
+           "Create Match must expose ten stock, ten Hardcore and thirteen community modes");
     expect(modes.front().mode_key == "ctf" && modes[1].mode_key == "cctf" &&
-               modes.back().mode_key == "zom",
+               modes[9].mode_key == "zom",
            "English mode rows must retain the retail localized sort order");
     const auto tdm = std::find_if(modes.begin(), modes.end(), [](const auto& mode) {
         return mode.mode_key == "tdm";
@@ -150,10 +150,10 @@ void nested_panels_emit_forward_and_backward_navigation() {
                forward->direction == CreateMatchNavigationDirection::forward,
            "opening a nested picker must request an in-lobby right-panel replacement");
     const auto picker = menu.presentation();
-    expect(picker.rows.size() == 10U && !picker.show_scrollbar &&
+    expect(picker.rows.size() == 10U && picker.show_scrollbar &&
                picker.rows.back().bounds.y + picker.rows.back().bounds.height <=
                    picker.action_panel.y,
-           "all ten retail modes must fit the 285 px list without a fake scrollbar or overlap");
+           "the expanded mode catalog must scroll within the panel without overlapping actions");
 
     expect(menu.activate_row("cctf"), "Classic CTF must be selectable");
     expect(menu.configuration().retail_playlist_id == 2U &&
@@ -763,6 +763,37 @@ void lobby_status_stays_between_actions_and_navigation() {
     expect(notices.size() == previous_size, "invalid notice geometry must emit no draw commands");
 }
 
+void expanded_modes_preserve_selection_and_rule_policy() {
+    for (const auto& mode : retail_create_match_modes()) {
+        CreateMatchMenuModel menu;
+        expect(menu.open_page(CreateMatchPage::choose_game_mode), "mode picker opens");
+        expect(menu.set_focus(std::string{mode.mode_key}) && menu.activate_focused(),
+               "every mode must be reachable with the keyboard, including scrolled rows");
+        expect(menu.configuration().retail_playlist_id == mode.retail_playlist_id &&
+                   std::ranges::find(mode.maps, menu.configuration().map_name) != mode.maps.end(),
+               "each mode selects a compatible arena");
+        const auto saved = menu.configuration();
+        CreateMatchMenuModel restored{saved};
+        expect(restored.configuration().retail_playlist_id == mode.retail_playlist_id &&
+                   restored.configuration().map_name == saved.map_name,
+               "lobby metadata round-trips native mode IDs and maps");
+    }
+    CreateMatchMenuModel menu;
+    expect(menu.open_page(CreateMatchPage::choose_game_mode) && menu.activate_row("hc_ctf"),
+           "Hardcore CTF is selectable");
+    expect(menu.open_page(CreateMatchPage::game_rules), "Hardcore objective rules remain available");
+    const auto rules = menu.presentation();
+    expect(std::ranges::any_of(rules.rows, [](const auto& item) { return item.stable_key.starts_with("RULE_CTF_"); }) &&
+               std::ranges::none_of(rules.rows, [](const auto& item) { return item.stable_key == "CLASSES"; }),
+           "Hardcore exposes objective rules without overriding its fixed class kits");
+    expect(menu.open_page(CreateMatchPage::choose_game_mode) && menu.activate_row("borrowed_arsenal"),
+           "Gun Game is selectable");
+    expect(menu.configuration().map_name == "ArsenalArcade" &&
+               menu.configuration().rule_overrides.empty() &&
+               !menu.open_page(CreateMatchPage::game_rules),
+           "community modes use their arena and fixed rules instead of leftover stock overrides");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -772,6 +803,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"expanded_modes_preserve_selection_and_rule_policy", expanded_modes_preserve_selection_and_rule_policy},
         {"published_match_joins_without_starting_another_host",
          published_match_joins_without_starting_another_host},
         {"lobby_status_stays_between_actions_and_navigation",

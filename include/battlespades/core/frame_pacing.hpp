@@ -154,11 +154,21 @@ public:
     /** Work the last paced tick needed, from its scheduled time to its frame. */
     constexpr void record_tick_work(std::chrono::nanoseconds work) noexcept {
         tick_work_ = smooth(tick_work_, work);
+        // A slow extra frame can reduce the plan to one frame per tick. No
+        // extra frames then run, so their old cost would never be refreshed
+        // and the client would stay at 60 fps indefinitely. A fresh full tick
+        // includes normal presentation: use its cost to gradually age out a
+        // higher, stale estimate, while the tick budget still guards the plan.
+        if (!frame_sample_since_tick_ && frame_work_ > work) {
+            frame_work_ = smooth(frame_work_, work);
+        }
+        frame_sample_since_tick_ = false;
     }
 
     /** Wall time one render-only frame needed. */
     constexpr void record_frame_work(std::chrono::nanoseconds work) noexcept {
         frame_work_ = smooth(frame_work_, work);
+        frame_sample_since_tick_ = true;
     }
 
     [[nodiscard]] constexpr std::chrono::nanoseconds frame_work() const noexcept {
@@ -220,6 +230,7 @@ private:
 
     std::chrono::nanoseconds tick_work_{};
     std::chrono::nanoseconds frame_work_{};
+    bool frame_sample_since_tick_{};
 };
 
 } // namespace battlespades::core

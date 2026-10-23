@@ -1,4 +1,5 @@
 #include "battlespades/platform/local_server_process.hpp"
+#include "battlespades/settings/hosted_modes.hpp"
 
 #include <iostream>
 #include <chrono>
@@ -586,6 +587,29 @@ void claims_admin_once_then_logs_in_with_the_room_password() {
            "unusable secrets send nothing");
 }
 
+void serializes_hardcore_and_community_hosts() {
+    using namespace battlespades::platform;
+    LocalServerLaunchConfig config;
+    for (const auto& mode : battlespades::settings::hardcore_hosted_modes) {
+        config.mode = mode.code;
+        const auto toml = build_local_server_toml(config, 27015U);
+        expect(toml.find("default_mode = \"" + config.mode + "\"") != std::string::npos,
+               "Hardcore mode code must reach the server unchanged");
+    }
+    for (const auto& mode : battlespades::settings::community_hosted_modes) {
+        config.mode = mode.code;
+        config.map_name = mode.source;
+        const auto toml = build_local_server_toml(config, 27015U);
+        expect(toml.find("maps_path = \"maps/unofficial\"") != std::string::npos &&
+                   toml.find("default_map = \"" + config.map_name + "\"") != std::string::npos,
+               "community hosts must load their authored arena, never a fallback flat map");
+    }
+    config.mode = "hc_ugc";
+    expect(build_local_server_toml(config, 27015U).empty(), "unknown Hardcore codes stay rejected");
+    config.mode = "false_wall";
+    expect(build_local_server_toml(config, 27015U).empty(), "retired prototypes stay out of Create Match");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -602,6 +626,7 @@ int main(int argc, char** argv) {
         native_status_rejects_foreign_partial_and_oversized_snapshots();
         discovers_the_newest_executable_in_complete_release_layouts();
         serializes_one_disposable_match_without_public_services();
+        serializes_hardcore_and_community_hosts();
         rejects_untrusted_mode_and_rule_names();
         hosts_an_authored_map_from_a_private_maps_directory();
         serializes_the_isolated_map_creator_program();

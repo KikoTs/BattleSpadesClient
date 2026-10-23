@@ -2,6 +2,7 @@
 #include "battlespades/network/classic_protocol.hpp"
 #include "battlespades/network/demo_playback.hpp"
 #include "battlespades/network/demo_stream.hpp"
+#include "enet_connection_query.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -175,6 +176,16 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
                 return;
             }
             auto protocol = transport.protocol == GameProtocol::automatic ? GameProtocol::retail168 : transport.protocol;
+            const auto connect_ms = transport.connect_timeout_ms == 0U
+                                        ? transport.timeout_ms
+                                        : (std::min)(transport.connect_timeout_ms,
+                                                     transport.timeout_ms);
+            auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds{connect_ms};
+            if (protocol == GameProtocol::retail168) {
+                detail::prepare_connection_query(*host, address, deadline, canceled);
+                if (canceled()) return;
+            }
             auto* peer = enet_host_connect(host, &address, 1U, static_cast<enet_uint32>(protocol));
             if (peer == nullptr) {
                 fail("enet_host_connect failed");
@@ -215,12 +226,6 @@ bool LiveProtocol168Connection::start(EnetProtocol168Config transport,
             // EVENT_TYPE_CONNECT (network.pyd 0x10006010, disconnect with
             // ERROR_TIMEOUT); after that only loadingMenu's 30 s NO-PROGRESS
             // timer applies, restarted by every step of the handshake.
-            const auto connect_ms = transport.connect_timeout_ms == 0U
-                                        ? transport.timeout_ms
-                                        : (std::min)(transport.connect_timeout_ms,
-                                                     transport.timeout_ms);
-            auto deadline = std::chrono::steady_clock::now() +
-                            std::chrono::milliseconds{connect_ms};
             bool connected{};
             bool joined{};
             std::optional<std::chrono::steady_clock::time_point> retail_ticket_at;

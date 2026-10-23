@@ -1,4 +1,5 @@
 #include "battlespades/frontend/create_match_menu.hpp"
+#include "battlespades/settings/hosted_modes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -44,7 +45,7 @@ constexpr std::array<std::string_view, 16U> zombie_maps{
     "MayanJungle", "SpookyMansion", "TheColosseum", "TokyoNeon"};
 
 // The panel sorts localized names. This is the resulting English retail order.
-constexpr std::array<CreateMatchModeDefinition, 10U> modes{{
+constexpr std::array<CreateMatchModeDefinition, 10U> stock_modes{{
     {3U, "ctf", "CTF_TITLE", CreateMatchModeFamily::standard, ctf_maps, 16U, 30U},
     {2U, "cctf", "CLASSIC_CTF_TITLE", CreateMatchModeFamily::classic, classic_maps, 32U, 90U},
     {4U, "dem", "DEMOLITION_TITLE", CreateMatchModeFamily::standard, demolition_maps, 16U, 15U},
@@ -56,6 +57,34 @@ constexpr std::array<CreateMatchModeDefinition, 10U> modes{{
     {12U, "vip", "VIP_MODE_TITLE", CreateMatchModeFamily::mafia, mafia_maps, 16U, 15U},
     {13U, "zom", "ZOMBIE_MODE_TITLE", CreateMatchModeFamily::standard, zombie_maps, 16U, 10U},
 }};
+
+constexpr auto community_maps = [] {
+    std::array<std::array<std::string_view, 1>, settings::community_hosted_modes.size()> result{};
+    for (std::size_t i = 0; i < result.size(); ++i) result[i][0] = settings::community_hosted_modes[i].source;
+    return result;
+}();
+
+constexpr auto modes = [] {
+    std::array<CreateMatchModeDefinition, 33> result{};
+    std::size_t index{};
+    for (const auto& mode : stock_modes) result[index++] = mode;
+    for (const auto& variant : settings::hardcore_hosted_modes) {
+        for (const auto& base : stock_modes) {
+            if (base.mode_key != variant.source) continue;
+            auto mode = base;
+            mode.retail_playlist_id = static_cast<std::uint16_t>(100U + base.retail_playlist_id);
+            mode.mode_key = variant.code;
+            mode.label_key = variant.title;
+            result[index++] = mode;
+        }
+    }
+    for (std::size_t i = 0; i < settings::community_hosted_modes.size(); ++i) {
+        const auto& mode = settings::community_hosted_modes[i];
+        result[index++] = {static_cast<std::uint16_t>(200U + i), mode.code, mode.title,
+                           CreateMatchModeFamily::standard, community_maps[i], 16U, 15U};
+    }
+    return result;
+}();
 
 constexpr std::array<std::string_view, 2U> on_off{"OFF", "ON"};
 constexpr std::array<std::string_view, 13U> zero_to_sixty_by_five{
@@ -564,7 +593,7 @@ const CreateMatchCustomMap* CreateMatchMenuModel::listed_custom_map(
     std::string_view row_key) const {
     // mapsPanel: A2450[game_modes[0]] in get_available_game_modes(map); Classic
     // CTF shares MODE_CTF, so a CTF-valid map also hosts cctf.
-    auto mode_key = std::string{selected_mode().mode_key};
+    auto mode_key = std::string{settings::hosted_base_mode(selected_mode().mode_key)};
     if (mode_key == "cctf") mode_key = "ctf";
     const auto found = std::find_if(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
         return create_match_custom_map_key(map) == row_key;
@@ -575,7 +604,7 @@ const CreateMatchCustomMap* CreateMatchMenuModel::listed_custom_map(
 
 bool CreateMatchMenuModel::custom_map_valid(const CreateMatchModeDefinition& mode) const {
     if (!configuration_.custom_map) return false;
-    auto mode_key = std::string{mode.mode_key};
+    auto mode_key = std::string{settings::hosted_base_mode(mode.mode_key)};
     if (mode_key == "cctf") mode_key = "ctf";
     return std::any_of(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
         return map.stem == configuration_.map_name &&
@@ -738,10 +767,10 @@ const CreateMatchModeDefinition& CreateMatchMenuModel::selected_mode() const noe
 
 std::string CreateMatchMenuModel::playlist_default_value(
     const CreateMatchRuleDefinition& rule) const {
-    if (selected_mode().mode_key == "zom" && rule.rule_key == "RULE_CRATES_SPAWN_TIME") {
+    if (settings::hosted_base_mode(selected_mode().mode_key) == "zom" && rule.rule_key == "RULE_CRATES_SPAWN_TIME") {
         return "60";
     }
-    if (selected_mode().mode_key == "cctf") {
+    if (settings::hosted_base_mode(selected_mode().mode_key) == "cctf") {
         if (rule.rule_key == "RULE_CTF_ENABLE_SHOOT_WITH_INTEL") return "ON";
         if (rule.rule_key == "RULE_CTF_ENABLE_INTEL_AUTO_RETURN") return "OFF";
     }
@@ -759,6 +788,12 @@ std::string CreateMatchMenuModel::resolved_rule_value(
 }
 
 bool CreateMatchMenuModel::rule_available(const CreateMatchRuleDefinition& rule) const {
+    const auto code = selected_mode().mode_key;
+    if (settings::is_community_mode(code)) return false;
+    const auto base = settings::hosted_base_mode(code);
+    const auto mode_category = base == "cctf" ? std::string_view{"ctf"} : base;
+    // Hardcore owns its class kits, damage and equipment policy.
+    if (settings::is_hardcore_mode(code)) return rule.category_key == mode_category;
     const auto family = selected_mode().family;
     const auto family_available = family == CreateMatchModeFamily::standard
                                       ? rule.available_standard
@@ -767,9 +802,6 @@ bool CreateMatchMenuModel::rule_available(const CreateMatchRuleDefinition& rule)
                                       : rule.available_mafia;
     if (!family_available) return false;
     const auto category = rule.category_key;
-    const auto mode_category = selected_mode().mode_key == "cctf"
-                                   ? std::string_view{"ctf"}
-                                   : selected_mode().mode_key;
     return category == "GENERAL" || category == "CLASSES" || category == "WEAPONS" ||
            category == "EQUIPMENT" || category == mode_category;
 }
@@ -838,7 +870,8 @@ std::vector<std::string> CreateMatchMenuModel::expanded_row_keys() const {
         selected_mode().mode_key, std::string_view{"GENERAL"}, std::string_view{"CLASSES"},
         std::string_view{"WEAPONS"}, std::string_view{"EQUIPMENT"}};
     for (const auto category : category_order) {
-        const auto source_category = category == "cctf" ? std::string_view{"ctf"} : category;
+        const auto base = settings::hosted_base_mode(category);
+        const auto source_category = base == "cctf" ? std::string_view{"ctf"} : base;
         const auto has_rows = std::any_of(rules().begin(), rules().end(), [&](const auto& rule) {
             return rule.category_key == source_category && rule_available(rule);
         });
@@ -938,6 +971,7 @@ void CreateMatchMenuModel::select_mode(const CreateMatchModeDefinition& mode) {
 }
 
 bool CreateMatchMenuModel::open_page(CreateMatchPage next) {
+    if (next == CreateMatchPage::game_rules && settings::is_community_mode(selected_mode().mode_key)) return false;
     if (!page_can_open(next) || next == page_) return false;
     const auto from = page_;
     previous_page_ = page_;
@@ -1539,7 +1573,9 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
                                      ? configuration_.map_title
                                      : configuration_.map_name;
             } else if (key == "GAME_RULES") {
-                row.value_text = configuration_.rule_overrides.empty() ? "DEFAULT" : "DEFINED";
+                row.value_text = settings::is_community_mode(selected_mode().mode_key)
+                    ? "Mode rules" : configuration_.rule_overrides.empty() ? "DEFAULT" : "DEFINED";
+                row.enabled = row.enabled && !settings::is_community_mode(selected_mode().mode_key);
             }
         } else if (page_ == CreateMatchPage::choose_game_mode) {
             const auto mode = std::find_if(modes.begin(), modes.end(), [&](const auto& item) {

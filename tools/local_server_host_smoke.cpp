@@ -18,15 +18,16 @@
 int main(int argc, char** argv) {
     const bool public_relay = argc == 3 && std::string_view{argv[2]} == "--public";
     const bool native_bridge = argc == 3 && std::string_view{argv[2]} == "--native-bridge";
+    const bool offline = (argc == 3 || argc == 5) && std::string_view{argv[2]} == "--offline";
     // Drives the join a friend makes: the bundled server, the Steam transport
     // carrying its datagrams, the host's hello, and a real Protocol 168
     // bootstrap through the tunnel. Steam refuses a peer-to-peer connection to
     // your own account, so the transport runs in its direct mode, which
     // exercises the same accept, hello and forwarding code on one machine.
     const bool steam_tunnel = argc == 3 && std::string_view{argv[2]} == "--steam-tunnel";
-    if (argc != 2 && !public_relay && !native_bridge && !steam_tunnel) {
+    if (argc != 2 && !public_relay && !native_bridge && !steam_tunnel && !offline) {
         std::cerr << "usage: aos_local_server_host_smoke <portable-server-directory> "
-                     "[--public|--native-bridge|--steam-tunnel]\n";
+                     "[--public|--native-bridge|--steam-tunnel|--offline [mode map]]\n";
         return 2;
     }
 #if !defined(AOS_HAS_STEAM_NETWORKING)
@@ -40,10 +41,29 @@ int main(int argc, char** argv) {
     config.server_name = "BattleSpadesClient Host Smoke";
     config.mode = "tdm";
     config.map_name = "AncientEgypt";
+    if (offline && argc == 5) {
+        config.mode = argv[3];
+        config.map_name = argv[4];
+    }
     config.maximum_players = 4U;
     config.match_minutes = 5U;
+    config.offline = offline;
+    config.bot_count = offline ? 2U : 0U;
+    if (offline) {
+        // Deliberately unusable services must not affect a private match.
+        config.environment_overrides = {{"AOS_MASTER_URL", "http://127.0.0.1:1"},
+                                        {"AOS_MASTER_WRITE_TOKEN", "offline-test-invalid"},
+                                        {"AOS_PUBLIC_HOST", "127.0.0.1"},
+                                        {"AOS_PUBLIC_PORT", "27015"},
+                                        {"AOS_PUBLIC_QUERY_PORT", "27015"},
+                                        {"AOS_SERVER_ID", "offline-test-invalid"}};
+    }
 
-    battlespades::network::RevivalIdentityService identity;
+    battlespades::network::RevivalIdentityConfig identity_config;
+    identity_config.offline = offline;
+    identity_config.offline_profile = "LAN Player";
+    if (offline) identity_config.state_path = std::filesystem::temp_directory_path() / "battlespades-offline-smoke-identity.json";
+    battlespades::network::RevivalIdentityService identity{identity_config};
     std::optional<battlespades::network::RevivalRelayLobby> relay;
     if (public_relay) {
         battlespades::network::RevivalRelayLobbyRequest request;
@@ -128,8 +148,16 @@ int main(int argc, char** argv) {
                       << server.game.identifier() << " mode=" << server.mode_code
                       << " map=" << server.map << '\n';
             battlespades::network::Protocol168SessionConfig session_config;
+            session_config.negotiate_flight_profile = true;
             auto endpoint = battlespades::network::ServerEndpoint{"127.0.0.1", process.port()};
             session_config.player_name = "LocalHostSmoke";
+            if (offline) {
+                const auto local = identity.guest_login();
+                if (!local || !local.account->offline || local.account->nickname != "LAN Player") {
+                    std::cerr << "offline custom-name identity failed\n"; cleanup(); return 1;
+                }
+                session_config.player_name = local.account->nickname;
+            }
 #if defined(AOS_HAS_STEAM_NETWORKING)
             if (steam_tunnel) {
                 constexpr std::uint16_t direct_port{27099U};
@@ -215,10 +243,13 @@ int main(int argc, char** argv) {
             std::cout << "Protocol 168 bootstrap: map="
                       << session.initial_info()->map_name
                       << " voxels=" << session.map()->solid_voxels() << '\n';
-            const auto valid = server.mode_code == "tdm" &&
+            const auto valid = (!offline || server.players >= 2U) && server.mode_code == config.mode &&
+                               server.map == config.map_name &&
+                               session.initial_info()->hardcore == config.mode.starts_with("hc_") &&
                                !session.initial_info()->map_name.empty() &&
                                session.map()->solid_voxels() > 0U;
             cleanup();
+            if (offline) std::cout << "offline name=LAN Player bots=" << server.players << " success=" << valid << '\n';
             return valid ? 0 : 1;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds{100});
