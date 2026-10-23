@@ -485,6 +485,22 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Wait for the companion server release
+        if: inputs.publish == 'draft-release'
+        run: |
+          # Client compilation can overlap the companion's native test matrix.
+          release_url="$(python -c 'import runpy; print(runpy.run_path("scripts/bundle-offline-server.py")["RELEASE_URL"])')/SHA256SUMS.txt"
+          deadline=$(( $(date +%s) + 3600 ))
+          while (( $(date +%s) < deadline )); do
+            if curl --fail --silent --show-error --max-time 15 --output /dev/null "$release_url"; then
+              exit 0
+            fi
+            echo "Waiting for the checked companion release before packaging..."
+            sleep 30
+          done
+          echo "::error::The companion server release did not become available within one hour."
+          exit 1
+
       - name: Include the companion offline server
         if: inputs.publish == 'draft-release'
         run: |
