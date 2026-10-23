@@ -491,6 +491,19 @@ jobs:
           python scripts/bundle-offline-server.py --family '${{ matrix.family }}' \
             --architecture '${{ matrix.arch }}' --target "$INSTALL_DIR/bin/server"
 
+      - name: Verify packaged offline hosting
+        if: inputs.publish == 'draft-release'
+        run: |
+          exe=""; [[ "$RUNNER_OS" == "Windows" ]] && exe=".exe"
+          server="$INSTALL_DIR/bin/server"
+          "$server/BattleSpades$exe" --version
+          "$server/BattleSpades$exe" --check
+          "$server/BattleSpadesTutorial$exe" --check
+          "$server/BattleSpadesMapCreator$exe" --version
+          smoke="$(find "$BUILD_DIR" -type f -name "aos_local_server_host_smoke$exe" -print -quit)"
+          test -n "$smoke"
+          "$smoke" "$server" --offline night_shift BlackPineOutpost
+
       # ------------------------------------------------------------- packaging
       - name: Package (Linux)
         if: matrix.family == 'linux'
