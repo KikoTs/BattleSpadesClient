@@ -293,6 +293,11 @@ public:
 
     /** Reads UTF-8 text only in response to an explicit paste command. */
     [[nodiscard]] virtual std::string clipboard_text() { return {}; }
+    /** Writes UTF-8 text only for an explicit copy/cut command. */
+    [[nodiscard]] virtual bool set_clipboard_text(std::string_view text) {
+        static_cast<void>(text);
+        return false;
+    }
 };
 
 } // namespace battlespades::platform

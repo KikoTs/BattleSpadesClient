@@ -8,9 +8,9 @@ Builds BattleSpades-Setup-<version>.exe (the main build) and the component updat
    scripts/build.ps1 -Native -Profile Release, which also builds
    BattleSpadesLauncher.exe and BattleSpadesSetupHelper.exe.
 2. The installer is the MAIN BUILD: client, runtime and our own assets. The
-   server is an optional component players download on demand ("Enable
-   hosting" / first Create Match), so it is NOT put into the installer unless
-   -IncludeServerInInstaller is given. Its update package is built from
+   server is bundled by default so Local Match and bots work without services.
+   -SkipServer explicitly builds a slim developer installer without offline
+   matches. Its update package is built from
    -ServerBundle (else the newest complete ..\BattleSpades\release-dist\*
    bundle written by the server repository's scripts/package_release.py).
    Retail game files are never packaged or referenced here.
@@ -120,7 +120,7 @@ foreach ($required in @('BattleSpadesClient.exe', 'BattleSpadesLauncher.exe', 'B
     }
 }
 
-# 2. The server: an optional component, packaged separately.
+# 2. Bundle the server for offline play and also package its independent updates.
 $serverTarget = Join-Path $payload 'server'
 $serverPath = $null
 if (-not $SkipServer) {
@@ -131,7 +131,7 @@ if (-not $SkipServer) {
         }
     }
 }
-if ($IncludeServerInInstaller) {
+if (-not $SkipServer -or $IncludeServerInInstaller) {
     if (-not $serverPath) { throw '-IncludeServerInInstaller needs a server bundle (drop -SkipServer).' }
     if (-not (Test-Path -LiteralPath (Join-Path $serverTarget 'BattleSpades.exe'))) {
         Write-Host "Bundling server into the installer from $serverPath"

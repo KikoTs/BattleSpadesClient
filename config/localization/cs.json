@@ -105,6 +105,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Velikost a hloubka nových ran a úlomků. Vyžaduje zapnuté rány; pouze vizuální efekt.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Oddělování hlavy a končetin při smrti a zásazích mrtvol. Brutální režim zesiluje blízké zásahy brokovnicí. Vypnutí zachová rány.",
     "SPATIAL_AUDIO": "Prostorový zvuk (sluchátka)",
-    "SPATIAL_AUDIO_DESCRIPTION": "Binaurální HRTF pro směr a výšku ve sluchátkách. Vypněte pro stereo nebo externí zpracování. Vyžaduje kompatibilní zvukový výstup."
+    "SPATIAL_AUDIO_DESCRIPTION": "Binaurální HRTF pro směr a výšku ve sluchátkách. Vypněte pro stereo nebo externí zpracování. Vyžaduje kompatibilní zvukový výstup.",
+    "MENU_BACKGROUND": "Pozadí nabídky",
+    "MENU_BACKGROUND_MOTION": "Pohyb pozadí",
+    "MENU_BACKGROUND_DESCRIPTION": "Vyberte pozadí hlavní nabídky. Hotovo uloží změny, Zrušit obnoví původní.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Jemný pohyb kamery podle myši s krátkým rozmazáním pohybu. V klidu zůstává obraz ostrý. Ve výchozím stavu vypnuto."
   }
 }

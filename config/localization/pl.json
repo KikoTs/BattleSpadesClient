@@ -2163,6 +2163,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Rozmiar i głębokość nowych ran oraz fragmentów. Wymaga włączonych ran; efekt wyłącznie wizualny.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Oddzielanie głowy i kończyn przy śmierci oraz trafieniach w zwłoki. Tryb brutalny wzmacnia bliskie trafienia strzelby. Wyłączenie zachowuje rany.",
     "SPATIAL_AUDIO": "Dźwięk przestrzenny (słuchawki)",
-    "SPATIAL_AUDIO_DESCRIPTION": "Binauralny HRTF określa kierunek i wysokość w słuchawkach. Wyłącz dla stereo lub zewnętrznego przetwarzania. Wymaga zgodnego wyjścia audio."
+    "SPATIAL_AUDIO_DESCRIPTION": "Binauralny HRTF określa kierunek i wysokość w słuchawkach. Wyłącz dla stereo lub zewnętrznego przetwarzania. Wymaga zgodnego wyjścia audio.",
+    "MENU_BACKGROUND": "Tło menu",
+    "MENU_BACKGROUND_MOTION": "Ruch tła",
+    "MENU_BACKGROUND_DESCRIPTION": "Wybierz tło menu głównego. Gotowe zapisuje zmiany, Anuluj przywraca poprzednie tło.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Delikatny ruch kamery za myszą z krótkim rozmyciem ruchu. W spoczynku obraz pozostaje ostry. Domyślnie wyłączone."
   }
 }

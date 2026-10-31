@@ -345,7 +345,7 @@ DrawList InventoryMenuModel::build() const {
     std::string status = error;
     if (status.empty())
         status = data.guest ? "Guest collection: register this account to keep a recovery method."
-                            : "One free crate per level. Free opening. Cosmetics only.";
+                            : "3 free crates per level: weapon, character and cosmetic. Free opening.";
     label(list,
           status,
           {60, 474, 680, 22},

@@ -86,7 +86,7 @@ server_executable_name(LocalServerProgram program) noexcept {
 [[nodiscard]] bool safe_mode(std::string_view value) noexcept {
     constexpr std::array modes{
         std::string_view{"tdm"}, std::string_view{"ctf"}, std::string_view{"cctf"},
-        std::string_view{"vip"}, std::string_view{"zom"}, std::string_view{"mh"},
+        std::string_view{"vip"}, std::string_view{"zom"}, std::string_view{"czom"}, std::string_view{"mh"},
         std::string_view{"tc"}, std::string_view{"dia"}, std::string_view{"dem"},
         std::string_view{"oc"}, std::string_view{"ugc"},
     };

@@ -300,8 +300,18 @@ void done_persists_an_atomic_non_resolution_transaction() {
     open_settings(controller);
     static_cast<void>(controller.take_effects());
 
+    // The background controls put Invert Mouse below the initial viewport.
+    const auto maximum_scroll = controller.settings_menu().presentation().maximum_scroll_index;
+    for (std::size_t step{}; step < maximum_scroll &&
+         !row(controller.settings_menu().presentation(), SettingsRowId::invert_mouse).visible; ++step) {
+        expect(controller.mouse_wheel(Point{200, 200}, -1),
+               "Main settings must scroll to the inversion control");
+    }
     const auto invert = row(controller.settings_menu().presentation(), SettingsRowId::invert_mouse);
+    expect(invert.visible, "the inversion control must be visible before clicking");
     click(controller, right_arrow(invert.control_bounds));
+    expect(controller.settings_session().draft().main.invert_mouse,
+           "the visible inversion control must update the draft before Done");
     click(
         controller,
         center(button(controller.settings_menu().presentation(), SettingsTargetKind::done_button)));

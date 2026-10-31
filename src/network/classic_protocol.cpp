@@ -4,6 +4,7 @@
 #include "battlespades/network/protocol168_tool_actions.hpp"
 #include "classic_text.hpp"
 #include <algorithm>
+#include <chrono>
 #include <bit>
 #include <cmath>
 #include <limits>
@@ -417,9 +418,14 @@ ClassicProtocolSession::ClassicProtocolSession(GameProtocol protocol, std::strin
         throw std::invalid_argument("Expected classic protocol");
 }
 
-ClassicIngest ClassicProtocolSession::ingest(std::span<const std::byte> packet) {
+ClassicIngest ClassicProtocolSession::ingest(std::span<const std::byte> packet,
+                                             std::optional<double> received_seconds) {
     ClassicIngest out;
     try {
+        received_seconds_ = received_seconds.value_or(std::chrono::duration<double>{
+            std::chrono::steady_clock::now().time_since_epoch()}.count());
+        if (!std::isfinite(received_seconds_))
+            throw std::runtime_error("Invalid classic packet time");
         Reader r{packet};
         const auto id = r.byte();
         if (id == 31) {
@@ -657,7 +663,7 @@ void ClassicProtocolSession::world_event(ClassicIngest& out,
         w.byte(id);
         w.vector(p.record.position);
         w.vector(p.record.orientation);
-        w.vector({0, 0, 0});
+        w.vector(p.velocity);
         w.integer<std::int16_t>(0);
         w.integer<std::int32_t>(position_changed ? -1 : -2);
         w.integer<std::int16_t>(p.record.dead ? 0 : 100);
@@ -779,6 +785,24 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             auto pos = r.vector(true);
             auto aim = r.vector();
             auto& p = players_.at(id);
+            p.velocity = {};
+            if (p.position_seconds) {
+                const double dt = received_seconds_ - *p.position_seconds;
+                if (dt > 0.001 && dt < 1.0) {
+                    double speed_squared{};
+                    for (std::size_t axis{}; axis < pos.size(); ++axis) {
+                        const auto speed = static_cast<float>(
+                            (pos[axis] - p.record.position[axis]) / dt);
+                        speed_squared += static_cast<double>(speed) * speed;
+                        // Native replicated velocities use 1/32 world units.
+                        p.velocity[axis] = speed / 32.0F;
+                    }
+                    // Spawns, teleports and stale snapshots do not make steps.
+                    if (speed_squared > 32.0 * 32.0)
+                        p.velocity = {};
+                }
+            }
+            p.position_seconds = received_seconds_;
             p.record.position = pos;
             p.record.orientation = aim;
             if (p.present && id != local_id_ && !p.record.dead && p.record.team >= 2)
@@ -889,6 +913,8 @@ void ClassicProtocolSession::game_packet(std::span<const std::byte> packet, Clas
             p.tool = 2;
             p.input = 0;
             p.fire = 0;
+            p.velocity = {};
+            p.position_seconds.reset();
         }
         if (p.weapon > 2 || r.remaining() > 32)
             throw std::runtime_error("Invalid classic player");

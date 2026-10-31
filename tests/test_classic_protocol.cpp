@@ -15,6 +15,7 @@
 #include "battlespades/world/classic_weapons.hpp"
 #include "battlespades/world/player_inventory.hpp"
 #include "battlespades/world/retail_view_model.hpp"
+#include "battlespades/world/remote_character_audio.hpp"
 #include "battlespades/world/tutorial_session.hpp"
 #include <algorithm>
 #include <bit>
@@ -276,12 +277,41 @@ void protocol_tests(const std::vector<std::byte>& raw) {
         }
         world.vector(10, 20, 30);
         world.vector(1, 0, 0);
-        auto update = session.ingest(world.bytes);
+        auto update = session.ingest(world.bytes, 100.0);
         check(update.error.empty() && !update.events.empty(), "versioned world update");
         auto decoded = network::decode_world_update_weapon_rows(update.events.front());
         check(decoded && decoded.rows.size() == 1 && decoded.rows[0].player_id == 1 &&
                   decoded.rows[0].position[2] == 206,
               "076 explicit/075 implicit id and position");
+        const auto movement_row = [&](float x, double seconds) {
+            Packet moving{2};
+            if (version == GameProtocol::classic076) moving.byte(1);
+            else { moving.vector(0, 0, 0); moving.vector(0, 0, 0); }
+            moving.vector(x, 20, 30);
+            moving.vector(1, 0, 0);
+            const auto result = session.ingest(moving.bytes, seconds);
+            check(result.error.empty() && !result.events.empty(), "moving remote update");
+            return network::decode_world_update_weapon_rows(result.events.front()).rows.at(0);
+        };
+        const auto moving = movement_row(10.4F, 100.1);
+        check(std::abs(moving.velocity[0] - 0.125F) < 0.001F,
+              "Classic motion must reach observer audio in native velocity units");
+        world::RemoteCharacterAudioState audio_state;
+        world::RemoteCharacterAudioSnapshot audio_snapshot;
+        audio_snapshot.health = 100;
+        audio_snapshot.horizontal_speed = std::hypot(moving.velocity[0], moving.velocity[1]);
+        world::begin_remote_character_life(audio_state, audio_snapshot, 1.0);
+        const auto footsteps = world::tick_remote_character_audio(audio_state, 0.6, 0U);
+        check(std::ranges::any_of(footsteps.events(), [](const auto& e) {
+                  return e.movement == world::MovementSound::footstep;
+              }), "a walking Classic opponent must produce footsteps");
+        check(movement_row(10.4F, 100.2).velocity == std::array<float, 3>{},
+              "stationary snapshots must silence footsteps");
+        check(movement_row(200.F, 100.3).velocity == std::array<float, 3>{},
+              "teleports must not manufacture footstep or fall sounds");
+        check(session.ingest(spawn(1).bytes, 100.4).error.empty(), "remote respawn");
+        check(movement_row(20.F, 100.5).velocity == std::array<float, 3>{},
+              "a new life must forget the old movement sample");
         auto malformed = world.bytes;
         malformed.pop_back();
         check(!session.ingest(malformed).error.empty(), "reject short world packet");

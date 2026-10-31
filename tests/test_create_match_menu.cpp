@@ -60,8 +60,8 @@ bool has_sprite(const battlespades::ui::DrawList& list, std::string_view asset) 
 
 void catalogs_recover_every_retail_playlist_and_rule() {
     const auto modes = retail_create_match_modes();
-    expect(modes.size() == 10U,
-           "Create Match must expose the ten non-random, non-tutorial, non-UGC playlists");
+    expect(modes.size() == 11U,
+           "Create Match must expose the retail playlists and Classic+ Zombies");
     expect(modes.front().mode_key == "ctf" && modes[1].mode_key == "cctf" &&
                modes.back().mode_key == "zom",
            "English mode rows must retain the retail localized sort order");
@@ -150,10 +150,10 @@ void nested_panels_emit_forward_and_backward_navigation() {
                forward->direction == CreateMatchNavigationDirection::forward,
            "opening a nested picker must request an in-lobby right-panel replacement");
     const auto picker = menu.presentation();
-    expect(picker.rows.size() == 10U && !picker.show_scrollbar &&
+    expect(picker.rows.size() == 11U && !picker.show_scrollbar &&
                picker.rows.back().bounds.y + picker.rows.back().bounds.height <=
                    picker.action_panel.y,
-           "all ten retail modes must fit the 285 px list without a fake scrollbar or overlap");
+           "the retail modes and Classic+ Zombies fit without overlap");
 
     expect(menu.activate_row("cctf"), "Classic CTF must be selectable");
     expect(menu.configuration().retail_playlist_id == 2U &&

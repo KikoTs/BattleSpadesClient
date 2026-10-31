@@ -27,6 +27,7 @@ enum class IdentityAction : std::uint8_t {
     recover_steam,
     link_steam,
     keep_account,
+    offline,
 };
 
 /**
@@ -47,6 +48,7 @@ enum class IdentityMenuPhase : std::uint8_t {
     recovery_code,
     recovery_form,
     steam_link,
+    offline_form,
 };
 
 struct IdentityControl final {
@@ -69,7 +71,7 @@ public:
         MainMenuModel::subpixels_per_pixel};
     static constexpr std::size_t maximum_username_bytes{24U};
     static constexpr std::size_t maximum_password_bytes{256U};
-    static constexpr std::size_t control_count{6U};
+    static constexpr std::size_t control_count{7U};
 
     IdentityMenuModel();
 
@@ -108,6 +110,7 @@ public:
     void set_error(std::string error);
     void show_recovery_code(std::string code, std::string saved_location = {});
     void show_recovery_form();
+    void show_offline_form(std::string name);
     void show_steam_link(std::string account_name);
     void reset_form() noexcept;
 

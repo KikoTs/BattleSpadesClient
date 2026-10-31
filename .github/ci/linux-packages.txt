@@ -13,6 +13,8 @@ libx11-dev libxft-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev
 libxinerama-dev libxss-dev libxtst-dev libxfixes-dev libxrender-dev
 libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev wayland-protocols libdecor-0-dev
 libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev
+# Headless Vulkan regression for descriptor exhaustion (Mesa lavapipe).
+libvulkan1 mesa-vulkan-drivers
 libibus-1.0-dev libdbus-1-dev libudev-dev
 # Audio headers
 libasound2-dev libpulse-dev

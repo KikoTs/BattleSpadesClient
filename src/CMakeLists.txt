@@ -23,6 +23,7 @@ if(AOS_DISCORD_APPLICATION_ID AND NOT AOS_DISCORD_APPLICATION_ID MATCHES "^[0-9]
     message(FATAL_ERROR "AOS_DISCORD_APPLICATION_ID must contain decimal digits only")
 endif()
 find_package(Threads REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 add_library(aos_discord_presence STATIC platform/discord_presence.cpp)
 add_library(BattleSpades::DiscordPresence ALIAS aos_discord_presence)
 target_include_directories(aos_discord_presence PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -198,6 +199,8 @@ add_library(
         frontend/custom_match_presentation.cpp
         frontend/server_password_prompt.cpp
         frontend/class_loadout_store.cpp
+        frontend/local_match_store.cpp
+        frontend/chat_text.cpp
         frontend/class_selection_menu.cpp
         frontend/class_selection_presentation.cpp
         frontend/change_team_menu.cpp
@@ -934,7 +937,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     # clean client build independent of bgfx's optional tools feature.
     set(AOS_SHADER_OUTPUT_ROOT "${PROJECT_SOURCE_DIR}/src/render/shaders/bin")
     foreach(backend IN ITEMS dx11 glsl essl spirv metal)
-        foreach(shader IN ITEMS vs_ui fs_ui vs_world fs_world vs_skydome fs_skydome
+        foreach(shader IN ITEMS vs_ui fs_ui fs_menu_background vs_world fs_world vs_skydome fs_skydome
                                 vs_particle fs_particle vs_shadow fs_shadow)
             set(shader_binary "${AOS_SHADER_OUTPUT_ROOT}/${backend}/${shader}.bin")
             if(NOT EXISTS "${shader_binary}")
@@ -1053,6 +1056,19 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
             "$<TARGET_FILE_DIR:BattleSpadesClient>/ui-layout.json"
         VERBATIM
     )
+    # A previous developer launch may have imported a complete retail asset tree
+    # here. It takes precedence over AOS_ASSET_ROOT at runtime, so keep optional
+    # menu artwork and depth layers current alongside that tree as well.
+    if(NOT AOS_BUILD_PROFILE STREQUAL "release" AND
+       EXISTS "${AOS_ASSET_ROOT}/png/ui/menu_backgrounds")
+        add_custom_command(
+            TARGET BattleSpadesClient POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${AOS_ASSET_ROOT}/png/ui/menu_backgrounds"
+                "$<TARGET_FILE_DIR:BattleSpadesClient>/assets/original/png/ui/menu_backgrounds"
+            VERBATIM
+        )
+    endif()
     # The Steamworks library is loaded by name from the executable's directory.
     # The install rules place it there for players; developer runs and the
     # staging script take it from the target directory, so copy it as well.

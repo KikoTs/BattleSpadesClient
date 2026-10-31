@@ -457,7 +457,8 @@ void append_scrollbar(ui::DrawList& list, const CreateMatchMenuPresentation& sna
                      {track.x, thumb_y + thumb_height - cap, track.width, cap}));
 }
 
-void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snapshot) {
+void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snapshot,
+                     const CreateMatchPresentationContext& context) {
     list.push(sprite(create_match_presentation_assets::panel_frame,
                      rect(snapshot.player_panel),
                      DrawSpace::design_pixels,
@@ -589,6 +590,13 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
            22.0},
           ColorRgba8{34U, 32U, 33U, 255U});
     constexpr std::size_t visible_chat_lines{5U};
+    auto* const interaction = context.chat_interaction;
+    if (interaction != nullptr) {
+        std::vector<ChatDocumentLine> document;
+        for (const auto& line : snapshot.chat_lines)
+            document.push_back({line.id, line.author.empty() ? line.message : line.author + ": " + line.message, false});
+        interaction->begin_layout(std::move(document), context.measure_chat_text);
+    }
     const auto first_chat = snapshot.chat_lines.size() > visible_chat_lines
                                 ? snapshot.chat_lines.size() - visible_chat_lines
                                 : 0U;
@@ -598,6 +606,13 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
         const auto rendered = line.author.empty()
                                   ? line.message
                                   : line.author + ": " + line.message;
+        if (interaction != nullptr) {
+            interaction->add_line(line.id,
+                {static_cast<double>(snapshot.chat_panel.x)+10.0, chat_y,
+                 static_cast<double>(snapshot.chat_panel.width)-20.0, 15.0},
+                create_match_presentation_assets::row_font, 9.0, discord_chat_links(rendered), true);
+            interaction->decorate_line(list, line.id, DrawSpace::design_pixels);
+        }
         list.push(text(rendered,
                        {static_cast<double>(snapshot.chat_panel.x) + 10.0,
                         chat_y,
@@ -609,7 +624,12 @@ void append_players(ui::DrawList& list, const CreateMatchMenuPresentation& snaps
         chat_y += 15.0;
     }
     auto draft = snapshot.chat_draft;
-    if (snapshot.chat_focused) draft += "_";
+    if (snapshot.chat_focused && interaction == nullptr) draft += "_";
+    if (interaction != nullptr && context.chat_editor != nullptr) {
+        interaction->set_input(rect(snapshot.chat_input), create_match_presentation_assets::row_font,
+                               11.0, context.chat_editor->text(), true);
+        interaction->decorate_input(list, *context.chat_editor, DrawSpace::design_pixels, snapshot.chat_focused);
+    }
     list.push(text(draft.empty() ? std::string_view{"CHAT_MESSAGE"}
                                 : std::string_view{draft},
                    rect(snapshot.chat_input),
@@ -667,7 +687,7 @@ ui::DrawList CreateMatchPresentation::build(
                    TextTransform::uppercase,
                    create_match_presentation_assets::row_font));
 
-    append_players(list, snapshot);
+    append_players(list, snapshot, context);
     // Retail's right-side LobbyPanel owns a dark-green canvas independently
     // of the large outer frame. Rows are drawn over this surface; leaving it
     // transparent exposes the much brighter frame texture underneath.

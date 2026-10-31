@@ -1,0 +1,276 @@
+{
+  "version": 1,
+  "scenes": [
+    {
+      "id": "miner-and-zombies",
+      "source": "png/ui/menu_backgrounds/miner-and-zombies.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve full 4:3 canvas, original composition, colors, voxel style, character positions and scale; no recentering, zoom, new objects or added effects. Cutout edges have real alpha. Restore the scenery hidden by characters.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/miner-and-zombies/scenery.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 0.55,
+          "cutout": false,
+          "sha256": "3ee503b9b0511bd353491c49873f65d6a48deee1ade10078fb8f3f3f45376481",
+          "prompt": "Use case: precise-object-edit / clean background plate for a layered game menu. Edit target: the supplied Ace of Spades artwork. Preserve its exact original 4:3 composition, camera angle, horizon, lighting, sky blue gradient, blocky forest, distant castle, olive-green ground colors and original positions of every environmental feature. Remove ALL characters and their props: remove the large miner at left, his red/gray tool, his legs and boots, the severed green zombie head beneath him, and the smaller standing blue zombie at right. Fill those occluded areas seamlessly with plausible continuation of the existing sky, forest and ground. Keep the soft ambient contact shadow patches on the ground where the characters originally stood so they will be grounded when composited back. Do not add new objects, characters, text or visual effects. Do not crop, zoom, recenter, change aspect ratio, change perspective, enhance saturation, relight or restyle. Output a full-canvas opaque 4:3 background plate matching the reference. This will have the original character cutouts overlaid at the original positions."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/miner-and-zombies/zombie.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 1.15,
+          "cutout": true,
+          "sha256": "35dc6cecf9cbc580636c60ec2a34e2303abf91664a39ecee47f05e4560535417",
+          "prompt": "Use case: background-extraction. Edit target: the supplied 1280x960 Ace of Spades artwork. Create an accurately cut-out transparent midground sprite containing ONLY the smaller standing blue zombie on the RIGHT, including both green/red raised hands, its open mouth/chest, both blue legs and both brown boots. Preserve the original exact colors, shape, voxel detail, scale and original pixel positions. Keep the full original 4:3 canvas. DO NOT crop, zoom, recenter or move the zombie. It must still occupy approximately x=.76 to .99 and y=.36 to .68 of the canvas. All else must be genuinely transparent: miner, severed head, sky, ground, forest and castle. No opaque rectangle, colored halos, outline, new shadows or restyling. Preserve fine antialiasing with a clean alpha silhouette. This will be overlaid at the same (0,0) origin on the original-sized image."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/miner-and-zombies/foreground.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 2.1,
+          "cutout": true,
+          "sha256": "52cfd9015b35e222e24d07c2938ab9c98607b176713c2952c426a60b7c034b12",
+          "prompt": "Use case: background-extraction. Edit target: the supplied 1280x960 Ace of Spades artwork. Create a production-quality transparent foreground layer for parallax compositing. Keep ONLY the large foreground miner at the left, his entire red-and-gray tool over his shoulder, both arms, armor, both legs/boots, and the large green severed zombie head beneath his raised boot. Preserve their original exact shapes, colors, voxel detail, size and ORIGINAL PIXEL POSITIONS. Preserve the full original 4:3 1280x960 canvas; do not crop, recenter, zoom or reposition any retained object. Everything else must be genuinely transparent, including sky, ground, forest, distant castle, and the smaller standing zombie at right. Accurately cut the empty triangular gap between the miner's bent arm and torso to transparency. Retain very fine antialiased silhouette edges without colored sky fringe, haze, drop shadows, outlines, or semitransparent halos. Do not redraw, beautify or restyle the retained objects. They must line up when this layer is overlaid at (0,0) on the supplied original."
+        }
+      ]
+    },
+    {
+      "id": "original-battle-artwork",
+      "source": "png/ui/menu_backgrounds/original-battle-artwork.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve source composition, voxel style and lighting. Extracted sprites use real alpha over restored scenery. Uniform renderer placement registers generated cutouts to the source; original pixels remain unchanged for static mode. Banner scenes retain the source crop from the settings catalog.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/original-battle-artwork/scenery.png",
+          "width": 1465,
+          "height": 1073,
+          "parallax": 0.55,
+          "cutout": false,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "a37b5946a66e776313c8be0659c3d477a08b9335a08339600e1c172271afaef2",
+          "prompt": "Use case: background-extraction for layered parallax game-menu compositing. Edit only the supplied Ace of Spades artwork. Preserve the FULL ORIGINAL canvas aspect ratio and composition, original object positions, scales, voxel details, colors and lighting. Do not crop, zoom, recenter, move objects, restyle or add objects. Create a clean opaque scenery plate. Remove the THREE characters and all their carried equipment: blue airborne soldier in upper-left with gun and jetpack, green/yellow miner at bottom-left with red tool, and blue camouflaged rifleman at right with rifle. Remove the airborne soldier's bright orange/white curving exhaust trail too, but retain unrelated dark missile smoke trails and projectiles in the sky. Seamlessly restore the yellow city, ground, sky and building surfaces hidden behind them. Preserve ambient ground contact shadows. Full original 1251:916 canvas, exact scene framing. No characters."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/original-battle-artwork/jetpacker.png",
+          "width": 1465,
+          "height": 1073,
+          "parallax": 0.95,
+          "cutout": true,
+          "placement": [
+            0.74,
+            0,
+            0.01
+          ],
+          "sha256": "9cd1d5872021c3e2294f01229183b36c0e3cffc53d6e8f88cbbe54fd1207c1fb",
+          "prompt": "Use case: background-extraction for layered parallax game-menu compositing. Edit only the supplied Ace of Spades artwork. Preserve the FULL ORIGINAL canvas aspect ratio and composition, original object positions, scales, voxel details, colors and lighting. Do not crop, zoom, recenter, move objects, restyle or add objects. Keep ONLY the airborne blue soldier at upper-left, his complete gun, goggles, jetpack, muzzle flash and attached orange-white curved jet exhaust plume (which trails toward the lower center-right). The rest must be genuine transparent alpha. Original soldier occupies approximately x=0 to .33, y=.05 to .35 and plume extends toward x=.65,y=.62. Keep exact original placement on full 1251:916 canvas. Preserve soft translucent flame/exhaust edges but no background haze, city, dark missile trails, other soldiers or ground. Clean antialiased edges without color halos."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/original-battle-artwork/rifleman.png",
+          "width": 1465,
+          "height": 1073,
+          "parallax": 1.35,
+          "cutout": true,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "0ce94b9b8c34011f4144487177e3b8646ade6b355cff58a8b17432601daf1c2c",
+          "prompt": "Use case: background-extraction for layered parallax game-menu compositing. Edit only the supplied Ace of Spades artwork. Preserve the FULL ORIGINAL canvas aspect ratio and composition, original object positions, scales, voxel details, colors and lighting. Do not crop, zoom, recenter, move objects, restyle or add objects. Keep ONLY the standing blue camouflage rifleman on the RIGHT, his entire rifle and boots. He occupies x=.75 to 1,y=.32 to .83. All else genuinely transparent alpha. Full original 1251:916 canvas; keep exact position and scale. No sky, buildings, ground, shadow, other characters, smoke or added halo. Precisely cut all gaps around weapon and limbs; preserve fine antialiased voxel silhouette."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/original-battle-artwork/miner.png",
+          "width": 1465,
+          "height": 1073,
+          "parallax": 2.1,
+          "cutout": true,
+          "placement": [
+            0.735,
+            0,
+            0.2
+          ],
+          "sha256": "ee10aa576d5a86ea077a06f9f070afa22c3439fe4043c0023e215e997af0c4ab",
+          "prompt": "Use case: background-extraction for layered parallax game-menu compositing. Edit only the supplied Ace of Spades artwork. Preserve the FULL ORIGINAL canvas aspect ratio and composition, original object positions, scales, voxel details, colors and lighting. Do not crop, zoom, recenter, move objects, restyle or add objects. Keep ONLY the green/yellow helmeted miner emerging at BOTTOM-LEFT, including his arms, headlamp, beard, torso and complete horizontal red-and-gray tool. The character occupies x=0 to .375,y=.585 to .94. All else genuine transparent alpha. Full original 1251:916 canvas; keep exact original position and scale, including left edge clipping. No ground, city, other characters or added shadows/halos; accurate antialiased silhouette."
+        }
+      ]
+    },
+    {
+      "id": "battle-builder-construction",
+      "source": "png/ui/menu_backgrounds/battle-builder-construction.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve source composition, voxel style and lighting. Extracted sprites use real alpha over restored scenery. Uniform renderer placement registers generated cutouts to the source; original pixels remain unchanged for static mode. Banner scenes retain the source crop from the settings catalog.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/battle-builder-construction/scenery.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 0.55,
+          "cutout": false,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "d570aee579f423247955ed99b56af2a1ab30f982d4c0bddc7f91f2b4b5c0b1fa",
+          "prompt": "Use case: precise background extraction for a parallax game menu. The supplied artwork is the edit target. Preserve its 4:3 full canvas, original framing, voxel style, lighting and colors. No recentering, zoom, crop, beautification, added effects or redesign. Remove ONLY the huge foreground builder at left and his cyan blueprint sheet. Seamlessly inpaint the hidden sky, distant desert cliffs, excavation ground and the yellow stone ledge beneath him. Retain the original right-side crane, entire building under construction, all tiny distant workers, cacti, sun and background. Keep the foreground builder's soft grounding shadow on the yellow ledge. Output a full-canvas opaque clean background plate."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/battle-builder-construction/builder.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 2.1,
+          "cutout": true,
+          "placement": [
+            0.92,
+            0,
+            0.04
+          ],
+          "sha256": "139f568f275f3f5afb400df2bc11e913697856791cf54e7db00e0b75beaa278f",
+          "prompt": "Use case: precise background extraction for a parallax game menu. The supplied artwork is the edit target. Preserve its 4:3 full canvas, original framing, voxel style, lighting and colors. No recentering, zoom, crop, beautification, added effects or redesign. Accurately extract ONLY the big foreground builder at LEFT with yellow helmet, blue clothing, both legs/boots and complete cyan blueprint held in his hands. Everything else is genuine transparent alpha, including scenery, yellow stone ledge, tiny workers and crane. Retain the original object pixel placement and scale: helmet top x=.04,y=.267; leftmost silhouette near x=.01; blueprint rightmost x=.36,y=.46; feet bottom y=.945. IMPORTANT leave the large empty right two-thirds and upper quarter of the full 4:3 canvas transparent. Do NOT enlarge to fill the canvas. Crisp fine antialiasing, transparent gaps around limbs, no ground/shadow/halo."
+        }
+      ]
+    },
+    {
+      "id": "valentines-mafia-warehouse",
+      "source": "png/ui/menu_backgrounds/valentines-mafia-warehouse.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve source composition, voxel style and lighting. Extracted sprites use real alpha over restored scenery. Uniform renderer placement registers generated cutouts to the source; original pixels remain unchanged for static mode. Banner scenes retain the source crop from the settings catalog.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/valentines-mafia-warehouse/scenery.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 0.55,
+          "cutout": false,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "ab8eff46e1578a05c8fa53c7715265c5135c4f0932cdf994b1dd9673ea6b76dd",
+          "prompt": "Use case: precise background extraction for a parallax game menu. The supplied artwork is the edit target. Preserve its 4:3 full canvas, original framing, voxel style, lighting and colors. No recentering, zoom, crop, beautification, added effects or redesign. Create an opaque clean background plate. Remove ONLY these foreground subjects and their props: the large black-suited pistol gangster at bottom-left; the green-hatted shotgun gangster at lower-right; the large upper-right gangster leaning over the huge round green barrel end; that huge foreground barrel; the open black/green gun case and scattered dice, money, bottles and floor props in the lower-right. Restore the hidden warehouse floor and barrel stacks naturally. KEEP the THREE smaller distant figures: striped gangster with torch upper-left, olive-suited safe robber mid-left with safe, and small gunman on barrels upper-right. Preserve warm dark golden lighting and soft ground shadows. No new subjects."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/valentines-mafia-warehouse/right-group.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 1.35,
+          "cutout": true,
+          "placement": [
+            0.75,
+            0.25,
+            0.125
+          ],
+          "sha256": "ccf2d2adb44c7932feaf22ef21fc3328ed8c0acd3fe7f5326e5a264b8941cc27",
+          "prompt": "Use case: precise background extraction for a parallax game menu. The supplied artwork is the edit target. Preserve its 4:3 full canvas, original framing, voxel style, lighting and colors. No recentering, zoom, crop, beautification, added effects or redesign. Extract ONLY the right foreground group: green-hatted shotgun gangster, large dark-suited gangster leaning over huge round green barrel, huge barrel itself, open black/green gun case at their feet, and scattered dice/money/bottles in the lower-right foreground. Keep these props together in exact original positions and sizes on full 4:3 canvas: group occupies x=.66 to 1,y=.425 to .98. Leave all other areas genuinely transparent including all warehouse, floor, ambient ground shadows, distant wall-mounted small gunman and left characters. Do NOT enlarge, center or move the group. Accurate alpha silhouette, tiny props retained, no added halos."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/valentines-mafia-warehouse/left-gangster.png",
+          "width": 1448,
+          "height": 1086,
+          "parallax": 2.1,
+          "cutout": true,
+          "placement": [
+            0.63,
+            0,
+            0.29
+          ],
+          "sha256": "6e039f2cc50485cd4da605dcf06ad513b90680ad94eb101794f4eb61e1fb08da",
+          "prompt": "Use case: precise background extraction for a parallax game menu. The supplied artwork is the edit target. Preserve its 4:3 full canvas, original framing, voxel style, lighting and colors. No recentering, zoom, crop, beautification, added effects or redesign. Extract ONLY the closest large black-suited gangster at BOTTOM-LEFT, including his entire pistol, arms, torso, legs and boots. Preserve exact original placement and size on full 4:3 canvas: x=0 to .225,y=.55 to .95, clipped at left edge. Leave rest genuinely transparent. Do NOT enlarge him, center him or move him. No floor, shadows, safe, other characters, barrels or background. Accurate fine antialiased voxel silhouette with clean transparent gaps between limbs and no colored fringes."
+        }
+      ]
+    },
+    {
+      "id": "matchmaking-battle",
+      "source": "png/ui/menu_backgrounds/matchmaking-battle.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve source composition, voxel style and lighting. Extracted sprites use real alpha over restored scenery. Uniform renderer placement registers generated cutouts to the source; original pixels remain unchanged for static mode. Banner scenes retain the source crop from the settings catalog.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/matchmaking-battle/scenery.png",
+          "width": 1774,
+          "height": 887,
+          "parallax": 0.55,
+          "cutout": false,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "93d664d7fdf25e3b75d8158cf1f6ddc2423ca9b07685143e1601e629e0958196",
+          "prompt": "Use case: precise layer extraction for parallax compositing of the supplied Ace of Spades banner. Preserve its FULL ORIGINAL 1024:512 (2:1) canvas, including the original empty margins, and the original artwork framing INSIDE x=134..890, y=81..476. Keep exact scene/character placement, scale, voxel style, color and light. Do NOT zoom, crop, recenter, enlarge subjects or fill canvas with the interior artwork. Create an opaque scenery plate. Remove ONLY the LARGE CENTRAL GREEN SOLDIER and his rocket launcher, AND the standing BLUE CAMOUFLAGE RIFLEMAN at right and his rifle. Restore city, sky and ground behind these two. KEEP the original small airborne blue jetpacker, his attached curving white flame trail, and the small green/yellow miner at bottom-left with his red tool. Keep the three remaining environmental missiles/trails and building details. Outer margins can be opaque black (they will be cropped by the renderer); keep the inner artwork rectangle in its EXACT original location. Do not add subjects. Preserve subtle ground shadows."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/matchmaking-battle/rifleman.png",
+          "width": 1774,
+          "height": 887,
+          "parallax": 1.25,
+          "cutout": true,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "0e016bde2b141b76669cb8be82d9bc1bd303d344dd318bd276958db8eab618c9",
+          "prompt": "Use case: precise layer extraction for parallax compositing of the supplied Ace of Spades banner. Preserve its FULL ORIGINAL 1024:512 (2:1) canvas, including the original empty margins, and the original artwork framing INSIDE x=134..890, y=81..476. Keep exact scene/character placement, scale, voxel style, color and light. Do NOT zoom, crop, recenter, enlarge subjects or fill canvas with the interior artwork. Extract ONLY the standing BLUE CAMOUFLAGE RIFLEMAN at right with his rifle and both boots. Exact original bounds on the FULL 1024x512 canvas are approximately x=650..820, y=223..416 (normalized x=.635..801,y=.435..813). Keep him at that small original size and position. All else genuine transparent alpha, including central soldier, jetpacker, miner, city and margins. Accurate antialiasing and transparent limb gaps, no ground, shadows, halos or added effects."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/matchmaking-battle/rocketeer.png",
+          "width": 1774,
+          "height": 887,
+          "parallax": 2.1,
+          "cutout": true,
+          "placement": [
+            0.81,
+            0.113,
+            0.14
+          ],
+          "sha256": "7ec9a4e616521d3f4400b38f0c1f04a1a8aa3d2a380c9af757ee9c987008957b",
+          "prompt": "Use case: precise layer extraction for parallax compositing of the supplied Ace of Spades banner. Preserve its FULL ORIGINAL 1024:512 (2:1) canvas, including the original empty margins, and the original artwork framing INSIDE x=134..890, y=81..476. Keep exact scene/character placement, scale, voxel style, color and light. Do NOT zoom, crop, recenter, enlarge subjects or fill canvas with the interior artwork. Extract ONLY the LARGE CENTRAL GREEN SOLDIER with his entire square rocket launcher, helmet, arms, belt, legs and boots. Preserve exact original size and original position on the FULL 1024x512 canvas: subject bounds approximately x=387..655,y=103..481. All else genuine transparent alpha, including sky, city, floor, other three characters and original outer margins. Leave transparent negative spaces around limbs. Do NOT scale him up, reposition or reframe. Crisp antialiased silhouette, no ground shadows or added halos."
+        }
+      ]
+    },
+    {
+      "id": "tutorial-blueprints",
+      "source": "png/ui/menu_backgrounds/tutorial-blueprints.png",
+      "method": "Built-in image_gen: background extraction and clean-plate inpainting. AI-assisted derivatives; original PNG is retained for static mode.",
+      "constraints": "Preserve source composition, voxel style and lighting. Extracted sprites use real alpha over restored scenery. Uniform renderer placement registers generated cutouts to the source; original pixels remain unchanged for static mode. Banner scenes retain the source crop from the settings catalog.",
+      "layers": [
+        {
+          "asset": "png/ui/menu_backgrounds/layers/tutorial-blueprints/scenery.png",
+          "width": 1774,
+          "height": 887,
+          "parallax": 0.55,
+          "cutout": false,
+          "placement": [
+            1,
+            0,
+            0
+          ],
+          "sha256": "83e28fb28a2c80fba0443f9708dd3e88e385841f7201cc911f781a5b18f4e75f",
+          "prompt": "Use case: precise layer extraction for parallax compositing of the supplied Ace of Spades banner. Preserve its FULL ORIGINAL 1024:512 (2:1) canvas, including the original empty margins, and the original artwork framing INSIDE x=134..890, y=81..476. Keep exact scene/character placement, scale, voxel style, color and light. Do NOT zoom, crop, recenter, enlarge subjects or fill canvas with the interior artwork. Create an opaque blueprint background plate by removing ONLY the big luminous white/cyan wireframe miner at left, including all his glow. Seamlessly restore the dark blue technical square grid and perspective floor lines behind him. KEEP the faint floating white wireframe block structures on the right in their original positions. Preserve the dark blue original brightness; no new shapes, text, subjects or bright glow. Outer empty margins may be black (renderer crops them), interior artwork remains EXACTLY at x=131..887,y=80..475."
+        },
+        {
+          "asset": "png/ui/menu_backgrounds/layers/tutorial-blueprints/miner.png",
+          "width": 1774,
+          "height": 887,
+          "parallax": 1.65,
+          "cutout": true,
+          "placement": [
+            1,
+            0,
+            -0.036
+          ],
+          "sha256": "108b3614fb109a04e154f7c0696593c629c66508d6f6e9aa58b97debdbd38b46",
+          "prompt": "Use case: precise layer extraction for parallax compositing of the supplied Ace of Spades banner. Preserve its FULL ORIGINAL 1024:512 (2:1) canvas, including the original empty margins, and the original artwork framing INSIDE x=134..890, y=81..476. Keep exact scene/character placement, scale, voxel style, color and light. Do NOT zoom, crop, recenter, enlarge subjects or fill canvas with the interior artwork. Extract ONLY the luminous white/cyan wireframe miner at left, preserving his voxel mesh, filled dark-blue faces, helmet, arms and torso, plus the existing delicate cyan luminous edge halo. Retain exact original position/size on full 2:1 canvas: visible subject approximately x=231..537,y=104..475. Lower torso clips at y=475; retain this original clipping. Everything else genuine transparent alpha including all blue grid and faint wireframe structures at right and outer margins. Do NOT enlarge/recenter. Preserve thin white lines and a very narrow translucent cyan edge glow, no blue rectangular background patch."
+        }
+      ]
+    }
+  ]
+}

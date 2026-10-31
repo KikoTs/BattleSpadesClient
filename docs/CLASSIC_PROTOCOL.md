@@ -408,6 +408,14 @@ or another original-protocol server hosts legacy matches.
 
 ## Client audio and observer effects
 
+Local movement sounds are head-relative, so footsteps, jumps and landings stay
+centered while turning or moving. Other players' cues remain world-positioned
+and use ordinary stereo panning or the enabled headphone HRTF.
+Classic 0.75/0.76 WorldUpdate has no velocity: the adapter derives it from
+successive timestamped positions in native 1/32 units for observer footsteps
+and jump/landing detection. Standing still clears motion, and respawns,
+teleports or stale samples cannot manufacture movement sounds.
+
 Deuce uses sixteen existing Soldier/Miner death recordings with no immediate
 repeat. Other classes retain their authored voice banks. **Settings → Main →
 Music on silent servers** opts into a retail gameplay track, chosen from the

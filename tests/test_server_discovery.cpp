@@ -266,6 +266,33 @@ void gameplay_mode_tag_beats_the_category_mode_tla() {
            "a known gamemode tag must beat the ordinal, and an unknown one must fall back to it");
 }
 
+void classic_zombies_keep_a_textual_discovery_identity() {
+    const auto tagged = battlespades::network::parse_public_server_list(R"json([
+        {"ip":"127.0.0.1","port":27023,"name":"Classic+ Zombies","mode_tla":"zom",
+         "tags":["gamemode=CZOM","mode=0002","mode=0001"]},
+        {"ip":"127.0.0.1","port":27024,"name":"Unknown ordinal","mode_tla":"dem",
+         "tags":["mode=0013","mode=0001"]}
+    ])json");
+    expect(tagged && tagged.servers.size() == 2U, "extension discovery rows parse");
+    const auto extension = std::ranges::find(tagged.servers, std::uint16_t{27023},
+        [](const auto& server) { return server.game.port; });
+    const auto ordinal = std::ranges::find(tagged.servers, std::uint16_t{27024},
+        [](const auto& server) { return server.game.port; });
+    expect(extension != tagged.servers.end() && extension->mode_code == "czom" && !extension->classic,
+           "textual CZOM tag selects the asymmetric Zombie variant");
+    expect(ordinal != tagged.servers.end() && ordinal->mode_code == "dem",
+           "adding CZOM must not invent or shift a retail numeric mode ordinal");
+    const std::array<battlespades::network::SteamListedServer, 1U> steam{{
+        {"127.0.0.1", 27025U, 27026U, "Classic+ Zombies", "CZOM_SpookyMansion",
+         "v168;playlist=8;mode=0001", 4U, 16U, 2U, false, 90000000000003ULL, 20},
+    }};
+    const auto prefixed = battlespades::network::parse_steam_server_list(steam);
+    expect(prefixed && prefixed.servers.size() == 1U &&
+               prefixed.servers.front().mode_code == "czom" &&
+               prefixed.servers.front().map == "SpookyMansion",
+           "Steam map prefix recognizes CZOM and retains the actual map name");
+}
+
 void lan_response_uses_datagram_source_as_authority() {
     constexpr std::string_view json =
         R"json({"name":"LAN Match","players_current":3,"players_max":16,"map":"Classic","game_mode":"CCTF"})json";
@@ -403,6 +430,7 @@ int main() {
         endpoints_are_strict_and_retail_local_is_supported();
         public_list_parses_real_schema_and_deduplicates();
         gameplay_mode_tag_beats_the_category_mode_tla();
+        classic_zombies_keep_a_textual_discovery_identity();
         lan_response_uses_datagram_source_as_authority();
         opaque_lobby_ids_resolve_to_current_endpoints();
         friend_server_selection_matches_authoritative_social_ids();
@@ -411,7 +439,7 @@ int main() {
         classic_ping_measures_exact_hello_hi_on_game_ports();
         classic_ping_timeout_and_cancellation_are_bounded();
         classic_master_ping_is_not_a_local_measurement();
-        std::cout << "11/11 tests passed\n";
+        std::cout << "12/12 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "[FAIL] " << error.what() << '\n';

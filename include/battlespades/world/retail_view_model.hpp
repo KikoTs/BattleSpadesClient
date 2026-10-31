@@ -45,6 +45,8 @@ struct WeaponViewModelInput final {
     double mechanism_phase{};
     /** Optional presentation duration; Classic charged digging needs a full swing. */
     double animation_duration{};
+    /** Local spade presentation only; does not affect swing timing or reach. */
+    double spade_swing_scale{1.0};
 };
 
 /**

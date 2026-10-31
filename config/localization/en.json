@@ -2200,6 +2200,10 @@
     "GORE_BRUTAL": "Brutal",
     "GORE_RESTRAINED": "Restrained",
     "GORE_INTENSITY_DESCRIPTION": "Controls new wound size, layered interiors and skin/bone fragments. Requires body wounds; cosmetic only.",
-    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Controls head and limb separation on death and corpse hits. Brutal makes close shotgun impacts reliable. Off keeps wounds without separation."
+    "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Controls head and limb separation on death and corpse hits. Brutal makes close shotgun impacts reliable. Off keeps wounds without separation.",
+    "MENU_BACKGROUND": "Menu background",
+    "MENU_BACKGROUND_MOTION": "Background motion",
+    "MENU_BACKGROUND_DESCRIPTION": "Choose the main-menu artwork. Preview changes here; Done saves and Cancel restores.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Gentle mouse-driven camera movement with brief motion blur. The artwork stays sharp at rest. Off by default."
   }
 }

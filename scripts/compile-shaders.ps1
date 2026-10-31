@@ -21,6 +21,7 @@ $backends = @(
 $shaders = @(
     @{ Source = "vs_ui.sc";    Type = "vertex";   Output = "vs_ui.bin";    Varying = "varying.def.sc" },
     @{ Source = "fs_ui.sc";    Type = "fragment"; Output = "fs_ui.bin";    Varying = "varying.def.sc" },
+    @{ Source = "fs_menu_background.sc"; Type = "fragment"; Output = "fs_menu_background.bin"; Varying = "varying.def.sc" },
     @{ Source = "vs_world.sc"; Type = "vertex";   Output = "vs_world.bin"; Varying = "varying_world.def.sc" },
     @{ Source = "fs_world.sc"; Type = "fragment"; Output = "fs_world.bin"; Varying = "varying_world.def.sc" },
     @{ Source = "vs_skydome.sc"; Type = "vertex"; Output = "vs_skydome.bin"; Varying = "varying_skydome.def.sc" },

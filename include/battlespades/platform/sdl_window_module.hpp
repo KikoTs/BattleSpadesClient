@@ -107,6 +107,7 @@ public:
     [[nodiscard]] bool relative_mouse_mode() const noexcept override;
     [[nodiscard]] bool set_text_input_enabled(bool enabled) override;
     [[nodiscard]] std::string clipboard_text() override;
+    [[nodiscard]] bool set_clipboard_text(std::string_view text) override;
 
     /** Last startup/runtime failure; empty when the latest operation succeeded. */
     [[nodiscard]] std::string_view last_error() const noexcept;

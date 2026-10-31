@@ -58,7 +58,7 @@ IdentityMenuModel::IdentityMenuModel()
               "SIGN IN THROUGH STEAM",
           },
           IdentityControl{
-              widget(4U, design_rect(269, 496, 126, 40)),
+              widget(4U, design_rect(249, 496, 98, 40)),
               IdentityAction::guest,
               "PLAY AS GUEST",
           },
@@ -68,9 +68,14 @@ IdentityMenuModel::IdentityMenuModel()
               "CONTINUE",
           },
           IdentityControl{
-              widget(6U, design_rect(405, 496, 126, 40)),
+              widget(6U, design_rect(453, 496, 98, 40)),
               IdentityAction::recover_steam,
               "RECOVER ACCOUNT",
+          },
+          IdentityControl{
+              widget(7U, design_rect(351, 496, 98, 40)),
+              IdentityAction::offline,
+              "OFFLINE",
           },
       } {
     controls_[2].widget.state.visible = false;
@@ -143,7 +148,7 @@ WidgetVisualState IdentityMenuModel::visual_state(ui::WidgetId id) const noexcep
         return control.widget.id;
     });
     if (found == controls_.end() || !found->widget.state.visible ||
-        !found->widget.state.enabled || busy_) {
+        !found->widget.state.enabled) {
         return WidgetVisualState::disabled;
     }
     const auto index =
@@ -171,7 +176,7 @@ void IdentityMenuModel::pointer_press(std::optional<ui::Point> point) noexcept {
     if (!point.has_value() || phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_) return;
     if (field_hit(username_bounds(), *point)) {
         focused_field_ = IdentityField::username;
-    } else if (field_hit(password_bounds(), *point)) {
+    } else if (phase_ != IdentityMenuPhase::offline_form && field_hit(password_bounds(), *point)) {
         focused_field_ = IdentityField::password;
     }
 }
@@ -180,7 +185,7 @@ std::optional<IdentityAction>
 IdentityMenuModel::pointer_release(std::optional<ui::Point> point) noexcept {
     pointer_move(point);
     std::optional<IdentityAction> action;
-    if (!busy_ && pressed_.has_value() && hovered_ == pressed_) {
+    if (pressed_.has_value() && hovered_ == pressed_) {
         const auto& control = controls_[*pressed_];
         if (control.widget.state.visible && control.widget.state.enabled) {
             action = control.action;
@@ -191,10 +196,12 @@ IdentityMenuModel::pointer_release(std::optional<ui::Point> point) noexcept {
 }
 
 void IdentityMenuModel::focus(IdentityField field) noexcept {
+    if (phase_ == IdentityMenuPhase::offline_form) field = IdentityField::username;
     if (phase_ != IdentityMenuPhase::recovery_code && phase_ != IdentityMenuPhase::steam_link && !busy_) focused_field_ = field;
 }
 
 void IdentityMenuModel::focus_next() noexcept {
+    if (phase_ == IdentityMenuPhase::offline_form) return;
     if (phase_ == IdentityMenuPhase::recovery_code || phase_ == IdentityMenuPhase::steam_link || busy_) return;
     focused_field_ = focused_field_ == IdentityField::username
                          ? IdentityField::password
@@ -208,11 +215,13 @@ bool IdentityMenuModel::append_text(std::string_view utf8) {
     }
     auto& target =
         focused_field_ == IdentityField::username ? username_ : password_;
-    const auto maximum = focused_field_ == IdentityField::username
+    const auto maximum = phase_ == IdentityMenuPhase::offline_form ? 31U : focused_field_ == IdentityField::username
                              ? maximum_username_bytes
                              : maximum_password_bytes;
     if (target.size() + utf8.size() > maximum) return false;
-    if (focused_field_ == IdentityField::username &&
+    if (phase_ == IdentityMenuPhase::offline_form &&
+        std::ranges::any_of(utf8, [](unsigned char c) { return c < 32U || c == 127U; })) return false;
+    if (phase_ != IdentityMenuPhase::offline_form && focused_field_ == IdentityField::username &&
         !std::ranges::all_of(utf8, [](char character) {
             const auto value = static_cast<unsigned char>(character);
             return std::isalnum(value) != 0 || character == '_';
@@ -244,6 +253,8 @@ void IdentityMenuModel::set_busy(bool busy, std::string status) {
     status_ = std::move(status);
     error_.clear();
     for (auto& control : controls_) control.widget.state.enabled = !busy;
+    // An unreachable sign-in service must never trap the offline entry point.
+    controls_[6].widget.state.enabled = true;
     apply_steam_control();
 }
 
@@ -304,6 +315,16 @@ void IdentityMenuModel::show_recovery_form() {
     controls_[1].label = "BACK";
     for (std::size_t i = 2; i < controls_.size(); ++i) controls_[i].widget.state.visible = false;
     status_ = "Use the Steam ID and code in Documents / BattleSpades.";
+}
+
+void IdentityMenuModel::show_offline_form(std::string name) {
+    reset_form();
+    phase_ = IdentityMenuPhase::offline_form;
+    username_ = std::move(name);
+    controls_[0].label = "PLAY OFFLINE";
+    controls_[1].label = "BACK";
+    for (std::size_t i = 2; i < controls_.size(); ++i) controls_[i].widget.state.visible = false;
+    status_ = "Local matches and bots. No account or internet needed.";
 }
 
 void IdentityMenuModel::reset_form() noexcept {

@@ -712,6 +712,7 @@ ServerModePresentation resolve_server_mode(std::string_view mode_code, bool clas
         Mode{"nor", "ARENA", "ARENA_DESCRIPTION"},
         Mode{"arena", "ARENA", "ARENA_DESCRIPTION"},
         Mode{"zom", "ZOMBIE_MODE_TITLE", "ZOMBIE_MODE_DESCRIPTION"},
+        Mode{"czom", "CLASSIC_ZOMBIE_TITLE", "ZOMBIE_MODE_DESCRIPTION"},
         Mode{"tdm", "TDM_TITLE", "TDM_DESCRIPTION"},
         Mode{"dia", "DIAMOND_MINE_TITLE", "DIAMOND_MINE_DESCRIPTION"},
         Mode{"oc", "OCCUPATION_MODE_TITLE", "OCCUPATION_MODE_DESCRIPTION"},

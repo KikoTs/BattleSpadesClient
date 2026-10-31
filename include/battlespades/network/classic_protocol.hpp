@@ -28,7 +28,8 @@ struct ClassicMotion final {
 class ClassicProtocolSession final {
 public:
     explicit ClassicProtocolSession(GameProtocol protocol, std::string name = "BattleSpades");
-    [[nodiscard]] ClassicIngest ingest(std::span<const std::byte> packet);
+    [[nodiscard]] ClassicIngest ingest(std::span<const std::byte> packet,
+                                       std::optional<double> received_seconds = std::nullopt);
     [[nodiscard]] ClassicPackets translate_client(std::span<const std::byte> native_packet);
     /** Validate an already-classic action against the current authoritative life. */
     [[nodiscard]] bool accepts_client_action(std::span<const std::byte> packet) const noexcept;
@@ -61,6 +62,8 @@ private:
         std::int32_t score{};
         std::uint8_t weapon{}, tool{2}, input{}, fire{};
         bool present{};
+        std::array<float, 3> velocity{};
+        std::optional<double> position_seconds;
     };
     void game_packet(std::span<const std::byte>, ClassicIngest&);
     void state_packet(std::span<const std::byte>, ClassicIngest&);
@@ -100,6 +103,7 @@ private:
     std::array<Territory, 16> territories_{};
     std::uint8_t territory_count_{};
     double last_advance_seconds_{};
+    double received_seconds_{};
     std::optional<ClassicMotion> last_motion_;
     std::optional<std::array<float, 3>> last_sent_orientation_;
     double last_position_seconds_{}, last_orientation_seconds_{};

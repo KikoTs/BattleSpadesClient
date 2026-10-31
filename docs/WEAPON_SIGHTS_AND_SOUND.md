@@ -45,6 +45,10 @@ the articulated pose. Supported classic combined-arm layouts are adapted to
 that frame; unknown layouts retain fallback. Native B&S weapons keep native
 poses. Remote bodies/objects retain the B&S rig.
 
+The native first-person spade animation uses 65% of the recovered swing travel
+and rotation. This keeps the shovel closer to the view center while preserving
+the original idle pose, attack/dig timing, reach and third-person animation.
+
 OpenSpades skin coordinates are left/forward/down; native camera conversion is
 `(-x, -z, -y)`. Apply it consistently to geometry, arms and projected sprites.
 This is a rotation, not a reason to reverse mesh winding. Changing equipment,
@@ -79,6 +83,11 @@ legacy equipment binding maps to Medic LMG presentation through
 `cosmetic_slots.hpp`. Grounded multipart objects use the visible non-pitching
 parts and supporting voxel surface for contact; barrel pitch must not move
 the whole rig. Falling models retain their continuous intrinsic offset.
+
+Classes without an equipped body or hat use their original authored team
+icons/portraits, including in live matches. A server connection alone does not
+replace those images with generated model renders. Equipped cosmetics retain
+their generated matching icons.
 
 Stable sun shadows use `include/battlespades/render/shadow_projection.hpp`:
 a camera-independent light basis, translation snapped in light space and a

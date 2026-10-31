@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battlespades/frontend/change_team_menu.hpp"
+#include "battlespades/frontend/chat_text.hpp"
 #include "battlespades/network/protocol168_players.hpp"
 #include "battlespades/network/protocol168_runtime.hpp"
 #include "battlespades/ui/draw_list.hpp"
@@ -80,6 +81,9 @@ struct ChatFeedEntry final {
     std::vector<ChatTextRun> runs;
     /** Russian, Polish and Turkish CreatePlayer rows select ChatLine.tuffy_font. */
     bool use_tuffy_font{};
+    std::uint64_t id{};
+    bool continuation{};
+    std::vector<ChatLink> links{};
 };
 
 /**
@@ -127,7 +131,9 @@ public:
 
     [[nodiscard]] bool active() const noexcept { return active_; }
     [[nodiscard]] ChatChannel channel() const noexcept { return channel_; }
-    [[nodiscard]] std::string_view input() const noexcept { return input_; }
+    [[nodiscard]] std::string_view input() const noexcept { return input_.text(); }
+    [[nodiscard]] ChatTextEditor& input_editor() noexcept { return input_; }
+    [[nodiscard]] const ChatTextEditor& input_editor() const noexcept { return input_; }
     [[nodiscard]] std::span<const ChatFeedEntry> entries() const noexcept {
         return entries_;
     }
@@ -136,7 +142,8 @@ private:
     void push_entry(ChatFeedEntry entry);
 
     std::vector<ChatFeedEntry> entries_;
-    std::string input_;
+    ChatTextEditor input_;
+    std::uint64_t next_entry_id_{1U};
     ChatChannel channel_{ChatChannel::global};
     bool active_{};
     std::function<bool(std::string_view)> glyph_filter_{};
@@ -154,7 +161,8 @@ public:
                                      ui::PixelExtent window,
                                      std::function<double(std::string_view,
                                                           double,
-                                                          std::string_view)> measure_text = {}) const;
+                                                          std::string_view)> measure_text = {},
+                                     ChatTextInteraction* interaction = nullptr) const;
 
 private:
     std::string team_label_{"Team chat:"};

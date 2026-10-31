@@ -2105,6 +2105,10 @@ def main() -> None:
         strings.update(CLASSIC_APPEARANCE_OVERLAYS.get(locale, {}))
         strings.update(DEATH_VOICE_OVERLAYS.get(locale, {}))
         strings.update(EFFECT_SETTINGS_OVERLAYS.get(locale, {}))
+        menu_background_strings = json.loads(
+            Path(__file__).with_name("menu-background-localization.json").read_text(encoding="utf-8")
+        )
+        strings.update(menu_background_strings.get(locale, {}))
 
         document = {
             "schema_version": 1,

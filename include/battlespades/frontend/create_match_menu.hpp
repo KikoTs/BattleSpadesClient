@@ -1,5 +1,7 @@
 #pragma once
 
+#include "battlespades/frontend/chat_text.hpp"
+
 #include "battlespades/ui/geometry.hpp"
 #include "battlespades/ui/input.hpp"
 
@@ -52,6 +54,7 @@ enum class CreateMatchModeFamily : std::uint8_t {
     standard,
     classic,
     mafia,
+    classic_zombie,
 };
 
 struct CreateMatchModeDefinition final {
@@ -138,6 +141,7 @@ struct CreateMatchChatLine final {
     std::string author;
     std::string message;
 
+    std::uint64_t id{};
     [[nodiscard]] friend bool operator==(const CreateMatchChatLine&,
                                          const CreateMatchChatLine&) = default;
 };
@@ -293,6 +297,8 @@ public:
     void set_custom_maps(std::vector<CreateMatchCustomMap> maps);
     [[nodiscard]] std::span<const CreateMatchCustomMap> custom_maps() const noexcept;
     void set_chat_lines(std::vector<CreateMatchChatLine> lines);
+    [[nodiscard]] ChatTextEditor& chat_editor() noexcept { return chat_draft_; }
+    void focus_chat() noexcept { chat_focused_ = true; focused_key_.reset(); }
     /** Apply one server-authoritative lobby snapshot without emitting edits. */
     void apply_authoritative_configuration(CreateMatchConfiguration configuration);
     /** Only the authoritative owner may mutate settings or start the match. */
@@ -360,7 +366,8 @@ private:
     std::string lobby_name_{"Private Match"};
     std::vector<CreateMatchPlayer> players_{};
     std::vector<CreateMatchChatLine> chat_lines_{};
-    std::string chat_draft_{};
+    ChatTextEditor chat_draft_{};
+    std::uint64_t next_chat_line_id_{1U};
     std::map<std::string, bool, std::less<>> expanded_categories_{};
     std::size_t first_visible_row_{};
     std::size_t first_visible_player_{};

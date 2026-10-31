@@ -2200,6 +2200,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Größe und Tiefe neuer Wunden und Fragmente. Erfordert aktivierte Wunden; rein kosmetisch.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Abtrennung von Kopf und Gliedmaßen beim Tod und bei Leichentreffern. Brutal verstärkt nahe Schrotflintentreffer. Aus behält Wunden bei.",
     "SPATIAL_AUDIO": "Raumklang (Kopfhörer)",
-    "SPATIAL_AUDIO_DESCRIPTION": "Binaurales HRTF für Richtungs- und Höhenhinweise über Kopfhörer. Für Stereo oder externe Verarbeitung deaktivieren. Erfordert einen kompatiblen Audioausgang."
+    "SPATIAL_AUDIO_DESCRIPTION": "Binaurales HRTF für Richtungs- und Höhenhinweise über Kopfhörer. Für Stereo oder externe Verarbeitung deaktivieren. Erfordert einen kompatiblen Audioausgang.",
+    "MENU_BACKGROUND": "Menühintergrund",
+    "MENU_BACKGROUND_MOTION": "Hintergrundbewegung",
+    "MENU_BACKGROUND_DESCRIPTION": "Wähle das Bild im Hauptmenü. Fertig speichert, Abbrechen stellt das vorherige Bild wieder her.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Sanfte Kamerabewegung mit der Maus und kurzer Bewegungsunschärfe. Im Stillstand bleibt das Bild scharf. Standardmäßig aus."
   }
 }

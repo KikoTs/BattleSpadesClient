@@ -13,6 +13,11 @@ aos_enable_strict_warnings(aos_core_tests)
 
 add_test(NAME aos_core_tests COMMAND aos_core_tests)
 
+add_executable(aos_chat_text_tests test_chat_text.cpp)
+target_link_libraries(aos_chat_text_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_chat_text_tests)
+add_test(NAME aos_chat_text_tests COMMAND aos_chat_text_tests)
+
 add_executable(aos_discord_presence_tests test_discord_presence.cpp)
 target_link_libraries(aos_discord_presence_tests PRIVATE BattleSpades::DiscordPresence nlohmann_json::nlohmann_json)
 aos_enable_strict_warnings(aos_discord_presence_tests)
@@ -25,6 +30,12 @@ aos_enable_strict_warnings(aos_demo_stream_tests)
 add_test(NAME aos_demo_stream_tests COMMAND aos_demo_stream_tests)
 
 if(AOS_ENABLE_NATIVE_BACKENDS)
+    # Opt-in real-driver regression, including Linux software Vulkan without a
+    # display server. Kept out of default CTest on hosts without Vulkan.
+    add_executable(aos_vulkan_descriptor_pressure_tests test_vulkan_descriptor_pressure.cpp)
+    target_link_libraries(aos_vulkan_descriptor_pressure_tests PRIVATE bgfx::bgfx)
+    target_compile_features(aos_vulkan_descriptor_pressure_tests PRIVATE cxx_std_20)
+    aos_enable_strict_warnings(aos_vulkan_descriptor_pressure_tests)
     find_package(ZLIB REQUIRED)
     add_executable(aos_demo_playback_tests test_demo_playback.cpp)
     target_link_libraries(aos_demo_playback_tests PRIVATE BattleSpades::NetworkEnet ZLIB::ZLIB)
@@ -489,6 +500,11 @@ add_executable(aos_class_loadout_store_tests test_class_loadout_store.cpp)
 target_link_libraries(aos_class_loadout_store_tests PRIVATE BattleSpades::Frontend)
 aos_enable_strict_warnings(aos_class_loadout_store_tests)
 add_test(NAME aos_class_loadout_store_tests COMMAND aos_class_loadout_store_tests)
+
+add_executable(aos_local_match_store_tests test_local_match_store.cpp)
+target_link_libraries(aos_local_match_store_tests PRIVATE BattleSpades::Frontend)
+aos_enable_strict_warnings(aos_local_match_store_tests)
+add_test(NAME aos_local_match_store_tests COMMAND aos_local_match_store_tests)
 
 add_executable(aos_retail_menus_tests test_retail_menus.cpp)
 target_link_libraries(aos_retail_menus_tests PRIVATE BattleSpades::Frontend BattleSpades::Settings)

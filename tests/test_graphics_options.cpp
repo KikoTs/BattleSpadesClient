@@ -150,6 +150,8 @@ void frame_limiter_asks_for_whole_frames_per_tick() {
            "a 60 fps cap presents only the tick frame");
     expect(limited_frame_period(FrameLimit::custom, 120U, true, 60'000U, false, tick) == tick / 2,
            "a 120 fps cap is two frames a tick even on a 60 Hz display without VSync");
+    expect(limited_frame_period(FrameLimit::custom, 240U, true, 60'000U, false, tick) == tick / 4,
+           "a 60 Hz monitor must not clamp an explicit 240 fps cap when VSync is off");
     expect(limited_frame_period(FrameLimit::custom, 144U, true, 240'000U, false, tick) == tick / 2,
            "a cap rounds down to whole frames per tick");
     expect(limited_frame_period(FrameLimit::custom, 240U, true, 144'000U, true, tick) == tick / 2,

@@ -5,6 +5,7 @@
 #include <bit>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <future>
 #include <stdexcept>
@@ -82,7 +83,7 @@ void make_retail_demo(const std::filesystem::path& path) {
     check(writer.finish(), "retail file closes");
 }
 
-void make_classic_demo(const std::filesystem::path& path) {
+void make_classic_demo(const std::filesystem::path& path, bool include_motion = false) {
     DemoWriter writer;
     check(writer.open(path, 3U), "classic recording opens");
     std::vector<std::byte> raw;
@@ -113,7 +114,24 @@ void make_classic_demo(const std::filesystem::path& path) {
     }
     check(writer.append(0U, state), "state records");
     const std::vector<std::byte> color{std::byte{8}, std::byte{1}, std::byte{30}, std::byte{20}, std::byte{10}};
-    check(writer.append(100'000U, color) && writer.finish(), "runtime packet and footer record");
+    check(writer.append(100'000U, color), "runtime packet records");
+    if (include_motion) {
+        std::vector<std::byte> spawn{std::byte{12}, std::byte{1}, std::byte{0}, std::byte{1}};
+        number(spawn, 10.0F); number(spawn, 20.0F); number(spawn, 30.0F);
+        text(spawn, "Walker");
+        check(writer.append(100'000U, spawn), "moving remote spawn records");
+        for (std::uint64_t sample{}; sample < 2U; ++sample) {
+            std::vector<std::byte> motion{std::byte{2}};
+            // Classic 0.75 rows are implicitly indexed: absent local slot,
+            // then the walking remote player's position and orientation.
+            for (unsigned i{}; i < 6U; ++i) number(motion, 0.0F);
+            number(motion, 10.0F + static_cast<float>(sample) * 0.4F);
+            number(motion, 20.0F); number(motion, 30.0F);
+            number(motion, 1.0F); number(motion, 0.0F); number(motion, 0.0F);
+            check(writer.append(100'000U + sample * 100'000U, motion), "remote world sample records");
+        }
+    }
+    check(writer.finish(), "runtime footer records");
 }
 
 void live_capture_roundtrip(const std::filesystem::path& fixture, const std::filesystem::path& captured,
@@ -283,6 +301,27 @@ int main() {
         check(!playback.advance(99'999U).finished, "future packet is not replayed early");
         auto last = playback.advance(100'000U);
         check(last.error.empty() && last.finished && !last.packets.empty(), "packet reaches gameplay at recorded time");
+
+        const auto motion_path = directory / "classic-motion.bsdem";
+        make_classic_demo(motion_path, true);
+        {
+            DemoPlayback moving;
+            check(moving.open(motion_path), "recorded motion opens");
+            check(moving.advance(0U).bootstrap != nullptr, "recorded motion bootstraps");
+            // Both 100-ms snapshots are decoded in one call. CPU decode time
+            // cannot replace recorded time when deriving footsteps/landing data.
+            const auto batch = moving.advance(200'000U);
+            bool walking_velocity{};
+            for (const auto& packet : batch.packets) {
+                if (packet.empty() || packet.front() != std::byte{2}) continue;
+                const auto rows = decode_world_update_weapon_rows(packet);
+                if (rows) for (const auto& row : rows.rows)
+                    if (row.player_id == 1U && std::abs(row.velocity[0] - 0.125F) < 0.001F)
+                        walking_velocity = true;
+            }
+            check(batch.error.empty() && batch.finished && walking_velocity,
+                  "batched Classic replay retains recorded remote movement velocity");
+        }
 
         LiveProtocol168Connection connection;
         EnetProtocol168Config config;

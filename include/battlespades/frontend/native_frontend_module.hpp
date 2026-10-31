@@ -134,6 +134,7 @@ public:
     [[nodiscard]] core::TickDecision tick(const core::TickContext& context) override;
     void stop() noexcept override;
     [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const noexcept override;
+    [[nodiscard]] std::chrono::nanoseconds last_presentation_work() const noexcept override;
     [[nodiscard]] core::TickDecision present_intermediate(double alpha) override;
     void idle(std::chrono::steady_clock::time_point deadline) override;
 

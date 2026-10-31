@@ -54,14 +54,18 @@ tasks page and no UAC prompt; everything below is decided automatically.
 3. Copies the **main build**: the client, its project-owned assets
    (`assets\client`, shaders, localization; an edited `ui-layout.json` is
    kept), the Steam bridge, the asset importer and the launcher/helper.
-   - The BattleSpades server is **not** in the installer. It is an optional
-     component, downloaded on demand when the player:
-     - ticks "Enable hosting" on the first-run screen, or
-     - opens Create Match / Map Creator for the first time.
+   - The BattleSpades server is bundled by default for offline matches and bots.
+     Releases must contain a tested client/server pair; CI verifies the pinned
+     server archive before including it. `-SkipServer` is for slim developer builds.
    - It lands in `server\`, where the client's `find_local_server_bundle`
      already looks.
-   - `build-installer.ps1 -IncludeServerInInstaller` still bundles it for
-     offline handouts.
+   - On the identity screen, choose **Offline**, enter a local player name, and
+     choose **Create Match / Local Match**. No sign-in, master or Steam service is
+     required. Online sessions are preserved separately. Offline games are unranked.
+   - `BattleSpadesClient.exe --offline` also opens the local name form and skips
+     online startup. `--offline --profile "LAN Player"` selects a name directly.
+     The original game assets must already have been imported; the server and
+     imported assets remain usable when online services are unavailable.
 4. **Retail assets are never redistributed or referenced by our scripts.**
    When Ace of Spades was found (and `assets\original` is not already there
    from an earlier install) it runs
@@ -606,8 +610,8 @@ Prerequisites:
 
 ```powershell
 ./installer/build-installer.ps1                                   # main build installer + component packages
-./installer/build-installer.ps1 -IncludeServerInInstaller         # also bundle the server into the installer
-./installer/build-installer.ps1 -SkipServer                       # no server package this time
+./installer/build-installer.ps1 -ServerBundle path/to/server      # choose the complete offline server bundle
+./installer/build-installer.ps1 -SkipServer                       # slim developer build; no offline matches
 ```
 
 Output in `out/installer/`:

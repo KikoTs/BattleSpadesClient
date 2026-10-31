@@ -2163,6 +2163,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Yeni yaraların ve parçaların boyutu ve derinliği. Yaralar açık olmalıdır; yalnızca görseldir.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Ölümde ve ceset isabetlerinde baş ve uzuv ayrılması. Vahşi, yakın pompalı tüfek isabetlerini güçlendirir. Kapatmak yaraları korur.",
     "SPATIAL_AUDIO": "Uzamsal ses (kulaklık)",
-    "SPATIAL_AUDIO_DESCRIPTION": "Kulaklıkta yön ve yükseklik ipuçları için binaural HRTF. Stereo veya harici işleme için kapatın. Uyumlu ses çıkışı gerektirir."
+    "SPATIAL_AUDIO_DESCRIPTION": "Kulaklıkta yön ve yükseklik ipuçları için binaural HRTF. Stereo veya harici işleme için kapatın. Uyumlu ses çıkışı gerektirir.",
+    "MENU_BACKGROUND": "Menü arka planı",
+    "MENU_BACKGROUND_MOTION": "Arka plan hareketi",
+    "MENU_BACKGROUND_DESCRIPTION": "Ana menünün arka planını seçin. Bitti kaydeder, İptal önceki arka planı geri getirir.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Fareyle hafif kamera hareketi ve kısa hareket bulanıklığı. Görüntü dururken net kalır. Varsayılan olarak kapalıdır."
   }
 }

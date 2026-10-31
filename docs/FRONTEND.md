@@ -82,6 +82,32 @@ readiness before joining. Stopping an owned session closes its server and
 tunnel. Persistent hosted match reports and UGC projects live outside disposable
 session directories. See [RUNBOOK.md](RUNBOOK.md) and [UGC_MAP_CREATOR.md](UGC_MAP_CREATOR.md).
 
+Create Match saves host edits automatically in `local_match.json` beside the
+client settings file: mode, map, rules, bots/difficulty, player count, duration,
+privacy and port. Saves replace the previous file atomically and restore on
+the next Create Match visit after restarting. Custom maps are checked against
+the installed map catalog; removed or incompatible maps fall back to stock.
+Guests' authoritative lobby snapshots do not replace the local host's save.
+The save contains no room credentials or account tokens.
+
+**Classic+ Zombies** is available in the mode picker. It uses Deuce survivor
+equipment and the existing Zombie infection rules, radar and asymmetric teams;
+local hosting requires a server build supporting `czom`.
+
+Open game chat to drag-select messages; the match-lobby feed is selectable by
+clicking it. Ctrl+C copies the selection, Ctrl+A selects the focused input or
+transcript, and Ctrl+X cuts selected input (Command on macOS). Input supports
+caret movement, Shift selection, Home/End, word movement, Backspace and Delete.
+Ctrl+V/Shift+Insert pastes without submitting; multiline clipboard text becomes
+one line and retains the same Unicode/glyph and wire-length limits as typing.
+Only Discord invites (`discord.gg`, `discord.com/invite`, and the legacy
+`discordapp.com/invite`) and Discord channel links are underlined and clickable.
+Dragging, releasing elsewhere, or losing focus never activates a link.
+
+Shutdown joins lobby resolution, hosted-result and Steam workers before their
+mailboxes, mutexes and SDK services are released. This also applies to partial
+startup failure, when the normal frontend stop path may not have completed.
+
 Current bundles publish atomic session/port/mode-bound lifecycle snapshots to
 the native client's private `host-status.json` path. Ready follows complete
 server initialization; stdin remains the shutdown channel. Older bundles use

@@ -132,7 +132,8 @@ template <typename Integer>
         const auto tag = lowercase(candidate.get<std::string>());
         if (tag.starts_with("gamemode=")) {
             const auto mode = std::string_view{tag}.substr(9U);
-            if (std::ranges::find(codes, mode) != codes.end()) return std::string{mode};
+            // Extensions have textual codes, never new retail wire ordinals.
+            if (mode == "czom" || std::ranges::find(codes, mode) != codes.end()) return std::string{mode};
             continue;
         }
         if (!tag.starts_with("mode=") || tag.size() > 9U) continue;
@@ -166,8 +167,8 @@ template <typename Integer>
 }
 
 [[nodiscard]] bool known_mode_code(std::string_view code) {
-    static constexpr std::array<std::string_view, 12U> codes{
-        "tdm", "ctf", "cctf", "zom", "vip", "tc", "dia", "dem", "mh", "oc", "ugc", "tut"};
+    static constexpr std::array<std::string_view, 13U> codes{
+        "tdm", "ctf", "cctf", "zom", "czom", "vip", "tc", "dia", "dem", "mh", "oc", "ugc", "tut"};
     return std::ranges::find(codes, code) != codes.end();
 }
 

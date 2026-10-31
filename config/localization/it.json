@@ -2163,6 +2163,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Dimensioni e profondità di nuove ferite e frammenti. Richiede le ferite attive; solo visivo.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Separazione di testa e arti alla morte e con colpi sui cadaveri. Brutale intensifica i colpi ravvicinati di fucile a pompa. Disattivare mantiene le ferite.",
     "SPATIAL_AUDIO": "Audio spaziale (cuffie)",
-    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaurale per direzione e altezza in cuffia. Disattiva per stereo o elaborazione esterna. Richiede un’uscita audio compatibile."
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaurale per direzione e altezza in cuffia. Disattiva per stereo o elaborazione esterna. Richiede un’uscita audio compatibile.",
+    "MENU_BACKGROUND": "Sfondo del menu",
+    "MENU_BACKGROUND_MOTION": "Movimento dello sfondo",
+    "MENU_BACKGROUND_DESCRIPTION": "Scegli lo sfondo del menu principale. Fine salva, Annulla ripristina quello precedente.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimento delicato della camera con il mouse e breve sfocatura. L’immagine resta nitida da ferma. Disattivato di default."
   }
 }

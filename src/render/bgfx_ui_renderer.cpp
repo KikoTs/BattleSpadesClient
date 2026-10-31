@@ -32,8 +32,8 @@ namespace battlespades::render {
 namespace {
 
 /**
- * bgfx callback that keeps bgfx's stub behaviour (fatal aborts, no trace or
- * shader cache) and additionally receives requestScreenShot() pixels, which
+ * bgfx callback that aborts on fatal errors, reports descriptor allocation
+ * failures and receives requestScreenShot() pixels, which
  * bgfx delivers on its render thread.
  */
 class ScreenshotCallback final : public bgfx::CallbackI {
@@ -45,7 +45,12 @@ public:
                      message != nullptr ? message : "");
         std::abort();
     }
-    void traceVargs(const char*, std::uint16_t, const char*, va_list) override {}
+    void traceVargs(const char*, std::uint16_t, const char* format, va_list arguments) override {
+        if (format != nullptr && std::string_view{format}.starts_with(
+                "BGFX Vulkan descriptor operation failed")) {
+            std::vfprintf(stderr, format, arguments);
+        }
+    }
     void profilerBegin(const char*, std::uint32_t, const char*, std::uint16_t) override {}
     void profilerBeginLiteral(const char*, std::uint32_t, const char*, std::uint16_t) override {}
     void profilerEnd() override {}
@@ -495,6 +500,20 @@ struct BgfxUiRenderer::Impl final {
         if (!bgfx::isValid(program)) {
             return fail("bgfx could not link the UI shader program");
         }
+        const auto menu_vertex = load_shader(backend_root / "vs_ui.bin");
+        const auto menu_fragment = load_shader(backend_root / "fs_menu_background.bin");
+        if (!bgfx::isValid(menu_vertex) || !bgfx::isValid(menu_fragment)) {
+            if (bgfx::isValid(menu_vertex)) bgfx::destroy(menu_vertex);
+            if (bgfx::isValid(menu_fragment)) bgfx::destroy(menu_fragment);
+            return false;
+        }
+        menu_program = bgfx::createProgram(menu_vertex, menu_fragment, true);
+        menu_motion = bgfx::createUniform("u_menuMotion", bgfx::UniformType::Vec4);
+        menu_bounds = bgfx::createUniform("u_menuBounds", bgfx::UniformType::Vec4);
+        menu_atmosphere = bgfx::createUniform("u_menuAtmosphere", bgfx::UniformType::Vec4);
+        if (!bgfx::isValid(menu_program) || !bgfx::isValid(menu_motion) ||
+            !bgfx::isValid(menu_bounds) || !bgfx::isValid(menu_atmosphere))
+            return fail("bgfx could not create the menu background effect");
         return true;
     }
 
@@ -779,7 +798,21 @@ struct BgfxUiRenderer::Impl final {
                           : canvas_submitted                         ? window_overlay_view_id
                                                                      : window_view_id;
         if (view == ui_view_id) canvas_submitted = true;
-        bgfx::submit(view, program);
+        auto selected_program = program;
+        if (sprite.background_motion.has_value()) {
+            const std::array bounds{u0, v0, u1, v1};
+            const auto camera_scale = std::clamp(std::min(
+                static_cast<float>(drawable.width) / 1920.0F,
+                static_cast<float>(drawable.height) / 1080.0F), 0.0F, 2.0F);
+            const std::array atmosphere{sprite.background_cutout ? 1.0F : 0.0F,
+                1.0F / destination.width, 1.0F / destination.height,
+                camera_scale * sprite.background_parallax};
+            bgfx::setUniform(menu_motion, sprite.background_motion->data());
+            bgfx::setUniform(menu_bounds, bounds.data());
+            bgfx::setUniform(menu_atmosphere, atmosphere.data());
+            selected_program = menu_program;
+        }
+        bgfx::submit(view, selected_program);
         return true;
     }
 
@@ -792,6 +825,10 @@ struct BgfxUiRenderer::Impl final {
     bgfx::VertexLayout vertex_layout{};
     bgfx::UniformHandle sampler{bgfx::kInvalidHandle};
     bgfx::ProgramHandle program{bgfx::kInvalidHandle};
+    bgfx::ProgramHandle menu_program{bgfx::kInvalidHandle};
+    bgfx::UniformHandle menu_motion{bgfx::kInvalidHandle};
+    bgfx::UniformHandle menu_bounds{bgfx::kInvalidHandle};
+    bgfx::UniformHandle menu_atmosphere{bgfx::kInvalidHandle};
     std::vector<TextureSlot> textures{};
     std::vector<std::uint32_t> free_slots{};
     std::map<CacheKey, std::uint32_t> texture_cache{};
@@ -959,6 +996,14 @@ void BgfxUiRenderer::shutdown() noexcept {
     if (bgfx::isValid(impl_->program)) {
         bgfx::destroy(impl_->program);
         impl_->program = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(impl_->menu_program)) {
+        bgfx::destroy(impl_->menu_program);
+        impl_->menu_program = BGFX_INVALID_HANDLE;
+    }
+    for (auto* uniform : {&impl_->menu_motion, &impl_->menu_bounds, &impl_->menu_atmosphere}) {
+        if (bgfx::isValid(*uniform)) bgfx::destroy(*uniform);
+        *uniform = BGFX_INVALID_HANDLE;
     }
     if (bgfx::isValid(impl_->sampler)) {
         bgfx::destroy(impl_->sampler);
@@ -1436,6 +1481,12 @@ bool BgfxUiRenderer::draw(const UiSprite& sprite) {
     if (!std::isfinite(sprite.rotation_degrees)) {
         return impl_->fail("sprite rotation must be finite");
     }
+    if (sprite.background_motion && (!std::isfinite(sprite.background_time) ||
+        !std::ranges::all_of(*sprite.background_motion, [](float v) { return std::isfinite(v); })))
+        return impl_->fail("background motion must be finite");
+    if (sprite.background_motion && (!std::isfinite(sprite.background_parallax) ||
+        sprite.background_parallax < 0.0F || sprite.background_parallax > 3.0F))
+        return impl_->fail("background layer parallax must be finite and bounded");
     impl_->draws.emplace_back(sprite);
     impl_->error.clear();
     return true;

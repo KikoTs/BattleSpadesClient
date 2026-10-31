@@ -1,0 +1,86 @@
+{
+  "en": {
+    "MENU_BACKGROUND": "Menu background",
+    "MENU_BACKGROUND_MOTION": "Background motion",
+    "MENU_BACKGROUND_DESCRIPTION": "Choose the main-menu artwork. Preview changes here; Done saves and Cancel restores.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Gentle mouse-driven camera movement with brief motion blur. The artwork stays sharp at rest. Off by default."
+  },
+  "bg": {
+    "MENU_BACKGROUND": "Фон на менюто",
+    "MENU_BACKGROUND_MOTION": "Движение на фона",
+    "MENU_BACKGROUND_DESCRIPTION": "Изберете фон за главното меню. Готово запазва, Отказ връща предишния фон.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Леко движение на камерата с мишката и кратко размазване. Фонът остава ясен в покой. По подразбиране е изключено."
+  },
+  "cs": {
+    "MENU_BACKGROUND": "Pozadí nabídky",
+    "MENU_BACKGROUND_MOTION": "Pohyb pozadí",
+    "MENU_BACKGROUND_DESCRIPTION": "Vyberte pozadí hlavní nabídky. Hotovo uloží změny, Zrušit obnoví původní.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Jemný pohyb kamery podle myši s krátkým rozmazáním pohybu. V klidu zůstává obraz ostrý. Ve výchozím stavu vypnuto."
+  },
+  "de": {
+    "MENU_BACKGROUND": "Menühintergrund",
+    "MENU_BACKGROUND_MOTION": "Hintergrundbewegung",
+    "MENU_BACKGROUND_DESCRIPTION": "Wähle das Bild im Hauptmenü. Fertig speichert, Abbrechen stellt das vorherige Bild wieder her.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Sanfte Kamerabewegung mit der Maus und kurzer Bewegungsunschärfe. Im Stillstand bleibt das Bild scharf. Standardmäßig aus."
+  },
+  "es": {
+    "MENU_BACKGROUND": "Fondo del menú",
+    "MENU_BACKGROUND_MOTION": "Movimiento del fondo",
+    "MENU_BACKGROUND_DESCRIPTION": "Elige el fondo del menú principal. Listo guarda los cambios y Cancelar restaura el anterior.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimiento suave de cámara con el ratón y desenfoque breve. La imagen permanece nítida en reposo. Desactivado por defecto."
+  },
+  "es-MX": {
+    "MENU_BACKGROUND": "Fondo del menú",
+    "MENU_BACKGROUND_MOTION": "Movimiento del fondo",
+    "MENU_BACKGROUND_DESCRIPTION": "Elige el fondo del menú principal. Listo guarda los cambios y Cancelar restaura el anterior.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimiento suave de cámara con el mouse y desenfoque breve. La imagen permanece nítida en reposo. Desactivado por defecto."
+  },
+  "fr": {
+    "MENU_BACKGROUND": "Fond du menu",
+    "MENU_BACKGROUND_MOTION": "Mouvement du fond",
+    "MENU_BACKGROUND_DESCRIPTION": "Choisissez le fond du menu principal. Terminé enregistre, Annuler rétablit le fond précédent.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Léger mouvement de caméra à la souris avec un bref flou de mouvement. L’image reste nette au repos. Désactivé par défaut."
+  },
+  "it": {
+    "MENU_BACKGROUND": "Sfondo del menu",
+    "MENU_BACKGROUND_MOTION": "Movimento dello sfondo",
+    "MENU_BACKGROUND_DESCRIPTION": "Scegli lo sfondo del menu principale. Fine salva, Annulla ripristina quello precedente.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimento delicato della camera con il mouse e breve sfocatura. L’immagine resta nitida da ferma. Disattivato di default."
+  },
+  "ja": {
+    "MENU_BACKGROUND": "メニューの背景",
+    "MENU_BACKGROUND_MOTION": "背景のモーション",
+    "MENU_BACKGROUND_DESCRIPTION": "メインメニューの背景を選びます。完了で保存、キャンセルで元に戻します。",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "マウスに合わせた穏やかなカメラ移動と短いモーションブラー。停止時は鮮明な画像を保ちます。初期設定はオフです。"
+  },
+  "pl": {
+    "MENU_BACKGROUND": "Tło menu",
+    "MENU_BACKGROUND_MOTION": "Ruch tła",
+    "MENU_BACKGROUND_DESCRIPTION": "Wybierz tło menu głównego. Gotowe zapisuje zmiany, Anuluj przywraca poprzednie tło.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Delikatny ruch kamery za myszą z krótkim rozmyciem ruchu. W spoczynku obraz pozostaje ostry. Domyślnie wyłączone."
+  },
+  "pt-BR": {
+    "MENU_BACKGROUND": "Fundo do menu",
+    "MENU_BACKGROUND_MOTION": "Movimento do fundo",
+    "MENU_BACKGROUND_DESCRIPTION": "Escolha o fundo do menu principal. Concluído salva e Cancelar restaura o anterior.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimento suave da câmera com o mouse e breve desfoque. A imagem fica nítida em repouso. Desativado por padrão."
+  },
+  "ru": {
+    "MENU_BACKGROUND": "Фон меню",
+    "MENU_BACKGROUND_MOTION": "Движение фона",
+    "MENU_BACKGROUND_DESCRIPTION": "Выберите фон главного меню. Готово сохраняет изменения, Отмена возвращает прежний фон.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Лёгкое движение камеры за мышью с коротким размытием. В покое изображение остаётся чётким. По умолчанию выключено."
+  },
+  "uk": {
+    "MENU_BACKGROUND": "Тло меню",
+    "MENU_BACKGROUND_MOTION": "Рух тла",
+    "MENU_BACKGROUND_DESCRIPTION": "Виберіть тло головного меню. Готово зберігає зміни, Скасувати повертає попереднє тло.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Легкий рух камери за мишею з коротким розмиттям. У спокої зображення залишається чітким. Типово вимкнено."
+  },
+  "tr": {
+    "MENU_BACKGROUND": "Menü arka planı",
+    "MENU_BACKGROUND_MOTION": "Arka plan hareketi",
+    "MENU_BACKGROUND_DESCRIPTION": "Ana menünün arka planını seçin. Bitti kaydeder, İptal önceki arka planı geri getirir.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Fareyle hafif kamera hareketi ve kısa hareket bulanıklığı. Görüntü dururken net kalır. Varsayılan olarak kapalıdır."
+  }
+}

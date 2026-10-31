@@ -584,8 +584,17 @@ evaluate_weapon_view_model(const WeaponViewModelInput& input) noexcept {
     // plus every playing Animation, summed per part by Tool.apply_animations.
     // They are not KV6 pivots: the same translation also anchors the hands.
     const auto hold = retail_tool_hold(input.tool_id, true);
-    const auto animation =
+    auto animation =
         evaluate_retail_tool_animation(input.tool_id, input.seconds_since_primary, true, input.animation_duration);
+    if (retail_tool_animation_family(input.tool_id) == RetailToolAnimationFamily::use_spade) {
+        const double scale = std::isfinite(input.spade_swing_scale)
+                                 ? std::clamp(input.spade_swing_scale, 0.0, 1.0) : 1.0;
+        animation.position = {animation.position.x * scale, animation.position.y * scale,
+                              animation.position.z * scale};
+        animation.orientation_degrees = {animation.orientation_degrees.x * scale,
+                                         animation.orientation_degrees.y * scale,
+                                         animation.orientation_degrees.z * scale};
+    }
     for (std::size_t index{}; index < result.tool_parts.size(); ++index) {
         result.tool_parts[index] = add(hold.parts[index], animation);
     }

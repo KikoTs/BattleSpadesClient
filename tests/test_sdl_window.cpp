@@ -176,6 +176,11 @@ void sdl_window_preserves_lifecycle_and_input_events() {
     expect(SDL_SetClipboardText("127.0.0.1:27015"), "dummy clipboard must accept fixture text");
     expect(window.clipboard_text() == "127.0.0.1:27015",
            "explicit paste must read the complete host:port through the platform boundary");
+    expect(window.set_clipboard_text("copy \xD0\x96 https://discord.gg/test") &&
+               window.clipboard_text() == "copy \xD0\x96 https://discord.gg/test",
+           "explicit copy must preserve Unicode and complete links through SDL");
+    expect(!window.set_clipboard_text(std::string_view{"a\0b", 3U}),
+           "copy must reject embedded NUL rather than silently truncate text");
     expect(window.set_text_input_enabled(false),
            "SDL text input must stop cleanly");
 
@@ -256,6 +261,7 @@ void sdl_window_preserves_lifecycle_and_input_events() {
 
     window.stop();
     expect(window.clipboard_text().empty(), "stopped windows must not read the clipboard");
+    expect(!window.set_clipboard_text("stopped"), "stopped windows must not write the clipboard");
     expect(window.logical_extent() == WindowExtent{}, "stop must clear logical extent");
     expect(window.drawable_extent() == WindowExtent{}, "stop must clear drawable extent");
     expect(window.events().empty(), "stop must clear retained events");

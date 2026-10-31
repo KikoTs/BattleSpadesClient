@@ -1,4 +1,5 @@
 #include "battlespades/network/enet_protocol168_client.hpp"
+#include "enet_connection_query.hpp"
 
 #include <chrono>
 #include <span>
@@ -58,13 +59,14 @@ EnetProtocol168Result run_enet_protocol168_session(
         result.error = "cannot resolve Protocol 168 host";
         return result;
     }
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds{config.timeout_ms};
+    detail::prepare_connection_query(*host, address, deadline, [] { return false; });
     ENetPeer* peer = enet_host_connect(host, &address, 1U, 168U);
     if (peer == nullptr) {
         result.error = "enet_host_connect failed";
         return result;
     }
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::milliseconds{config.timeout_ms};
     while (std::chrono::steady_clock::now() < deadline && !session.ready() &&
            session.phase() != Protocol168SessionPhase::failed) {
         ENetEvent event{};

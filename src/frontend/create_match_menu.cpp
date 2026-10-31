@@ -44,9 +44,10 @@ constexpr std::array<std::string_view, 16U> zombie_maps{
     "MayanJungle", "SpookyMansion", "TheColosseum", "TokyoNeon"};
 
 // The panel sorts localized names. This is the resulting English retail order.
-constexpr std::array<CreateMatchModeDefinition, 10U> modes{{
+constexpr std::array<CreateMatchModeDefinition, 11U> modes{{
     {3U, "ctf", "CTF_TITLE", CreateMatchModeFamily::standard, ctf_maps, 16U, 30U},
     {2U, "cctf", "CLASSIC_CTF_TITLE", CreateMatchModeFamily::classic, classic_maps, 32U, 90U},
+    {14U, "czom", "CLASSIC_ZOMBIE_TITLE", CreateMatchModeFamily::classic_zombie, zombie_maps, 16U, 10U},
     {4U, "dem", "DEMOLITION_TITLE", CreateMatchModeFamily::standard, demolition_maps, 16U, 15U},
     {5U, "dia", "DIAMOND_MINE_TITLE", CreateMatchModeFamily::standard, diamond_maps, 16U, 15U},
     {6U, "mh", "MULTIHILL_TITLE", CreateMatchModeFamily::standard, multihill_maps, 16U, 25U},
@@ -566,6 +567,7 @@ const CreateMatchCustomMap* CreateMatchMenuModel::listed_custom_map(
     // CTF shares MODE_CTF, so a CTF-valid map also hosts cctf.
     auto mode_key = std::string{selected_mode().mode_key};
     if (mode_key == "cctf") mode_key = "ctf";
+    if (mode_key == "czom") mode_key = "zom";
     const auto found = std::find_if(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
         return create_match_custom_map_key(map) == row_key;
     });
@@ -577,6 +579,7 @@ bool CreateMatchMenuModel::custom_map_valid(const CreateMatchModeDefinition& mod
     if (!configuration_.custom_map) return false;
     auto mode_key = std::string{mode.mode_key};
     if (mode_key == "cctf") mode_key = "ctf";
+    if (mode_key == "czom") mode_key = "zom";
     return std::any_of(custom_maps_.begin(), custom_maps_.end(), [&](const auto& map) {
         return map.stem == configuration_.map_name &&
                map.subscribed == configuration_.subscribed_map && has_mode(map.mode_keys, mode_key);
@@ -613,10 +616,11 @@ void CreateMatchMenuModel::apply_authoritative_configuration(
     const auto incoming_map = configuration.map_name;
     const auto keep_custom = !configuration.custom_map && configuration_.custom_map &&
                              incoming_map == configuration_.map_name;
-    auto custom = configuration_;
+    const bool restore_custom = configuration.custom_map;
+    auto custom = restore_custom ? configuration : configuration_;
     CreateMatchMenuModel normalized{std::move(configuration)};
     configuration_ = normalized.configuration_;
-    if (keep_custom) {
+    if (keep_custom || restore_custom) {
         const auto previous_map = configuration_.map_name;
         configuration_.map_name = custom.map_name;
         configuration_.custom_map = true;
@@ -675,41 +679,32 @@ void CreateMatchMenuModel::set_chat_lines(std::vector<CreateMatchChatLine> lines
         lines.erase(lines.begin(), lines.end() -
                                       static_cast<std::ptrdiff_t>(maximum_chat_history));
     }
+    auto old = chat_lines_.begin();
+    for (auto& line : lines) {
+        const auto found = std::find_if(old, chat_lines_.end(), [&line](const auto& previous) {
+            return previous.author == line.author && previous.message == line.message;
+        });
+        if (found != chat_lines_.end()) { line.id = found->id; old = std::next(found); }
+        else line.id = next_chat_line_id_++;
+    }
     chat_lines_ = std::move(lines);
 }
 
 bool CreateMatchMenuModel::append_chat_text(std::string_view utf8) {
     if (!chat_focused_ || utf8.empty()) return false;
-    auto next = chat_draft_;
-    next.append(utf8);
-    if (!valid_utf8_with_code_point_limit(next, 160U)) return false;
-    if (std::ranges::any_of(next, [](char value) {
-            const auto byte = static_cast<unsigned char>(value);
-            return byte < 0x20U && byte != '\t';
-        })) {
-        return false;
-    }
-    chat_draft_ = std::move(next);
-    return true;
+    return chat_draft_.insert(utf8, 640U, 160U);
 }
 
 bool CreateMatchMenuModel::erase_chat_code_point() noexcept {
-    if (!chat_focused_ || chat_draft_.empty()) return false;
-    auto index = chat_draft_.size() - 1U;
-    while (index > 0U &&
-           (static_cast<unsigned char>(chat_draft_[index]) & 0xC0U) == 0x80U) {
-        --index;
-    }
-    chat_draft_.erase(index);
-    return true;
+    return chat_focused_ && chat_draft_.erase(false);
 }
 
 bool CreateMatchMenuModel::submit_chat() {
     if (!chat_focused_) return false;
-    const auto first = chat_draft_.find_first_not_of(" \t");
+    const auto first = chat_draft_.text().find_first_not_of(" \t");
     if (first == std::string::npos) return false;
-    const auto last = chat_draft_.find_last_not_of(" \t");
-    auto message = chat_draft_.substr(first, last - first + 1U);
+    const auto last = chat_draft_.text().find_last_not_of(" \t");
+    auto message = chat_draft_.text().substr(first, last - first + 1U);
     if (!valid_utf8_with_code_point_limit(message, 160U)) return false;
     effects_.push_back(CreateMatchChatEffect{std::move(message)});
     chat_draft_.clear();
@@ -738,7 +733,8 @@ const CreateMatchModeDefinition& CreateMatchMenuModel::selected_mode() const noe
 
 std::string CreateMatchMenuModel::playlist_default_value(
     const CreateMatchRuleDefinition& rule) const {
-    if (selected_mode().mode_key == "zom" && rule.rule_key == "RULE_CRATES_SPAWN_TIME") {
+    if ((selected_mode().mode_key == "zom" || selected_mode().mode_key == "czom") &&
+        rule.rule_key == "RULE_CRATES_SPAWN_TIME") {
         return "60";
     }
     if (selected_mode().mode_key == "cctf") {
@@ -762,13 +758,16 @@ bool CreateMatchMenuModel::rule_available(const CreateMatchRuleDefinition& rule)
     const auto family = selected_mode().family;
     const auto family_available = family == CreateMatchModeFamily::standard
                                       ? rule.available_standard
-                                  : family == CreateMatchModeFamily::classic
+                                  : (family == CreateMatchModeFamily::classic ||
+                                     family == CreateMatchModeFamily::classic_zombie)
                                       ? rule.available_classic
                                       : rule.available_mafia;
     if (!family_available) return false;
     const auto category = rule.category_key;
     const auto mode_category = selected_mode().mode_key == "cctf"
                                    ? std::string_view{"ctf"}
+                               : selected_mode().mode_key == "czom"
+                                   ? std::string_view{"zom"}
                                    : selected_mode().mode_key;
     return category == "GENERAL" || category == "CLASSES" || category == "WEAPONS" ||
            category == "EQUIPMENT" || category == mode_category;
@@ -838,7 +837,8 @@ std::vector<std::string> CreateMatchMenuModel::expanded_row_keys() const {
         selected_mode().mode_key, std::string_view{"GENERAL"}, std::string_view{"CLASSES"},
         std::string_view{"WEAPONS"}, std::string_view{"EQUIPMENT"}};
     for (const auto category : category_order) {
-        const auto source_category = category == "cctf" ? std::string_view{"ctf"} : category;
+        const auto source_category = category == "cctf" ? std::string_view{"ctf"}
+                                   : category == "czom" ? std::string_view{"zom"} : category;
         const auto has_rows = std::any_of(rules().begin(), rules().end(), [&](const auto& rule) {
             return rule.category_key == source_category && rule_available(rule);
         });
@@ -861,7 +861,7 @@ std::size_t CreateMatchMenuModel::visible_capacity() const noexcept {
     // its own Defaults strip and uses 32 px rows with 2 px spacing.
     switch (page_) {
     case CreateMatchPage::match_settings: return 6U;
-    case CreateMatchPage::choose_game_mode:
+    case CreateMatchPage::choose_game_mode: return 11U;
     case CreateMatchPage::choose_map: return 10U;
     case CreateMatchPage::game_rules: return 9U;
     }
@@ -1464,7 +1464,7 @@ CreateMatchMenuPresentation CreateMatchMenuModel::presentation() const {
     frame.first_visible_player = first_visible_player_;
     frame.member_management = host_authority_ && member_management_enabled_;
     frame.chat_lines = chat_lines_;
-    frame.chat_draft = chat_draft_;
+    frame.chat_draft = chat_draft_.text();
     frame.chat_focused = chat_focused_;
     frame.first_visible_row = first_visible_row_;
     frame.maximum_scroll = maximum_scroll();

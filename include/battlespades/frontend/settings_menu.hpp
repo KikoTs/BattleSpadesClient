@@ -116,6 +116,8 @@ enum class SettingsRowId : std::uint8_t {
     quick_save,
     discord_presence,
     discord_join,
+    menu_background,
+    menu_background_motion,
 };
 
 enum class SettingsRowKind : std::uint8_t {

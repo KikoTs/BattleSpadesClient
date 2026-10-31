@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battlespades/settings/classic_appearance.hpp"
+#include "battlespades/settings/menu_backgrounds.hpp"
 
 #include <array>
 #include <cstddef>
@@ -24,6 +25,9 @@ enum class SettingsTab : std::uint8_t {
 struct MainSettings final {
     /** BCP-47-style locale selected from the external localization directory. */
     std::string language{"en"};
+    std::string menu_background{"miner-and-zombies"};
+    /** Mouse-driven image-plane depth effect; opt-in for motion sensitivity. */
+    bool menu_background_motion{false};
     double master_volume{1.0};
     double music_volume{1.0};
     /** Play retail gameplay music when a server has not supplied music cues. */

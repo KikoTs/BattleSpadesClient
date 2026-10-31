@@ -2200,6 +2200,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Taille et profondeur des nouvelles blessures et des fragments. Nécessite les blessures ; effet purement visuel.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Séparation de la tête et des membres à la mort et lors des tirs sur les corps. Brutale renforce les tirs de fusil à pompe à courte portée. Désactiver conserve les blessures.",
     "SPATIAL_AUDIO": "Audio spatial (casque)",
-    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural pour repérer direction et hauteur au casque. Désactivez pour la stéréo ou un traitement externe. Nécessite une sortie audio compatible."
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural pour repérer direction et hauteur au casque. Désactivez pour la stéréo ou un traitement externe. Nécessite une sortie audio compatible.",
+    "MENU_BACKGROUND": "Fond du menu",
+    "MENU_BACKGROUND_MOTION": "Mouvement du fond",
+    "MENU_BACKGROUND_DESCRIPTION": "Choisissez le fond du menu principal. Terminé enregistre, Annuler rétablit le fond précédent.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Léger mouvement de caméra à la souris avec un bref flou de mouvement. L’image reste nette au repos. Désactivé par défaut."
   }
 }

@@ -432,6 +432,14 @@ template <typename Value, typename Parser>
                                     : state.candidate.main.dismemberment_intensity) = static_cast<std::uint8_t>(*parsed);
             return true;
         }
+        if (key == "menu_background") {
+            if (!state.remember(line, key)) return false;
+            const auto parsed = parse_string(value);
+            if (!parsed || menu_background_option(*parsed) == nullptr)
+                return state.fail(line, "invalid menu background");
+            state.candidate.main.menu_background = *parsed;
+            return true;
+        }
         if (key == "classic_sky" || key == "classic_fog") {
             if (!state.remember(line, key)) return false;
             const auto parsed = parse_string(value);
@@ -485,7 +493,7 @@ template <typename Value, typename Parser>
         }
         if (key == "fullscreen" || key == "invert_mouse" || key == "show_skins" ||
             key == "show_other_skins" || key == "weapon_motion" || key == "ability_hints" ||
-            key == "fallback_music" || key == "death_voices" || key == "spatial_audio" || key == "ragdoll_corpses" || key == "blood_marks" || key == "gore" ||
+            key == "menu_background_motion" || key == "fallback_music" || key == "death_voices" || key == "spatial_audio" || key == "ragdoll_corpses" || key == "blood_marks" || key == "gore" ||
             key == "discord_presence" || key == "discord_join") {
             if (!state.remember(line, key)) {
                 return false;
@@ -508,6 +516,8 @@ template <typename Value, typename Parser>
                 state.candidate.main.spatial_audio = *parsed;
             } else if (key == "death_voices") {
                 state.candidate.main.death_voices = *parsed;
+            } else if (key == "menu_background_motion") {
+                state.candidate.main.menu_background_motion = *parsed;
             } else if (key == "fallback_music") {
                 state.candidate.main.fallback_music = *parsed;
             } else if (key == "gore") {
@@ -707,6 +717,8 @@ template <typename Value, typename Parser>
            << "music_volume = " << decimal(settings.main.music_volume) << "\n"
            << "spatial_audio = " << (settings.main.spatial_audio ? "true" : "false") << "\n"
            << "death_voices = " << (settings.main.death_voices ? "true" : "false") << "\n"
+           << "menu_background = " << std::quoted(settings.main.menu_background) << "\n"
+           << "menu_background_motion = " << (settings.main.menu_background_motion ? "true" : "false") << "\n"
            << "fallback_music = " << (settings.main.fallback_music ? "true" : "false") << "\n"
            << "ragdoll_corpses = " << (settings.main.ragdoll_corpses ? "true" : "false") << "\n"
            << "gore = " << (settings.main.gore ? "true" : "false") << "\n"

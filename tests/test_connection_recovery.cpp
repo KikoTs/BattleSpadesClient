@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -170,6 +172,135 @@ loopback_server(ENetAddress& address) {
                enet_socket_get_address(server->socket, &address) == 0 && address.port != 0U,
            "bind timeout fixture");
     return server;
+}
+
+// Model a host's UDP admission rule: a query from the browser's socket must
+// not admit ENet sent from the connection worker's different source port.
+struct QueryGate final {
+    inline static thread_local QueryGate* active{};
+    ENetHost& host;
+    ENetAddress admitted{};
+    unsigned queries{};
+    bool reply{};
+    bool required{};
+    bool pending_reply{};
+    bool premature_connect{};
+    std::chrono::steady_clock::time_point ready_at;
+
+    QueryGate(ENetHost& server, bool send_reply, bool require_query)
+        : host{server}, reply{send_reply}, required{require_query} {
+        active = this;
+        host.intercept = intercept;
+    }
+    ~QueryGate() { host.intercept = nullptr; active = nullptr; }
+
+    void reply_if_due() {
+        if (!pending_reply || std::chrono::steady_clock::now() < ready_at) return;
+        pending_reply = false;
+        if (!reply) return;
+        char challenge[] = "\xff\xff\xff\xff" "A1234";
+        ENetBuffer buffer{};
+        buffer.data = challenge;
+        buffer.dataLength = sizeof(challenge) - 1U;
+        static_cast<void>(enet_socket_send(host.socket, &admitted, &buffer, 1U));
+    }
+
+    static int intercept(ENetHost* server, ENetEvent*) {
+        auto& gate = *active;
+        constexpr char query[] = "\xff\xff\xff\xff" "TSource Engine Query";
+        if (server->receivedDataLength == sizeof(query) &&
+            std::memcmp(server->receivedData, query, sizeof(query)) == 0) {
+            ++gate.queries;
+            gate.admitted = server->receivedAddress;
+            gate.ready_at = std::chrono::steady_clock::now() + std::chrono::milliseconds{50};
+            gate.pending_reply = true;
+            return 1;
+        }
+        if (gate.required && std::chrono::steady_clock::now() < gate.ready_at) {
+            gate.premature_connect = true;
+            return 1;
+        }
+        return gate.required &&
+                       (gate.admitted.host != server->receivedAddress.host ||
+                        gate.admitted.port != server->receivedAddress.port)
+                   ? 1 : 0;
+    }
+};
+
+void queries_prepare_the_game_socket_with_bounded_discovery(bool blocking,
+                                                            bool reply,
+                                                            GameProtocol protocol) {
+    ENetAddress address{};
+    const auto server = loopback_server(address);
+    const bool retail = !is_classic_protocol(protocol);
+    QueryGate gate{*server, reply, retail};
+    const std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> browser{
+        enet_host_create(nullptr, 1U, 1U, 0U, 0U), &enet_host_destroy};
+    expect(browser != nullptr, "create independent browser-query socket");
+    char query[] = "\xff\xff\xff\xff" "TSource Engine Query";
+    ENetBuffer buffer{};
+    buffer.data = query;
+    buffer.dataLength = sizeof(query);
+    expect(enet_socket_send(browser->socket, &address, &buffer, 1U) > 0, "send browser query");
+    ENetEvent ignored{};
+    static_cast<void>(enet_host_service(server.get(), &ignored, 20U));
+    expect(gate.queries == 1U, "browser query establishes a different source port");
+
+    EnetProtocol168Config config{"127.0.0.1", address.port, 1'500U};
+    config.protocol = protocol;
+    Protocol168SessionConfig session_config;
+    session_config.auto_join = false;
+    LiveProtocol168Connection live;
+    std::future<EnetProtocol168Result> pending;
+    if (blocking) {
+        pending = std::async(std::launch::async, [&] {
+            Protocol168Session session{session_config};
+            return run_enet_protocol168_session(config, session);
+        });
+    } else {
+        expect(live.start(config, session_config), "start client behind query gate");
+    }
+    bool connected{};
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    while (!connected && std::chrono::steady_clock::now() < until) {
+        gate.reply_if_due();
+        ENetEvent event{};
+        expect(enet_host_service(server.get(), &event, 5U) >= 0, "service query gate");
+        if (event.type == ENET_EVENT_TYPE_CONNECT) {
+            connected = true;
+            const auto expected = protocol == GameProtocol::automatic ? GameProtocol::retail168 : protocol;
+            expect(event.data == static_cast<enet_uint32>(expected), "query preserves selected ENet protocol");
+            enet_peer_disconnect(event.peer, 1U);
+            enet_host_flush(server.get());
+        } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+            enet_packet_destroy(event.packet);
+        }
+    }
+    if (blocking) expect(pending.get().connected, "blocking transport connects through query gate");
+    live.stop();
+    expect(connected, "retail connection must query from its own socket, even with no query reply");
+    expect(gate.queries == (retail ? 2U : 1U), "one connection query for retail; none for explicit Classic");
+    expect(!gate.premature_connect, "wait for query admission before the first ENet CONNECT");
+}
+
+void query_wait_is_cancellable() {
+    ENetAddress address{};
+    const auto server = loopback_server(address);
+    QueryGate gate{*server, false, true};
+    LiveProtocol168Connection live;
+    expect(live.start({"127.0.0.1", address.port, 5'000U}, {}), "start query cancellation fixture");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
+    while (gate.queries == 0U && std::chrono::steady_clock::now() < deadline) {
+        ENetEvent event{};
+        static_cast<void>(enet_host_service(server.get(), &event, 5U));
+        if (event.type == ENET_EVENT_TYPE_RECEIVE) enet_packet_destroy(event.packet);
+    }
+    expect(gate.queries == 1U, "cancel while the game socket awaits its query reply");
+    const auto before = std::chrono::steady_clock::now();
+    live.stop();
+    expect(std::chrono::steady_clock::now() - before < std::chrono::milliseconds{100} &&
+               live.status().phase == LiveProtocol168Phase::stopped,
+           "cancellation must interrupt the optional query wait promptly");
 }
 
 void live_ticket_preserves_explicit_extension_policy() {
@@ -339,6 +470,13 @@ int main() {
         cancellation_signal_is_nonblocking_and_owner_can_restart();
         live_queue_bounds_memory_without_losing_order_or_capacity();
         live_ticket_preserves_explicit_extension_policy();
+        for (const auto protocol : {GameProtocol::retail168, GameProtocol::automatic,
+                                    GameProtocol::classic075}) {
+            queries_prepare_the_game_socket_with_bounded_discovery(false, false, protocol);
+        }
+        queries_prepare_the_game_socket_with_bounded_discovery(false, true, GameProtocol::retail168);
+        queries_prepare_the_game_socket_with_bounded_discovery(true, true, GameProtocol::retail168);
+        query_wait_is_cancellable();
         unanswered_connect_times_out_after_five_seconds_as_error_timeout();
         connected_handshake_without_progress_times_out();
         only_clock_sync_and_client_data_are_unsequenced();

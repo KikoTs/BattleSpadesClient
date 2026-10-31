@@ -667,6 +667,7 @@ void GameChatModel::push_entry(ChatFeedEntry entry) {
     // MAX_CHAT_SIZE wraps a long line onto further feed lines. The first
     // piece is inserted first so it sits above its continuation.
     const auto cuts = wrap_offsets(entry.text, wrap_code_points);
+    const auto links = discord_chat_links(entry.text);
     std::vector<ChatFeedEntry> lines;
     lines.reserve(cuts.size() + 1U);
     std::size_t start{};
@@ -674,6 +675,13 @@ void GameChatModel::push_entry(ChatFeedEntry entry) {
         const auto end = index < cuts.size() ? cuts[index] : entry.text.size();
         ChatFeedEntry line{entry.text.substr(start, end - start), entry.color,
                            entry.time_to_live_seconds, {}, entry.use_tuffy_font};
+        line.id = next_entry_id_++;
+        line.continuation = index > 0U;
+        for (const auto& link : links) {
+            const auto from = std::max(start, link.begin);
+            const auto to = std::min(end, link.end);
+            if (from < to) line.links.push_back({from-start, to-start, link.url});
+        }
         // Keep each run's colour for the bytes that landed on this line.
         std::size_t run_start{};
         for (const auto& run : entry.runs) {
@@ -738,48 +746,17 @@ bool GameChatModel::append_text(std::string_view utf8) {
     if (!active_ || utf8.empty()) {
         return false;
     }
-    // HUD.on_text: one character at a time, while the text is shorter than
-    // MAX_CHAT_MESSAGE_LENGTH and chat_font.contains_character accepts it.
-    bool appended{};
-    auto characters = utf8_code_points(input_);
-    for (std::size_t offset{}; offset < utf8.size();) {
-        const auto length = utf8_sequence_length(utf8, offset);
-        const auto character = utf8.substr(offset, length);
-        offset += length;
-        if (character.front() == '\0' || character.front() == '\r' ||
-            character.front() == '\n') {
-            continue;
-        }
-        if (characters >= maximum_input_code_points ||
-            input_.size() + character.size() > maximum_input_bytes) {
-            break;
-        }
-        if (glyph_filter_ && !glyph_filter_(character)) {
-            continue;
-        }
-        input_.append(character);
-        ++characters;
-        appended = true;
-    }
-    return appended;
+    return input_.insert(utf8, maximum_input_bytes, maximum_input_code_points, glyph_filter_);
 }
 
 bool GameChatModel::erase_code_point() noexcept {
-    if (!active_ || input_.empty()) return false;
-    auto offset = input_.size() - 1U;
-    while (offset > 0U &&
-           (static_cast<unsigned char>(input_[offset]) & 0xC0U) == 0x80U) {
-        --offset;
-    }
-    input_.erase(offset);
-    return true;
+    return active_ && input_.erase(false);
 }
 
 std::optional<std::pair<ChatChannel, std::string>> GameChatModel::submit() {
     if (!active_) return std::nullopt;
     active_ = false;
-    auto value = std::move(input_);
-    input_.clear();
+    auto value = input_.take_text();
     if (value.empty()) return std::nullopt;
     return std::pair{channel_, std::move(value)};
 }
@@ -787,7 +764,8 @@ std::optional<std::pair<ChatChannel, std::string>> GameChatModel::submit() {
 ui::DrawList GameChatPresentation::build(
     const GameChatModel& model, ui::PixelExtent window,
     std::function<double(std::string_view, double,
-                         std::string_view)> measure_text) const {
+                         std::string_view)> measure_text,
+    ChatTextInteraction* interaction) const {
     ui::DrawList list;
     list.reserve(GameChatModel::shown_lines * 9U + 18U);
     // Direct probes of retail's bundled A750-Sans-Medium 12 wrapper return a
@@ -801,6 +779,12 @@ ui::DrawList GameChatPresentation::build(
     constexpr std::string_view tuffy_font{"fonts/Tuffy_Bold.ttf"};
     const auto width = std::max(
         0.0, static_cast<double>(window.width) - left * 2.0);
+    if (interaction != nullptr) {
+        std::vector<ChatDocumentLine> document;
+        for (const auto& entry : model.entries())
+            document.push_back({entry.id, entry.text, entry.continuation});
+        interaction->begin_layout(std::move(document), measure_text);
+    }
 
     // entries()[0] is newest. HUD.draw_chat translates to the 12/65 baseline,
     // and ChatLine draws through FTGL's baseline-oriented Font.draw path.
@@ -820,6 +804,11 @@ ui::DrawList GameChatPresentation::build(
         const auto font = entry.use_tuffy_font ? tuffy_font : standard_font;
         const auto baseline = static_cast<double>(window.height) - bottom -
                               static_cast<double>(rendered) * line_pitch;
+        if (interaction != nullptr && model.active()) {
+            interaction->add_line(entry.id, {left, baseline-line_height, width, line_height+2.0},
+                                  font, 12.0, entry.links);
+            interaction->decorate_line(list, entry.id, ui::DrawSpace::window_pixels);
+        }
         const auto append_run = [&](std::string_view value,
                                     ui::ColorRgba8 run_color,
                                     double x) {
@@ -852,6 +841,10 @@ ui::DrawList GameChatPresentation::build(
         // panel or underscore cursor. input_label sits below chat_label.
         const auto input_baseline = static_cast<double>(window.height) - 15.0;
         const auto channel_baseline = static_cast<double>(window.height) - 40.0;
+        if (interaction != nullptr) {
+            interaction->set_input({left, input_baseline-line_height, width, line_height+2.0}, standard_font, 12.0);
+            interaction->decorate_input(list, model.input_editor(), ui::DrawSpace::window_pixels, true);
+        }
         append_stroked_text(list, model.input(),
                             {left, input_baseline, width, line_height},
                             {255U, 255U, 255U, 255U}, standard_font, 12.0,

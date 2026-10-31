@@ -440,6 +440,8 @@ ClientSettings normalize_settings(const ClientSettings& source) noexcept {
         normalized_unit_value(source.main.music_volume, defaults.main.music_volume);
     result.main.language = valid_language(source.main.language) ? source.main.language
                                                                 : defaults.main.language;
+    if (menu_background_option(source.main.menu_background) == nullptr)
+        result.main.menu_background = defaults.main.menu_background;
     if (classic_sky_option(source.main.classic_sky) == nullptr)
         result.main.classic_sky = defaults.main.classic_sky;
     if (!valid_classic_fog(source.main.classic_fog))
@@ -507,6 +509,8 @@ SettingsValidationResult validate_settings(const ClientSettings& settings) {
         !unit_value_valid(settings.main.music_volume)) {
         return {false, "volume must be finite and between 0 and 1"};
     }
+    if (menu_background_option(settings.main.menu_background) == nullptr)
+        return {false, "invalid menu background"};
     if (classic_sky_option(settings.main.classic_sky) == nullptr ||
         !valid_classic_fog(settings.main.classic_fog))
         return {false, "invalid Classic atmosphere preference"};

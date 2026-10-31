@@ -634,6 +634,21 @@ void every_weapon_flash_uses_its_retail_view_offsets() {
 
 int main() {
     try {
+        for (const std::uint8_t tool : {std::uint8_t{2}, std::uint8_t{3}, std::uint8_t{4}}) {
+            WeaponViewModelInput input;
+            input.tool_id = tool;
+            input.seconds_since_primary = 0.12;
+            const auto full = evaluate_weapon_view_model(input);
+            input.spade_swing_scale = 0.65;
+            const auto compact = evaluate_weapon_view_model(input);
+            expect_near(compact.tool.orientation_degrees.x,
+                        full.tool.orientation_degrees.x * 0.65, "compact spade pitch");
+            expect_near(compact.tool.position.y, full.tool.position.y * 0.65, "compact spade travel");
+            expect_near(compact.arm_rotation_ratio, full.arm_rotation_ratio, "arm rig stays unchanged");
+            input.seconds_since_primary = 100.0;
+            expect_near(evaluate_weapon_view_model(input).tool.orientation_degrees.x, 0.0,
+                        "compact swing returns to the original idle pose");
+        }
         recovered_arm_rig_is_not_fitted_screen_space();
         all_weapons_pullout_moves_xy_without_corrupting_depth();
         block_pose_and_arm_cancellation_match_source();

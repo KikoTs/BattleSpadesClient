@@ -58,6 +58,16 @@ $clientAssetDestination = Join-Path $destinationRoot 'assets\client'
 Copy-Item -Path (Join-Path $clientAssetSource '*') `
           -Destination $clientAssetDestination -Recurse -Force
 
+# Optional artwork is outside the retail manifest. A reused playable directory
+# still needs these additions, including the RGBA layers used for parallax.
+$menuBackgroundSource = Join-Path $root 'assets\original\png\ui\menu_backgrounds'
+if (Test-Path -LiteralPath $menuBackgroundSource -PathType Container) {
+    $menuBackgroundDestination = Join-Path $destinationRoot 'assets\original\png\ui\menu_backgrounds'
+    [System.IO.Directory]::CreateDirectory($menuBackgroundDestination) | Out-Null
+    Copy-Item -Path (Join-Path $menuBackgroundSource '*') `
+              -Destination $menuBackgroundDestination -Recurse -Force
+}
+
 # These files are intentionally external runtime content. Preserve edits
 # in an existing playable folder; only seed a file when staging into a clean
 # destination. This is what makes UI/translation iteration survive rebuilding.

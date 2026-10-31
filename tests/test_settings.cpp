@@ -333,6 +333,8 @@ void toml_round_trip_is_human_readable_and_atomic() {
     settings.main.show_skins = false;
     settings.main.show_other_skins = false;
     settings.main.weapon_motion = false;
+    settings.main.menu_background = "original-battle-artwork";
+    settings.main.menu_background_motion = true;
     settings.main.fallback_music = true;
     settings.main.death_voices = false;
     settings.main.spatial_audio = true;
@@ -581,6 +583,22 @@ void classic_appearance_settings_validate_and_restore() {
     expect(session.draft() == old.settings, "cancel restores every atmosphere preference");
 }
 
+void menu_background_settings_validate_and_migrate() {
+    TemporaryDirectory temporary;
+    const auto path = temporary.path("background.toml");
+    write_text(path, "[main]\nshow_skins = true\n");
+    const auto old = TomlSettingsStore{path}.load();
+    expect(static_cast<bool>(old) && old.settings.main.menu_background == "miner-and-zombies" &&
+           !old.settings.main.menu_background_motion, "old settings retain the still retail background");
+    write_text(path, "[main]\nmenu_background = \"../../secret.png\"\n");
+    expect(!static_cast<bool>(TomlSettingsStore{path}.load()), "background paths are not accepted");
+    auto invalid = old.settings;
+    invalid.main.menu_background = "missing";
+    expect(!static_cast<bool>(battlespades::settings::validate_settings(invalid)), "unknown image rejected");
+    expect(battlespades::settings::normalize_settings(invalid) == old.settings,
+           "unknown image normalizes to the original background");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -590,6 +608,7 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"menu_background_settings_validate_and_migrate", menu_background_settings_validate_and_migrate},
         {"classic_appearance_settings_validate_and_restore", classic_appearance_settings_validate_and_restore},
         {"local_skin_visibility_preserves_independent_preferences",local_skin_visibility_preserves_independent_preferences},
         {"retail_defaults_cover_every_recovered_option",

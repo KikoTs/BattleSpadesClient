@@ -1026,6 +1026,13 @@ std::string SdlWindowModule::clipboard_text() {
     return text ? std::string{text.get()} : std::string{};
 }
 
+bool SdlWindowModule::set_clipboard_text(std::string_view text) {
+    if (impl_->window == nullptr || impl_->owner_thread != std::this_thread::get_id() ||
+        text.find('\0') != std::string_view::npos) return false;
+    const std::string terminated{text};
+    return SDL_SetClipboardText(terminated.c_str());
+}
+
 std::string_view SdlWindowModule::last_error() const noexcept {
     return impl_->last_error;
 }

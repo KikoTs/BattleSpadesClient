@@ -2200,6 +2200,10 @@
     "GORE_INTENSITY_DESCRIPTION": "Tamaño y profundidad de las nuevas heridas y fragmentos. Requiere heridas activadas; solo visual.",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "Separación de cabeza y extremidades al morir o recibir impactos en cadáveres. Brutal intensifica los disparos cercanos de escopeta. Desactivar conserva las heridas.",
     "SPATIAL_AUDIO": "Audio espacial (auriculares)",
-    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural para indicar dirección y altura con auriculares. Desactívalo para estéreo o procesamiento externo. Requiere una salida de audio compatible."
+    "SPATIAL_AUDIO_DESCRIPTION": "HRTF binaural para indicar dirección y altura con auriculares. Desactívalo para estéreo o procesamiento externo. Requiere una salida de audio compatible.",
+    "MENU_BACKGROUND": "Fondo del menú",
+    "MENU_BACKGROUND_MOTION": "Movimiento del fondo",
+    "MENU_BACKGROUND_DESCRIPTION": "Elige el fondo del menú principal. Listo guarda los cambios y Cancelar restaura el anterior.",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "Movimiento suave de cámara con el ratón y desenfoque breve. La imagen permanece nítida en reposo. Desactivado por defecto."
   }
 }

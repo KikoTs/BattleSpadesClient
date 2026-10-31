@@ -1,4 +1,5 @@
 #include "battlespades/frontend/main_menu_presentation.hpp"
+#include "battlespades/frontend/menu_background.hpp"
 
 #include <cmath>
 #include <exception>
@@ -304,6 +305,155 @@ void invalid_presentation_context_fails_before_emitting_a_partial_frame() {
     expect(invalid_opacity_threw, "out-of-range opacity must throw");
 }
 
+void background_motion_eases_and_keeps_the_viewport_covered() {
+    using battlespades::frontend::MenuBackgroundMotion;
+    using battlespades::frontend::style_menu_background;
+    using battlespades::ui::PixelExtent;
+    MenuBackgroundMotion slow, fast;
+    for (int i = 0; i < 30; ++i) slow.update(true, true, 800.0, 600.0, 800.0, 600.0, 1.0 / 30.0);
+    for (int i = 0; i < 60; ++i) fast.update(true, true, 800.0, 600.0, 800.0, 600.0, 1.0 / 60.0);
+    expect(std::abs(slow.x - fast.x) < 1e-10 && slow.x > 0.99 && slow.x < 1.0,
+           "pointer easing is smooth and frame-rate independent");
+    expect(std::abs(slow.velocity_x - fast.velocity_x) < 1e-10,
+           "velocity and motion blur are frame-rate independent too");
+    for (int i = 0; i < 120; ++i) fast.update(true, true, 800.0, 600.0, 800.0, 600.0, 1.0 / 60.0);
+    expect(std::abs(fast.blur_x) < 1e-10, "blur vanishes once the mouse is still");
+    MenuBackgroundMotion responsive;
+    responsive.update(true, true, 400.0, 300.0, 800.0, 600.0, 1.0 / 60.0);
+    for (int i = 0; i < 10; ++i)
+        responsive.update(true, true, 800.0, 300.0, 800.0, 600.0, 1.0 / 60.0);
+    expect(responsive.x > 0.96, "camera reaches the pointer promptly without a long trailing spring");
+    expect(std::abs(responsive.blur_x) < 0.01,
+           "short shutter clears before camera settling completes");
+    responsive.update(true, true, 0.0, 300.0, 800.0, 600.0, 1.0 / 60.0);
+    expect(responsive.blur_x < -1.0, "blur changes direction immediately on a pointer reversal");
+    responsive.update(true, false, 0.0, 0.0, 800.0, 600.0, 1.0 / 60.0);
+    expect(responsive.blur_x == 0.0, "focus changes do not create a shutter flash");
+    const auto before = slow.x;
+    slow.update(true, false, 800.0, 600.0, 800.0, 600.0, 0.1);
+    expect(slow.x < before && slow.x > 0.0, "leaving the window eases back to centre");
+    slow.update(false, true, 800.0, 600.0, 800.0, 600.0, 0.1);
+    expect(slow.x == 0.0 && slow.y == 0.0, "disabling motion stops it immediately");
+    for (const auto extent : {PixelExtent{800,600}, PixelExtent{1920,1080}, PixelExtent{3440,1440},
+                              PixelExtent{3840,2160}, PixelExtent{600,1000}}) {
+        for (const auto& option : battlespades::settings::menu_background_options) {
+            for (const double x : {-1.0, 0.0, 1.0}) for (const double y : {-1.0, 0.0, 1.0}) {
+                SpriteDrawCommand sprite;
+                style_menu_background(sprite, option, extent, true, MenuBackgroundMotion{x, y});
+                const auto& d = sprite.destination;
+                expect(d.x <= -static_cast<double>(extent.width) * 0.0149 &&
+                       d.y <= -static_cast<double>(extent.height) * 0.0149 &&
+                       d.x + d.width >= static_cast<double>(extent.width) * 1.0149 &&
+                       d.y + d.height >= static_cast<double>(extent.height) * 1.0149,
+                       "small overscan leaves room for camera travel and a one-pixel shutter");
+                expect(sprite.background_motion.has_value() && (*sprite.background_motion)[0] == x &&
+                       (*sprite.background_motion)[1] == y, "shader receives bounded eased pointer values");
+                style_menu_background(sprite, option, extent, false, MenuBackgroundMotion{x,y});
+                expect(!sprite.background_motion.has_value() &&
+                       std::abs(sprite.destination.x * 2.0 + sprite.destination.width - extent.width) < 1e-8,
+                       "static mode is centred and bypasses the effect shader");
+            }
+        }
+    }
+}
+
+void layered_scenes_cover_artwork_and_preserve_banner_framing() {
+    using namespace battlespades::frontend;
+    for (const auto& option : battlespades::settings::menu_background_options) {
+        const auto* scene = menu_background_scene(option.id);
+        expect((scene != nullptr) == !option.map_scene,
+               "every non-map artwork has a layered scene; maps retain whole-image motion");
+        if (scene == nullptr) continue;
+        expect(scene->layers.size() >= 2 && !scene->layers.front().cutout,
+               "each scene starts with a restored opaque scenery plate");
+        for (const auto extent : {battlespades::ui::PixelExtent{1280,720},
+                                  battlespades::ui::PixelExtent{3440,1440},
+                                  battlespades::ui::PixelExtent{600,1000}}) {
+            SpriteDrawCommand plate;
+            style_menu_background_layer(plate, extent, {}, *scene, scene->layers.front());
+            const auto& p = plate.destination;
+            const double crop_x = option.crop_width > 0 ? option.crop_x / option.width : 0;
+            const double crop_y = option.crop_width > 0 ? option.crop_y / option.height : 0;
+            const double crop_w = option.crop_width > 0 ? option.crop_width / option.width : 1;
+            const double crop_h = option.crop_width > 0 ? option.crop_height / option.height : 1;
+            expect(p.x + crop_x * p.width < 0 && p.y + crop_y * p.height < 0 &&
+                   p.x + (crop_x + crop_w) * p.width > extent.width &&
+                   p.y + (crop_y + crop_h) * p.height > extent.height,
+                   "actual banner artwork covers the window; empty source margins remain outside it");
+            for (const auto& layer : scene->layers) {
+                expect(menu_background_layer(layer.asset) == &layer,
+                       "all cutouts are discoverable for premultiplied texture loading");
+                SpriteDrawCommand sprite;
+                style_menu_background_layer(sprite, extent, {}, *scene, layer);
+                expect(std::abs(sprite.destination.width / sprite.destination.height -
+                                scene->width / scene->height) < 1e-9,
+                       "registered cutouts retain their original aspect ratio");
+                expect(std::abs(sprite.destination.x - (p.x + p.width * layer.offset_x)) < 1e-8 &&
+                       std::abs(sprite.destination.y - (p.y + p.height * layer.offset_y)) < 1e-8,
+                       "every cutout uses the scene camera and its registered source placement");
+                expect(sprite.source_pixels == DrawRect{0,0,scene->width,scene->height},
+                       "layer sampling uses the complete generated canvas");
+            }
+        }
+    }
+    expect(menu_background_scene("missing") == nullptr && menu_background_layer("missing") == nullptr,
+           "unknown scene and asset lookups use the ordinary image fallback");
+    SpriteDrawCommand miner;
+    style_menu_background_layer(miner, {1280,720}, {}, menu_background_scenes.front(),
+                                miner_background_layers.front());
+    expect(std::abs(miner.destination.x + 19.2) < 1e-8 &&
+           std::abs(miner.destination.y + 134.4) < 1e-8,
+           "approved Miner and Zombies framing remains unchanged");
+}
+
+void cached_background_frames_follow_motion_toggle_and_artwork_selection() {
+    using namespace battlespades::frontend;
+    const MainMenuModel menu;
+    const auto& option = battlespades::settings::menu_background_options[1];
+    for (const auto extent : {battlespades::ui::PixelExtent{800,600},
+                              battlespades::ui::PixelExtent{1920,1080},
+                              battlespades::ui::PixelExtent{3440,1440}}) {
+        auto list = MainMenuPresentation{}.build(menu, {extent, "Player", 1'000U});
+        const auto original = list;
+        MenuBackgroundMotion pointer{0.9, -0.8};
+        style_menu_background_frame(list, option, option.asset, extent, true, pointer);
+        auto cached = list;
+        pointer.update(false, true, 0, 0, extent.width, extent.height, 1.0 / 240.0);
+        style_menu_background_frame(list, option, option.asset, extent, false, pointer);
+        for (int frame = 0; frame < 8; ++frame) {
+            style_menu_background_frame(cached, option, option.asset, extent, false, pointer);
+            for (std::size_t i = 0; i < cached.size(); ++i) {
+                const auto* sprite = std::get_if<SpriteDrawCommand>(&cached.commands()[i]);
+                if (!sprite) continue;
+                const auto& tick = std::get<SpriteDrawCommand>(list.commands()[i]);
+                expect(sprite->asset_id == tick.asset_id && sprite->destination == tick.destination &&
+                       sprite->source_pixels == tick.source_pixels &&
+                       sprite->background_motion == tick.background_motion &&
+                       sprite->background_time == tick.background_time,
+                       "cached static frames must exactly match the full tick's crop and shader");
+                if (is_menu_background(cached.commands()[i])) {
+                    expect(sprite->asset_id == option.asset && !sprite->background_motion &&
+                           sprite->background_time == 0.0F,
+                           "turning motion off retains the selected artwork and clears the effect");
+                } else {
+                    const auto& control = std::get<SpriteDrawCommand>(original.commands()[i]);
+                    expect(sprite->destination == control.destination &&
+                           sprite->asset_id == control.asset_id && !sprite->background_motion,
+                           "background updates must leave menu controls stationary");
+                }
+            }
+        }
+        const auto& next = battlespades::settings::menu_background_options[2];
+        pointer.update(true, true, extent.width, 0, extent.width, extent.height, 0.1);
+        style_menu_background_frame(cached, next, next.asset, extent, true, pointer);
+        const auto background = std::ranges::find_if(cached.commands(), is_menu_background);
+        expect(background != cached.commands().end() &&
+               std::get<SpriteDrawCommand>(*background).asset_id == next.asset &&
+               std::get<SpriteDrawCommand>(*background).background_motion.has_value(),
+               "reenabling motion and changing artwork must refresh the cached background");
+    }
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -313,6 +463,10 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"cached_background_frames_follow_motion_toggle_and_artwork_selection",
+         cached_background_frames_follow_motion_toggle_and_artwork_selection},
+        {"layered_scenes_cover_artwork_and_preserve_banner_framing", layered_scenes_cover_artwork_and_preserve_banner_framing},
+        {"background_motion_eases_and_keeps_the_viewport_covered", background_motion_eases_and_keeps_the_viewport_covered},
         {"command_order_matches_retail_composition", command_order_matches_retail_composition},
         {"retail_menu_text_centers_the_ftgl_metric_span_not_line_height",
          retail_menu_text_centers_the_ftgl_metric_span_not_line_height},

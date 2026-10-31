@@ -13,6 +13,9 @@ struct CreateMatchPresentationContext final {
                            CreateMatchMenuPresentation::reference_height};
     std::uint16_t background_opacity_per_mille{1'000U};
     std::string_view status_message{};
+    ChatTextInteraction* chat_interaction{};
+    const ChatTextEditor* chat_editor{};
+    ChatMeasureText measure_chat_text{};
 };
 
 namespace create_match_presentation_assets {

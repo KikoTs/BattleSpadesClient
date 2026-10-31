@@ -95,8 +95,12 @@ RunResult Application::run() {
                 // mouse motion, see present_intermediate), and scheduling keeps
                 // slack before the next tick so the 60 Hz cadence is intact.
                 auto period = std::chrono::nanoseconds::zero();
+                auto presentation_work = std::chrono::nanoseconds::zero();
                 for (const auto& module : modules_) {
                     const auto requested = module->intermediate_frame_period();
+                    if (requested > std::chrono::nanoseconds::zero()) {
+                        presentation_work += module->last_presentation_work();
+                    }
                     if (requested > std::chrono::nanoseconds::zero() &&
                         (period == std::chrono::nanoseconds::zero() || requested < period)) {
                         period = requested;
@@ -106,7 +110,7 @@ RunResult Application::run() {
                 if (render_only_frames) {
                     const auto tick_time = pacing.next_tick - config_.fixed_delta;
                     const auto tick_presented = FixedStepPacer::Clock::now();
-                    frame_pacer.record_tick_work(tick_presented - tick_time);
+                    frame_pacer.record_tick_work(tick_presented - tick_time, presentation_work);
                     const auto plan = frame_pacer.plan(config_.fixed_delta, period);
                     for (std::uint32_t frame = 1U;
                          !stop_requested && frame < plan.frames_per_tick; ++frame) {

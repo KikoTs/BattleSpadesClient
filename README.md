@@ -94,6 +94,37 @@ importer finds an existing Steam installation (or lets you pick the folder),
 verifies every file against the manifest and copies it into
 `assets/original/`. Your Steam installation is never modified.
 
+Settings → Main includes **Menu background** and **Background motion**.
+The latter adds gentle camera movement and brief motion blur while preserving the artwork, and is
+disabled by default. Changes preview immediately; Done saves and Cancel restores.
+It preserves the image's colors and sharpness at rest. Motion follows the mouse at
+the display frame rate, with a small 3% overscan to keep the viewport covered.
+All six non-map backgrounds support separately composited scenery and character
+cutouts: **Miner and Zombies**, **Original Battle Artwork**, **Battle Builder
+Construction**, **Valentines Mafia Warehouse**, **Matchmaking Battle**, and
+**Tutorial Blueprints**. Each uses two to four layers with independent camera
+travel. With the optional layer assets installed under
+`assets/original/png/ui/menu_backgrounds/layers/<background-id>/`, enabling motion
+uses that scene. Map backgrounds and installations without the complete scene
+assets use gentle whole-image camera travel.
+Turning motion off restores the original artwork. The generated layer sources,
+prompts and checksums are recorded in `assets/catalog/menu-background-scenes.json`;
+derived PNGs stay outside source control alongside the original game artwork.
+Native developer builds and `stage-native-client.ps1` copy any locally installed
+background collection and layers beside the executable, including when an older
+retail asset tree is already there. Static mode uses the same crop on full tick
+frames and cached frames at the display rate.
+To import the complete 33-image background collection into a developer install:
+
+```powershell
+./tools/import-menu-backgrounds.ps1 -SourceDirectory 'C:/path/to/AceOfSpades-Backgrounds'
+```
+
+Use `-AssetRoot '<install>/assets/original'` for another installation. The importer
+verifies every image checksum and preserves the original PNG files. Images stay
+outside source control. Existing retail images are used when available, with the
+original menu background as a fallback for missing optional artwork.
+
 ## Download and install
 
 1. Get the latest Windows build from

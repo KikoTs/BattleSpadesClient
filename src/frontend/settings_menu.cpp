@@ -38,13 +38,15 @@ constexpr std::array<ui::Rect, 3U> tab_bounds{{
 
 constexpr std::array<std::string_view, 3U> tab_labels{{"MAIN", "GRAPHICS", "CONTROLS"}};
 
-constexpr std::array<SettingsRowId, 24U> main_inventory{{
+constexpr std::array<SettingsRowId, 26U> main_inventory{{
     SettingsRowId::language,
     SettingsRowId::master_volume,
     SettingsRowId::music_volume,
     SettingsRowId::fallback_music,
     SettingsRowId::death_voices,
     SettingsRowId::spatial_audio,
+    SettingsRowId::menu_background,
+    SettingsRowId::menu_background_motion,
     SettingsRowId::invert_mouse,
     SettingsRowId::favorite_server,
     SettingsRowId::show_skins,
@@ -204,7 +206,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     }
     if (row == SettingsRowId::show_skins || row == SettingsRowId::show_other_skins ||
         row == SettingsRowId::weapon_motion || row == SettingsRowId::ability_hints ||
-        row == SettingsRowId::fallback_music || row == SettingsRowId::spatial_audio || row == SettingsRowId::death_voices ||
+        row == SettingsRowId::menu_background_motion || row == SettingsRowId::fallback_music || row == SettingsRowId::spatial_audio || row == SettingsRowId::death_voices ||
         row == SettingsRowId::ragdoll_corpses || row == SettingsRowId::blood_marks || row == SettingsRowId::gore ||
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join ||
         row == SettingsRowId::favorite_server ||
@@ -214,7 +216,7 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
         return SettingsRowKind::toggle;
     }
     if (row == SettingsRowId::gore_intensity || row == SettingsRowId::dismemberment_intensity ||
-        row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog ||
+        row == SettingsRowId::menu_background || row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog ||
         row == SettingsRowId::language || row == SettingsRowId::invert_mouse ||
         row == SettingsRowId::window_mode || row == SettingsRowId::resolution ||
         row == SettingsRowId::graphics_api || row == SettingsRowId::antialiasing ||
@@ -255,6 +257,8 @@ constexpr std::array<SettingsRowId, 39U> controls_inventory{{
     case SettingsRowId::dismemberment_intensity: return "DISMEMBERMENT_INTENSITY";
     case SettingsRowId::blood_marks:
         return "BLOOD_MARKS";
+    case SettingsRowId::menu_background: return "MENU_BACKGROUND";
+    case SettingsRowId::menu_background_motion: return "MENU_BACKGROUND_MOTION";
     case SettingsRowId::classic_sky: return "CLASSIC_SKY";
     case SettingsRowId::classic_fog: return "CLASSIC_FOG";
     case SettingsRowId::classic_fog_red: return "CLASSIC_FOG_RED";
@@ -1152,6 +1156,8 @@ std::string_view settings_row_name(SettingsRowId row) noexcept {
         AOS_SETTINGS_ROW_NAME(gore);
         AOS_SETTINGS_ROW_NAME(gore_intensity);
         AOS_SETTINGS_ROW_NAME(dismemberment_intensity);
+        AOS_SETTINGS_ROW_NAME(menu_background);
+        AOS_SETTINGS_ROW_NAME(menu_background_motion);
         AOS_SETTINGS_ROW_NAME(classic_sky);
         AOS_SETTINGS_ROW_NAME(classic_fog);
         AOS_SETTINGS_ROW_NAME(classic_fog_red);
@@ -1669,7 +1675,11 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
     result.dirty = session_->dirty() || favorite_server_ != initial_favorite_server_;
     result.tooltip_key = "SETTINGS_MESSAGE";
     const auto tooltip_target = hovered_ ? hovered_ : focused_;
-    if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::fallback_music)) {
+    if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::menu_background)) {
+        result.tooltip_key = "MENU_BACKGROUND_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::menu_background_motion)) {
+        result.tooltip_key = "MENU_BACKGROUND_MOTION_DESCRIPTION";
+    } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::fallback_music)) {
         result.tooltip_key = "FALLBACK_MUSIC_DESCRIPTION";
     } else if (tooltip_target && *tooltip_target == SettingsMenuTarget::for_row(SettingsRowId::spatial_audio)) {
         result.tooltip_key = "SPATIAL_AUDIO_DESCRIPTION";
@@ -1727,6 +1737,15 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         item.enabled = target_enabled(target);
 
         switch (row) {
+        case SettingsRowId::menu_background: {
+            for (const auto& option : settings::menu_background_options) {
+                if (option.id == current.main.menu_background) item.choice_index = item.choices.size();
+                item.choices.emplace_back(option.label);
+            }
+            item.choice_count = item.choices.size();
+            item.value_text = item.choices[item.choice_index];
+            break;
+        }
         case SettingsRowId::classic_sky: {
             for (const auto& option : settings::classic_sky_options) {
                 if (option.id == current.main.classic_sky) item.choice_index = item.choices.size();
@@ -1794,6 +1813,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
         case SettingsRowId::show_skins:
         case SettingsRowId::show_other_skins:
         case SettingsRowId::weapon_motion:
+        case SettingsRowId::menu_background_motion:
         case SettingsRowId::fallback_music:
         case SettingsRowId::spatial_audio:
         case SettingsRowId::death_voices:
@@ -1806,6 +1826,7 @@ SettingsMenuPresentation SettingsMenuModel::presentation() const {
             const bool on = row == SettingsRowId::show_skins ? current.main.show_skins :
                             row == SettingsRowId::show_other_skins ? current.main.show_other_skins :
                             row == SettingsRowId::ability_hints ? current.main.ability_hints :
+                            row == SettingsRowId::menu_background_motion ? current.main.menu_background_motion :
                             row == SettingsRowId::fallback_music ? current.main.fallback_music :
                             row == SettingsRowId::spatial_audio ? current.main.spatial_audio :
                             row == SettingsRowId::death_voices ? current.main.death_voices :
@@ -2485,6 +2506,8 @@ bool SettingsMenuModel::activate(SettingsMenuTarget target) {
         return adjust_row(target.row, draft.main.spatial_audio ? -1 : 1);
     case SettingsRowId::death_voices:
         return adjust_row(target.row, draft.main.death_voices ? -1 : 1);
+    case SettingsRowId::menu_background_motion:
+        return adjust_row(target.row, draft.main.menu_background_motion ? -1 : 1);
     case SettingsRowId::fallback_music:
         return adjust_row(target.row, draft.main.fallback_music ? -1 : 1);
     case SettingsRowId::gore:
@@ -2655,7 +2678,8 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         return true;
     }
 
-    if (row == SettingsRowId::gore_intensity || row == SettingsRowId::dismemberment_intensity ||
+    if (row == SettingsRowId::menu_background || row == SettingsRowId::menu_background_motion ||
+        row == SettingsRowId::gore_intensity || row == SettingsRowId::dismemberment_intensity ||
         row == SettingsRowId::classic_sky || row == SettingsRowId::classic_fog || is_fog_channel(row) ||
         row == SettingsRowId::language || row == SettingsRowId::master_volume ||
         row == SettingsRowId::music_volume ||
@@ -2666,6 +2690,15 @@ bool SettingsMenuModel::adjust_row(SettingsRowId row, std::int32_t direction) {
         row == SettingsRowId::discord_presence || row == SettingsRowId::discord_join) {
         auto main = before.main;
         switch (row) {
+        case SettingsRowId::menu_background: {
+            const auto* option = settings::menu_background_option(main.menu_background);
+            const auto index = option ? static_cast<std::size_t>(option - settings::menu_background_options.data()) : 0U;
+            main.menu_background = settings::menu_background_options[shifted_index(index, settings::menu_background_options.size(), direction)].id;
+            break;
+        }
+        case SettingsRowId::menu_background_motion:
+            main.menu_background_motion = direction > 0;
+            break;
         case SettingsRowId::classic_sky: {
             const auto* option = settings::classic_sky_option(main.classic_sky);
             const auto index = option ? static_cast<std::size_t>(option - settings::classic_sky_options.data()) : 0U;

@@ -510,12 +510,18 @@ public:
     [[nodiscard]] std::chrono::nanoseconds intermediate_frame_period() const noexcept override {
         return period;
     }
+    [[nodiscard]] std::chrono::nanoseconds last_presentation_work() const noexcept override {
+        ++presentation_cost_queries;
+        return presentation_cost;
+    }
     [[nodiscard]] battlespades::core::TickDecision present_intermediate(double alpha) override {
         alphas.push_back(alpha);
         return battlespades::core::TickDecision::continue_running;
     }
 
     std::chrono::nanoseconds period{};
+    std::chrono::nanoseconds presentation_cost{};
+    mutable std::size_t presentation_cost_queries{};
     std::size_t ticks{};
     std::vector<double> alphas;
 };
@@ -529,10 +535,13 @@ void application_presents_intermediate_frames_only_when_requested() {
         auto module = std::make_unique<InterpolatingModule>();
         auto* observed = module.get();
         observed->period = 4ms;
+        observed->presentation_cost = 500us;
         Application application{config};
         expect(application.add_module(std::move(module)), "interpolating module must register");
         expect(application.run() == RunResult::success, "paced run must succeed");
         expect(observed->ticks == 6U, "render-only frames must not add or drop fixed ticks");
+        expect(observed->presentation_cost_queries > 0U,
+               "paced application must refresh its render estimate from full presentations");
         expect(observed->alphas.size() <= 6U * 4U,
                "intermediate frames stay bounded by the requested period");
         for (const double alpha : observed->alphas) {
@@ -550,6 +559,8 @@ void application_presents_intermediate_frames_only_when_requested() {
         expect(application.run() == RunResult::success, "unpaced run must succeed");
         expect(observed->alphas.empty(),
                "unpaced (headless/test) runs never render intermediate frames");
+        expect(observed->presentation_cost_queries == 0U,
+               "unpaced runs do not consume render timing estimates");
     }
 }
 

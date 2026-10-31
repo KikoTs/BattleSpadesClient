@@ -53,6 +53,11 @@ public:
         return std::chrono::nanoseconds::zero();
     }
 
+    /** Last tick's presentation cost, excluding simulation/preparation; zero if unknown. */
+    [[nodiscard]] virtual std::chrono::nanoseconds last_presentation_work() const noexcept {
+        return std::chrono::nanoseconds::zero();
+    }
+
     /**
      * Presents one render-only frame `alpha` (0 <= alpha < 1) of the way from
      * the last tick to the next. Implementations must not advance simulation or

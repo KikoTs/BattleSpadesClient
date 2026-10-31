@@ -149,16 +149,34 @@ public:
         /** Frames per fixed step, the tick's own frame included; 1 adds none. */
         std::uint32_t frames_per_tick{1U};
         std::chrono::nanoseconds spacing{};
+        /** A long simulation tick left room for one shorter render-only frame. */
+        bool reclaim_spare_time{};
     };
 
     /** Work the last paced tick needed, from its scheduled time to its frame. */
-    constexpr void record_tick_work(std::chrono::nanoseconds work) noexcept {
+    constexpr void record_tick_work(std::chrono::nanoseconds work,
+                                    std::chrono::nanoseconds presentation_work = {}) noexcept {
         tick_work_ = smooth(tick_work_, work);
+        // A slow extra frame can reduce the plan to one frame per tick. No
+        // extra frames then run, so their old cost would never be refreshed
+        // and the client would stay at 60 fps indefinitely. A fresh full tick
+        // includes normal presentation: use its cost to gradually age out a
+        // higher, stale estimate, while the tick budget still guards the plan.
+        if (presentation_work > std::chrono::nanoseconds::zero()) {
+            // Fresh tick presentations refresh the estimate even while no
+            // extra frames run. Simulation cost must not become the lower
+            // bound of a stale render estimate after a graphics change.
+            frame_work_ = smooth(frame_work_, presentation_work);
+        } else if (!frame_sample_since_tick_ && frame_work_ > work) {
+            frame_work_ = smooth(frame_work_, work);
+        }
+        frame_sample_since_tick_ = false;
     }
 
     /** Wall time one render-only frame needed. */
     constexpr void record_frame_work(std::chrono::nanoseconds work) noexcept {
         frame_work_ = smooth(frame_work_, work);
+        frame_sample_since_tick_ = true;
     }
 
     [[nodiscard]] constexpr std::chrono::nanoseconds frame_work() const noexcept {
@@ -175,11 +193,24 @@ public:
         // tenth of a frame of tolerance so 120 Hz asks for two frames, not
         // three, whatever the rounding of either period.
         const auto scaled = fixed_delta.count() * 20 / period.count();
-        auto frames = static_cast<std::uint32_t>(
+        const auto requested_frames = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>((scaled + 18) / 20, 1, maximum_frames_per_tick));
+        auto frames = requested_frames;
         const auto busiest = std::max(tick_work_, frame_work_);
         while (frames > 1U && busiest + slack(fixed_delta / frames) > fixed_delta / frames) {
             --frames;
+        }
+        // A full tick includes simulation, networking and resource preparation;
+        // an extra frame does not. Requiring both to fit the same half-tick
+        // slot creates a 60 fps cliff after selecting a more expensive shader.
+        // Keep evenly spaced slots when possible, but admit one short frame
+        // in the remaining budget. Until an extra frame has been timed, use
+        // the full tick as its conservative cost estimate.
+        const auto extra_work = frame_work_ > std::chrono::nanoseconds::zero()
+                                    ? frame_work_ : tick_work_;
+        if (frames == 1U && requested_frames > 1U &&
+            tick_work_ + extra_work + slack(fixed_delta / 2) * 2 < fixed_delta) {
+            return {2U, fixed_delta / 2, true};
         }
         return {frames, fixed_delta / frames};
     }
@@ -196,7 +227,12 @@ public:
             return std::nullopt;
         }
         const auto on_screen = tick_presented + plan.spacing * index;
-        const auto start = std::max(on_screen - frame_work_, now);
+        // Finish before the next simulation tick even when the full tick's
+        // work left too little room for the nominal evenly spaced slot.
+        const auto desired = plan.reclaim_spare_time
+                                 ? next_tick - frame_work_ - slack(plan.spacing) * 2
+                                 : on_screen - frame_work_;
+        const auto start = std::max(std::max(desired, tick_presented), now);
         if (start + frame_work_ + slack(plan.spacing) >= next_tick) {
             return std::nullopt;
         }
@@ -220,6 +256,7 @@ private:
 
     std::chrono::nanoseconds tick_work_{};
     std::chrono::nanoseconds frame_work_{};
+    bool frame_sample_since_tick_{};
 };
 
 } // namespace battlespades::core

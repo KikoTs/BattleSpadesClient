@@ -224,7 +224,7 @@ jobs:
           dependency="${dependency:0:12}"
           echo "Compiler: $COMPILER_ID ($compiler)"
           echo "Dependency compiler: $dependency_id ($dependency)"
-          echo "vcpkg=vcpkg-v1-$TARGET-$dependency-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'cmake/vcpkg-ports/**') }}" >> "$GITHUB_OUTPUT"
+          echo "vcpkg=vcpkg-v1-$TARGET-$dependency-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'cmake/vcpkg-ports/**', 'cmake/vcpkg-overlay/**') }}" >> "$GITHUB_OUTPUT"
           echo "vcpkg_prefix=vcpkg-v1-$TARGET-$dependency-" >> "$GITHUB_OUTPUT"
           echo "ccache=ccache-v1-$TARGET-$compiler-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "ccache_prefix=ccache-v1-$TARGET-$compiler-" >> "$GITHUB_OUTPUT"
@@ -366,6 +366,13 @@ jobs:
           cmake --build --preset $env:PRESET --parallel -- -k 0
           if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
           ccache --show-stats
+
+      - name: Linux Vulkan descriptor regression
+        if: matrix.family == 'linux'
+        run: |
+          icd="$(printf '%s\n' /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)"
+          test -f "$icd"
+          VK_ICD_FILENAMES="$icd" "$BUILD_DIR/tests/Release/aos_vulkan_descriptor_pressure_tests" "$GITHUB_WORKSPACE/src/render/shaders/bin"
 
       - name: Save ccache
         if: always() && (steps.build-unix.outcome == 'success' || steps.build-unix.outcome == 'failure' || steps.build-windows.outcome == 'success' || steps.build-windows.outcome == 'failure')
@@ -518,6 +525,22 @@ jobs:
           test -x "$extracted/BattleSpadesAssetInstaller"
           "$extracted/BattleSpadesClient" --headless --ticks 1
 
+      - name: Include the tested offline server (Windows x64)
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          . .github/ci/ci.ps1
+          $serverArchive = 'out/offline-server.zip'
+          $serverRoot = 'out/offline-server/BattleSpades-0.3.0-beta.2-windows-x86_64'
+          Invoke-WithNetworkRetry {
+            Invoke-WebRequest 'https://github.com/KikoTs/BattleSpades/releases/download/v0.3.0-beta.2/BattleSpades-0.3.0-beta.2-windows-x86_64.zip' -OutFile $serverArchive
+          }
+          if ((Get-FileHash $serverArchive -Algorithm SHA256).Hash -ne '60f21e889000f8cf323cb9cc13e1375d3972e78f6ec68913d91948be6f3f6b8d') {
+            throw 'Bundled offline server checksum mismatch'
+          }
+          Expand-Archive $serverArchive out/offline-server
+          Copy-Item $serverRoot (Join-Path $env:INSTALL_DIR 'bin/server') -Recurse
+
       - name: Package (Windows)
         if: matrix.family == 'windows'
         shell: pwsh
@@ -537,13 +560,13 @@ jobs:
         shell: pwsh
         run: |
           . .github/ci/ci.ps1
-          # No server bundle on a runner: the server is an optional
-          # on-demand component (docs/INSTALLER_AND_UPDATER.md).
+          $serverRoot = 'out/offline-server/BattleSpades-0.3.0-beta.2-windows-x86_64'
           Invoke-WithNetworkRetry {
-            ./installer/build-installer.ps1 -BuildDir $env:BUILD_DIR -SkipServer -OutputDir out/installer
+            ./installer/build-installer.ps1 -BuildDir $env:BUILD_DIR -ServerBundle $serverRoot -OutputDir out/installer
           }
           Copy-Item out/installer/BattleSpades-Setup-*.exe out/dist/
           Copy-Item out/installer/BattleSpades-client-*-windows-x64.zip out/dist/
+          Copy-Item out/installer/BattleSpades-server-*-windows-x64.zip out/dist/
           Copy-Item out/installer/BattleSpades-assets-*.zip out/dist/
 
       - name: Write checksums

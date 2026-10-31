@@ -192,11 +192,44 @@ void steam_link_choice_preserves_identity_and_requires_explicit_action() {
            "returning to sign-in must not retain a link action");
 }
 
+void offline_entry_survives_unreachable_auth_and_needs_only_a_name() {
+    IdentityMenuModel model;
+    model.set_busy(true, "Checking your session...");
+    const Point offline{400 * 8, 516 * 8};
+    model.pointer_press(offline);
+    expect(model.pointer_release(offline) == IdentityAction::offline,
+           "offline remains accessible while online sign-in is pending");
+    model.show_offline_form("");
+    expect(!model.busy() && model.password().empty(), "offline entry clears any credential form");
+    expect(model.append_text("LAN Player"), "local names allow spaces without an online account");
+    model.focus_next();
+    model.pointer_press(Point{300 * 8, 368 * 8});
+    expect(model.focused_field() == IdentityField::username, "offline form has no password field");
+    expect(!model.append_text("\n"), "local names reject control characters");
+    model.set_steam_state(IdentitySteamState::available);
+    expect(!model.controls()[2].widget.state.visible, "late Steam attach cannot change offline form");
+    const auto list = IdentityPresentation{}.build(model, {{800, 600}, 1'000U});
+    bool name_drawn = false;
+    for (const auto& command : list.commands()) {
+        if (const auto* text = std::get_if<TextDrawCommand>(&command)) {
+            expect(text->localization_key != "PASSWORD", "offline form must not request a password");
+            name_drawn |= text->localization_key == "LOCAL PLAYER NAME";
+        }
+    }
+    expect(name_drawn, "offline player name must be labelled");
+    model.pointer_press(Point{332 * 8, 420 * 8});
+    expect(model.pointer_release(Point{332 * 8, 420 * 8}) == IdentityAction::login,
+           "offline form submits its name using the primary action");
+    model.reset_form();
+    expect(model.controls()[6].widget.state.visible, "returning to sign-in keeps the offline entry");
+}
+
 int main() {
     try {
         form_never_exposes_clear_password_to_rendering();
         pointer_routes_login_register_steam_guest_and_recovery();
         field_focus_limits_and_busy_state_fail_closed();
+        offline_entry_survives_unreachable_auth_and_needs_only_a_name();
         steam_button_is_deterministic_across_attach_states();
         presentation_uses_original_menu_assets();
         presentation_reserves_non_overlapping_text_bands();

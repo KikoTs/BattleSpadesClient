@@ -95,7 +95,7 @@ void main_inventory_and_geometry_match_retail() {
     const auto view = menu.presentation();
 
     expect(view.active_tab == SettingsTab::main, "Main must be the initial tab");
-    expect(view.rows.size() == 24U,
+    expect(view.rows.size() == 26U,
            "Main must expose the existing rows, local skin/movement preferences and ability hints");
     const std::vector expected{
         SettingsRowId::language,
@@ -104,6 +104,8 @@ void main_inventory_and_geometry_match_retail() {
         SettingsRowId::fallback_music,
         SettingsRowId::death_voices,
         SettingsRowId::spatial_audio,
+        SettingsRowId::menu_background,
+        SettingsRowId::menu_background_motion,
         SettingsRowId::invert_mouse,
         SettingsRowId::favorite_server,
         SettingsRowId::show_skins,
@@ -341,6 +343,35 @@ void window_mode_row_cycles_and_greys_out_resolution_when_borderless() {
     const auto* commit = find_effect<SettingsCommitCommand>(menu.take_effects());
     expect(commit != nullptr && commit->display_changed,
            "a window mode change goes through the keep/revert prompt");
+}
+
+void shader_and_effect_changes_preserve_frame_pacing_preferences() {
+    using battlespades::settings::FrameLimit;
+    using battlespades::settings::ShaderQuality;
+    for (const auto limit : {FrameLimit::display, FrameLimit::custom, FrameLimit::unlimited}) {
+        auto initial = battlespades::settings::retail_default_settings();
+        initial.graphics.shader_quality = ShaderQuality::ultra;
+        initial.graphics.frame_limit = limit;
+        initial.graphics.frame_rate_cap = 240U;
+        initial.graphics.render_interpolation = true;
+        initial.graphics.vsync = false;
+        SettingsSession session{initial};
+        SettingsMenuModel menu{session, full_environment()};
+        menu.set_active_tab(SettingsTab::graphics);
+        for (const auto row_id : {SettingsRowId::compatibility_shader,
+                                  SettingsRowId::shader_quality,
+                                  SettingsRowId::effect_quality}) {
+            for (const auto action : {InputAction::navigate_right, InputAction::navigate_left}) {
+                expect(menu.set_focus(SettingsMenuTarget::for_row(row_id)),
+                       "graphics regression row must accept focus");
+                static_cast<void>(menu.handle(InputEvent{action, InputPhase::pressed}));
+                const auto& graphics = session.draft().graphics;
+                expect(graphics.frame_limit == limit && graphics.frame_rate_cap == 240U &&
+                       graphics.render_interpolation && !graphics.vsync,
+                       "shader/effect edits must preserve the limiter, interpolation and VSync");
+            }
+        }
+    }
 }
 
 void every_renderer_tier_is_reachable_and_legacy_stays_deliberate() {
@@ -649,6 +680,8 @@ void pointer_hit_testing_tabs_and_slider_drag_edit_the_draft() {
     menu.pointer_release(quarter);
     expect(session.draft().main.master_volume > 0.24 && session.draft().main.master_volume < 0.26,
            "range bar pointer capture must continuously update the normalized value");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::invert_mouse)),
+           "scroll the invert row into view before clicking its arrow");
     const auto invert = row(menu.presentation(), SettingsRowId::invert_mouse);
     const Point right_arrow{invert.control_bounds.x + invert.control_bounds.width - 1,
                             invert.control_bounds.y + invert.control_bounds.height / 2};
@@ -1188,6 +1221,40 @@ void classic_atmosphere_previews_and_custom_fog_controls() {
            session.draft().main.classic_fog_color[0U] <= 135U, "fog slider pointer selects midpoint");
 }
 
+void menu_backgrounds_preview_cancel_and_commit() {
+    SettingsSession session;
+    SettingsMenuModel menu{session, full_environment()};
+    expect(!session.draft().main.menu_background_motion, "background motion starts disabled");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::menu_background)), "selector reachable");
+    expect(row(menu.presentation(), SettingsRowId::menu_background).choice_count == 33U,
+           "all supplied backgrounds are selectable");
+    for (std::size_t i = 1U; i < 33U; ++i) {
+        expect(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}), "image can change");
+        expect(session.draft().main.menu_background == battlespades::settings::menu_background_options[i].id,
+               "every selection previews the corresponding image");
+    }
+    static_cast<void>(menu.take_effects());
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::menu_background_motion)), "motion reachable");
+    expect(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}), "motion toggles");
+    const auto previews = menu.take_effects();
+    expect(find_effect<SettingsPreviewEffect>(previews) && session.draft().main.menu_background_motion,
+           "motion previews immediately");
+    menu.activate_cancel();
+    expect(session.draft().main.menu_background == "miner-and-zombies" &&
+           !session.draft().main.menu_background_motion, "Cancel restores both choices");
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::menu_background)), "selector remains reachable");
+    static_cast<void>(menu.handle(InputEvent{InputAction::navigate_right, InputPhase::pressed}));
+    expect(menu.set_focus(SettingsMenuTarget::for_row(SettingsRowId::menu_background_motion)), "motion remains reachable");
+    static_cast<void>(menu.handle(InputEvent{InputAction::activate, InputPhase::pressed}));
+    static_cast<void>(menu.take_effects());
+    menu.activate_done();
+    const auto commits = menu.take_effects();
+    const auto* commit = find_effect<SettingsCommitCommand>(commits);
+    expect(commit && !commit->restart_required && !commit->display_changed &&
+           session.committed().main.menu_background == "original-battle-artwork" &&
+           session.committed().main.menu_background_motion, "Done saves both without restarting");
+}
+
 struct TestCase final {
     std::string_view name;
     std::function<void()> body;
@@ -1197,6 +1264,9 @@ struct TestCase final {
 
 int main() {
     const std::vector<TestCase> tests{
+        {"shader_and_effect_changes_preserve_frame_pacing_preferences",
+         shader_and_effect_changes_preserve_frame_pacing_preferences},
+        {"menu_backgrounds_preview_cancel_and_commit", menu_backgrounds_preview_cancel_and_commit},
         {"classic_atmosphere_previews_and_custom_fog_controls", classic_atmosphere_previews_and_custom_fog_controls},
         {"skin_preferences_are_reachable_live_and_cancelable",skin_preferences_are_reachable_live_and_cancelable},
         {"main_inventory_and_geometry_match_retail", main_inventory_and_geometry_match_retail},

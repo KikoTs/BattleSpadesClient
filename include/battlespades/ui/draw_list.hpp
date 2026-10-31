@@ -2,6 +2,7 @@
 
 #include "battlespades/ui/design_canvas.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -115,6 +116,9 @@ struct SpriteDrawCommand final {
      * in those frames; nothing else reads it.
      */
     std::uint16_t world_anchor{};
+    /** Optional background camera: eased pointer xy and short shutter velocity xy. */
+    std::optional<std::array<float, 4U>> background_motion{};
+    float background_time{};
 };
 
 enum class HorizontalTextAlignment : std::uint8_t {

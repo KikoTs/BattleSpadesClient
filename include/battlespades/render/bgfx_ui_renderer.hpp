@@ -159,6 +159,11 @@ struct UiSprite final {
     /** Clockwise rotation about `destination`'s centre. */
     float rotation_degrees{};
     bool additive{};
+    std::optional<std::array<float, 4U>> background_motion{};
+    float background_time{};
+    float background_parallax{1.0F};
+    /** A premultiplied-alpha cutout; outside its authored canvas is transparent. */
+    bool background_cutout{};
 };
 
 /** Resident image billboard in native eye coordinates (right, up, back). */

@@ -2200,6 +2200,10 @@
     "GORE_INTENSITY_DESCRIPTION": "新しい傷の大きさ、深さ、破片を調整します。傷の表示が必要です。外見のみの効果です。",
     "DISMEMBERMENT_INTENSITY_DESCRIPTION": "死亡時や死体への命中時の頭部・手足の切断を調整します。過激では近距離のショットガン命中で切断しやすくなります。オフでも傷は残ります。",
     "SPATIAL_AUDIO": "空間オーディオ（ヘッドホン）",
-    "SPATIAL_AUDIO_DESCRIPTION": "バイノーラルHRTFで方向と高さを表現します。通常のステレオや外部処理では無効にしてください。対応する音声出力が必要です。"
+    "SPATIAL_AUDIO_DESCRIPTION": "バイノーラルHRTFで方向と高さを表現します。通常のステレオや外部処理では無効にしてください。対応する音声出力が必要です。",
+    "MENU_BACKGROUND": "メニューの背景",
+    "MENU_BACKGROUND_MOTION": "背景のモーション",
+    "MENU_BACKGROUND_DESCRIPTION": "メインメニューの背景を選びます。完了で保存、キャンセルで元に戻します。",
+    "MENU_BACKGROUND_MOTION_DESCRIPTION": "マウスに合わせた穏やかなカメラ移動と短いモーションブラー。停止時は鮮明な画像を保ちます。初期設定はオフです。"
   }
 }

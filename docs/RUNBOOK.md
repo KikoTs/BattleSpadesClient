@@ -77,6 +77,34 @@ definitions exist; this does not prove a current CI run or graphical package
 check passed. Test on the target OS and verify signing/application packaging
 for the actual release artifact.
 
+For a Linux crash, keep the original executable, debug symbols and core
+together. A systemd core can be extracted locally with
+`coredumpctl dump PID --output=core`. Run
+`bash scripts/inspect-linux-crash.sh /path/to/BattleSpadesClient /path/to/core /path/to/report.txt`
+to write a private backtrace and loaded-library list. It uploads nothing and
+refuses to overwrite an existing report. The core need not be posted publicly;
+the backtrace is needed to identify the crashing thread and verify a fix for
+that specific crash.
+
+The pinned bgfx overlay in `cmake/vcpkg-overlay/bgfx` fixes the beta.4 Linux
+Vulkan descriptor exhaustion found in the private core: repeated bindings reuse
+sets within a frame, additional pools handle unique bindings, and failed
+allocations cannot reach descriptor updates or draw commands. Keep the overlay
+enabled through `vcpkg-configuration.json` on every platform. To exercise both
+reuse and overflow with real Vulkan rendering and pixel readback on Windows:
+
+```powershell
+& .\out\build\native-dev\tests\RelWithDebInfo\aos_ui_renderer_tests.exe vulkan-descriptors
+```
+
+This opt-in test requires a working Vulkan driver. Run the ordinary UI renderer
+regressions on the other graphics backends as well when changing the overlay.
+The cross-platform `aos_vulkan_descriptor_pressure_tests` target exercises the
+same pressure without a window system. Pass `src/render/shaders/bin` as its
+argument. Linux CI runs it with Mesa lavapipe; locally set `VK_ICD_FILENAMES` to
+the installed `lvp_icd*.json` under `/usr/share/vulkan/icd.d` to select that
+software driver. It still renders and verifies GPU readback pixels.
+
 ## Hosting
 
 Local hosting resolves `AOS_BATTLESPADES_SERVER`, an adjacent `server/` bundle,
@@ -123,6 +151,12 @@ The UI test verifies captured pixels, clipping, texture lifetime, minimize/reset
 and exact-slot reuse after restart. The shadow test checks direction, floor
 contact, light-volume culling and 192 moving-camera frames per backend. Run GPU
 tests sequentially. These checks do not establish frame rates on other hardware.
+Frame pacing measures presentation separately from simulation. A heavier full
+tick can still admit a shorter render-only frame before the next simulation
+deadline, and fresh full presentations retire stale shader-compilation costs.
+The core, world-interpolation, look-smoothness and settings-menu regressions
+cover this recovery and preserve the selected frame cap and VSync state when
+compatibility shaders or effects change.
 Compiling Metal shader binaries and testing its matrix/vertex conventions are
 separate from actually running Metal on a Mac; the release needs both.
 

@@ -50,10 +50,11 @@ DemoPlaybackUpdate DemoPlayback::advance(std::uint64_t time_us, std::size_t budg
             break;
         }
         if (state.pending->time_us > time_us) break;
+        const double packet_seconds = static_cast<double>(state.pending->time_us) / 1'000'000.0;
         auto packet = std::move(state.pending->bytes);
         state.pending.reset();
         if (state.classic) {
-            auto update = state.classic->ingest(packet);
+            auto update = state.classic->ingest(packet, packet_seconds);
             if (!update.error.empty()) { state.error = std::move(update.error); break; }
             if (update.map_started) {
                 state.joined = false;

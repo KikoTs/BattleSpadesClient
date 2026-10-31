@@ -454,6 +454,103 @@ void frames_are_spaced_evenly_across_the_tick() {
            "a late frame is dropped, not squeezed in");
 }
 
+void heavy_full_ticks_leave_room_for_short_render_only_frames() {
+    using namespace std::chrono_literals;
+    using Clock = IntermediateFramePacer::Clock;
+    constexpr auto tick = 16'666'666ns;
+    // A 9 ms full tick plus a 2 ms extra frame fits inside 16.7 ms. The
+    // old equal-slot requirement nevertheless reduced every request to 60 fps.
+    for (const auto period : {10ms, 8ms, 4ms, 2ms}) {
+        IntermediateFramePacer pacer;
+        pacer.record_tick_work(9ms);
+        pacer.record_frame_work(2ms);
+        const auto plan = pacer.plan(tick, period);
+        expect(plan.frames_per_tick == 2U && plan.reclaim_spare_time,
+               "expensive simulation must not impose 60 fps when a short extra frame fits");
+        const Clock::time_point origin{};
+        const auto presented = origin + 9ms;
+        const auto next_tick = origin + tick;
+        const auto start = pacer.start_of(1U, plan, presented, presented, next_tick);
+        expect(start && *start >= presented && *start + pacer.frame_work() < next_tick,
+               "reclaimed render time must stay strictly between simulation ticks");
+        expect(!pacer.start_of(1U, plan, presented, next_tick - 1ms, next_tick),
+               "a late reclaimed frame must still yield to simulation");
+        pacer.record_tick_work(15ms);
+        expect(pacer.plan(tick, period).frames_per_tick == 1U,
+               "a full tick without spare time must remain protected");
+    }
+}
+
+void extra_frames_recover_after_a_temporary_stall() {
+    using namespace std::chrono_literals;
+    constexpr auto tick = 16'666'666ns;
+    for (const auto period : {8'333'333ns, 6'944'444ns, 4'166'666ns, 2'083'333ns}) {
+        for (const auto stall : {12ms, 100ms}) {
+            IntermediateFramePacer pacer;
+            pacer.record_tick_work(1ms);
+            pacer.record_frame_work(500us);
+            const auto healthy_frames = pacer.plan(tick, period).frames_per_tick;
+            expect(healthy_frames > 1U, "high-refresh presentation starts above 60 fps");
+
+            pacer.record_frame_work(stall);
+            expect(pacer.plan(tick, period).frames_per_tick == (stall == 12ms ? 2U : 1U),
+                   "a slow extra frame may use spare time only while it fits before simulation");
+            pacer.record_tick_work(1ms);
+            expect(pacer.frame_work() == stall,
+                   "a fresh slow-frame sample must not be discarded by the next light tick");
+            for (unsigned step{}; step < 120U; ++step) {
+                pacer.record_tick_work(1ms);
+                const auto plan = pacer.plan(tick, period);
+                // Like Application, no render-only timing samples arrive
+                // while the plan allows only the tick's own frame.
+                for (unsigned frame{1U}; frame < plan.frames_per_tick; ++frame) {
+                    pacer.record_frame_work(500us);
+                }
+            }
+            expect(pacer.plan(tick, period).frames_per_tick == healthy_frames,
+                   "fast ticks must reopen extra frames after a stall without a restart");
+            expect(pacer.plan(tick, 0ns).frames_per_tick == 1U &&
+                       pacer.plan(tick, tick).frames_per_tick == 1U,
+                   "recovery must not override a disabled or 60 fps presentation request");
+        }
+    }
+}
+
+void stale_frame_recovery_still_respects_sustained_load() {
+    using namespace std::chrono_literals;
+    constexpr auto tick = 16'666'666ns;
+    constexpr auto period = 6'944'444ns;
+    IntermediateFramePacer pacer;
+    pacer.record_frame_work(100ms);
+    for (unsigned step{}; step < 120U; ++step) {
+        pacer.record_tick_work(10ms);
+        expect(pacer.plan(tick, period).frames_per_tick == 1U,
+               "expiring a stale frame estimate must not overload a busy tick");
+    }
+    for (unsigned step{}; step < 120U; ++step) {
+        pacer.record_tick_work(6ms);
+    }
+    expect(pacer.plan(tick, period).frames_per_tick == 2U,
+           "partial recovery admits only the two frames the current workload can afford");
+}
+
+void tick_presentations_refresh_render_cost_after_shader_changes() {
+    using namespace std::chrono_literals;
+    constexpr auto tick = 16'666'666ns;
+    IntermediateFramePacer pacer;
+    pacer.record_frame_work(100ms);
+    for (unsigned step{}; step < 120U; ++step) {
+        pacer.record_tick_work(9ms, 2ms);
+    }
+    expect(pacer.frame_work() < 3ms && pacer.plan(tick, 2ms).frames_per_tick == 2U,
+           "fresh render measurements must reopen frames without treating simulation as render cost");
+    for (unsigned step{}; step < 120U; ++step) {
+        pacer.record_tick_work(12ms, 10ms);
+        expect(pacer.plan(tick, 2ms).frames_per_tick == 1U,
+               "fresh measurements must also reject extra frames under sustained render load");
+    }
+}
+
 void vertical_sync_never_asks_for_more_than_the_display_shows() {
     using namespace std::chrono_literals;
     using battlespades::frontend::render_interpolation_paced_period;
@@ -517,6 +614,12 @@ int main() {
          particles_blend_without_touching_the_simulation},
         {"hud_labels_stay_on_their_world_point", hud_labels_stay_on_their_world_point},
         {"frames_are_spaced_evenly_across_the_tick", frames_are_spaced_evenly_across_the_tick},
+        {"extra_frames_recover_after_a_temporary_stall", extra_frames_recover_after_a_temporary_stall},
+        {"heavy_full_ticks_leave_room_for_short_render_only_frames",
+         heavy_full_ticks_leave_room_for_short_render_only_frames},
+        {"stale_frame_recovery_still_respects_sustained_load", stale_frame_recovery_still_respects_sustained_load},
+        {"tick_presentations_refresh_render_cost_after_shader_changes",
+         tick_presentations_refresh_render_cost_after_shader_changes},
         {"vertical_sync_never_asks_for_more_than_the_display_shows",
          vertical_sync_never_asks_for_more_than_the_display_shows},
         {"sleep_margin_tracks_the_timer", sleep_margin_tracks_the_timer},

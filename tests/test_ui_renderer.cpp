@@ -172,6 +172,71 @@ void test_backend(render::GraphicsBackend backend, const std::filesystem::path& 
                "World rollback invalidated an existing UI texture");
         expect_color(capture.finish(renderer), 32U, white, "World rollback must preserve unrelated texture pixels");
     }
+    {
+        // The effect shader must never leak its blur or vignette into foreground controls.
+        Capture capture;
+        expect(renderer.begin_frame(), std::string{renderer.last_error()});
+        render::UiSprite background{runtime->texture, {-4, -4, 72, 72}};
+        background.background_motion = std::array<float, 4U>{0.8F, -0.6F, 2.0F, -1.5F};
+        background.background_time = 2.0F;
+        expect(renderer.draw(background), "animated menu background rejected");
+        expect(renderer.draw(render::UiSprite{runtime->texture, {16, 0, 32, 64}, {}, {},
+                                               {255U, 0U, 0U, 255U}}), "foreground control rejected");
+        expect_color(capture.finish(renderer), 32U, red, "background effects must leave controls sharp");
+        expect(renderer.begin_frame(), std::string{renderer.last_error()});
+        (*background.background_motion)[2] = std::numeric_limits<float>::quiet_NaN();
+        expect(!renderer.draw(background), "non-finite background velocity reached the shader");
+        expect(renderer.end_frame(), "invalid background frame failed to close");
+    }
+    {
+        // Enabling motion at rest must preserve the complete image, including upper objects.
+        std::vector<std::uint8_t> pattern(size * size * 4U, 255U);
+        for (std::size_t y = 0; y < size; ++y) for (std::size_t x = 0; x < size; ++x) {
+            const auto index = (y * size + x) * 4U;
+            pattern[index] = (x / 2U) % 2U ? 255U : 0U;
+            pattern[index + 1U] = static_cast<std::uint8_t>(y * 4U);
+            pattern[index + 2U] = static_cast<std::uint8_t>(x * 4U);
+        }
+        const auto picture = renderer.create_texture_rgba8(pattern, {size,size}, render::TextureFilter::nearest);
+        expect(picture.has_value(), "could not allocate background regression texture");
+        render::UiSprite background{picture->texture, {0,0,64,64}};
+        std::vector<std::uint8_t> original, animated;
+        {
+            Capture capture;
+            expect(renderer.begin_frame() && renderer.draw(background), "static image frame failed");
+            original = capture.finish(renderer);
+        }
+        background.background_motion = std::array<float,4>{};
+        {
+            Capture capture;
+            expect(renderer.begin_frame() && renderer.draw(background), "stationary effect frame failed");
+            animated = capture.finish(renderer);
+        }
+        expect(original.size() == animated.size(), "background capture size changed");
+        for (std::size_t i = 0; i < original.size(); ++i)
+            expect(std::abs(static_cast<int>(original[i]) - static_cast<int>(animated[i])) <= 1,
+                   "motion at rest blurred, distorted or recolored the artwork");
+        expect(renderer.release_texture(picture->texture), "background fixture release failed");
+    }
+    {
+        // Layer alpha must filter cleanly and never extend the cutout's canvas edge.
+        constexpr std::array<std::uint8_t,4> half_red{128U,0U,0U,128U};
+        const auto layer = renderer.create_texture_rgba8(half_red, {1,1}, render::TextureFilter::linear);
+        expect(layer.has_value(), "cutout fixture upload failed");
+        Capture capture;
+        expect(renderer.begin_frame(), "cutout frame failed");
+        expect(renderer.draw(render::UiSprite{runtime->texture, {0,0,64,64}, {}, {}, {},
+                                              render::UiDrawSpace::window_pixels}), "cutout backdrop failed");
+        render::UiSprite cutout{layer->texture, {0,0,64,64}, {}, {}, {}, render::UiDrawSpace::window_pixels};
+        cutout.background_cutout = true;
+        cutout.background_parallax = 3.0F;
+        cutout.background_motion = std::array<float,4>{1.0F,0.0F,0.0F,0.0F};
+        expect(renderer.draw(cutout), "cutout draw failed");
+        const auto pixels = capture.finish(renderer);
+        expect_color(pixels, 32U, {255U,127U,127U,255U}, "premultiplied cutout must not darken the edge");
+        expect_color(pixels, 63U, white, "outside a moving cutout canvas must remain transparent");
+        expect(renderer.release_texture(layer->texture), "cutout fixture release failed");
+    }
     const auto stale_after_restart = runtime->texture;
     const auto cached = renderer.load_texture("white.png", render::TextureFilter::nearest);
     const auto retained = renderer.load_texture("white.png", render::TextureFilter::nearest);
@@ -352,12 +417,145 @@ void test_backend(render::GraphicsBackend backend, const std::filesystem::path& 
     std::cout << render::graphics_backend_name(backend)
               << ": UI ordering, clipping, mutable uploads, reset, preview lifetime and restart passed\n";
 }
+// The beta.4 Linux core exhausted bgfx's fixed 3,072-set Vulkan descriptor
+// pool. Exercise repeated bindings and more unique bindings than one pool can
+// hold, with readback to catch silently skipped draws as well as driver crashes.
+void test_vulkan_descriptors(const std::filesystem::path& assets) {
+    Window window;
+    render::BgfxUiRenderer renderer;
+    render::BgfxUiRendererConfig config;
+    config.native_window.window = SDL_GetPointerProperty(SDL_GetWindowProperties(window.value),
+        SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    config.asset_root = assets;
+    config.shader_root = AOS_SHADER_BIN_ROOT;
+    config.drawable_extent = {size, size};
+    config.design_extent = {size, size};
+    config.backend = render::GraphicsBackend::vulkan;
+    config.vertical_sync = false;
+    const auto initialized = renderer.initialize(config);
+    expect(initialized, std::string{renderer.last_error()});
+    expect(renderer.active_backend() == render::GraphicsBackend::vulkan,
+           "descriptor pressure test did not select Vulkan");
+
+    std::vector<render::UiTexture> textures;
+    constexpr unsigned unique_bindings{3'200U};
+    for (unsigned index{}; index < unique_bindings; ++index) {
+        const auto& color = index + 1U == unique_bindings ? white : (index % 2U ? green : red);
+        const auto texture = renderer.create_texture_rgba8(color,
+            {1U, 1U}, render::TextureFilter::nearest);
+        expect(texture.has_value(), "could not create descriptor pressure textures");
+        textures.push_back(texture->texture);
+    }
+    {
+        Capture capture;
+        for (unsigned frame{}; frame < 8U; ++frame) {
+            expect(renderer.begin_frame(), std::string{renderer.last_error()});
+            for (unsigned draw{}; draw < 4'096U; ++draw)
+                expect(renderer.draw(render::UiSprite{textures[draw % 2U], {0, 0, 64, 64}}),
+                       "repeated descriptor draw was rejected");
+            expect_color(capture.finish(renderer), 32U, green,
+                         "alternating bindings must reuse descriptors without losing draws");
+
+            expect(renderer.begin_frame(), std::string{renderer.last_error()});
+            for (const auto texture : textures)
+                expect(renderer.draw(render::UiSprite{texture, {0, 0, 64, 64}}),
+                       "unique descriptor draw was rejected");
+            expect_color(capture.finish(renderer), 32U, white,
+                         "unique bindings must grow the descriptor pool without losing draws");
+            expect(renderer.last_frame_dropped_draws() == 0U,
+                   "descriptor pressure exhausted the transient draw budget");
+        }
+    }
+    for (const auto texture : textures)
+        expect(renderer.release_texture(texture), "descriptor pressure texture release failed");
+    renderer.shutdown();
+    std::cout << "Vulkan: repeated/unique descriptor pressure and deferred release passed\n";
+}
+
+// Opt-in timing, deliberately excluded from pass/fail regression thresholds.
+// An offscreen 1080p target avoids the desktop compositor and hidden-window size.
+void benchmark_menu() {
+    Window window;
+    render::BgfxUiRenderer renderer;
+    render::BgfxUiRendererConfig config;
+    config.native_window.window = SDL_GetPointerProperty(SDL_GetWindowProperties(window.value),
+        SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    config.shader_root = AOS_SHADER_BIN_ROOT;
+    config.asset_root = std::filesystem::temp_directory_path();
+    config.drawable_extent = {1920,1080};
+    config.design_extent = {1920,1080};
+    config.backend = render::GraphicsBackend::direct3d11;
+    config.vertical_sync = false;
+    const bool initialized = renderer.initialize(config);
+    expect(initialized, std::string{renderer.last_error()});
+    bgfx::setDebug(BGFX_DEBUG_PROFILER);
+    std::cout << "GPU vendor/device: " << std::hex << bgfx::getCaps()->vendorId << '/'
+              << bgfx::getCaps()->deviceId << std::dec << '\n';
+    std::vector<std::uint8_t> picture(2048U * 1024U * 4U, 255U);
+    for (std::size_t i = 0; i < picture.size(); i += 4U) {
+        picture[i] = static_cast<std::uint8_t>((i / 4U) % 256U);
+        picture[i + 1U] = static_cast<std::uint8_t>((i / 8192U) % 256U);
+    }
+    const auto texture = renderer.create_texture_rgba8(picture, {2048,1024}, render::TextureFilter::linear);
+    expect(texture.has_value(), "benchmark texture allocation failed");
+    const auto target = bgfx::createFrameBuffer(1920,1080,bgfx::TextureFormat::RGBA8);
+    expect(bgfx::isValid(target), "benchmark target allocation failed");
+    std::array<double,2> medians{};
+    for (unsigned mode = 0; mode < 2U; ++mode) {
+        std::vector<double> samples;
+        std::uint32_t previous_frame = UINT32_MAX;
+        for (unsigned frame = 0; frame < 420U; ++frame) {
+            expect(renderer.begin_frame(), "benchmark frame failed");
+            for (const auto view : {render::backdrop_clear_view_id, render::ui_window_view_id,
+                                   render::ui_canvas_view_id}) bgfx::setViewFrameBuffer(view, target);
+            render::UiSprite sprite{texture->texture, {-96,-54,2112,1188}, {}, {}, {},
+                                    render::UiDrawSpace::window_pixels};
+            if (mode != 0U) {
+                sprite.background_motion = std::array<float,4>{.5F,-.3F,3.0F,-2.0F};
+                sprite.background_time = static_cast<float>(frame) / 60.0F;
+            }
+            expect(renderer.draw(sprite) && renderer.end_frame(), "benchmark submit failed");
+            const auto* stats = bgfx::getStats();
+            for (std::uint16_t v = 0; v < stats->numViews; ++v) {
+                const auto& view = stats->viewStats[v];
+                if (view.view == render::ui_window_view_id && frame >= 120U &&
+                    view.gpuFrameNum != previous_frame && view.gpuTimeEnd > view.gpuTimeBegin &&
+                    stats->gpuTimerFreq > 0) {
+                    samples.push_back(static_cast<double>(view.gpuTimeEnd - view.gpuTimeBegin) *
+                        1000.0 / static_cast<double>(stats->gpuTimerFreq));
+                    previous_frame = view.gpuFrameNum;
+                }
+            }
+        }
+        expect(samples.size() > 30U, "backend did not expose enough GPU timing samples");
+        std::sort(samples.begin(), samples.end());
+        medians[mode] = samples[samples.size() / 2U];
+        std::cout << (mode ? "Camera motion + short blur" : "Static image") << " at 1920x1080: median "
+                  << medians[mode] << " ms, p95 " << samples[samples.size() * 95U / 100U]
+                  << " ms (" << samples.size() << " GPU samples)\n";
+    }
+    std::cout << "Incremental menu GPU time: " << medians[1] - medians[0] << " ms\n";
+    for (const auto view : {render::backdrop_clear_view_id, render::ui_window_view_id,
+                           render::ui_canvas_view_id}) bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
+    bgfx::destroy(target);
+    renderer.shutdown();
+}
 } // namespace
 
 int main(int argc, char** argv) {
     try {
         expect(SDL_Init(SDL_INIT_VIDEO), SDL_GetError());
+        if (argc > 1 && std::string_view{argv[1]} == "menu-benchmark") {
+            benchmark_menu();
+            SDL_Quit();
+            return 0;
+        }
         FixtureDirectory assets;
+        if (argc > 1 && std::string_view{argv[1]} == "vulkan-descriptors") {
+            test_vulkan_descriptors(assets.path);
+            SDL_Quit();
+            return 0;
+        }
         constexpr std::array candidates{
             std::pair{"d3d11", render::GraphicsBackend::direct3d11},
             std::pair{"d3d12", render::GraphicsBackend::direct3d12},
