@@ -1,6 +1,9 @@
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/render_views.hpp"
 #include "battlespades/render/world_renderer.hpp"
+#include "battlespades/world/entity_catalog.hpp"
+#include "battlespades/world/kv6_model.hpp"
+#include "battlespades/world/local_entity.hpp"
 
 #include <SDL3/SDL.h>
 #include <bgfx/bgfx.h>
@@ -157,6 +160,38 @@ int main(int argc, char** argv) {
                  std::pair{"terrain-near", &near_grain}, std::pair{"terrain-far", &far_grain}})
             expect(stbi_write_png((output / (std::string{name} + ".png")).string().c_str(),
                                   size, size, 4, pixels->data(), size * 4) != 0, "Capture write failed");
+        // The model must be visible through the production world draw path,
+        // not merely present in the protocol adapter's entity list.
+        std::string model_error;
+        auto tent = world::Kv6Model::load_file(config.asset_root / "kv6/cp.kv6", &model_error);
+        expect(tent.has_value(), "medical tent asset missing: " + model_error);
+        tent->apply_default_color({40U, 90U, 255U, 255U});
+        expect(scene.set_world_model_mesh(7U, tent->mesh()), std::string{scene.last_error()});
+        world::ChunkMesh tent_ground;
+        quad(tent_ground, 50, 0x00505050, 12);
+        expect(scene.set_world_model_mesh(6U, tent_ground), std::string{scene.last_error()});
+        bx::mtxLookAt(view.data(), {261,263,45}, {256,256,48.5F}, {0,0,-1}, bx::Handedness::Right);
+        const std::array ground_only{render::WorldModelDraw{6U}};
+        const auto empty_ground = capture(ground_only, 3.0F);
+        for (const auto type : {std::uint8_t{1U}, std::uint8_t{25U}}) {
+            const auto* definition = world::find_entity_definition(type);
+            expect(definition != nullptr && !definition->parts.empty(), "tent catalog missing");
+            world::LocalEntity entity;
+            entity.type = type;
+            entity.face = 4U;
+            entity.position = {256,256,50};
+            const auto transform = world::entity_presentation_transform(entity, *definition, definition->parts.front());
+            const std::array tent_draws{render::WorldModelDraw{6U}, render::WorldModelDraw{7U, transform}};
+            const auto pixels = capture(tent_draws, 3.0F);
+            std::size_t changed{};
+            for (std::size_t index{}; index < pixels.size(); index += 4U)
+                if (pixels[index] != empty_ground[index] || pixels[index+1U] != empty_ground[index+1U] ||
+                    pixels[index+2U] != empty_ground[index+2U]) ++changed;
+            expect(changed > 500U, "medical tent disappeared in the world renderer");
+            const auto name = type == 1U ? "classic075-medical-tent.png" : "classic-ctf-medical-tent.png";
+            expect(stbi_write_png((output / name).string().c_str(), size, size, 4,
+                                  pixels.data(), size * 4) != 0, "Tent capture write failed");
+        }
         scene.shutdown();
         bgfx::destroy(readback); bgfx::destroy(framebuffer); bgfx::destroy(depth); bgfx::destroy(color);
         ui.shutdown(); SDL_DestroyWindow(window); SDL_Quit();

@@ -1,4 +1,7 @@
 #include "battlespades/frontend/native_texture_preloader.hpp"
+#include "battlespades/assets/background_pack.hpp"
+#include "battlespades/frontend/menu_background.hpp"
+#include "battlespades/render/image_memory.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -34,6 +37,7 @@ struct NativeTexturePreloader::Impl final {
     assets::PreloadService service{{4'096U, 4U, 64U}};
     std::filesystem::path root;
     std::filesystem::path client_root;
+    std::shared_ptr<const assets::BackgroundPack> backgrounds;
     std::vector<render::TextureFilter> filters;
     std::map<TokenKey, render::DecodedUiTexture> decoded;
     mutable std::mutex decoded_mutex;
@@ -62,12 +66,29 @@ struct NativeTexturePreloader::Impl final {
             if (!safe_relative_path(relative)) {
                 result.error = "preload manifest contains an unsafe texture path";
             } else {
-                result = render::decode_png_rgba8(root / relative);
+                const auto name = relative.generic_string();
+                if (backgrounds && backgrounds->contains(name)) {
+                    std::string error;
+                    const auto bytes = backgrounds->read(name, error);
+                    if (bytes) result = render::decode_png_rgba8(std::span<const std::uint8_t>{*bytes});
+                    else result.error = std::move(error);
+                } else {
+                    result = render::decode_png_rgba8(root / relative);
+                }
                 // Project-owned UI artwork is an overlay beside the imported
                 // retail tree. Asset repair atomically replaces `original`, so
                 // custom files must never be hidden inside that directory.
                 if (!result && !client_root.empty()) {
                     result = render::decode_png_rgba8(client_root / relative);
+                }
+                if (result) {
+                    if (const auto* layer = menu_background_layer(name); layer != nullptr && layer->cutout) {
+                        auto& pixels = result.texture->rgba8;
+                        for (std::size_t i = 0; i < pixels.size(); i += 4U)
+                            for (std::size_t channel = 0; channel < 3U; ++channel)
+                                pixels[i + channel] = static_cast<std::uint8_t>(
+                                    (static_cast<unsigned>(pixels[i + channel]) * pixels[i+3U] + 127U) / 255U);
+                    }
                 }
             }
             if (result) {
@@ -133,6 +154,13 @@ bool NativeTexturePreloader::start(const std::filesystem::path& asset_root,
 
     impl_->root = asset_root.lexically_normal();
     impl_->client_root = (asset_root.parent_path() / "client").lexically_normal();
+    impl_->backgrounds.reset();
+    const auto pack_path = impl_->client_root / assets::background_pack_path;
+    std::error_code pack_code;
+    if (std::filesystem::is_regular_file(pack_path, pack_code)) {
+        std::string error;
+        impl_->backgrounds = assets::cached_background_pack(pack_path, error);
+    }
     impl_->stopping.store(false, std::memory_order_release);
     impl_->workers.reserve(worker_count);
     for (std::size_t index{}; index < worker_count; ++index) {
@@ -209,6 +237,7 @@ void NativeTexturePreloader::stop() noexcept {
     impl_->filters.clear();
     impl_->root.clear();
     impl_->client_root.clear();
+    impl_->backgrounds.reset();
 }
 
 } // namespace battlespades::frontend

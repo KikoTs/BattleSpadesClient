@@ -125,6 +125,9 @@ verifies every image checksum and preserves the original PNG files. Images stay
 outside source control. Existing retail images are used when available, with the
 original menu background as a fallback for missing optional artwork.
 
+Menu artwork can also load from an encrypted background pack in `assets/client`.
+See [Background packs](docs/BACKGROUND_PACKS.md) for local packaging and format details.
+
 ## Download and install
 
 1. Get the latest Windows build from

@@ -31,10 +31,13 @@ int main() {
                "Medic must retain its distinct right-leg skin");
         expect(find_class_definition(4U)->first_person_arm_assets[0U].empty(),
                "zombies intentionally use weapon-hand models instead of class FPS arms");
-        expect(find_class_definition(4U)->damage_multiplier == 0.6 &&
+        expect(find_class_definition(4U)->damage_multiplier == 0.5 &&
                    find_class_definition(14U)->damage_multiplier == 0.5 &&
                    find_class_definition(1U)->damage_multiplier == 1.43,
-               "class durability must retain the retail numeric-HP multipliers");
+               "Zombie uses wiki-aligned durability while other class multipliers are preserved");
+        expect(find_class_definition(4U)->initial_blocks == 2500U &&
+                   find_class_definition(4U)->maximum_blocks == 2500U,
+               "Zombie starts with its full wiki-documented 2500-block wallet");
         for (std::uint8_t class_id{6U}; class_id <= 11U; ++class_id) {
             const auto* gangster = find_class_definition(class_id);
             expect(gangster != nullptr &&

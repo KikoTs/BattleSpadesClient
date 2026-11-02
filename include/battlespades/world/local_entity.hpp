@@ -41,6 +41,9 @@ struct LocalEntity final {
     /** Optional authored packet-21 RGB tint; zero RGB selects team material. */
     std::array<std::uint8_t, 3U> color{};
     bool has_color{};
+    /** Negotiated map-owned light, separate from player-placed flare blocks. */
+    bool map_owned_light{};
+    std::array<std::uint8_t, 3U> map_light_source_color{};
     /** Voxel face a stuck entity clings to, 0..5. */
     std::uint8_t face{4U};
 

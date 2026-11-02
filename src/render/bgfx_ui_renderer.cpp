@@ -1,4 +1,5 @@
 #include "battlespades/render/bgfx_ui_renderer.hpp"
+#include "battlespades/render/image_memory.hpp"
 
 #include "battlespades/render/render_views.hpp"
 #include "battlespades/ui/design_canvas.hpp"
@@ -371,13 +372,31 @@ UiTextureDecodeResult decode_png_rgba8(const std::filesystem::path& absolute_pat
         return {std::nullopt, "unable to read PNG asset: " + absolute_path.string()};
     }
 
+    return decode_png_rgba8(std::span<const std::uint8_t>{*bytes});
+}
+
+UiTextureDecodeResult decode_png_rgba8(std::span<const std::uint8_t> bytes) {
+    constexpr std::array<std::uint8_t, 8> png_magic{137,80,78,71,13,10,26,10};
+    if (bytes.size() < 33U || bytes.size() > UINT32_MAX ||
+        !std::equal(png_magic.begin(), png_magic.end(), bytes.begin())) {
+        return {std::nullopt, "Invalid PNG payload"};
+    }
+    const auto dimension = [&bytes](std::size_t offset) {
+        return (std::uint32_t{bytes[offset]} << 24U) | (std::uint32_t{bytes[offset+1]} << 16U) |
+               (std::uint32_t{bytes[offset+2]} << 8U) | bytes[offset+3];
+    };
+    const auto width = dimension(16), height = dimension(20);
+    if (width == 0 || height == 0 || width > 16'384U || height > 16'384U ||
+        std::uint64_t{width} * height * 4U > 256U * 1024U * 1024U) {
+        return {std::nullopt, "PNG dimensions exceed the decode budget"};
+    }
     bx::DefaultAllocator allocator;
     auto* image = bimg::imageParse(&allocator,
-                                   bytes->data(),
-                                   static_cast<std::uint32_t>(bytes->size()),
+                                   bytes.data(),
+                                   static_cast<std::uint32_t>(bytes.size()),
                                    bimg::TextureFormat::RGBA8);
     if (image == nullptr) {
-        return {std::nullopt, "bimg could not decode PNG asset: " + absolute_path.string()};
+        return {std::nullopt, "bimg could not decode PNG payload"};
     }
 
     constexpr auto texture_limit = static_cast<std::uint32_t>(UINT16_MAX);

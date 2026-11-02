@@ -118,6 +118,16 @@ struct CreateEntityPacket final {
     [[nodiscard]] bool has_explicit_color() const noexcept {
         return color[0U] != 0.0F || color[1U] != 0.0F || color[2U] != 0.0F;
     }
+    /** Optional BSL1 map-light annotation; stock/UGC records stay independent. */
+    [[nodiscard]] std::optional<std::array<std::uint8_t, 3U>> map_light_source_color() const noexcept {
+        if (type != 13U || integer_properties.size() != 2U ||
+            integer_properties[0U] != 0x42534C31 || integer_properties[1U] < 0 ||
+            integer_properties[1U] > 0xFFFFFF) return std::nullopt;
+        const auto rgb = static_cast<std::uint32_t>(integer_properties[1U]);
+        return std::array<std::uint8_t, 3U>{static_cast<std::uint8_t>(rgb >> 16U),
+                                           static_cast<std::uint8_t>(rgb >> 8U),
+                                           static_cast<std::uint8_t>(rgb)};
+    }
 };
 
 struct DestroyEntityPacket final {

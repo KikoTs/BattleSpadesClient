@@ -946,6 +946,7 @@ void TutorialWorldSession::restock_from_ammo_crate() noexcept {
     if (debug_full_loadout_) {
         static_cast<void>(sandbox_inventory_.restock_from_ammo_crate());
     }
+    restock_jetpack_fuel();
 }
 
 void TutorialWorldSession::restock_blocks() noexcept {
@@ -1846,6 +1847,7 @@ void TutorialWorldSession::step_entity_behaviour(LocalEntity& entity,
         case 3U: // AMMO_CRATE
             // Unconditional: retail consumes the crate even at full ammo.
             static_cast<void>(sandbox_inventory_.restock_from_ammo_crate());
+            restock_jetpack_fuel();
             break;
         case 4U: // HEALTH_CRATE
             // Retail ships NO heal amount. 20-and-only-below-full is the
@@ -3392,6 +3394,46 @@ void TutorialWorldSession::mark_light_dirty(const StaticLight& light) {
     }
 }
 
+bool TutorialWorldSession::custom_map_light_at(
+    const std::array<std::uint32_t, 3U>& cell, VxlColor source) const {
+    if (!prefer_custom_map_fixture_lighting_) return false;
+    const auto palette = emissive_palette_for(map_fixture_lighting_name_);
+    const auto appearance = emissive_appearance_at(palette, *map_, cell[0U], cell[1U], cell[2U], source);
+    return appearance.has_value() && appearance->intensity != 0U;
+}
+
+void TutorialWorldSession::set_map_fixture_lighting(std::string_view name, bool prefer_custom) {
+    if (map_fixture_lighting_name_ == name && prefer_custom_map_fixture_lighting_ == prefer_custom) return;
+    map_fixture_lighting_name_ = name;
+    prefer_custom_map_fixture_lighting_ = prefer_custom;
+    for (auto& flare : server_flares_) {
+        if (!flare.map_owned) continue;
+        const bool custom = custom_map_light_at(flare.cell, flare.source_color);
+        if (custom == flare.custom) continue;
+        const auto [x, y, z] = flare.cell;
+        const auto current = map_->color(x, y, z);
+        const auto old = flare.custom ? flare.source_color : flare.wire_color;
+        // A profile switch must not repaint a replacement player block.
+        if (!current || current->red != old.red || current->green != old.green || current->blue != old.blue) continue;
+        StaticLight light;
+        light.cell = flare.cell;
+        light.radius = StaticLightField::flare_block_radius;
+        light.color = flare.wire_color;
+        if (custom && flare.lit) {
+            static_cast<void>(static_lights_.remove_at(x, y, z));
+            flare.lit = false;
+            mark_light_dirty(light);
+        }
+        static_cast<void>(map_->set_voxel(x, y, z, custom ? flare.source_color : flare.wire_color));
+        mark_dirty(x, y);
+        if (!custom && !flare.lit) {
+            flare.lit = static_lights_.add(light);
+            if (flare.lit) mark_light_dirty(light);
+        }
+        flare.custom = custom;
+    }
+}
+
 bool TutorialWorldSession::apply_server_flare(const LocalEntity& entity) {
     // Retail FlareBlockEntity.post_initialize: add_user_block(x, y, z, RGB, 5)
     // then add_static_point_light(x, y, z, RGB, FLAREBLOCK_LIGHT_RADIUS). Both
@@ -3411,10 +3453,15 @@ bool TutorialWorldSession::apply_server_flare(const LocalEntity& entity) {
     const VxlColor color = entity.has_color
                                ? VxlColor{entity.color[0U], entity.color[1U], entity.color[2U], 255U}
                                : VxlColor{255U, 255U, 82U, 255U};
+    const auto cell = std::array{x, y, z};
+    const VxlColor source = entity.map_owned_light
+        ? VxlColor{entity.map_light_source_color[0U], entity.map_light_source_color[1U],
+                   entity.map_light_source_color[2U], 255U} : color;
+    const bool custom = entity.map_owned_light && custom_map_light_at(cell, source);
     // A marker cell may still hold the raw chroma voxel (the load-time
     // cleanup removes only exposed markers); retail's add_user_block simply
     // overwrites it with the static-light colour.
-    if (!map_->set_voxel(x, y, z, color)) {
+    if (!map_->set_voxel(x, y, z, custom ? source : color)) {
         return false;
     }
     mark_dirty(x, y);
@@ -3422,11 +3469,11 @@ bool TutorialWorldSession::apply_server_flare(const LocalEntity& entity) {
     light.cell = {x, y, z};
     light.color = color;
     light.radius = StaticLightField::flare_block_radius;
-    const bool lit = static_lights_.add(light);
+    const bool lit = !custom && static_lights_.add(light);
     if (lit) {
         mark_light_dirty(light);
     }
-    server_flares_.push_back(ServerFlare{entity.id, light.cell, lit});
+    server_flares_.push_back(ServerFlare{entity.id, light.cell, lit, entity.map_owned_light, color, source, custom});
     next_entity_id_ = std::max(next_entity_id_, entity.id + 1U);
     // No spawn event: retail's placement cue (build_light) belongs to the
     // placing FlareBlockTool, and map lights arrive silently on join.

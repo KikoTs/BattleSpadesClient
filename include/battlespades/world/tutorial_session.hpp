@@ -638,6 +638,8 @@ public:
     [[nodiscard]] const StaticLightField& static_lights() const noexcept {
         return static_lights_;
     }
+    /** Authored Enhanced fixture lighting replaces only tagged map lights. */
+    void set_map_fixture_lighting(std::string_view map_name, bool prefer_custom);
     [[nodiscard]] const PlayerMovementState& player() const noexcept;
     /** Retail look angles in degrees; yaw 0 faces -x, pitch positive down. */
     [[nodiscard]] double yaw() const noexcept;
@@ -774,8 +776,16 @@ private:
         std::uint64_t id{};
         std::array<std::uint32_t, 3U> cell{};
         bool lit{true};
+        bool map_owned{};
+        VxlColor wire_color{};
+        VxlColor source_color{};
+        bool custom{};
     };
     std::vector<ServerFlare> server_flares_;
+    std::string map_fixture_lighting_name_;
+    bool prefer_custom_map_fixture_lighting_{};
+    [[nodiscard]] bool custom_map_light_at(const std::array<std::uint32_t, 3U>& cell,
+                                          VxlColor source) const;
     /** Re-mesh every chunk column a static light can reach. */
     void mark_light_dirty(const StaticLight& light);
     /** Install one networked FlareBlockEntity (voxel + static light). */

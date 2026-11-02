@@ -1,4 +1,5 @@
 #include "battlespades/frontend/game_hud.hpp"
+#include "battlespades/frontend/deferred_scene_entities.hpp"
 #include "battlespades/frontend/classic_scoreboard_ping.hpp"
 #include "battlespades/frontend/loading_screen.hpp"
 #include "battlespades/network/classic_protocol.hpp"
@@ -558,7 +559,15 @@ void objective_tests(const std::vector<std::byte>& raw) {
         }
     }
     check(intel == 2 && bases == 2 && base_entities == 2, "two physical bases and one native marker per objective");
-    apply_entities(events);
+    frontend::DeferredSceneEntities loading_entities;
+    const auto while_loading = loading_entities.apply(false, events);
+    check(while_loading.has_value(), "bootstrap entity snapshot fits the loading queue");
+    apply_entities(*while_loading);
+    check(base_scene.entities().empty(), "tent snapshot waits until the world exists");
+    const auto after_loading = loading_entities.apply(true, {});
+    check(after_loading.has_value(), "world adoption retrieves the retained tent snapshot");
+    apply_entities(*after_loading);
+    check(base_scene.entities().size() == 4, "both tents and intels survive asynchronous world loading");
     Packet base_move{11}; base_move.byte(2); base_move.byte(1); base_move.vector(42,58,60);
     const auto moved_base = ctf.ingest(base_move.bytes);
     check(moved_base.error.empty(), "scripted CTF base move accepted");

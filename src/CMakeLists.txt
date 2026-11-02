@@ -324,6 +324,15 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     find_package(CURL REQUIRED)
     find_package(nlohmann_json CONFIG REQUIRED)
     find_package(unofficial-sodium CONFIG REQUIRED)
+    add_library(aos_background_pack STATIC assets/background_pack.cpp)
+    add_library(BattleSpades::BackgroundPack ALIAS aos_background_pack)
+    target_include_directories(aos_background_pack PUBLIC "${PROJECT_SOURCE_DIR}/include")
+    target_link_libraries(aos_background_pack PUBLIC BattleSpades::BuildOptions PRIVATE unofficial-sodium::sodium)
+    aos_enable_strict_warnings(aos_background_pack)
+    add_executable(aos_pack_menu_backgrounds "${PROJECT_SOURCE_DIR}/tools/package-menu-backgrounds.cpp")
+    target_link_libraries(aos_pack_menu_backgrounds PRIVATE BattleSpades::BackgroundPack
+        nlohmann_json::nlohmann_json unofficial-sodium::sodium)
+    aos_enable_strict_warnings(aos_pack_menu_backgrounds)
     # Use the native OpenAL framework on macOS. Other platforms receive
     # OpenAL Soft from vcpkg; its CMake package (same OpenAL::OpenAL target)
     # carries the fmt dependency a static Linux build must link, which
@@ -887,6 +896,7 @@ if(AOS_ENABLE_NATIVE_BACKENDS)
     )
     add_library(BattleSpades::FrontendNative ALIAS aos_frontend_native)
     target_link_libraries(aos_frontend_native PRIVATE BattleSpades::DiscordPresence)
+    target_link_libraries(aos_frontend_native PRIVATE BattleSpades::BackgroundPack)
     target_include_directories(
         aos_frontend_native
         PUBLIC

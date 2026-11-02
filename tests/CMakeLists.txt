@@ -30,6 +30,10 @@ aos_enable_strict_warnings(aos_demo_stream_tests)
 add_test(NAME aos_demo_stream_tests COMMAND aos_demo_stream_tests)
 
 if(AOS_ENABLE_NATIVE_BACKENDS)
+    add_executable(aos_background_pack_tests test_background_pack.cpp)
+    target_link_libraries(aos_background_pack_tests PRIVATE BattleSpades::BackgroundPack BattleSpades::RenderBgfx)
+    aos_enable_strict_warnings(aos_background_pack_tests)
+    add_test(NAME aos_background_pack_tests COMMAND aos_background_pack_tests)
     # Opt-in real-driver regression, including Linux software Vulkan without a
     # display server. Kept out of default CTest on hosts without Vulkan.
     add_executable(aos_vulkan_descriptor_pressure_tests test_vulkan_descriptor_pressure.cpp)

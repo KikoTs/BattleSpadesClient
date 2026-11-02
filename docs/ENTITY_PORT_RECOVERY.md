@@ -375,7 +375,13 @@ Blockfire: 2.5 dmg / 0.3 s to players, 0.7 / 0.4 s to blocks, 4.0 s lifespan, sp
 
 Capture point renders `cp.kv6`. **Do not implement "base restock" from the constants:** `CAPTURE_POINT_DISTANCE = 3.0` and `CAPTURE_POINT_REFILL_TIME = 10.0` (`constants.py:2986-2989`) are read by **no code in either tree** (recursive grep excluding `constants.py`: zero hits). The only executable behaviour is a **3-second heal to 100 with the ammo lines commented out** — `aosmodes/cctf.py:142-144` and `aosmodes/ctf.py:83-85` call `player.restock()`, which resolves to `server/aosserver/connection.py:1128-1131 def restock(self): self.set_hp(100)`. Implement that, and note the constants as unused.
 
-Bases and spawn points are **volumes, not entities**: there is no BASE entity worth wiring and no tent KV6 anywhere (`ls kv6 | grep -iE 'flag|tent'` → nothing). A base is authored VXL geometry + an axis-aligned box + a translucent zone at `BASE_ZONE_TINT_ALPHA = 150` (`constants.py:5051`) + a minimap icon pair. Spawn zones come in three fixed sizes (`constants.py:4291-4307`) with fixed team ownership (`:4333-4349`) and render `ugc_spawn_zone.kv6`. Our `resolve_map_spawn` is team-blind, probing outward from (256,256) (`include/battlespades/world/map_spawn.hpp:43-45`, `src/world/map_spawn.cpp:67-116`) — extend it with an optional zone list rather than replacing it. The UGC ids are **already ported** (`retail_constants.hpp:2050-2062`, and again as `RetailWeaponConstant` rows at `weapon_catalog.generated.cpp:1439-1447`), so only the volume table and selection logic are new.
+The earlier filename-only search incorrectly concluded that no tent model
+existed. The medical tent is `cp.kv6` (`CP_MODEL`), as the wiki's Command Post
+image and the original Classic clients show. Legacy BASE(1) stays unsafe on
+the retail wire, but 0.75/0.76 render it locally. BattleSpades Classic CTF
+uses the supported CapturePoint(25) entity. Base/spawn volumes are separate
+metadata. The frontend now retains entity creation while the world loads.
+See [CLASSIC_PROTOCOL.md](CLASSIC_PROTOCOL.md) for legacy authority rules.
 
 Drop points (18/19/20) render `Crate_Target.kv6` at +0,0,1.0 and, in UGC, a baseplate+crate pair at scale 0.25 / z −0.5 (`models.py:448-456`).
 

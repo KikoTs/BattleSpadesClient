@@ -407,6 +407,11 @@ void entity_display_origins_match_retail_attachment_rules() {
     const auto base_origin = entity_presentation_position(base,base_definition->parts.front());
     expect(base_origin.x == 70 && base_origin.y == 71 && base_origin.z == 100,
            "Classic checkpoint sits at the server's point without attached-item standoff");
+    base.type = 25U;
+    const auto* post_definition = find_entity_definition(25U);
+    const auto post_origin = entity_presentation_position(base, post_definition->parts.front());
+    expect(post_origin.x == 70 && post_origin.y == 71 && post_origin.z == 100,
+           "retail CapturePoint uses the same seated medical tent as Classic bases");
 
     auto landmine = at(70.0, 71.0, 100.0);
     landmine.type = 9U;

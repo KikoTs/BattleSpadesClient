@@ -178,6 +178,12 @@ replace or remove the model alongside its marker. Its authored bottom pivot
 rests at the exact server point, and entity mesh reuse includes team/RGB state
 so captured posts do not keep the previous owner's colour.
 
+Initial objective entity events are retained while asynchronous world construction
+finishes. Previously, the frontend discarded the tent's initial CreateEntity
+when no scene existed yet. The bounded loading queue preserves ordered entity
+lifecycle events and clears them at map change. Rendering a tent still grants
+no supplies until the remote server authorizes a refill.
+
 Ordinary Classic base contact refills 100 HP, 50 blocks, 3 grenades and the
 weapon's full reserve through the server's Restock packet. The loaded magazine
 and any active reload are preserved, matching piqueserver and ZeroSpades.

@@ -1,4 +1,5 @@
 #include "battlespades/frontend/native_frontend_module.hpp"
+#include "battlespades/frontend/deferred_scene_entities.hpp"
 #include "battlespades/network/cosmetic_appearance.hpp"
 #include "battlespades/network/classic_protocol.hpp"
 #include "battlespades/world/classic_combat.hpp"
@@ -60,6 +61,8 @@
 #include "battlespades/frontend/retail_input_rules.hpp"
 #include "battlespades/frontend/fallback_music.hpp"
 #include "battlespades/frontend/native_texture_preloader.hpp"
+#include "battlespades/assets/background_pack.hpp"
+#include "battlespades/render/image_memory.hpp"
 #include "battlespades/frontend/objective_indicator.hpp"
 #include "battlespades/frontend/parity_debug_menu.hpp"
 #include "battlespades/frontend/parity_debug_presentation.hpp"
@@ -1573,6 +1576,8 @@ struct NativeFrontendModule::Impl final {
     const settings::MenuBackgroundOption* menu_background_option{};
     const MenuBackgroundScene* menu_background_selected_scene{};
     bool menu_background_scene_ready{};
+    bool menu_background_pack_checked{};
+    std::shared_ptr<const assets::BackgroundPack> menu_background_pack;
     IdentityMenuModel identity_menu;
     IdentityPresentation identity_presentation;
     FriendsLobbyMenuModel friends_lobby_menu;
@@ -2113,6 +2118,7 @@ struct NativeFrontendModule::Impl final {
     std::string live_prefab_model_name;
     std::optional<world::Kv6Model> live_prefab_model;
     std::vector<std::vector<std::byte>> deferred_terrain_packets;
+    DeferredSceneEntities deferred_scene_entities;
     static constexpr std::uint32_t live_chunk_edge{16U};
     static constexpr std::size_t live_chunk_axis{world::VxlMap::width / live_chunk_edge};
     static constexpr std::size_t live_chunk_count{live_chunk_axis * live_chunk_axis};
@@ -13808,6 +13814,10 @@ struct NativeFrontendModule::Impl final {
      */
     void requeue_chunks_for_tier_change() {
         const bool retail = retail_look_active();
+        if (tutorial_session != nullptr) {
+            tutorial_session->set_map_fixture_lighting(
+                live_official_environment.has_value() ? tutorial_map_name : std::string_view{}, !retail);
+        }
         if (!live_meshes_retail_look.has_value()) {
             live_meshes_retail_look = retail;
             return;
@@ -14289,6 +14299,7 @@ struct NativeFrontendModule::Impl final {
         live_prefab_model_name.clear();
         timed_explosive_seconds.clear();
         deferred_terrain_packets.clear();
+        deferred_scene_entities.clear();
         clear_live_chunk_remeshes();
         local_palette_color.reset();
         server_ugc_items.clear();
@@ -14366,7 +14377,14 @@ struct NativeFrontendModule::Impl final {
         const auto queued_inbound = match_connection->status().queued_inbound;
         const std::size_t packet_budget = network::protocol168_inbound_apply_budget(
             queued_inbound, tutorial_session != nullptr);
-        for (const auto& packet : match_connection->take_inbound(packet_budget, live_map_generation)) {
+        auto scene_packets = deferred_scene_entities.apply(tutorial_session != nullptr,
+            match_connection->take_inbound(packet_budget, live_map_generation));
+        if (!scene_packets) {
+            settings_warning = "entity snapshot exceeded its bounded loading queue";
+            retire_match_connection();
+            return;
+        }
+        for (const auto& packet : *scene_packets) {
             if (packet.empty())
                 continue;
             const auto id = std::to_integer<std::uint8_t>(packet.front());
@@ -15876,6 +15894,10 @@ struct NativeFrontendModule::Impl final {
                                     channel(created->color[1U]),
                                     channel(created->color[2U])};
                     entity.has_color = created->has_explicit_color();
+                    if (const auto source = created->map_light_source_color()) {
+                        entity.map_owned_light = true;
+                        entity.map_light_source_color = *source;
+                    }
                     if (!tutorial_session->apply_server_entity(entity)) {
                         settings_warning =
                             "CreateEntity rejected invalid type, face, or entity budget";
@@ -19757,6 +19779,25 @@ struct NativeFrontendModule::Impl final {
         return count;
     }
 
+    void ensure_menu_background_pack() {
+        if (menu_background_pack_checked) return;
+        menu_background_pack_checked = true;
+        const auto path = config.client_asset_root / assets::background_pack_path;
+        std::error_code code;
+        if (!std::filesystem::is_regular_file(path, code)) return;
+        std::string error;
+        menu_background_pack = assets::cached_background_pack(path, error);
+        if (!menu_background_pack) std::fprintf(stderr, "[menu] background pack unavailable: %s\n", error.c_str());
+    }
+
+    [[nodiscard]] bool menu_background_exists(std::string_view asset) {
+        if (asset.empty()) return false;
+        ensure_menu_background_pack();
+        if (menu_background_pack && menu_background_pack->contains(asset)) return true;
+        std::error_code error;
+        return std::filesystem::is_regular_file(config.asset_root / asset, error);
+    }
+
     [[nodiscard]] std::optional<render::UiTextureInfo> image_texture(std::string_view asset,
                                                                      render::TextureFilter filter) {
         if(cosmetic_icons&&asset.starts_with("runtime/cosmetic/"))return cosmetic_icons->texture(asset);
@@ -19790,15 +19831,28 @@ struct NativeFrontendModule::Impl final {
             return existing->second;
         }
         std::optional<render::UiTextureInfo> loaded;
-        if (const auto* layer = menu_background_layer(selected_asset); layer != nullptr && layer->cutout) {
-            auto decoded = render::decode_png_rgba8(config.asset_root / selected_asset);
+        const auto* background_layer = menu_background_layer(selected_asset);
+        if (selected_asset.starts_with("png/ui/menu_backgrounds/")) ensure_menu_background_pack();
+        const bool encrypted = menu_background_pack && menu_background_pack->contains(selected_asset);
+        if (encrypted || (background_layer != nullptr && background_layer->cutout)) {
+            render::UiTextureDecodeResult decoded;
+            if (encrypted) {
+                std::string error;
+                const auto bytes = menu_background_pack->read(selected_asset, error);
+                if (bytes) decoded = render::decode_png_rgba8(std::span<const std::uint8_t>{*bytes});
+                else decoded.error = std::move(error);
+            } else {
+                decoded = render::decode_png_rgba8(config.asset_root / selected_asset);
+            }
             if (decoded) {
                 // Premultiplication before hardware filtering prevents fringes around fine cutouts.
                 auto& pixels = decoded.texture->rgba8;
-                for (std::size_t i = 0; i < pixels.size(); i += 4U)
-                    for (std::size_t channel = 0; channel < 3U; ++channel)
-                        pixels[i + channel] = static_cast<std::uint8_t>(
-                            (static_cast<unsigned>(pixels[i + channel]) * pixels[i + 3U] + 127U) / 255U);
+                if (background_layer != nullptr && background_layer->cutout) {
+                    for (std::size_t i = 0; i < pixels.size(); i += 4U)
+                        for (std::size_t channel = 0; channel < 3U; ++channel)
+                            pixels[i + channel] = static_cast<std::uint8_t>(
+                                (static_cast<unsigned>(pixels[i + channel]) * pixels[i + 3U] + 127U) / 255U);
+                }
                 loaded = renderer.create_texture_rgba8(pixels, decoded.texture->extent, filter);
             } else {
                 last_error = "could not decode layered background: " + decoded.error;
@@ -20934,9 +20988,7 @@ struct NativeFrontendModule::Impl final {
                 if (menu_background_option == nullptr)
                     menu_background_option = &settings::menu_background_options.front();
                 const auto exists = [this](std::string_view asset) {
-                    std::error_code error;
-                    return !asset.empty() && std::filesystem::is_regular_file(
-                        config.asset_root / std::filesystem::path{asset}, error);
+                    return menu_background_exists(asset);
                 };
                 if (exists(menu_background_option->asset)) {
                     menu_background_asset = menu_background_option->asset;
@@ -22381,6 +22433,7 @@ struct NativeFrontendModule::Impl final {
         live_prefab_model_name.clear();
         timed_explosive_seconds.clear();
         deferred_terrain_packets.clear();
+        deferred_scene_entities.clear();
         clear_live_chunk_remeshes();
         local_palette_color.reset();
         server_ugc_items.clear();
@@ -22902,6 +22955,8 @@ struct NativeFrontendModule::Impl final {
             world_renderer.set_model_light_sources(nullptr, nullptr);
             tutorial_session = std::make_unique<world::TutorialWorldSession>(
                 std::move(tutorial_ready_map), session_config);
+            tutorial_session->set_map_fixture_lighting(
+                live_official_environment.has_value() ? tutorial_map_name : std::string_view{}, !retail_look_active());
         }
         if (network_match && local_player_id.has_value()) {
             const auto* replica = tutorial_roster.player(*local_player_id);

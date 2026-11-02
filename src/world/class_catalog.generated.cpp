@@ -239,9 +239,9 @@ constexpr std::array<ClassDefinition, retail_class_count> classes{{
          ClassBodyPartDefinition{BodyPart::crouched_leg, "kv6/playerlegc.kv6", {0.0F, 0.0F, -5.0F}, {0.0F, 0.0F, 0.7F}}}},
         {"", ""},
         {std::span<const std::uint16_t>{class_4_group_0}, std::span<const std::uint16_t>{class_4_group_1}, std::span<const std::uint16_t>{class_4_group_2}, std::span<const std::uint16_t>{class_4_group_3}, std::span<const std::uint16_t>{class_4_group_4}, std::span<const std::uint16_t>{class_4_group_5}, std::span<const std::uint16_t>{class_4_group_6}},
-        1000U, 2000U,
+        2500U, 2500U,
         {"png/ui/in_game_menus/select_class/zombie_character_team1.png", "png/ui/in_game_menus/select_class/zombie_character_team2.png"},
-        {"png/ui/in_game_menus/select_class/zombie_icon.png", "png/ui/in_game_menus/select_class/zombie_icon.png"}, "", 0.6},
+        {"png/ui/in_game_menus/select_class/zombie_icon.png", "png/ui/in_game_menus/select_class/zombie_icon.png"}, "", 0.5},
     ClassDefinition{
         5U, "CLASSIC_SOLDIER", "Classic Soldier",
         {{ClassBodyPartDefinition{BodyPart::head, "kv6/Character_Deuce_Head.kv6", {0.0F, 0.0F, 5.5F}, {0.0F, 0.0F, 0.3F}},
@@ -655,7 +655,7 @@ std::string_view class_item_group_name(ClassItemGroup group) noexcept {
     const auto index = static_cast<std::size_t>(group); return index < names.size() ? names[index] : std::string_view{};
 }
 
-std::string_view class_catalog_contract_sha256() noexcept { return "2e6b9f8f0955ea0db37ff29d735e07aae5bb233869645aaa6c6d946f43d3d22d"; }
+std::string_view class_catalog_contract_sha256() noexcept { return "09866ba0cff7fe34d6e560a6a875334b8595ea0d872c27ac5570b18d8e0d70e8"; }
 
 std::span<const std::string_view> class_prefab_names(std::uint8_t class_id) noexcept {
     return class_id < prefab_names.size() ? prefab_names[class_id] : std::span<const std::string_view>{};

@@ -1,6 +1,8 @@
 #include "battlespades/render/bgfx_ui_renderer.hpp"
 #include "battlespades/render/render_views.hpp"
 #include "battlespades/render/world_renderer.hpp"
+#include "battlespades/assets/background_pack.hpp"
+#include "battlespades/frontend/native_texture_preloader.hpp"
 
 #include <SDL3/SDL.h>
 #include <bgfx/bgfx.h>
@@ -11,12 +13,14 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -112,6 +116,43 @@ render::UiGeometry geometry(render::UiTexture texture, std::uint32_t color) {
     return draw;
 }
 
+void test_encrypted_background_preload(render::BgfxUiRenderer& renderer, const std::filesystem::path& assets) {
+    const auto original = assets / "encrypted-test/original";
+    const auto client = assets / "encrypted-test/client";
+    std::filesystem::create_directories(original);
+    constexpr std::string_view name{"png/ui/menu_backgrounds/encrypted-only.png"};
+    std::ifstream source{assets / "white.png", std::ios::binary};
+    const std::vector<std::uint8_t> png{std::istreambuf_iterator<char>{source}, {}};
+    std::string error;
+    expect(assets::write_background_pack(client / assets::background_pack_path,
+        std::vector{assets::BackgroundAsset{std::string{name}, png}}, error), error);
+    frontend::NativeTexturePreloader loader;
+    expect(loader.start(original, {frontend::TexturePreloadRequest{std::string{name},
+        std::filesystem::path{name}, render::TextureFilter::nearest}}), "encrypted preload did not start");
+    std::optional<render::UiTextureInfo> texture;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+    while (!texture && std::chrono::steady_clock::now() < deadline) {
+        for (auto& uploaded : loader.pump_uploads(renderer)) texture = uploaded.texture;
+        expect(loader.snapshot().state != assets::PreloadBatchState::failed, "encrypted-only PNG preload failed");
+        if (!texture) {
+            static_cast<void>(bgfx::frame());
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+    }
+    expect(texture.has_value(), "encrypted-only PNG upload timed out");
+    expect(loader.snapshot().state == assets::PreloadBatchState::ready, "encrypted preload did not complete");
+    expect(!std::filesystem::exists(original / name) && !std::filesystem::exists(client / name),
+           "preload wrote an unencrypted background file");
+    {
+        Capture capture;
+        expect(renderer.begin_frame(), std::string{renderer.last_error()});
+        expect(renderer.draw(render::UiSprite{texture->texture, {0, 0, 64, 64}}), "encrypted sprite draw failed");
+        expect_color(capture.finish(renderer), 32U, white, "encrypted-only preload pixel readback");
+    }
+    loader.stop();
+    expect(renderer.release_texture(texture->texture), "encrypted texture release failed");
+}
+
 void test_backend(render::GraphicsBackend backend, const std::filesystem::path& assets) {
     Window window;
     render::BgfxUiRenderer renderer;
@@ -129,6 +170,7 @@ void test_backend(render::GraphicsBackend backend, const std::filesystem::path& 
     expect(renderer.active_backend() == backend, "bgfx did not select the requested backend");
     expect((bgfx::getCaps()->supported & (BGFX_CAPS_TEXTURE_BLIT | BGFX_CAPS_TEXTURE_READ_BACK)) ==
            (BGFX_CAPS_TEXTURE_BLIT | BGFX_CAPS_TEXTURE_READ_BACK), "backend lacks pixel readback");
+    test_encrypted_background_preload(renderer, assets);
 
     const auto runtime = renderer.create_texture_rgba8(white, {1U, 1U}, render::TextureFilter::nearest);
     expect(runtime.has_value(), std::string{renderer.last_error()});

@@ -5,6 +5,7 @@
 *.ps1 text eol=crlf
 
 *.aos binary
+*.bspbg binary
 *.ico binary
 *.jpg binary
 *.kv6 binary

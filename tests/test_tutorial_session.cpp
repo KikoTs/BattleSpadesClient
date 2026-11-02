@@ -120,6 +120,51 @@ int main() {
                    "a flare whose voxel the terrain replica destroyed loses its light");
         }
 
+        // An authored Enhanced profile owns its map fixtures. Their source
+        // colour stays available to the custom emissive bake; player flares
+        // and maps without a fixture profile keep their native point lights.
+        {
+            TutorialSessionConfig live;
+            live.network_authoritative = true;
+            auto lighting_map = std::make_shared<VxlMap>(*map);
+            TutorialWorldSession session{lighting_map, live};
+            session.set_map_fixture_lighting("SpookyMansion", true);
+            LocalEntity fixture;
+            fixture.id = 62'000U;
+            fixture.type = 13U;
+            fixture.position = {120.0, 70.0, 232.0};
+            fixture.has_color = true;
+            fixture.color = {125U, 125U, 100U};
+            fixture.map_owned_light = true;
+            fixture.map_light_source_color = {250U, 250U, 200U};
+            expect(session.apply_server_entity(fixture) && session.static_lights().empty() &&
+                       lighting_map->color(120U, 70U, 232U)->red == 250U,
+                   "custom fixture profile replaces the map point light and retains its source colour");
+            auto player_flare = fixture;
+            player_flare.id = 62'001U;
+            player_flare.position = {125.0, 72.0, 233.0};
+            player_flare.map_owned_light = false;
+            expect(session.apply_server_entity(player_flare) && session.static_lights().lights().size() == 1U,
+                   "custom map lighting never suppresses a player-placed flare");
+            session.set_map_fixture_lighting("SpookyMansion", false);
+            session.set_map_fixture_lighting("SpookyMansion", false);
+            expect(session.static_lights().lights().size() == 2U &&
+                       lighting_map->color(120U, 70U, 232U)->red == 125U,
+                   "compatibility restores each native map light exactly once");
+            session.set_map_fixture_lighting("SpookyMansion", true);
+            expect(session.static_lights().lights().size() == 1U &&
+                       lighting_map->color(120U, 70U, 232U)->red == 250U,
+                   "switching back to a custom profile removes duplicate map illumination");
+            session.set_map_fixture_lighting("UnknownCustomMap", true);
+            expect(session.static_lights().lights().size() == 2U,
+                   "an unknown map cannot inherit another map's light suppression");
+            session.set_map_fixture_lighting("SpookyMansion", true);
+            expect(lighting_map->clear_voxel(120U, 70U, 232U), "destroyed map light fixture");
+            session.set_map_fixture_lighting("SpookyMansion", false);
+            expect(!lighting_map->solid(120U, 70U, 232U) && session.static_lights().lights().size() == 1U,
+                   "a profile switch cannot resurrect a destroyed map fixture");
+        }
+
         // The negotiated local profile is checked against the actual Python
         // ClientData -> authority -> WorldUpdate flight trace (60 Hz), taken
         // with a BSCF owner (tests/test_flight_authority_flow.py FlightFlow):
@@ -854,11 +899,11 @@ int main() {
             session.apply_server_movement_state(0x04U, 0U, 0xFFU, 98);
             expect(session.jetpack_fuel() == exhausted_fuel && !session.player().jetpack_active,
                    "an out-of-order active row must not refill or reignite an exhausted pack");
-            session.restock_jetpack_fuel();
+            session.restock_from_ammo_crate();
             session.apply_server_jetpack_fuel(0.0, 101);
             session.tick();
             expect(session.jetpack_fuel() == 100.0 && !session.player().jetpack_active,
-                   "restock must fence stale fuel without bypassing the release latch");
+                   "ammo-crate fuel refill must fence stale fuel without bypassing the release latch");
             session.set_action_held(TutorialAction::jump, false);
             session.tick();
             session.tick();

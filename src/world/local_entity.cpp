@@ -507,10 +507,10 @@ Vec3 entity_presentation_position(const LocalEntity& entity, const EntityModelPa
     auto y = entity.position.y;
     const auto z = entity.position.z;
 
-    // Classic checkpoints are anchored directly at the server's base point.
+    // Medical tents are anchored directly at the server's base point.
     // cp.kv6's pivot already rests on that surface; the generic attached-item
     // half-block standoff would leave the tent floating above the ground.
-    if (entity.type == 1U && entity.face == 4U) {
+    if ((entity.type == 1U || entity.type == 25U) && entity.face == 4U) {
         return {x + part.offset[0U], y + part.offset[1U], z + part.offset[2U]};
     }
 

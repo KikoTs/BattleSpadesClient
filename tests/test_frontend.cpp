@@ -1,4 +1,5 @@
 #include "battlespades/frontend/frontend_shell.hpp"
+#include "battlespades/frontend/deferred_scene_entities.hpp"
 #include "battlespades/frontend/frontend_navigation.hpp"
 #include "battlespades/frontend/main_menu.hpp"
 #include "battlespades/network/live_protocol168_connection.hpp"
@@ -54,6 +55,32 @@ void live_packet_budget_bounds_authority_age_without_reordering() {
            "retail NetworkClient.update drains the whole queue every update");
     expect(protocol168_inbound_apply_budget(8'192U, false) == 128U,
            "hidden loading may use the bounded aggressive drain");
+}
+
+void scene_loading_retains_entity_snapshot_moves_and_destroys() {
+    using battlespades::frontend::DeferredSceneEntities;
+    using namespace battlespades::network;
+    DeferredSceneEntities queue;
+    const auto row = [](std::uint8_t id, std::uint8_t value) {
+        return std::vector<std::byte>{static_cast<std::byte>(id), static_cast<std::byte>(value)};
+    };
+    const auto create = row(CreateEntityPacket::id, 1U);
+    const auto destroy = row(DestroyEntityPacket::id, 1U);
+    const auto moved = row(CreateEntityPacket::id, 2U);
+    const auto change = row(ChangeEntityPacket::id, 2U);
+    const auto chat = row(99U, 0U);
+    const auto first = queue.apply(false, {create, chat});
+    expect(first && *first == DeferredSceneEntities::Packets{chat},
+           "loading forwards non-entity events but retains the initial tent");
+    const auto next = queue.apply(false, {destroy, moved});
+    expect(next && next->empty(), "base moves remain behind their creation during loading");
+    const auto ready = queue.apply(true, {change});
+    expect(ready && *ready == DeferredSceneEntities::Packets{create, destroy, moved, change},
+           "world adoption replays the full entity lifecycle before new events");
+    expect(queue.apply(true, {})->empty(), "snapshot replay happens once");
+    static_cast<void>(queue.apply(false, {create}));
+    queue.clear();
+    expect(queue.apply(true, {})->empty(), "map change discards the old world's entities");
 }
 
 void canvas_preserves_aspect_and_rejects_letterbox_input() {
@@ -436,6 +463,8 @@ int main() {
     const std::vector<TestCase> tests{
         {"live_packet_budget_bounds_authority_age_without_reordering",
          live_packet_budget_bounds_authority_age_without_reordering},
+        {"scene_loading_retains_entity_snapshot_moves_and_destroys",
+         scene_loading_retains_entity_snapshot_moves_and_destroys},
         {"canvas_preserves_aspect_and_rejects_letterbox_input",
          canvas_preserves_aspect_and_rejects_letterbox_input},
         {"canvas_uses_recovered_truncation_for_render_and_pointer_mapping",
